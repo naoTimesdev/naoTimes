@@ -5,10 +5,11 @@
 <p align="center">Prefix: <b>!</b><br/>Bantuan: <b>!help</b></p>
 
 <p align="center">
-  <a href="#invite-bot">Invite</a> •
-  <a href="#requirements">Requirements</a> •
-  <a href="#setting-up">Setup</a> •
-  <a href="#webscript">WebScript</a>
+    <a href="#invite-bot">Invite</a> •
+    <a href="#requirements">Requirements</a> •
+    <a href="#setting-up">Setup</a> •
+    <a href="#webscript">WebScript</a> •
+    <a href="https://blog.n4o.xyz/blog/naotimes/">Dokumentasi</a>
 </p>
 
 <p align="center">:warning: <b>Laporkan kesalahan di <a href="https://github.com/noaione/naoTimes/issues">Issues</a></b> :warning:</p>
