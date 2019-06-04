@@ -11,8 +11,7 @@
   <a href="#webscript">WebScript</a>
 </p>
 
-## Peringatan
-**Bot belum siap untuk di setup dan dijalankan, masih ada satu command yang harus dipersiapkan sebelum sepenuhnya open-source**
+<p align="center">:warning: <b>Bot belum siap untuk di setup dan dijalankan, masih ada satu command yang harus dipersiapkan sebelum sepenuhnya open-source</b> :warning:</p>
 
 ## Invite bot
 Males setup sendiri? Mau simple dan cepet?
