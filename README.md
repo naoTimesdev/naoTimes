@@ -1,11 +1,17 @@
-# naoTimes
-Bot berbahasa Indonesia untuk membantu tracking garapan fansubber.
+<h1 align="center">
+    naoTimes
+</h1>
+<p align="center">Bot berbahasa Indonesia untuk membantu tracking garapan fansubber.</p>
+<p align="center">Prefix: <b>!</b><br/>Bantuan: <b>!help</b></p>
 
-Prefix: **!**
+<p align="center">
+  <a href="#invite-bot">Invite</a> •
+  <a href="#requirements">Requirements</a> •
+  <a href="#setting-up">Setup</a> •
+  <a href="#webscript">WebScript</a>
+</p>
 
-Bantuan: **!help**
-
-## Warning
+## Peringatan
 **Bot belum siap untuk di setup dan dijalankan, masih ada satu command yang harus dipersiapkan sebelum sepenuhnya open-source**
 
 ## Invite bot
@@ -53,3 +59,9 @@ Admin ID:
 6. Aktifkan naoTimes dengan `!ntadmin initiate`
 7. Ikuti perintahnnya dan klik react `centang` jika sudah benar semua
 8. Bot siap digunakan, silakan liat dokumentasinya [di sini](https://blog.n4o.xyz/blog/naotimes/) atau [di sini](DOKUMENTASI.md)
+
+## WebScript
+Kumpulan script website sebagai penghubung antara database dengan website
+
+### [Website Progress](webscript/Website_Progress.md)
+Menghubungkan progress garapan dari database bot ke website.
