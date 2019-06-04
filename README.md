@@ -11,16 +11,14 @@ Bantuan: **!help**
 ## Invite bot
 Males setup sendiri? Mau simple dan cepet?
 
-1\. Invite bot dengan klik link ini: [https://discordapp.com/api/oauth2/authorize?client_id=558256913926848537&permissions=268823632&scope=bot](naoTimes Invite Link)
+1. Invite bot dengan klik link ini: https://discordapp.com/api/oauth2/authorize?client_id=558256913926848537&permissions=268823632&scope=bot
 
-2\. Tambah `N4O#8868` sebagai teman dan kirim pesan dengan list berikut:
+2. Tambah `N4O#8868` sebagai teman dan kirim pesan dengan list berikut:
 ```
 Server ID: 
 Admin ID:
 #progress announce Channel ID:
 ```
-
-3\. Tunggu sampai dikonfirmasi oleh saya~
 
 ## Requirements
 - Python 3.6 (Diusahakan jangan Python 3.7)
