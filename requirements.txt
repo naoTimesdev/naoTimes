@@ -1,0 +1,6 @@
+requests
+asyncio
+discord.py==0.16.12
+aiohttp>=3.4.2
+pytz
+beautifulsoup4
