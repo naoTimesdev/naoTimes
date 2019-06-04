@@ -27,11 +27,20 @@ Admin ID:
 ```
 
 ## Requirements
-- Python 3.6 (Diusahakan jangan Python 3.7)
+- Python 3.6+ (Diusahakan jangan Python 3.7)
 - Discord.py (Async version)
 - BeautifulSoup4
 - aiohttp>=3.4.2
 - pytz
+
+Bagi pengguna Python 3.7, cek isu berikut: [Rapptz/discord.py#1249](https://github.com/Rapptz/discord.py/issues/1249)
+
+Silakan cek commit discord.py berikut: [Rapptz/discord.py@1863a1c](https://github.com/Rapptz/discord.py/commit/1863a1c6636f53592519320a173ec9573c090c0b)
+
+Update requirements dengan
+```bash
+pip install -U https://github.com/Rapptz/discord.py/archive/async.zip
+```
 
 ## Setting up
 1. Clone/Download repo ini
