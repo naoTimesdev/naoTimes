@@ -80,7 +80,7 @@ class ShowtimesAdmin:
     @commands.group(pass_context=True, aliases=['naotimesadmin', 'naoadmin'])
     async def ntadmin(self, ctx):
         if ctx.invoked_subcommand is None:
-            if int(ctx.message.author.id) != bot_config['owner_id']:
+            if int(ctx.message.author.id) != int(bot_config['owner_id']):
                 return
             helpmain = discord.Embed(title="Bantuan Perintah (!ntadmin)", description="versi 1.3.3.1", color=0x00aaaa)
             helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -90,13 +90,16 @@ class ShowtimesAdmin:
             helpmain.add_field(name='!ntadmin hapus <server id>', value="```Menghapus server dari naoTimes```", inline=False)
             helpmain.add_field(name='!ntadmin tambahadmin <server id> <id admin>', value="```Menambahkan admin baru ke server yang terdaftar```", inline=False)
             helpmain.add_field(name='!ntadmin hapusadmin <server id> <id admin>', value="```Menghapus admin dari server yang terdaftar```", inline=False)
+            helpmain.add_field(name='!ntadmin fetchdb', value="```Mengambil database dan menguploadnya ke discord```", inline=False)
+            helpmain.add_field(name='!ntadmin patchdb', value="```Menganti database dengan attachments yang dicantumkan\nTambah attachments lalu tulis !ntadmin patchdb dan enter`", inline=False)
+            helpmain.add_field(name='!ntadmin forceupdate', value="```Memaksa update database utama gist dengan database local.```", inline=False)
             helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 1.3.3.1")
             await self.bot.say(embed=helpmain)
 
 
     @ntadmin.command(pass_context=True)
     async def listserver(self, ctx):
-        if int(ctx.message.author.id) != bot_config['owner_id']:
+        if int(ctx.message.author.id) != int(bot_config['owner_id']):
             return
         print('Requested !ntadmin listserver by admin')
         json_d = await fetch_json()
@@ -132,7 +135,7 @@ class ShowtimesAdmin:
 
     @ntadmin.command(pass_context=True)
     async def fetchdb(self, ctx):
-        if int(ctx.message.author.id) != bot_config['owner_id']:
+        if int(ctx.message.author.id) != int(bot_config['owner_id']):
             return
         print('Requested !ntadmin fetchdb by admin')
         json_d = await fetch_json()
@@ -156,7 +159,7 @@ class ShowtimesAdmin:
         !! Warning !!
         This will patch entire database
         """
-        if int(ctx.message.author.id) != bot_config['owner_id']:
+        if int(ctx.message.author.id) != int(bot_config['owner_id']):
             return
         print('Requested !ntadmin patchdb by admin')
 
@@ -221,7 +224,7 @@ class ShowtimesAdmin:
         :adm_id: admin id
         :prog_chan: #progress channel id
         """
-        if int(ctx.message.author.id) != bot_config['owner_id']:
+        if int(ctx.message.author.id) != int(bot_config['owner_id']):
             return
         print('Requested !ntadmin tambah by admin')
         json_d = await fetch_json()
@@ -260,7 +263,7 @@ class ShowtimesAdmin:
         
         :srv_id: server id
         """
-        if int(ctx.message.author.id) != bot_config['owner_id']:
+        if int(ctx.message.author.id) != int(bot_config['owner_id']):
             return
         print('Requested !ntadmin hapus by admin')
         json_d = await fetch_json()
@@ -299,7 +302,7 @@ class ShowtimesAdmin:
         
         :srv_id: server id
         """
-        if int(ctx.message.author.id) != bot_config['owner_id']:
+        if int(ctx.message.author.id) != int(bot_config['owner_id']):
             return
         print('Requested !ntadmin tambahadmin by admin')
         json_d = await fetch_json()
@@ -336,7 +339,7 @@ class ShowtimesAdmin:
         
         :srv_id: server id
         """
-        if int(ctx.message.author.id) != bot_config['owner_id']:
+        if int(ctx.message.author.id) != int(bot_config['owner_id']):
             return
         print('Requested !ntadmin hapusadmin by admin')
         json_d = await fetch_json()
@@ -373,7 +376,7 @@ class ShowtimesAdmin:
     @ntadmin.command(pass_context=True)
     async def forceupdate(self, ctx):
         print('Requested forceupdate by admin')
-        if int(ctx.message.author.id) != bot_config['owner_id']:
+        if int(ctx.message.author.id) != int(bot_config['owner_id']):
             return
         json_d = await fetch_json()
         if not json_d:

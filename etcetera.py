@@ -105,6 +105,9 @@ Command ini tidak akan mengannounce perubahan ke channel publik
 ```
 """
 
+with open('config.json', 'r') as fp:
+    bot_config = json.load(fp)
+
 def find_user_server(user_id, js_data):
     srv_list = []
 
@@ -181,7 +184,7 @@ class Helper:
             helpmain.add_field(name='!help', value="```Memunculkan bantuan perintah```", inline=False)
             helpmain.add_field(name='!help showtimes', value="```Memunculkan bantuan perintah showtimes```", inline=False)
             helpmain.add_field(name='!help anilist', value="```Memunculkan bantuan perintah anilist```", inline=False)
-            if int(ctx.message.author.id) == 466469077444067372:
+            if int(ctx.message.author.id) == int(bot_config['owner_id']):
                 helpmain.add_field(name='!help admin', value="```Memunculkan bantuan perintah admin```", inline=False)
             helpmain.add_field(name="!info", value="```Melihat Informasi bot```", inline=False)
             helpmain.add_field(name="!ping", value="```pong!```", inline=False)
@@ -191,7 +194,7 @@ class Helper:
 
     @help.command(pass_context=True)
     async def admin(self, ctx):
-        if int(ctx.message.author.id) != 466469077444067372:
+        if int(ctx.message.author.id) != int(bot_config['owner_id']):
             return
         helpmain = discord.Embed(title="Bantuan Perintah (Admin)", description="versi 1.3.3.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -206,7 +209,7 @@ class Helper:
 
     @help.command(pass_context=True)
     async def bundir(self, ctx):
-        if int(ctx.message.author.id) != 466469077444067372:
+        if int(ctx.message.author.id) != int(bot_config['owner_id']):
             return
         helpmain = discord.Embed(title="Bantuan Perintah (!bundir)", description="versi 1.3.3.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -218,7 +221,7 @@ class Helper:
 
     @help.command(pass_context=True)
     async def reinkarnasi(self, ctx):
-        if int(ctx.message.author.id) != 466469077444067372:
+        if int(ctx.message.author.id) != int(bot_config['owner_id']):
             return
         helpmain = discord.Embed(title="Bantuan Perintah (!reinkarnasi)", description="versi 1.3.3.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -230,7 +233,7 @@ class Helper:
 
     @help.command(pass_context=True)
     async def reload(self, ctx):
-        if int(ctx.message.author.id) != 466469077444067372:
+        if int(ctx.message.author.id) != int(bot_config['owner_id']):
             return
         helpmain = discord.Embed(title="Bantuan Perintah (!reload)", description="versi 1.3.3.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -419,7 +422,7 @@ class Helper:
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
         helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
         helpmain.add_field(name='!ubahstaff <id_staff> <posisi> <judul>', value=ubahstaff_textdata, inline=False)
-        helpmain.add_field(name="Contoh", value="!ubahstaff 466469077444067372 tl tate", inline=False)
+        helpmain.add_field(name="Contoh", value="!ubahstaff int(bot_config['owner_id']) tl tate", inline=False)
         helpmain.add_field(name="Tambahan", value="Hanya bisa dipake oleh Admin", inline=False)
         helpmain.add_field(name='Aliases', value="Tidak ada", inline=False)
         helpmain.add_field(name="*Catatan*", value="Semua command bisa dilihat infonya dengan !help <nama command>", inline=False)
@@ -497,7 +500,7 @@ class Helper:
 
     @commands.command(pass_context=True)
     async def supermotd(self, ctx):
-        if int(ctx.message.author.id) != 466469077444067372:
+        if int(ctx.message.author.id) != int(bot_config['owner_id']):
             print('@@ Someone want to use supermotd but not the bot owner, ignoring...')
             print('@@ User that are trying to use it: ' + str(ctx.message.author.id))
             return
