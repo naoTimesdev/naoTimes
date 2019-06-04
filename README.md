@@ -1,7 +1,7 @@
 <h1 align="center">
     naoTimes
 </h1>
-<p align="center">Bot berbahasa Indonesia untuk membantu tracking garapan fansubber.</p>
+<p align="center"><b>Versi 1.3.3.1</b><br>Bot berbahasa Indonesia untuk membantu tracking garapan fansubber.</p>
 <p align="center">Prefix: <b>!</b><br/>Bantuan: <b>!help</b></p>
 
 <p align="center">
@@ -11,7 +11,7 @@
   <a href="#webscript">WebScript</a>
 </p>
 
-<p align="center">:warning: <b>Bot belum siap untuk di setup dan dijalankan! :warning:<br/>:warning: Masih ada satu command yang harus dipersiapkan sebelum sepenuhnya open-source</b> :warning:</p>
+<p align="center">:warning: <b>Laporkan kesalahan di <a href="https://github.com/noaione/naoTimes/issues">Issues</a></b> :warning:</p>
 
 ## Invite bot
 Males setup sendiri? Mau simple dan cepet?
@@ -58,6 +58,43 @@ Admin ID:
 6. Aktifkan naoTimes dengan `!ntadmin initiate`
 7. Ikuti perintahnnya dan klik react `centang` jika sudah benar semua
 8. Bot siap digunakan, silakan liat dokumentasinya [di sini](https://blog.n4o.xyz/blog/naotimes/) atau [di sini](DOKUMENTASI.md)
+
+**Note**
+
+Kalau dijalankan di Heroku, atur `gist_id` secara manual dan buat gist sesuai langkah 2<br>
+Tetapi isi contentnya seperti ini:
+```json
+{
+    "serverowner": [
+        "ID_ADMIN_SERVER_AWAL"
+    ],
+    "SERVER_ID_AWAL": {
+        "serverowner": [
+            "ID_ADMIN_SERVER_AWAL"
+        ],
+        "announce_channel": "ID_CHANNEL_PROGRESS",
+        "anime": {}
+    }
+}
+```
+
+**Contoh**:
+```json
+{
+    "serverowner": [
+        "466469077444067372"
+    ],
+    "472705451117641729": {
+        "serverowner": [
+            "466469077444067372"
+        ],
+        "announce_channel": "558321533060251664",
+        "anime": {}
+    }
+}
+```
+
+Lalu copy **`Gist IDnya`** dan masukan ke **`config.json`**
 
 ## WebScript
 Kumpulan script website sebagai penghubung antara database dengan website
