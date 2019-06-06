@@ -259,6 +259,7 @@ class ShowtimesAdmin:
         server_data['serverowner'] = [json_tables['owner_id']]
         server_data['announce_channel'] = json_tables['progress_channel']
         server_data['anime'] = {}
+        server_data['anime']['alias'] = {}
 
         main_data[str(ctx.message.server.id)] = server_data
         print('@@ Sending data')
