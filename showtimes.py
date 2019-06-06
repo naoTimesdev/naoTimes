@@ -51,7 +51,6 @@ query ($id: Int!) {
 with open('config.json', 'r') as fp:
     bot_config = json.load(fp)
 
-
 async def fetch_json() -> dict:
     """
     Open local database
@@ -368,6 +367,25 @@ def parse_status(status) -> str:
     return " ".join(status_list)
 
 
+def find_alias_anime(key: str, alias_list: dict) -> str:
+    """
+    Return a target_anime value for alias provided
+    """
+    for k, v in alias_list.items():
+        if key == k:
+            return v
+
+
+def make_numbered_alias(alias_list: list) -> str:
+    """
+    Create a numbered text for alias_list
+    """
+    t = []
+    for n, i in enumerate(alias_list):
+        t.append('**{}**. {}'.format(n + 1, i))
+    return "\n".join(t)
+
+
 def is_minus(x) -> bool:
     return x < 0
 
@@ -425,8 +443,11 @@ class Showtimes:
             return
 
         srv_anilist = []
+        srv_anilist_alias = []
         for ani in server_data['anime']:
             srv_anilist.append(ani)
+        for k, _ in server_data['anime']['alias'].items():
+            srv_anilist_alias.append(k)
 
         if not judul:
             if len(srv_anilist) < 1:
@@ -434,6 +455,13 @@ class Showtimes:
             return await self.bot.say('**Mungkin**: {}'.format(', '.join(sorted(srv_anilist))))
 
         matches = get_close_matches(judul, srv_anilist)
+        if srv_anilist_alias:
+            temp_anilias = get_close_matches(judul, srv_anilist_alias)
+            for i in temp_anilias:
+                res = find_alias_anime(i, server_data['anime']['alias'])
+                if res not in matches: # To not duplicate result
+                    matches.append(res)
+        print('Matches: {}'.format(", ".join(matches)))
 
         if not matches:
             return await self.bot.say('Tidak dapat menemukan judul tersebut di database')
@@ -485,8 +513,11 @@ class Showtimes:
 
         srv_owner = server_data['serverowner']
         srv_anilist = []
+        srv_anilist_alias = []
         for ani in server_data['anime']:
             srv_anilist.append(ani)
+        for k, _ in server_data['anime']['alias'].items():
+            srv_anilist_alias.append(k)
 
         if len(srv_anilist) < 1:
             return await self.bot.say('**Tidak ada anime yang terdaftar di database**')
@@ -508,6 +539,13 @@ class Showtimes:
                 return await self.bot.say('**Mungkin**: {}'.format(', '.join(srv_anilist)))
 
             matches = get_close_matches(judul, srv_anilist)
+            if srv_anilist_alias:
+                temp_anilias = get_close_matches(judul, srv_anilist_alias)
+                for i in temp_anilias:
+                    res = find_alias_anime(i, server_data['anime']['alias'])
+                    if res not in matches: # To not duplicate result
+                        matches.append(res)
+            print('Matches: {}'.format(", ".join(matches)))
 
             if not matches:
                 return await self.bot.say('Tidak dapat menemukan judul tersebut di database')
@@ -561,6 +599,13 @@ class Showtimes:
             print('Inherited batch rilis command')
 
             matches = get_close_matches(judul, srv_anilist)
+            if srv_anilist_alias:
+                temp_anilias = get_close_matches(judul, srv_anilist_alias)
+                for i in temp_anilias:
+                    res = find_alias_anime(i, server_data['anime']['alias'])
+                    if res not in matches: # To not duplicate result
+                        matches.append(res)
+            print('Matches: {}'.format(", ".join(matches)))
 
             if not matches:
                 return await self.bot.say('Tidak dapat menemukan judul tersebut di database')
@@ -612,6 +657,13 @@ class Showtimes:
             print('Inherited all rilis command')
 
             matches = get_close_matches(judul, srv_anilist)
+            if srv_anilist_alias:
+                temp_anilias = get_close_matches(judul, srv_anilist_alias)
+                for i in temp_anilias:
+                    res = find_alias_anime(i, server_data['anime']['alias'])
+                    if res not in matches: # To not duplicate result
+                        matches.append(res)
+            print('Matches: {}'.format(", ".join(matches)))
 
             if not matches:
                 return await self.bot.say('Tidak dapat menemukan judul tersebut di database')
@@ -677,8 +729,11 @@ class Showtimes:
 
         srv_owner = server_data['serverowner']
         srv_anilist = []
+        srv_anilist_alias = []
         for ani in server_data['anime']:
             srv_anilist.append(ani)
+        for k, _ in server_data['anime']['alias'].items():
+            srv_anilist_alias.append(k)
 
         if not judul:
             if len(srv_anilist) < 1:
@@ -686,6 +741,13 @@ class Showtimes:
             return await self.bot.say('**Mungkin**: {}'.format(', '.join(srv_anilist)))
 
         matches = get_close_matches(judul, srv_anilist)
+        if srv_anilist_alias:
+            temp_anilias = get_close_matches(judul, srv_anilist_alias)
+            for i in temp_anilias:
+                res = find_alias_anime(i, server_data['anime']['alias'])
+                if res not in matches: # To not duplicate result
+                    matches.append(res)
+        print('Matches: {}'.format(", ".join(matches)))
 
         if not matches:
             return await self.bot.say('Tidak dapat menemukan judul tersebut di database')
@@ -770,8 +832,11 @@ class Showtimes:
 
         srv_owner = server_data['serverowner']
         srv_anilist = []
+        srv_anilist_alias = []
         for ani in server_data['anime']:
             srv_anilist.append(ani)
+        for k, _ in server_data['anime']['alias'].items():
+            srv_anilist_alias.append(k)
 
         if not judul:
             if len(srv_anilist) < 1:
@@ -779,6 +844,13 @@ class Showtimes:
             return await self.bot.say('**Mungkin**: {}'.format(', '.join(srv_anilist)))
 
         matches = get_close_matches(judul, srv_anilist)
+        if srv_anilist_alias:
+            temp_anilias = get_close_matches(judul, srv_anilist_alias)
+            for i in temp_anilias:
+                res = find_alias_anime(i, server_data['anime']['alias'])
+                if res not in matches: # To not duplicate result
+                    matches.append(res)
+        print('Matches: {}'.format(", ".join(matches)))
 
         if not matches:
             return await self.bot.say('Tidak dapat menemukan judul tersebut di database')
@@ -856,11 +928,14 @@ class Showtimes:
             return
 
         srv_anilist = []
+        srv_anilist_alias = []
         for ani in server_data['anime']:
             srv_anilist.append(ani)
+        for k, _ in server_data['anime']['alias'].items():
+            srv_anilist_alias.append(k)
 
         if str(ctx.message.author.id) not in server_data['serverowner']:
-            return await self.bot.say('Hanya admin yang bisa menghilangkan episode')
+            return await self.bot.say('Hanya admin yang bisa mengubah staff')
 
         if role_position not in list_posisi:
             return await self.bot.say('Tidak ada posisi itu\nYang tersedia: `tl`, `tlc`, `enc`, `ed`, `tm`, `ts`, dan `qc`')
@@ -874,6 +949,13 @@ class Showtimes:
             return await self.bot.say('**Mungkin**: {}'.format(', '.join(srv_anilist)))
 
         matches = get_close_matches(judul, srv_anilist)
+        if srv_anilist_alias:
+            temp_anilias = get_close_matches(judul, srv_anilist_alias)
+            for i in temp_anilias:
+                res = find_alias_anime(i, server_data['anime']['alias'])
+                if res not in matches: # To not duplicate result
+                    matches.append(res)
+        print('Matches: {}'.format(", ".join(matches)))
 
         if not matches:
             return await self.bot.say('Tidak dapat menemukan judul tersebut di database')
@@ -906,11 +988,14 @@ class Showtimes:
             return
 
         srv_anilist = []
+        srv_anilist_alias = []
         for ani in server_data['anime']:
             srv_anilist.append(ani)
+        for k, _ in server_data['anime']['alias'].items():
+            srv_anilist_alias.append(k)
 
         if str(ctx.message.author.id) not in server_data['serverowner']:
-            return await self.bot.say('Hanya admin yang bisa menghilangkan episode')
+            return await self.bot.say('Hanya admin yang bisa mengubah role')
 
         if len(srv_anilist) < 1:
             return await self.bot.say('**Tidak ada anime yang terdaftar di database**')
@@ -921,6 +1006,13 @@ class Showtimes:
             return await self.bot.say('**Mungkin**: {}'.format(', '.join(srv_anilist)))
 
         matches = get_close_matches(judul, srv_anilist)
+        if srv_anilist_alias:
+            temp_anilias = get_close_matches(judul, srv_anilist_alias)
+            for i in temp_anilias:
+                res = find_alias_anime(i, server_data['anime']['alias'])
+                if res not in matches: # To not duplicate result
+                    matches.append(res)
+        print('Matches: {}'.format(", ".join(matches)))
 
         if not matches:
             return await self.bot.say('Tidak dapat menemukan judul tersebut di database')
@@ -953,16 +1045,26 @@ class Showtimes:
             return
 
         srv_anilist = []
+        srv_anilist_alias = []
         for ani in server_data['anime']:
             srv_anilist.append(ani)
+        for k, _ in server_data['anime']['alias'].items():
+            srv_anilist_alias.append(k)
 
         if str(ctx.message.author.id) not in server_data['serverowner']:
-            return await self.bot.say('Hanya admin yang bisa menghilangkan episode')
+            return await self.bot.say('Hanya admin yang bisa menambah episode')
 
         if len(srv_anilist) < 1:
             return await self.bot.say('**Tidak ada anime yang terdaftar di database**')
 
         matches = get_close_matches(judul, srv_anilist)
+        if srv_anilist_alias:
+            temp_anilias = get_close_matches(judul, srv_anilist_alias)
+            for i in temp_anilias:
+                res = find_alias_anime(i, server_data['anime']['alias'])
+                if res not in matches: # To not duplicate result
+                    matches.append(res)
+        print('Matches: {}'.format(", ".join(matches)))
 
         if not matches:
             return await self.bot.say('Tidak dapat menemukan judul tersebut di database')
@@ -1030,8 +1132,11 @@ class Showtimes:
             total = int(total_episode[1])
 
         srv_anilist = []
+        srv_anilist_alias = []
         for ani in server_data['anime']:
             srv_anilist.append(ani)
+        for k, _ in server_data['anime']['alias'].items():
+            srv_anilist_alias.append(k)
 
         if str(ctx.message.author.id) not in server_data['serverowner']:
             return await self.bot.say('Hanya admin yang bisa menghilangkan episode')
@@ -1040,6 +1145,13 @@ class Showtimes:
             return await self.bot.say('**Tidak ada anime yang terdaftar di database**')
 
         matches = get_close_matches(judul, srv_anilist)
+        if srv_anilist_alias:
+            temp_anilias = get_close_matches(judul, srv_anilist_alias)
+            for i in temp_anilias:
+                res = find_alias_anime(i, server_data['anime']['alias'])
+                if res not in matches: # To not duplicate result
+                    matches.append(res)
+        print('Matches: {}'.format(", ".join(matches)))
 
         if not matches:
             return await self.bot.say('Tidak dapat menemukan judul tersebut di database')
@@ -1086,8 +1198,11 @@ class Showtimes:
             return await self.bot.say('Hanya admin yang bisa membuang utang')
 
         srv_anilist = []
+        srv_anilist_alias = []
         for ani in server_data['anime']:
             srv_anilist.append(ani)
+        for k, _ in server_data['anime']['alias'].items():
+            srv_anilist_alias.append(k)
 
         if not judul:
             if len(srv_anilist) < 1:
@@ -1095,6 +1210,13 @@ class Showtimes:
             return await self.bot.say('**Mungkin**: {}'.format(', '.join(srv_anilist)))
 
         matches = get_close_matches(judul, srv_anilist)
+        if srv_anilist_alias:
+            temp_anilias = get_close_matches(judul, srv_anilist_alias)
+            for i in temp_anilias:
+                res = find_alias_anime(i, server_data['anime']['alias'])
+                if res not in matches: # To not duplicate result
+                    matches.append(res)
+        print('Matches: {}'.format(", ".join(matches)))
 
         if not matches:
             return await self.bot.say('Tidak dapat menemukan judul tersebut di database')
@@ -1678,7 +1800,7 @@ class Showtimes:
         with open('nao_showtimes.json', 'w') as f: # Local save before commiting
             json.dump(json_d, f, indent=4)
         print('@@ Sended.')
-        embed=discord.Embed(title="Menambah Utang", color=0x56acf3)
+        embed=discord.Embed(title="Menambah Utang", color=0x96df6a)
         embed.add_field(name="Sukses!", value='**{}** telah ditambahkan ke database\nDatabase utama akan diupdate sebentar lagi'.format(json_tables['ani_title']), inline=True)
         embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
         await self.bot.say(embed=embed)
@@ -1712,6 +1834,8 @@ class Showtimes:
 
         appendtext = ''
         for ani in server_data['anime']:
+            if ani == 'alias':
+                continue
             time_data, episode = await fetch_anilist(server_data['anime'][ani]['anilist_id'], 1, jadwal_only=True)
             if not isinstance(time_data, str):
                 continue
@@ -1743,8 +1867,11 @@ class Showtimes:
 
         srv_owner = server_data['serverowner']
         srv_anilist = []
+        srv_anilist_alias = []
         for ani in server_data['anime']:
             srv_anilist.append(ani)
+        for k, _ in server_data['anime']['alias'].items():
+            srv_anilist_alias.append(k)
 
         if not judul:
             if len(srv_anilist) < 1:
@@ -1752,6 +1879,13 @@ class Showtimes:
             return await self.bot.say('**Mungkin**: {}'.format(', '.join(srv_anilist)))
 
         matches = get_close_matches(judul, srv_anilist)
+        if srv_anilist_alias:
+            temp_anilias = get_close_matches(judul, srv_anilist_alias)
+            for i in temp_anilias:
+                res = find_alias_anime(i, server_data['anime']['alias'])
+                if res not in matches: # To not duplicate result
+                    matches.append(res)
+        print('Matches: {}'.format(", ".join(matches)))
 
         if not matches:
             return await self.bot.say('Tidak dapat menemukan judul tersebut di database')
@@ -1802,10 +1936,13 @@ class Showtimes:
         except:
             return
 
-        srv_anilist = []
         srv_owner = server_data['serverowner']
+        srv_anilist = []
+        srv_anilist_alias = []
         for ani in server_data['anime']:
             srv_anilist.append(ani)
+        for k, _ in server_data['anime']['alias'].items():
+            srv_anilist_alias.append(k)
 
         if not judul:
             if len(srv_anilist) < 1:
@@ -1813,6 +1950,13 @@ class Showtimes:
             return await self.bot.say('**Mungkin**: {}'.format(', '.join(sorted(srv_anilist))))
 
         matches = get_close_matches(judul, srv_anilist)
+        if srv_anilist_alias:
+            temp_anilias = get_close_matches(judul, srv_anilist_alias)
+            for i in temp_anilias:
+                res = find_alias_anime(i, server_data['anime']['alias'])
+                if res not in matches: # To not duplicate result
+                    matches.append(res)
+        print('Matches: {}'.format(", ".join(matches)))
 
         if not matches:
             return await self.bot.say('Tidak dapat menemukan judul tersebut di database')
@@ -1856,6 +2000,376 @@ class Showtimes:
             mod_mem_data = server_in.get_member(bot_config['owner_id'])
             await self.bot.send_message(mod_mem_data, 'Terjadi kesalahan patch pada server **{}**'.format(server_message))
 
+
+    @commands.group(pass_context=True)
+    async def alias(self, ctx):
+        """
+        Initiate alias creation for certain anime
+        """
+        if not ctx.invoked_subcommand:
+            server_message = str(ctx.message.server.id)
+            print('Requested !alias at: ' + server_message)
+            json_d = await fetch_json()
+
+            try:
+                server_data = json_d[server_message]
+            except:
+                return
+
+            srv_anilist = []
+            for ani in server_data['anime']:
+                srv_anilist.append(ani)
+
+            if str(ctx.message.author.id) not in server_data['serverowner']:
+                return await self.bot.say('Hanya admin yang bisa menambah alias')
+
+            if len(srv_anilist) < 1:
+                return await self.bot.say("Tidak ada anime yang terdaftar di database")
+
+            print('Membuat data')
+            embed = discord.Embed(title="Alias", color=0x56acf3)
+            embed.add_field(name='Memulai Proses!', value="Mempersiapkan...", inline=False)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            emb_msg = await self.bot.say(embed=embed)
+            msg_author = ctx.message.author
+            json_tables = {
+                "alias_anime": "",
+                "target_anime": ""
+            }
+
+            async def process_anime(table, emb_msg, author, anime_list):
+                print('@@ Memproses anime')
+                embed = discord.Embed(title="Alias", color=0x96df6a)
+                embed.add_field(name='Judul/Garapan Anime', value="Ketik judul animenya (yang asli), bisa disingkat", inline=False)
+                embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+                emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+
+                await_msg = await self.bot.wait_for_message(author=author)
+                matches = get_close_matches(await_msg.content, anime_list)
+                await self.bot.delete_message(await_msg)
+                if not matches:
+                    await self.bot.say('Tidak dapat menemukan judul tersebut di database')
+                    return False, False
+                elif len(matches) > 1:
+                    await self.bot.say('**Mungkin**: {}'.format(', '.join(matches)))
+                    return False, False
+
+                embed = discord.Embed(title="Alias", color=0x96df6a)
+                embed.add_field(name='Apakah benar?', value="Judul: **{}**".format(matches[0]), inline=False)
+                embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+                await self.bot.delete_message(emb_msg)
+                emb_msg = await self.bot.say(embed=embed)
+
+                to_react = ['✅', '❌']
+                for reaction in to_react:
+                        await self.bot.add_reaction(emb_msg, reaction)
+                def checkReaction(reaction, user):
+                    e = str(reaction.emoji)
+                    return e.startswith(('✅', '❌'))
+
+                res = await self.bot.wait_for_reaction(message=emb_msg, user=author, check=checkReaction)
+
+                if '✅' in str(res.reaction.emoji):
+                    table['target_anime'] = matches[0]
+                    await self.bot.clear_reactions(emb_msg)
+                elif '❌' in str(res.reaction.emoji):
+                    await self.bot.say('**Dibatalkan!**')
+                    await self.bot.clear_reactions(emb_msg)
+                    return False, False
+
+                return table, emb_msg
+
+            async def process_alias(table, emb_msg, author):
+                print('@@ Memproses alias')
+                embed = discord.Embed(title="Alias", color=0x96df6a)
+                embed.add_field(name='Alias', value="Ketik alias yang diinginkan", inline=False)
+                embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+                emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+
+                await_msg = await self.bot.wait_for_message(author=author)
+                table['alias_anime'] = await_msg.content
+                await self.bot.delete_message(await_msg)
+
+                return table, emb_msg
+
+            json_tables, emb_msg = await process_anime(json_tables, emb_msg, msg_author, srv_anilist)
+
+            if not json_tables:
+                return print('@@ Cancelled process.')
+
+            json_tables, emb_msg = await process_alias(json_tables, emb_msg, msg_author)
+            print('@@ Making sure.')
+            first_time = True
+            cancel_toggled = False
+            while True:
+                embed=discord.Embed(title="Alias", description="Periksa data!\nReact jika ingin diubah.", color=0xe7e363)
+                embed.add_field(name="1⃣ Anime/Garapan", value="{}".format(json_tables['target_anime']), inline=False)
+                embed.add_field(name='2⃣ Alias', value="{}".format(json_tables['alias_anime']), inline=False)
+                embed.add_field(name="Lain-Lain", value="✅ Tambahkan!\n❌ Batalkan!", inline=False)
+                embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+                if first_time:
+                    await self.bot.delete_message(emb_msg)
+                    emb_msg = await self.bot.say(embed=embed)
+                    first_time = False
+                else:
+                    emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+
+                to_react = ['1⃣', "2⃣", '✅', '❌']
+                for reaction in to_react:
+                        await self.bot.add_reaction(emb_msg, reaction)
+                def checkReaction(reaction, user):
+                    e = str(reaction.emoji)
+                    return e.startswith(tuple(to_react))
+
+                res = await self.bot.wait_for_reaction(message=emb_msg, user=msg_author, check=checkReaction)
+
+                if to_react[0] in str(res.reaction.emoji):
+                    await self.bot.clear_reactions(emb_msg)
+                    json_tables, emb_msg = await process_anime(json_tables, emb_msg, msg_author, srv_anilist)
+                elif to_react[1] in str(res.reaction.emoji):
+                    await self.bot.clear_reactions(emb_msg)
+                    json_tables, emb_msg = await process_alias(json_tables, emb_msg, msg_author)
+                elif '✅' in str(res.reaction.emoji):
+                    await self.bot.clear_reactions(emb_msg)
+                    break
+                elif '❌' in str(res.reaction.emoji):
+                    print('@@ Cancelled.')
+                    cancel_toggled = True
+                    await self.bot.clear_reactions(emb_msg)
+                    break
+
+            if cancel_toggled:
+                return await self.bot.say('**Dibatalkan!**')
+
+            # Everything are done and now processing data
+            print(json_tables)
+            embed=discord.Embed(title="Alias", color=0x56acf3)
+            embed.add_field(name="Memproses!", value='Membuat data...', inline=True)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+
+            if json_tables['alias_anime'] in server_data['anime']['alias']:
+                embed=discord.Embed(title="Alias", color=0xe24545)
+                embed.add_field(
+                    name="Dibatalkan!",
+                    value='Alias **{}** sudah terdaftar untuk **{}**'.format(
+                        json_tables['alias_anime'],
+                        server_data['anime']['alias'][json_tables['alias_anime']]
+                        ),
+                    inline=True
+                )
+                embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+                await self.bot.delete_message(emb_msg)
+                return await self.bot.say(embed=embed)
+
+            json_d[server_message]['anime']['alias'][json_tables['alias_anime']] = json_tables['target_anime']
+
+            embed=discord.Embed(title="Alias", color=0x56acf3)
+            embed.add_field(name="Memproses!", value='Mengirim data...', inline=True)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+
+            print("@@ Sending data")
+
+            with open('nao_showtimes.json', 'w') as f: # Local save before commiting
+                json.dump(json_d, f, indent=4)
+            print('@@ Sended.')
+            embed=discord.Embed(title="Alias", color=0x96df6a)
+            embed.add_field(name="Sukses!", value='Alias **{} ({})** telah ditambahkan ke database\nDatabase utama akan diupdate sebentar lagi'.format(json_tables['alias_anime'], json_tables['target_anime']), inline=True)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            await self.bot.say(embed=embed)
+            await self.bot.delete_message(emb_msg)
+
+            success = await patch_json(json_d)
+
+            if success:
+                print('@@ Sending message...')
+                return await self.bot.say("Berhasil menambahkan alias **{} ({})** ke dalam database utama naoTimes".format(json_tables['alias_anime'], json_tables['target_anime']))
+            await self.bot.say('Gagal menambahkan ke database utama, owner telah diberikan pesan untuk membenarkan masalahnya')
+            server_in = self.bot.get_server(bot_config['main_server'])
+            mod_mem_data = server_in.get_member(bot_config['owner_id'])
+            await self.bot.send_message(mod_mem_data, 'Terjadi kesalahan patch `alias` pada server **{}**'.format(server_message))
+
+
+    @alias.command(pass_context=True)
+    async def list(self, ctx, *, judul):
+        server_message = str(ctx.message.server.id)
+        print('Requested !alias list at: ' + server_message)
+        json_d = await fetch_json()
+
+        try:
+            server_data = json_d[server_message]
+        except:
+            return
+
+        srv_anilist = []
+        for ani in server_data['anime']:
+            srv_anilist.append(ani)
+
+        if not judul:
+            if len(srv_anilist) < 1:
+                return await self.bot.say('**Tidak ada anime yang terdaftar di database**')
+            return await self.bot.say('**Mungkin**: {}'.format(', '.join(sorted(srv_anilist))))
+
+        matches = get_close_matches(judul, srv_anilist)
+        print('Matches: {}'.format(", ".join(matches)))
+
+        if not matches:
+            return await self.bot.say('Tidak dapat menemukan judul tersebut di database')
+        elif len(matches) > 1:
+            return await self.bot.say('**Mungkin**: {}'.format(', '.join(matches)))
+
+        srv_anilist_alias = []
+        for k, v in server_data['anime']['alias'].items():
+            if v in matches:
+                srv_anilist_alias.append(k)
+
+        text_value = ''
+        if not srv_anilist_alias:
+            text_value += 'Tidak ada'
+
+        if not text_value:
+            text_value += make_numbered_alias(srv_anilist_alias)
+
+        embed=discord.Embed(title="Alias list", color=0x47e0a7)
+        embed.add_field(name=matches[0], value=text_value, inline=False)
+        embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+        await self.bot.say(embed=embed)
+
+
+    @alias.command(pass_context=True, aliases=['remove'])
+    async def hapus(self, ctx, *, judul):
+        server_message = str(ctx.message.server.id)
+        print('Requested !alias hapus at: ' + server_message)
+        json_d = await fetch_json()
+
+        try:
+            server_data = json_d[server_message]
+        except:
+            return
+
+        if str(ctx.message.author.id) not in server_data['serverowner']:
+            return await self.bot.say('Hanya admin yang bisa menghapus alias')
+
+        srv_anilist = []
+        for ani in server_data['anime']:
+            srv_anilist.append(ani)
+
+        if not server_data['anime']['alias']:
+            return await self.bot.say('Tidak ada alias yang terdaftar.')
+
+        if not judul:
+            if len(srv_anilist) < 1:
+                return await self.bot.say('**Tidak ada anime yang terdaftar di database**')
+            return await self.bot.say('**Mungkin**: {}'.format(', '.join(sorted(srv_anilist))))
+
+        matches = get_close_matches(judul, srv_anilist)
+        print('Matches: {}'.format(", ".join(matches)))
+
+        if not matches:
+            return await self.bot.say('Tidak dapat menemukan judul tersebut di database')
+        elif len(matches) > 1:
+            return await self.bot.say('**Mungkin**: {}'.format(', '.join(matches)))
+
+        srv_anilist_alias = []
+        for k, v in server_data['anime']['alias'].items():
+            if v in matches:
+                srv_anilist_alias.append(k)
+
+        if not srv_anilist_alias:
+            return await self.bot.say('Tidak ada alias yang terdaftar untuk judul **{}**'.format(matches[0]))
+
+        alias_chunked = [srv_anilist_alias[i:i + 5] for i in range(0, len(srv_anilist_alias), 5)]
+        print(alias_chunked)
+
+        first_run = True
+        n = 1
+        max_n = len(alias_chunked)
+        while True:
+            if first_run:
+                n = 1
+                first_run = False
+                embed=discord.Embed(title="Alias list", color=0x47e0a7)
+                embed.add_field(name='{}'.format(matches[0]), value=make_numbered_alias(alias_chunked[n-1]), inline=False)
+                embed.add_field(name="*Informasi*", value="1⃣-5⃣ Hapus `x` alias\n⏪ Sebelumnya\n⏩ Selanjutnya\n❌ Batalkan")
+                embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+                emb_msg = await self.bot.say(embed=embed)
+
+            react_ext = []
+            to_react = ['1⃣', "2⃣", '3⃣', '4⃣', '5⃣'] # 5 per page
+            if max_n == 1 and n == 1:
+                pass
+            elif n == 1:
+                react_ext.append('⏩')
+            elif n == max_n:
+                react_ext.append('⏪')
+            elif n > 1 and n < max_n:
+                react_ext.extend(['⏪', '⏩'])
+
+            react_ext.append('❌')
+            to_react = to_react[0:len(alias_chunked[n-1])]
+            to_react.extend(react_ext)
+
+            for reaction in to_react:
+                await self.bot.add_reaction(emb_msg, reaction)
+
+            def checkReaction(reaction, user):
+                e = str(reaction.emoji)
+                return e.startswith(tuple(to_react))
+
+            res = await self.bot.wait_for_reaction(message=emb_msg, user=ctx.message.author, timeout=30, check=checkReaction)
+            if res is None:
+                return await self.bot.clear_reactions(emb_msg)
+            elif '⏪' in str(res.reaction.emoji):
+                n = n - 1
+                await self.bot.clear_reactions(emb_msg)
+                embed=discord.Embed(title="Alias list", color=0x47e0a7)
+                embed.add_field(name='{}'.format(matches[0]), value=make_numbered_alias(alias_chunked[n-1]), inline=False)
+                embed.add_field(name="*Informasi*", value="1⃣-5⃣ Hapus `x` alias\n⏪ Sebelumnya\n⏩ Selanjutnya\n❌ Batalkan")
+                embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+                emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+            elif '⏩' in str(res.reaction.emoji):
+                n = n + 1
+                await self.bot.clear_reactions(emb_msg)
+                embed=discord.Embed(title="Alias list", color=0x47e0a7)
+                embed.add_field(name='{}'.format(matches[0]), value=make_numbered_alias(alias_chunked[n-1]), inline=False)
+                embed.add_field(name="*Informasi*", value="1⃣-5⃣ Hapus `x` alias\n⏪ Sebelumnya\n⏩ Selanjutnya\n❌ Batalkan")
+                embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+                emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+            elif '❌' in str(res.reaction.emoji):
+                await self.bot.clear_reactions(emb_msg)
+                return await self.bot.say('**Dibatalkan!**')
+            else:
+                await self.bot.clear_reactions(emb_msg)
+                index_del = to_react.index(str(res.reaction.emoji))
+                n_del = alias_chunked[n-1][index_del]
+                del json_d[server_message]['anime']['alias'][n_del]
+                
+                with open('nao_showtimes.json', 'w') as f: # Local save before commiting
+                    json.dump(json_d, f, indent=4)
+
+                await self.bot.say('Alias **{} ({})** telah dihapus dari database'.format(n_del, matches[0]))
+                
+                success = await patch_json(json_d)
+
+                if success:
+                    break
+                await self.bot.say('Gagal menambahkan ke database utama, owner telah diberikan pesan untuk membenarkan masalahnya')
+                server_in = self.bot.get_server(bot_config['main_server'])
+                mod_mem_data = server_in.get_member(bot_config['owner_id'])
+                return await self.bot.send_message(mod_mem_data, 'Terjadi kesalahan patch `alias hapus` pada server **{}**'.format(server_message))
+
+
+    @commands.command(pass_context=True)
+    async def globalpatcher(self, ctx):
+        """
+        Global showtimes patcher, dangerous to use.
+        You can change this to batch modify the database
+        """
+        if int(ctx.message.author.id) != int(bot_config['owner_id']):
+            return
+        print('Requested !globalpatcher by admin')
+        return print('@@ No patch/command found, cancelling...')
 
 def setup(bot):
     bot.add_cog(Showtimes(bot))
