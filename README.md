@@ -83,7 +83,9 @@ Tetapi isi contentnya seperti ini:
             "ID_ADMIN_SERVER_AWAL"
         ],
         "announce_channel": "ID_CHANNEL_PROGRESS",
-        "anime": {}
+        "anime": {
+            "alias": {}
+        }
     }
 }
 ```
@@ -99,7 +101,9 @@ Tetapi isi contentnya seperti ini:
             "466469077444067372"
         ],
         "announce_channel": "558321533060251664",
-        "anime": {}
+        "anime": {
+            "alias": {}
+        }
     }
 }
 ```

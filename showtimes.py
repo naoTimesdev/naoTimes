@@ -51,6 +51,7 @@ query ($id: Int!) {
 with open('config.json', 'r') as fp:
     bot_config = json.load(fp)
 
+
 async def fetch_json() -> dict:
     """
     Open local database
@@ -445,6 +446,8 @@ class Showtimes:
         srv_anilist = []
         srv_anilist_alias = []
         for ani in server_data['anime']:
+            if ani == 'alias': # Don't use alias
+                continue
             srv_anilist.append(ani)
         for k, _ in server_data['anime']['alias'].items():
             srv_anilist_alias.append(k)
@@ -515,6 +518,8 @@ class Showtimes:
         srv_anilist = []
         srv_anilist_alias = []
         for ani in server_data['anime']:
+            if ani == 'alias': # Don't use alias
+                continue
             srv_anilist.append(ani)
         for k, _ in server_data['anime']['alias'].items():
             srv_anilist_alias.append(k)
@@ -731,6 +736,8 @@ class Showtimes:
         srv_anilist = []
         srv_anilist_alias = []
         for ani in server_data['anime']:
+            if ani == 'alias': # Don't use alias
+                continue
             srv_anilist.append(ani)
         for k, _ in server_data['anime']['alias'].items():
             srv_anilist_alias.append(k)
@@ -834,6 +841,8 @@ class Showtimes:
         srv_anilist = []
         srv_anilist_alias = []
         for ani in server_data['anime']:
+            if ani == 'alias': # Don't use alias
+                continue
             srv_anilist.append(ani)
         for k, _ in server_data['anime']['alias'].items():
             srv_anilist_alias.append(k)
@@ -930,6 +939,8 @@ class Showtimes:
         srv_anilist = []
         srv_anilist_alias = []
         for ani in server_data['anime']:
+            if ani == 'alias': # Don't use alias
+                continue
             srv_anilist.append(ani)
         for k, _ in server_data['anime']['alias'].items():
             srv_anilist_alias.append(k)
@@ -990,6 +1001,8 @@ class Showtimes:
         srv_anilist = []
         srv_anilist_alias = []
         for ani in server_data['anime']:
+            if ani == 'alias': # Don't use alias
+                continue
             srv_anilist.append(ani)
         for k, _ in server_data['anime']['alias'].items():
             srv_anilist_alias.append(k)
@@ -1047,6 +1060,8 @@ class Showtimes:
         srv_anilist = []
         srv_anilist_alias = []
         for ani in server_data['anime']:
+            if ani == 'alias': # Don't use alias
+                continue
             srv_anilist.append(ani)
         for k, _ in server_data['anime']['alias'].items():
             srv_anilist_alias.append(k)
@@ -1134,6 +1149,8 @@ class Showtimes:
         srv_anilist = []
         srv_anilist_alias = []
         for ani in server_data['anime']:
+            if ani == 'alias': # Don't use alias
+                continue
             srv_anilist.append(ani)
         for k, _ in server_data['anime']['alias'].items():
             srv_anilist_alias.append(k)
@@ -1200,6 +1217,8 @@ class Showtimes:
         srv_anilist = []
         srv_anilist_alias = []
         for ani in server_data['anime']:
+            if ani == 'alias': # Don't use alias
+                continue
             srv_anilist.append(ani)
         for k, _ in server_data['anime']['alias'].items():
             srv_anilist_alias.append(k)
@@ -1869,6 +1888,8 @@ class Showtimes:
         srv_anilist = []
         srv_anilist_alias = []
         for ani in server_data['anime']:
+            if ani == 'alias': # Don't use alias
+                continue
             srv_anilist.append(ani)
         for k, _ in server_data['anime']['alias'].items():
             srv_anilist_alias.append(k)
@@ -1940,6 +1961,8 @@ class Showtimes:
         srv_anilist = []
         srv_anilist_alias = []
         for ani in server_data['anime']:
+            if ani == 'alias': # Don't use alias
+                continue
             srv_anilist.append(ani)
         for k, _ in server_data['anime']['alias'].items():
             srv_anilist_alias.append(k)
@@ -2018,6 +2041,8 @@ class Showtimes:
 
             srv_anilist = []
             for ani in server_data['anime']:
+                if ani == 'alias': # Don't use alias
+                    continue
                 srv_anilist.append(ani)
 
             if str(ctx.message.author.id) not in server_data['serverowner']:
@@ -2151,11 +2176,11 @@ class Showtimes:
             if json_tables['alias_anime'] in server_data['anime']['alias']:
                 embed=discord.Embed(title="Alias", color=0xe24545)
                 embed.add_field(
-                    name="Dibatalkan!",
+                    name="Dibatalkan!", 
                     value='Alias **{}** sudah terdaftar untuk **{}**'.format(
-                        json_tables['alias_anime'],
+                        json_tables['alias_anime'], 
                         server_data['anime']['alias'][json_tables['alias_anime']]
-                        ),
+                        ), 
                     inline=True
                 )
                 embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
@@ -2204,6 +2229,8 @@ class Showtimes:
 
         srv_anilist = []
         for ani in server_data['anime']:
+            if ani == 'alias': # Don't use alias
+                continue
             srv_anilist.append(ani)
 
         if not judul:
@@ -2253,6 +2280,8 @@ class Showtimes:
 
         srv_anilist = []
         for ani in server_data['anime']:
+            if ani == 'alias': # Don't use alias
+                continue
             srv_anilist.append(ani)
 
         if not server_data['anime']['alias']:

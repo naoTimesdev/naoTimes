@@ -406,6 +406,7 @@ class ShowtimesAdmin:
         if prog_chan:
             new_srv_data['announce_channel'] = str(prog_chan)
         new_srv_data['anime'] = {}
+        new_srv_data['anime']['alias'] = {}
 
         json_d[str(srv_id)] = new_srv_data
         json_d['supermod'].append(str(adm_id)) # Add to supermod list
