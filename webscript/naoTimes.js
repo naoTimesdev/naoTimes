@@ -51,26 +51,27 @@ function naoTimesProcess(disID) {
 		var json_data = JSON.parse(nT_data)
 		console.log('Parsing naoTimes data');
 		var dis_data = json_data[disID];
-        var available_anime = [];
-        var word_replace = {"ENC": "Encode", "ED": "Edit", "TM": "Timing"};
+		var available_anime = [];
+		var word_replace = {"ENC": "Encode", "ED": "Edit", "TM": "Timing"};
 
 		for (a in dis_data['anime']) {
+			if (a == "alias") {continue};
 			available_anime.push(a);
 		}
 
 		for (ava in available_anime) {
-            var textRes = [];
-            var current_episode = '';
-            var status_list = dis_data['anime'][available_anime[ava]]['status'];
+			var textRes = [];
+			var current_episode = '';
+			var status_list = dis_data['anime'][available_anime[ava]]['status'];
 			for (stat in status_list) {
 				if (status_list[stat]['status'] != 'released') {
-                    current_episode += stat;
-                    var ep_status = status_list[stat]['staff_status'];
-                    for (key in ep_status) {
-                        if (ep_status[key] == 'x') {
-                            textRes.push(key);
-                        }
-                    }
+					current_episode += stat;
+					var ep_status = status_list[stat]['staff_status'];
+					for (key in ep_status) {
+						if (ep_status[key] == 'x') {
+							textRes.push(key);
+						}
+					}
 					break;
 				} else {
 					continue;
@@ -79,10 +80,10 @@ function naoTimesProcess(disID) {
 			if (textRes == []) {
 				continue;
 			} else {
-                textRes = textRes.join(" ");
-                for (word in word_replace) {
-                    textRes = textRes.replace(word, word_replace[word]);
-                }
+				textRes = textRes.join(" ");
+				for (word in word_replace) {
+					textRes = textRes.replace(word, word_replace[word]);
+				}
 				get_time = formatDate(status_list[current_episode]['airing_time']);
 				if (get_time != false) {
 					textRes = get_time;
