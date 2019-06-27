@@ -77,9 +77,7 @@ function naoTimesProcess(disID) {
 					continue;
 				}
 			}
-			if (textRes == []) {
-				continue;
-			} else {
+			if (Array.isArray(textRes) && textRes.length) {
 				textRes = textRes.join(" ");
 				for (word in word_replace) {
 					textRes = textRes.replace(word, word_replace[word]);
