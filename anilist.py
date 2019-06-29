@@ -11,7 +11,6 @@ import discord.ext.commands as commands
 def setup(bot):
     bot.add_cog(Anilist(bot))
 
-
 anilist_query = '''
 query ($page: Int, $perPage: Int, $search: String) {
     Page (page: $page, perPage: $perPage) {
@@ -91,6 +90,21 @@ def create_time_format(secs):
     return return_text + '{} hari {} jam {} menit {} detik lagi'.format(days, hours, minutes, secs)
 
 
+def html2markdown(text):
+    re_list = {
+        '<br>': '\n',
+        '</br>': '\n',
+        '<i>': '*',
+        '</i>': '*',
+        '<b>': '**',
+        '</b>': '**',
+        '\n\n': '\n'
+    }
+    for k, v in re_list.items():
+        text = text.replace(k, v)
+    return text
+
+
 async def fetch_anilist(title, method):
     variables = {
         'search': title,
@@ -121,7 +135,7 @@ async def fetch_anilist(title, method):
         'finished': 'Tamat',
         'releasing': 'Sedang Berlangsung',
         'not_yet_released': 'Belum Rilis',
-        'cancelled': 'Batal Tayang'
+        'cancelled': 'Batal Tayang',
     }
     format_tl = {
         "TV": "Anime",
@@ -133,7 +147,8 @@ async def fetch_anilist(title, method):
         "MUSIC": "MV",
         "NOVEL": "Novel",
         "MANGA": "Manga",
-        "ONE_SHOT": "One-Shot"
+        "ONE_SHOT": "One-Shot",
+        None: "Lainnya"
     }
     source_tl = {
         "ORIGINAL": "Original",
@@ -141,7 +156,8 @@ async def fetch_anilist(title, method):
         "VISUAL_NOVEL": "Visual Novel",
         "LIGHT_NOVEL": "Novel Ringan",
         "VIDEO_GAME": "Gim",
-        "OTHER": "Lainnya"
+        "OTHER": "Lainnya",
+        None: "Lainnya"
     }
 
     full_query_result = []
@@ -177,7 +193,7 @@ async def fetch_anilist(title, method):
         other_title = entry['title']['native']
         english_title = entry['title']['english']
         if english_title:
-            other_title = '\n' + english_title
+            other_title += '\n' + english_title
 
         score_rate = entry['averageScore']
         if score_rate:
@@ -185,6 +201,7 @@ async def fetch_anilist(title, method):
  
         description = entry['description']
         if description is not None:
+            description = html2markdown(description)
             if len(description) > 1023:
                 description = description[:1020] + '...'
 
@@ -212,14 +229,14 @@ async def fetch_anilist(title, method):
             vol = entry['volumes']
             ch = entry['chapters']
             ch_vol = '{c} chapterXXC/{v} volumeXXV'.format(c=ch, v=vol).replace('None', '??')
-            if not ch:
+            if ch:
                 if ch > 1:
-                    ch_vol.replace('XXC', 's')
-                ch_vol.replace('XXC', '')
-            if not vol:
+                    ch_vol = ch_vol.replace('XXC', 's')
+            ch_vol = ch_vol.replace('XXC', '')
+            if vol:
                 if vol > 1:
-                    ch_vol.replace('XXV', 's')
-                ch_vol.replace('XXV', '')
+                    ch_vol = ch_vol.replace('XXV', 's')
+            ch_vol = ch_vol.replace('XXV', '')
             dataset['ch_vol'] = ch_vol
         if method == 'anime':
             dataset['episodes'] = entry["episodes"]
@@ -234,7 +251,7 @@ async def fetch_anilist(title, method):
                     dataset['next_episode'] = ne_data['episode']
                     dataset['time_remain'] = create_time_format(ne_data['timeUntilAiring'])
 
-        for k, v in dataset:
+        for k, v in dataset.items():
             if not v:
                 dataset[k] = 'Tidak ada'
 
@@ -259,19 +276,19 @@ class Anilist:
     @commands.command(pass_context=True, aliases=['animu', 'kartun', 'ani'])
     async def anime(self, ctx, *, judul):
         """Mencari informasi anime lewat API anilist.co"""
-        aqres = await fetch_anilist(judul, 'manga')
+        aqres = await fetch_anilist(judul, 'anime')
         if isinstance(aqres, str):
             return await self.bot.say(aqres)
 
-        max_page = aqres['data_total']
-        res = aqres['result']
+        max_page = aqres['data_total']  
+        resdata = aqres['result']
 
         first_run = True
         time_table = False
         num = 1
         while True:
             if first_run:
-                data = res[num - 1]
+                data = resdata[num - 1]
                 embed = discord.Embed(color=0x19212d)
 
                 embed.set_thumbnail(url=data['poster_img'])
@@ -317,7 +334,7 @@ class Anilist:
                 return await self.bot.clear_reactions(msg)
             elif '⏪' in str(res.reaction.emoji):
                 num = num - 1
-                data = data[num - 1]
+                data = resdata[num - 1]
 
                 embed = discord.Embed(color=0x19212d)
 
@@ -339,7 +356,7 @@ class Anilist:
                 msg = await self.bot.edit_message(msg, embed=embed)
             elif '⏩' in str(res.reaction.emoji):
                 num = num + 1
-                data = data[num - 1]
+                data = resdata[num - 1]
 
                 embed = discord.Embed(color=0x19212d)
 
@@ -403,13 +420,13 @@ class Anilist:
             return await self.bot.say(aqres)
 
         max_page = aqres['data_total']
-        res = aqres['result']
+        resdata = aqres['result']
 
         first_run = True
         num = 1
         while True:
             if first_run:
-                data = res[num - 1]
+                data = resdata[num - 1]
                 embed = discord.Embed(color=0x19212d)
 
                 embed.set_thumbnail(url=data['poster_img'])
@@ -451,7 +468,7 @@ class Anilist:
                 return await self.bot.clear_reactions(msg)
             elif '⏪' in str(res.reaction.emoji):
                 num = num - 1
-                data = data[num - 1]
+                data = resdata[num - 1]
 
                 embed = discord.Embed(color=0x19212d)
 
@@ -473,7 +490,7 @@ class Anilist:
                 msg = await self.bot.edit_message(msg, embed=embed)
             elif '⏩' in str(res.reaction.emoji):
                 num = num + 1
-                data = data[num - 1]
+                data = resdata[num - 1]
 
                 embed = discord.Embed(color=0x19212d)
 
@@ -496,3 +513,4 @@ class Anilist:
             elif '✅' in str(res.reaction.emoji):
                 await self.bot.delete_message(ctx.message)
                 return await self.bot.delete_message(msg)
+
