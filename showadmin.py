@@ -82,7 +82,7 @@ class ShowtimesAdmin:
         if ctx.invoked_subcommand is None:
             if int(ctx.message.author.id) != int(bot_config['owner_id']):
                 return
-            helpmain = discord.Embed(title="Bantuan Perintah (!ntadmin)", description="versi 1.3.4", color=0x00aaaa)
+            helpmain = discord.Embed(title="Bantuan Perintah (!ntadmin)", description="versi 1.3.5", color=0x00aaaa)
             helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
             helpmain.set_author(name="naoTimesAdmin", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
             helpmain.add_field(name='!ntadmin', value="```Memunculkan bantuan perintah```", inline=False)
@@ -93,7 +93,7 @@ class ShowtimesAdmin:
             helpmain.add_field(name='!ntadmin fetchdb', value="```Mengambil database dan menguploadnya ke discord```", inline=False)
             helpmain.add_field(name='!ntadmin patchdb', value="```Menganti database dengan attachments yang dicantumkan\nTambah attachments lalu tulis !ntadmin patchdb dan enter`", inline=False)
             helpmain.add_field(name='!ntadmin forceupdate', value="```Memaksa update database utama gist dengan database local.```", inline=False)
-            helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 1.3.4")
+            helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 1.3.5")
             await self.bot.say(embed=helpmain)
 
 

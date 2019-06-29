@@ -1,26 +1,16 @@
 # -*- coding: utf-8 -*-
 #!/usr/bin/env python3
-import discord
-import discord.ext.commands as commands
-
 import asyncio
 import time
-import aiohttp
 from datetime import datetime, timedelta
+
+import aiohttp
+import discord
+import discord.ext.commands as commands
 
 def setup(bot):
     bot.add_cog(Anilist(bot))
 
-def monthintext(number):
-    idn = ["Januari", "Februari", "Maret", "April",
-            "Mei", "Juni", "Juli", "Agustus",
-            "September", "Oktober", "November", "Desember"]
-    if number is None:
-        return "Unknown"
-    x = number - 1
-    if x < 0:
-        return "Unknown"
-    return idn[number - 1]
 
 anilist_query = '''
 query ($page: Int, $perPage: Int, $search: String) {
@@ -37,16 +27,20 @@ query ($page: Int, $perPage: Int, $search: String) {
             title {
                 romaji
                 english
+                native
             }
             coverImage {
                 large
             }
             averageScore
+            format
             volumes
+            chapters
             episodes
             status
+            source
             genres
-            description
+            description(asHtml:false)
             startDate {
                 year
                 month
@@ -67,6 +61,19 @@ query ($page: Int, $perPage: Int, $search: String) {
 }
 '''
 
+
+def monthintext(number):
+    idn = ["Januari", "Februari", "Maret", "April",
+            "Mei", "Juni", "Juli", "Agustus",
+            "September", "Oktober", "November", "Desember"]
+    if number is None:
+        return "Unknown"
+    x = number - 1
+    if x < 0:
+        return "Unknown"
+    return idn[number - 1]
+
+
 def create_time_format(secs):
     months = int(secs // 2592000) # 30 days format
     secs -= months * 2592000
@@ -83,189 +90,157 @@ def create_time_format(secs):
 
     return return_text + '{} hari {} jam {} menit {} detik lagi'.format(days, hours, minutes, secs)
 
-async def alistAnimu(title, num=1):
-    num = num - 1
+
+async def fetch_anilist(title, method):
     variables = {
         'search': title,
         'page': 1,
         'perPage': 50
     }
-    api_link = 'https://graphql.anilist.co'
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession() as sesi:
         try:
-            async with session.post(api_link, json={'query': anilist_query % ('ANIME'), 'variables': variables}) as r:
+            async with sesi.post('https://graphql.anilist.co', json={'query': anilist_query % method.upper(), 'variables': variables}) as r:
                 try:
                     data = await r.json()
                 except IndexError:
-                    return "ERROR: Terjadi kesalahan internal"
+                    return 'ERROR: Terjadi kesalahan internal'
                 if r.status != 200:
                     if r.status == 404:
                         return "ERROR: Tidak dapat menemukan anime tersebut"
                     elif r.status == 500:
                         return "ERROR: Internal Error :/"
                 try:
-                    entry = data['data']['Page']['media'][num]
+                    query = data['data']['Page']['media']
                 except IndexError:
                     return "ERROR: Tidak ada hasil."
-        except session.ClientError:
-            return "ERROR: Koneksi terputus"
-        
-        dataLen = data['data']['Page']['pageInfo']['total']
+        except aiohttp.ClientError:
+            return 'ERROR: Koneksi terputus'
 
-        sY = entry['startDate']['year']
-        if sY is None:
-            start = 'Belum Rilis'
-        else:
-            start = '{}'.format(str(sY))
-            sM = entry['startDate']['month']
-            if sM is None:
-                start = start
-            else:
-                start = '{}/{}'.format(start,str(sM))
-                sD = entry['startDate']['day']
-                if sD is None:
-                    start = start
-                else:
-                    start = '{}/{}'.format(start,str(sD))
-
-        eY = entry['endDate']['year']
-        if eY is None:
-            end = 'Belum Selesai'
-        else:
-            end = '{}'.format(str(eY))
-            eM = entry['endDate']['month']
-            if eM is None:
-                end = end
-            else:
-                end = '{}/{}'.format(end,str(eM))
-                eD = entry['endDate']['day']
-                if eD is None:
-                    end = end
-                else:
-                    end = '{}/{}'.format(end,str(eD))
-
-        title = entry['title']['romaji']
-        ani_id = str(entry['id'])
-
-        epTotal = str(entry["episodes"])
-        rate = entry['averageScore']
-        if rate is None:
-            rate = 'None'
-        else:
-            rate = int(rate)/10
-        
-        status = str(entry["status"]).lower().capitalize()
-
-        synop = str(entry['description'])
-        synop = synop.replace("<br>", ' ')
-
-        genre = entry['genres']
-        genres = ', '.join(genre).lower()
-
-        img = str(entry['coverImage']['large'])
-        
-        aniID = str(entry['id'])
-        aniLink = 'https://anilist.co/anime/{}'.format(aniID)
-        print('GOT EVERYSHIT UWU')
-
-        if status == 'Releasing' or status == "Not_yet_released":
-            nextEp = entry['nextAiringEpisode']
-            if not nextEp:
-                return (title, epTotal, status.replace('_', ' '), rate, start, end, img, synop, "ID: {} | {}".format(ani_id, genres), aniLink, dataLen)
-            airingDate = nextEp['airingAt']
-            deltaAirDate = timedelta(seconds=int(airingDate))
-            timeTuple = datetime(1,1,1) + deltaAirDate
-            timeremain = nextEp['timeUntilAiring']
-            nextUp = nextEp['episode']
-            consYear = time.strftime('%Y')
-            airingDate = f'{timeTuple.day} {monthintext(timeTuple.month)} {consYear}'
-            remainTime = create_time_format(timeremain)
-            return (title, epTotal, status.replace('_', ' '), rate, start, end, img, synop, "ID: {} | {}".format(ani_id, genres), aniLink, dataLen, nextUp, airingDate, remainTime)
-        else:
-            return (title, epTotal, status.replace('_', ' '), rate, start, end, img, synop, "ID: {} | {}".format(ani_id, genres), aniLink, dataLen)
-
-async def alistMango(title, num=1):
-    num = num - 1
-    variables = {
-        'search': title,
-        'page': 1,
-        'perPage': 50
+    # Koleksi translasi dan perubahan teks
+    status_tl = {
+        'finished': 'Tamat',
+        'releasing': 'Sedang Berlangsung',
+        'not_yet_released': 'Belum Rilis',
+        'cancelled': 'Batal Tayang'
     }
-    api_link = 'https://graphql.anilist.co'
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.post(api_link, json={'query': anilist_query % ('MANGA'), 'variables': variables}) as r:
-                try:
-                    data = await r.json()
-                except IndexError:
-                    return "ERROR: Terjadi kesalahan internal"
-                if r.status != 200:
-                    if r.status == 404:
-                        return "ERROR: Tidak dapat menemukan anime tersebut"
-                    elif r.status == 500:
-                        return "ERROR: Internal Error :/"
-                try:
-                    entry = data['data']['Page']['media'][num]
-                except IndexError:
-                    return "ERROR: Tidak ada hasil."
-        except session.ClientError:
-            return "ERROR: Koneksi terputus"
+    format_tl = {
+        "TV": "Anime",
+        "TV_SHORT": "Anime Pendek",
+        "MOVIE": "Film",
+        "SPECIAL": "Spesial",
+        "OVA": "OVA",
+        "ONA": "ONA",
+        "MUSIC": "MV",
+        "NOVEL": "Novel",
+        "MANGA": "Manga",
+        "ONE_SHOT": "One-Shot"
+    }
+    source_tl = {
+        "ORIGINAL": "Original",
+        "MANGA": "Manga",
+        "VISUAL_NOVEL": "Visual Novel",
+        "LIGHT_NOVEL": "Novel Ringan",
+        "VIDEO_GAME": "Gim",
+        "OTHER": "Lainnya"
+    }
 
-        dataLen = len(data['data']['Page']['media'])
-
-        sY = entry['startDate']['year']
-        if sY is None:
+    full_query_result = []
+    for entry in query:
+        start_y = entry['startDate']['year']
+        end_y = entry['endDate']['year']
+        if not start_y:
             start = 'Belum Rilis'
         else:
-            start = '{}'.format(str(sY))
-            sM = entry['startDate']['month']
-            if sM is None:
-                start = start
-            else:
-                start = '{}/{}'.format(start,str(sM))
-                sD = entry['startDate']['day']
-                if sD is None:
-                    start = start
-                else:
-                    start = '{}/{}'.format(start,str(sD))
-
-        eY = entry['endDate']['year']
-        if eY is None:
-            end = 'Belum Selesai'
+            start = '{}'.format(start_y)
+            start_m = entry['startDate']['month']
+            if start_m:
+                start = '{}/{}'.format(start, start_m)
+                start_d = entry['startDate']['day']
+                if start_d:
+                    start = '{}/{}'.format(start, start_d)
+        
+        if not end_y:
+            end = 'Belum Berakhir'
         else:
-            end = '{}'.format(str(eY))
-            eM = entry['endDate']['month']
-            if eM is None:
-                end = end
-            else:
-                end = '{}/{}'.format(end,str(eM))
-                eD = entry['endDate']['day']
-                if eD is None:
-                    end = end
-                else:
-                    end = '{}/{}'.format(end,str(eD))
+            end = '{}'.format(end_y)
+            end_m = entry['endDate']['month']
+            if end_m:
+                end = '{}/{}'.format(end, end_m)
+                end_d = entry['endDate']['day']
+                if end_d:
+                    end = '{}/{}'.format(end, end_d)
 
         title = entry['title']['romaji']
-
-        volumes = entry['volumes']
-        rate = entry['averageScore']
-        if rate is None:
-            rate = 'None'
-        else:
-            rate = int(rate)/10
-        status = str(entry["status"]).lower().capitalize()
-        synop = str(entry['description'])
-
-        genre = entry['genres']
-        genres = ', '.join(genre).lower()
-
-        img = str(entry['coverImage']['large'])
-        
         ani_id = str(entry['id'])
-        aniLink = 'https://anilist.co/manga/{}'.format(ani_id)
 
-        finalResult = {"title": title, 'status': status, 'volume': volumes,'score': rate, 'startDate': start, 'endDate': end, 'posterImg': img, 'synopsis': synop, 'genre': "ID: {} | {}".format(ani_id, genres), 'link': aniLink, 'dataLength': dataLen}
-        return finalResult
+        # Judul lain
+        other_title = entry['title']['native']
+        english_title = entry['title']['english']
+        if english_title:
+            other_title = '\n' + english_title
+
+        score_rate = entry['averageScore']
+        if score_rate:
+            score_rate = '{}/10'.format(score_rate/10)
+ 
+        description = entry['description']
+        if description is not None:
+            if len(description) > 1023:
+                description = description[:1020] + '...'
+
+        genres = ', '.join(entry['genres']).lower()
+        status = entry['status'].lower()
+        img = entry['coverImage']['large']
+        ani_link = 'https://anilist.co/anime/{}'.format(ani_id)
+
+        dataset = {
+            'title': title,
+            'title_other': other_title,
+            'start_date': start,
+            'end_date': end,
+            'poster_img': img,
+            'synopsis': description,
+            'status': status_tl[status],
+            'format': format_tl[entry['format']],
+            'source_fmt': source_tl[entry['source']],
+            'link': ani_link,
+            'score': score_rate,
+            'footer': "ID: {} | {}".format(ani_id, genres),
+        }
+
+        if method == 'manga':
+            vol = entry['volumes']
+            ch = entry['chapters']
+            ch_vol = '{c} chapterXXC/{v} volumeXXV'.format(c=ch, v=vol).replace('None', '??')
+            if not ch:
+                if ch > 1:
+                    ch_vol.replace('XXC', 's')
+                ch_vol.replace('XXC', '')
+            if not vol:
+                if vol > 1:
+                    ch_vol.replace('XXV', 's')
+                ch_vol.replace('XXV', '')
+            dataset['ch_vol'] = ch_vol
+        if method == 'anime':
+            dataset['episodes'] = entry["episodes"]
+            if status in ['releasing', 'not_yet_released']:
+                ne_data = entry['nextAiringEpisode']
+                if ne_data:
+                    airing_time = ne_data['airingAt']
+                    d_airing_time = timedelta(seconds=abs(airing_time))
+                    time_tuple = datetime(1,1,1) + d_airing_time
+
+                    dataset['airing_date'] = '{d} {m} {y}'.format(d=time_tuple.day, m=monthintext(time_tuple.month), y=time.strftime('%Y'))
+                    dataset['next_episode'] = ne_data['episode']
+                    dataset['time_remain'] = create_time_format(ne_data['timeUntilAiring'])
+
+        for k, v in dataset:
+            if not v:
+                dataset[k] = 'Tidak ada'
+
+        full_query_result.append(dataset)
+    return {'result': full_query_result, 'data_total': len(full_query_result)}
+
 
 class Anilist:
     def __init__(self, bot):
@@ -280,340 +255,244 @@ class Anilist:
         except discord.Forbidden:
             pass
 
-    @commands.command(pass_context=True, aliases=['animu', 'kartun', 'ani'])
-    async def anime(self, ctx, *, judulAnime):
-        """Search anime info via anilist.co."""
-        init = await alistAnimu(judulAnime, 1)
-        if type(init) is str:
-            await self.bot.say(init)
-            return 'No result'
-        else:
-            pass
 
-        maxPage = init[10]
-        firstRun = True
+    @commands.command(pass_context=True, aliases=['animu', 'kartun', 'ani'])
+    async def anime(self, ctx, *, judul):
+        """Mencari informasi anime lewat API anilist.co"""
+        aqres = await fetch_anilist(judul, 'manga')
+        if isinstance(aqres, str):
+            return await self.bot.say(aqres)
+
+        max_page = aqres['data_total']
+        res = aqres['result']
+
+        first_run = True
         time_table = False
         num = 1
         while True:
-            #(title, epTotal, status, rate, start, end, img, synop, genres, aniLink, nextUp, airingDate, remainTime, dataLen)
-            if firstRun:
-                firstRun = False
-                num = 1
-                find = await alistAnimu(judulAnime, num)
-                title = '[{}]({})'.format(find[0], find[9])
-                embed=discord.Embed(title="Anime Info", color=0x81e28d)
-                embed.set_image(url=find[6])
-                embed.add_field(name='Judul', value=title, inline=False)
-                embed.add_field(name='Episode', value=find[1], inline=True)
-                embed.add_field(name='Status', value=find[2], inline=True)
-                embed.add_field(name='Skor', value=find[3], inline=True)
-                embed.add_field(name='Tanggal Mulai', value=find[4], inline=True)
-                embed.add_field(name='Tanggal Berakhir', value=find[5], inline=True)
-                embed.set_footer(text=find[8])
-                try:
-                    embed.add_field(name='Deskripsi', value=find[7], inline=False)
-                    two_part = False
-                    msg = await self.bot.say(embed=embed)
-                except discord.errors.HTTPException:
-                    fmtSyn = '```{}```'.format(str(find[7]))
-                    embed.remove_field(-1)
-                    two_part = True
-                    msg = await self.bot.say(embed=embed)
-                    msg2 = await self.bot.say(fmtSyn)
+            if first_run:
+                data = res[num - 1]
+                embed = discord.Embed(color=0x19212d)
 
-            if str(find[2]) == 'Releasing' and time_table == True and len(find) != 11 or str(find[2]) == 'Not yet released' and time_table == True and len(find) != 11:
-                toReact = ['👍', '✅']
-            elif maxPage == 1 and num == 1:
-                if str(find[2]) == 'Releasing' and time_table == False and len(find) != 11 or str(find[2]) == 'Not yet released' and time_table == False and len(find) != 11:
-                    toReact = ['⏳', '✅']
-                else:
-                    toReact = ['✅']
+                embed.set_thumbnail(url=data['poster_img'])
+                embed.set_author(name=data['title'], url=data['link'], icon_url="https://anilist.co/img/icons/apple-touch-icon-152x152.png")
+                embed.set_footer(text=data['footer'])
+
+                embed.add_field(name="Nama Lain", value=data['title_other'], inline=True)
+                embed.add_field(name="Episode", value=data['episodes'], inline=True)
+                embed.add_field(name="Status", value=data['status'], inline=True)
+                embed.add_field(name="Skor", value=data['score'], inline=True)
+                embed.add_field(name="Rilis", value=data['start_date'], inline=True)
+                embed.add_field(name="Berakhir", value=data['end_date'], inline=True)
+                embed.add_field(name="Format", value=data['format'], inline=True)
+                embed.add_field(name="Adaptasi", value=data['source_fmt'], inline=True)
+                embed.add_field(name="Sinopsis", value=data['synopsis'], inline=False)
+
+                first_run = False
+                msg = await self.bot.say(embed=embed)
+
+            reactmoji = []
+            if time_table:
+                reactmoji.append('👍')
+            elif max_page == 1 and num == 1:
+                pass
             elif num == 1:
-                if str(find[2]) == 'Releasing' and time_table == False and len(find) != 11 or str(find[2]) == 'Not yet released' and time_table == False and len(find) != 11:
-                    toReact = ['⏩', '⏳', '✅']
-                else:
-                    toReact = ['⏩', '✅']
-            elif num == maxPage:
-                if str(find[2]) == 'Releasing' and time_table == False and len(find) != 11 and time_table == False and len(find) != 11 or str(find[2]) == 'Not yet released' and time_table == False and len(find) != 11:
-                    toReact = ['⏪', '⏳', '✅']
-                else:
-                    toReact = ['⏪', '✅']
-            elif num > 1 and num < maxPage:
-                if str(find[2]) == 'Releasing' and time_table == False and len(find) != 11 or str(find[2]) == 'Not yet released' and time_table == False and len(find) != 11:
-                    toReact = ['⏪', '⏩', '⏳', '✅']
-                else:
-                    toReact = ['⏪', '⏩', '✅']
-            for reaction in toReact:
-                if two_part:
-                    await self.bot.add_reaction(msg2, reaction)
-                else:
-                    await self.bot.add_reaction(msg, reaction)
-            #feel free to change ✅ to 🆗 or the opposite
-            def checkReaction(reaction, user):
-                e = str(reaction.emoji)
-                return e.startswith(('⏪', '⏩', '✅', '⏳', '👍'))
+                reactmoji.append('⏩')
+            elif num == max_page:
+                reactmoji.append('⏪')
+            elif num > 1 and num < max_page:
+                reactmoji.extend(['⏪', '⏩'])
+            if 'next_episode' in data and not time_table:
+                reactmoji.append('⏳')
+            reactmoji.append('✅')
+            for reaction in reactmoji:
+                await self.bot.add_reaction(msg, reaction)
 
-            if two_part:
-                res = await self.bot.wait_for_reaction(message=msg2, user=ctx.message.author, timeout=30, check=checkReaction)
-            else:
-                res = await self.bot.wait_for_reaction(message=msg, user=ctx.message.author, timeout=30, check=checkReaction)
+            def check_reaction(reaction, user):
+                e = str(reaction.emoji)
+                return e.startswith(tuple(reactmoji))
+
+            res = await self.bot.wait_for_reaction(message=msg, user=ctx.message.author, timeout=30, check=check_reaction)
             if res is None:
-                if two_part:
-                    await self.bot.clear_reactions(msg2)
-                else:
-                    await self.bot.clear_reactions(msg)
-                return
+                return await self.bot.clear_reactions(msg)
             elif '⏪' in str(res.reaction.emoji):
                 num = num - 1
-                time_table = False
-                find = await alistAnimu(judulAnime, num)
-                title = '[{}]({})'.format(find[0], find[9])
-                embed=discord.Embed(title="Anime Info", color=0x81e28d)
-                embed.set_image(url=find[6])
-                embed.add_field(name='Judul', value=title, inline=False)
-                embed.add_field(name='Episode', value=find[1], inline=True)
-                embed.add_field(name='Status', value=find[2], inline=True)
-                embed.add_field(name='Skor', value=find[3], inline=True)
-                embed.add_field(name='Tanggal Mulai', value=find[4], inline=True)
-                embed.add_field(name='Tanggal Berakhir', value=find[5], inline=True)
-                embed.set_footer(text=find[8])
-                fmtSyn = '```{}```'.format(str(find[7]))
-                try:
-                    embed.add_field(name='Deskripsi', value=find[7], inline=False)
-                    if two_part:
-                        await self.bot.delete_message(msg2)
-                    else:
-                        await self.bot.clear_reactions(msg)
-                    two_part = False
-                    msg = await self.bot.edit_message(msg, embed=embed)
-                except discord.errors.HTTPException:
-                    fmtSyn = '```{}```'.format(str(find[7]))
-                    embed.remove_field(-1)
-                    if two_part:
-                        await self.bot.clear_reactions(msg2)
-                        msg = await self.bot.edit_message(msg, embed=embed)
-                        msg2 = await self.bot.edit_message(msg2, fmtSyn)
-                    else:
-                        await self.bot.clear_reactions(msg)
-                        msg = await self.bot.edit_message(msg, embed=embed)
-                        msg2 = await self.bot.say(fmtSyn)
-                    two_part = True
+                data = data[num - 1]
+
+                embed = discord.Embed(color=0x19212d)
+
+                embed.set_thumbnail(url=data['poster_img'])
+                embed.set_author(name=data['title'], url=data['link'], icon_url="https://anilist.co/img/icons/apple-touch-icon-152x152.png")
+                embed.set_footer(text=data['footer'])
+
+                embed.add_field(name="Nama Lain", value=data['title_other'], inline=True)
+                embed.add_field(name="Episode", value=data['episodes'], inline=True)
+                embed.add_field(name="Status", value=data['status'], inline=True)
+                embed.add_field(name="Skor", value=data['score'], inline=True)
+                embed.add_field(name="Rilis", value=data['start_date'], inline=True)
+                embed.add_field(name="Berakhir", value=data['end_date'], inline=True)
+                embed.add_field(name="Format", value=data['format'], inline=True)
+                embed.add_field(name="Adaptasi", value=data['source_fmt'], inline=True)
+                embed.add_field(name="Sinopsis", value=data['synopsis'], inline=False)
+
+                await self.bot.clear_reactions(msg)
+                msg = await self.bot.edit_message(msg, embed=embed)
             elif '⏩' in str(res.reaction.emoji):
                 num = num + 1
-                time_table = False
-                find = await alistAnimu(judulAnime, num)
-                title = '[{}]({})'.format(find[0], find[9])
-                embed=discord.Embed(title="Anime Info", color=0x81e28d)
-                embed.set_image(url=find[6])
-                embed.add_field(name='Judul', value=title, inline=False)
-                embed.add_field(name='Episode', value=find[1], inline=True)
-                embed.add_field(name='Status', value=find[2], inline=True)
-                embed.add_field(name='Skor', value=find[3], inline=True)
-                embed.add_field(name='Tanggal Mulai', value=find[4], inline=True)
-                embed.add_field(name='Tanggal Berakhir', value=find[5], inline=True)
-                embed.set_footer(text=find[8])
-                try:
-                    embed.add_field(name='Deskripsi', value=find[7], inline=False)
-                    if two_part:
-                        await self.bot.delete_message(msg2)
-                    else:
-                        await self.bot.clear_reactions(msg)
-                    msg = await self.bot.edit_message(msg, embed=embed)
-                    two_part = False
-                except discord.errors.HTTPException:
-                    fmtSyn = '```{}```'.format(str(find[7]))
-                    embed.remove_field(-1)
-                    if two_part:
-                        await self.bot.clear_reactions(msg2)
-                        msg = await self.bot.edit_message(msg, embed=embed)
-                        msg2 = await self.bot.edit_message(msg2, fmtSyn)
-                    else:
-                        await self.bot.clear_reactions(msg)
-                        msg = await self.bot.edit_message(msg, embed=embed)
-                        msg2 = await self.bot.say(fmtSyn)
-                    two_part = True
-            elif '👍' in str(res.reaction.emoji):
-                time_table = False
-                title = '[{}]({})'.format(find[0], find[9])
-                embed=discord.Embed(title="Anime Info", color=0x81e28d)
-                embed.set_image(url=find[6])
-                embed.add_field(name='Judul', value=title, inline=False)
-                embed.add_field(name='Episode', value=find[1], inline=True)
-                embed.add_field(name='Status', value=find[2], inline=True)
-                embed.add_field(name='Skor', value=find[3], inline=True)
-                embed.add_field(name='Tanggal Mulai', value=find[4], inline=True)
-                embed.add_field(name='Tanggal Berakhir', value=find[5], inline=True)
-                embed.set_footer(text=find[8])
-                try:
-                    embed.add_field(name='Deskripsi', value=find[7], inline=False)
-                    if two_part:
-                        await self.bot.delete_message(msg2)
-                    else:
-                        await self.bot.clear_reactions(msg)
-                    msg = await self.bot.edit_message(msg, embed=embed)
-                    two_part = False
-                except discord.errors.HTTPException:
-                    fmtSyn = '```{}```'.format(str(find[7]))
-                    embed.remove_field(-1)
-                    if two_part:
-                        await self.bot.clear_reactions(msg2)
-                        msg = await self.bot.edit_message(msg, embed=embed)
-                        msg2 = await self.bot.edit_message(msg2, fmtSyn)
-                    else:
-                        await self.bot.clear_reactions(msg)
-                        msg = await self.bot.edit_message(msg, embed=embed)
-                        msg2 = await self.bot.say(fmtSyn)
-                    two_part = True
-            elif '⏳' in str(res.reaction.emoji):
-                time_table = True
-                find = await alistAnimu(judulAnime, num)
-                epiTxt = 'Episode ' + str(find[11])
-                fmtFooter = f'Akan tayang pada {find[12]}'
-                embed=discord.Embed(title=find[0], color=0x81e28d)
-                embed.add_field(name=epiTxt, value=str(find[13]), inline=False)
-                embed.set_footer(text=fmtFooter)
-                if two_part:
-                    await self.bot.delete_message(msg2)
-                else:
-                    await self.bot.clear_reactions(msg)
+                data = data[num - 1]
+
+                embed = discord.Embed(color=0x19212d)
+
+                embed.set_thumbnail(url=data['poster_img'])
+                embed.set_author(name=data['title'], url=data['link'], icon_url="https://anilist.co/img/icons/apple-touch-icon-152x152.png")
+                embed.set_footer(text=data['footer'])
+
+                embed.add_field(name="Nama Lain", value=data['title_other'], inline=True)
+                embed.add_field(name="Episode", value=data['episodes'], inline=True)
+                embed.add_field(name="Status", value=data['status'], inline=True)
+                embed.add_field(name="Skor", value=data['score'], inline=True)
+                embed.add_field(name="Rilis", value=data['start_date'], inline=True)
+                embed.add_field(name="Berakhir", value=data['end_date'], inline=True)
+                embed.add_field(name="Format", value=data['format'], inline=True)
+                embed.add_field(name="Adaptasi", value=data['source_fmt'], inline=True)
+                embed.add_field(name="Sinopsis", value=data['synopsis'], inline=False)
+
+                await self.bot.clear_reactions(msg)
                 msg = await self.bot.edit_message(msg, embed=embed)
-                two_part = False
+            elif '👍' in str(res.reaction.emoji):
+                embed = discord.Embed(color=0x19212d)
+
+                embed.set_thumbnail(url=data['poster_img'])
+                embed.set_author(name=data['title'], url=data['link'], icon_url="https://anilist.co/img/icons/apple-touch-icon-152x152.png")
+                embed.set_footer(text=data['footer'])
+
+                embed.add_field(name="Nama Lain", value=data['title_other'], inline=True)
+                embed.add_field(name="Episode", value=data['episodes'], inline=True)
+                embed.add_field(name="Status", value=data['status'], inline=True)
+                embed.add_field(name="Skor", value=data['score'], inline=True)
+                embed.add_field(name="Rilis", value=data['start_date'], inline=True)
+                embed.add_field(name="Berakhir", value=data['end_date'], inline=True)
+                embed.add_field(name="Format", value=data['format'], inline=True)
+                embed.add_field(name="Adaptasi", value=data['source_fmt'], inline=True)
+                embed.add_field(name="Sinopsis", value=data['synopsis'], inline=False)
+
+                time_table = False
+                await self.bot.clear_reactions(msg)
+                msg = await self.bot.edit_message(msg, embed=embed)
+            elif '⏳' in str(res.reaction.emoji):
+                ep_txt = 'Episode ' + str(data['next_episode'])
+                embed = discord.Embed(color=0x19212d)
+                embed.set_author(name=data['title'], url=data['link'], icon_url="https://anilist.co/img/icons/apple-touch-icon-152x152.png")
+                embed.set_footer(text='Akan tayang pada {}'.format(data['airing_date']))
+
+                embed.add_field(name=ep_txt, value=data['time_remain'], inline=False)
+
+                time_table = True
+                await self.bot.clear_reactions(msg)
+                msg = await self.bot.edit_message(msg, embed=embed)
             elif '✅' in str(res.reaction.emoji):
                 await self.bot.delete_message(ctx.message)
-                if two_part:
-                    await self.bot.delete_message(msg2)
-                await self.bot.delete_message(msg)
-                break
+                return await self.bot.delete_message(msg)
 
 
     @commands.command(pass_context=True, aliases=['komik', 'mango'])
-    async def manga(self, ctx, *, title):
-        """Search manga info via anilist.co."""
-        init = await alistMango(title, 1)
-        if type(init) is str:
-            await self.bot.say(init)
-            return 'No result'
-        else:
-            pass
+    async def manga(self, ctx, *, judul):
+        """Mencari informasi manga lewat API anilist.co"""
+        aqres = await fetch_anilist(judul, 'manga')
+        if isinstance(aqres, str):
+            return await self.bot.say(aqres)
 
-        maxPage = int(init['dataLength'])
-        firstRun = True
+        max_page = aqres['data_total']
+        res = aqres['result']
+
+        first_run = True
+        num = 1
         while True:
-            if firstRun:
-                firstRun = False
-                num = 1
-                find = await alistMango(title, num)
-                embed=discord.Embed(title="Anime Info", url=find['link'], color=0x81e28d)
-                embed.set_image(url=find['posterImg'])
-                embed.add_field(name='Judul', value=find['title'], inline=False)
-                embed.add_field(name='Volume', value=find['volume'], inline=True)
-                embed.add_field(name='Status', value=find['status'], inline=True)
-                embed.add_field(name='Skor', value=find['score'], inline=True)
-                embed.add_field(name='Tanggal Mulai', value=find['startDate'], inline=True)
-                embed.add_field(name='Tanggal Berakhir', value=find['endDate'], inline=True)
-                embed.set_footer(text=find['genre'])
-                try:
-                    embed.add_field(name='Deskripsi', value=find['synopsis'], inline=False)
-                    two_part = False
-                    msg = await self.bot.say(embed=embed)
-                except:
-                    fmtSyn = '```{}```'.format(find['synopsis'])
-                    two_part = True
-                    msg = await self.bot.say(embed=embed)
-                    msg2 = await self.bot.say(fmtSyn)
+            if first_run:
+                data = res[num - 1]
+                embed = discord.Embed(color=0x19212d)
 
-            if maxPage == 1 and num == 1:
-                toReact = ['✅']
+                embed.set_thumbnail(url=data['poster_img'])
+                embed.set_author(name=data['title'], url=data['link'], icon_url="https://anilist.co/img/icons/apple-touch-icon-152x152.png")
+                embed.set_footer(text=data['footer'])
+
+                embed.add_field(name="Nama Lain", value=data['title_other'], inline=True)
+                embed.add_field(name="Chapter/Volume", value=data['ch_vol'], inline=True)
+                embed.add_field(name="Status", value=data['status'], inline=True)
+                embed.add_field(name="Skor", value=data['score'], inline=True)
+                embed.add_field(name="Rilis", value=data['start_date'], inline=True)
+                embed.add_field(name="Berakhir", value=data['end_date'], inline=True)
+                embed.add_field(name="Format", value=data['format'], inline=True)
+                embed.add_field(name="Adaptasi", value=data['source_fmt'], inline=True)
+                embed.add_field(name="Sinopsis", value=data['synopsis'], inline=False)
+
+                first_run = False
+                msg = await self.bot.say(embed=embed)
+
+            reactmoji = []
+            if max_page == 1 and num == 1:
+                pass
             elif num == 1:
-                toReact = ['⏩', '✅']
-            elif num == maxPage:
-                toReact = ['⏪', '✅']
-            elif num > 1 and num < maxPage:
-                toReact = ['⏪', '⏩', '✅']
-            for reaction in toReact:
-                if two_part:
-                    await self.bot.add_reaction(msg2, reaction)
-                else:
-                    await self.bot.add_reaction(msg, reaction)
-            #feel free to change ✅ to 🆗 or the opposite
-            def checkReaction(reaction, user):
-                e = str(reaction.emoji)
-                return e.startswith(('⏪', '⏩', '✅'))
+                reactmoji.append('⏩')
+            elif num == max_page:
+                reactmoji.append('⏪')
+            elif num > 1 and num < max_page:
+                reactmoji.extend(['⏪', '⏩'])
+            reactmoji.append('✅')
+            for reaction in reactmoji:
+                await self.bot.add_reaction(msg, reaction)
 
-            if two_part:
-                res = await self.bot.wait_for_reaction(message=msg2, user=ctx.message.author, timeout=30, check=checkReaction)
-            else:
-                res = await self.bot.wait_for_reaction(message=msg, user=ctx.message.author, timeout=30, check=checkReaction)
+            def check_reaction(reaction, user):
+                e = str(reaction.emoji)
+                return e.startswith(tuple(reactmoji))
+
+            res = await self.bot.wait_for_reaction(message=msg, user=ctx.message.author, timeout=30, check=check_reaction)
             if res is None:
-                break
+                return await self.bot.clear_reactions(msg)
             elif '⏪' in str(res.reaction.emoji):
                 num = num - 1
-                find = await alistMango(title, num)
-                embed=discord.Embed(title="Anime Info", url=find['link'], color=0x81e28d)
-                embed.set_image(url=find['posterImg'])
-                embed.add_field(name='Judul', value=find['title'], inline=False)
-                embed.add_field(name='Volume', value=find['volume'], inline=True)
-                embed.add_field(name='Status', value=find['status'], inline=True)
-                embed.add_field(name='Skor', value=find['score'], inline=True)
-                embed.add_field(name='Tanggal Mulai', value=find['startDate'], inline=True)
-                embed.add_field(name='Tanggal Berakhir', value=find['endDate'], inline=True)
-                embed.set_footer(text=find['genre'])
-                try:
-                    embed.add_field(name='Deskripsi', value=find['synopsis'], inline=False)
-                    if two_part:
-                        await self.bot.delete_message(msg2)
-                        await self.bot.clear_reactions(msg2)
-                    else:
-                        await self.bot.clear_reactions(msg)
-                    two_part = False
-                    msg = await self.bot.edit_message(msg, embed=embed)
-                except:
-                    fmtSyn = '```{}```'.format(find['synopsis'])
-                    if two_part:
-                        await self.bot.clear_reactions(msg2)
-                        msg = await self.bot.edit_message(msg, embed=embed)
-                        msg2 = await self.bot.edit_message(msg2, fmtSyn)
-                    else:
-                        await self.bot.clear_reactions(msg)
-                        msg = await self.bot.edit_message(msg, embed=embed)
-                        msg2 = await self.bot.say(fmtSyn)
-                    two_part = True
+                data = data[num - 1]
+
+                embed = discord.Embed(color=0x19212d)
+
+                embed.set_thumbnail(url=data['poster_img'])
+                embed.set_author(name=data['title'], url=data['link'], icon_url="https://anilist.co/img/icons/apple-touch-icon-152x152.png")
+                embed.set_footer(text=data['footer'])
+
+                embed.add_field(name="Nama Lain", value=data['title_other'], inline=True)
+                embed.add_field(name="Chapter/Volume", value=data['ch_vol'], inline=True)
+                embed.add_field(name="Status", value=data['status'], inline=True)
+                embed.add_field(name="Skor", value=data['score'], inline=True)
+                embed.add_field(name="Rilis", value=data['start_date'], inline=True)
+                embed.add_field(name="Berakhir", value=data['end_date'], inline=True)
+                embed.add_field(name="Format", value=data['format'], inline=True)
+                embed.add_field(name="Adaptasi", value=data['source_fmt'], inline=True)
+                embed.add_field(name="Sinopsis", value=data['synopsis'], inline=False)
+
+                await self.bot.clear_reactions(msg)
+                msg = await self.bot.edit_message(msg, embed=embed)
             elif '⏩' in str(res.reaction.emoji):
                 num = num + 1
-                find = await alistMango(title, num)
-                embed=discord.Embed(title="Anime Info", url=find['link'], color=0x81e28d)
-                embed.set_image(url=find['posterImg'])
-                embed.add_field(name='Judul', value=find['title'], inline=False)
-                embed.add_field(name='Volume', value=find['volume'], inline=True)
-                embed.add_field(name='Status', value=find['status'], inline=True)
-                embed.add_field(name='Skor', value=find['score'], inline=True)
-                embed.add_field(name='Tanggal Mulai', value=find['startDate'], inline=True)
-                embed.add_field(name='Tanggal Berakhir', value=find['endDate'], inline=True)
-                embed.set_footer(text=find['genre'])
-                try:
-                    embed.add_field(name='Deskripsi', value=find['synopsis'], inline=False)
-                    if two_part:
-                        await self.bot.delete_message(msg2)
-                        await self.bot.clear_reactions(msg2)
-                    else:
-                        await self.bot.clear_reactions(msg)
-                    two_part = False
-                    msg = await self.bot.edit_message(msg, embed=embed)
-                except:
-                    fmtSyn = '```{}```'.format(find['synopsis'])
-                    if two_part:
-                        await self.bot.clear_reactions(msg2)
-                        msg = await self.bot.edit_message(msg, embed=embed)
-                        msg2 = await self.bot.edit_message(msg2, fmtSyn)
-                    else:
-                        await self.bot.clear_reactions(msg)
-                        msg = await self.bot.edit_message(msg, embed=embed)
-                        msg2 = await self.bot.say(fmtSyn)
-                    two_part = True
+                data = data[num - 1]
+
+                embed = discord.Embed(color=0x19212d)
+
+                embed.set_thumbnail(url=data['poster_img'])
+                embed.set_author(name=data['title'], url=data['link'], icon_url="https://anilist.co/img/icons/apple-touch-icon-152x152.png")
+                embed.set_footer(text=data['footer'])
+
+                embed.add_field(name="Nama Lain", value=data['title_other'], inline=True)
+                embed.add_field(name="Chapter/Volume", value=data['ch_vol'], inline=True)
+                embed.add_field(name="Status", value=data['status'], inline=True)
+                embed.add_field(name="Skor", value=data['score'], inline=True)
+                embed.add_field(name="Rilis", value=data['start_date'], inline=True)
+                embed.add_field(name="Berakhir", value=data['end_date'], inline=True)
+                embed.add_field(name="Format", value=data['format'], inline=True)
+                embed.add_field(name="Adaptasi", value=data['source_fmt'], inline=True)
+                embed.add_field(name="Sinopsis", value=data['synopsis'], inline=False)
+
+                await self.bot.clear_reactions(msg)
+                msg = await self.bot.edit_message(msg, embed=embed)
             elif '✅' in str(res.reaction.emoji):
                 await self.bot.delete_message(ctx.message)
-                if two_part:
-                    await self.bot.delete_message(msg2)
-                await self.bot.delete_message(msg)
-                break
-
+                return await self.bot.delete_message(msg)

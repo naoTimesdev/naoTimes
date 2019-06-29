@@ -21,7 +21,7 @@ def internal_modules():
         "etcetera",
         "anilist",
         "showadmin",
-        "anibin"
+        "parser"
     ]
     return modules
 
@@ -74,7 +74,7 @@ async def init_bot():
 
     try:
         print('@@ Initiating discord.py')
-        description = '''Penyuruh Fansub biar kerja cepat\nversi 1.3.4 || Dibuat oleh: N4O#8868'''
+        description = '''Penyuruh Fansub biar kerja cepat\nversi 1.3.5 || Dibuat oleh: N4O#8868'''
         bot = commands.Bot(commands.when_mentioned_or('!'), description=description)
         bot.remove_command('help')
         for load in internal_modules():
@@ -208,7 +208,7 @@ async def info():
     infog.add_field(name="Bahasa", value="Discord.py dengan Python 3.6", inline=False)
     infog.add_field(name="Fungsi", value="Menagih utang fansub (!help)", inline=False)
     infog.add_field(name="Uptime", value=create_uptime())
-    infog.set_footer(text="naoTimes versi 1.3.4 || Dibuat oleh N4O#8868", icon_url='https://p.n4o.xyz/i/nao250px.png')
+    infog.set_footer(text="naoTimes versi 1.3.5 || Dibuat oleh N4O#8868", icon_url='https://p.n4o.xyz/i/nao250px.png')
     await bot.say(embed=infog)
 
 @bot.command(pass_context=True)

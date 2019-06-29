@@ -1,6 +1,11 @@
 requests
+aiohttp>=3.4.2
+beautifulsoup4
+
 asyncio
 git+https://github.com/Rapptz/discord.py.git@1863a1c6636f53592519320a173ec9573c090c0b
-aiohttp>=3.4.2
+
+kbbi
+pysubs2
 pytz
-beautifulsoup4
+textblob
