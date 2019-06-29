@@ -135,7 +135,7 @@ async def fetch_anilist(title, method):
         'finished': 'Tamat',
         'releasing': 'Sedang Berlangsung',
         'not_yet_released': 'Belum Rilis',
-        'cancelled': 'Batal Tayang',
+        'cancelled': 'Batal Tayang'
     }
     format_tl = {
         "TV": "Anime",
@@ -222,7 +222,7 @@ async def fetch_anilist(title, method):
             'source_fmt': source_tl[entry['source']],
             'link': ani_link,
             'score': score_rate,
-            'footer': "ID: {} | {}".format(ani_id, genres),
+            'footer': "ID: {} | {}".format(ani_id, genres)
         }
 
         if method == 'manga':
