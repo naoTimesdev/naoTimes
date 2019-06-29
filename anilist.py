@@ -208,7 +208,7 @@ async def fetch_anilist(title, method):
         genres = ', '.join(entry['genres']).lower()
         status = entry['status'].lower()
         img = entry['coverImage']['large']
-        ani_link = 'https://anilist.co/anime/{}'.format(ani_id)
+        ani_link = 'https://anilist.co/{m}/{id}'.format(m=method, id=ani_id)
 
         dataset = {
             'title': title,
