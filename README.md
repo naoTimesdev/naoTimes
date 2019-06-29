@@ -31,7 +31,11 @@ Admin ID:
 - Discord.py (Async version)
 - BeautifulSoup4
 - aiohttp>=3.4.2
+- kbbi
 - pytz
+- pysubs2
+- textblob
+
 
 Bagi pengguna Python 3.7, cek isu berikut: [Rapptz/discord.py#1249](https://github.com/Rapptz/discord.py/issues/1249)
 
