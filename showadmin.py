@@ -82,7 +82,7 @@ class ShowtimesAdmin:
         if ctx.invoked_subcommand is None:
             if int(ctx.message.author.id) != int(bot_config['owner_id']):
                 return
-            helpmain = discord.Embed(title="Bantuan Perintah (!ntadmin)", description="versi 1.3.5", color=0x00aaaa)
+            helpmain = discord.Embed(title="Bantuan Perintah (!ntadmin)", description="versi 1.4.0", color=0x00aaaa)
             helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
             helpmain.set_author(name="naoTimesAdmin", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
             helpmain.add_field(name='!ntadmin', value="```Memunculkan bantuan perintah```", inline=False)
@@ -93,7 +93,7 @@ class ShowtimesAdmin:
             helpmain.add_field(name='!ntadmin fetchdb', value="```Mengambil database dan menguploadnya ke discord```", inline=False)
             helpmain.add_field(name='!ntadmin patchdb', value="```Menganti database dengan attachments yang dicantumkan\nTambah attachments lalu tulis !ntadmin patchdb dan enter`", inline=False)
             helpmain.add_field(name='!ntadmin forceupdate', value="```Memaksa update database utama gist dengan database local.```", inline=False)
-            helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 1.3.5")
+            helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 1.4.0")
             await self.bot.say(embed=helpmain)
 
 
@@ -119,6 +119,7 @@ class ShowtimesAdmin:
         text = text.rstrip('\n')
         
         await self.bot.say(text)
+
 
     @ntadmin.command(pass_context=True)
     async def initiate(self, ctx):
@@ -177,7 +178,7 @@ class ShowtimesAdmin:
         async def process_owner(table, emb_msg, author):
             print('@@ Memproses ID Owner')
             embed = discord.Embed(title="naoTimes", color=0x96df6a)
-            embed.add_field(name='Admin ID', value="Ketik ID Admin server atau mention orangnya", inline=False)
+            embed.add_field(name='Owner ID', value="Ketik ID Owner server atau mention orangnya", inline=False)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
             emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
 
@@ -259,7 +260,7 @@ class ShowtimesAdmin:
         server_data['serverowner'] = [json_tables['owner_id']]
         server_data['announce_channel'] = json_tables['progress_channel']
         server_data['anime'] = {}
-        server_data['anime']['alias'] = {}
+        server_data['alias'] = {}
 
         main_data[str(ctx.message.server.id)] = server_data
         print('@@ Sending data')
@@ -293,7 +294,6 @@ class ShowtimesAdmin:
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
             await self.bot.say(embed=embed)
             await self.bot.delete_message(emb_msg)
-
 
     @ntadmin.command(pass_context=True)
     async def fetchdb(self, ctx):
@@ -401,16 +401,19 @@ class ShowtimesAdmin:
             return
 
         new_srv_data = {}
-        
+
         new_srv_data['serverowner'] = [str(adm_id)]
         if prog_chan:
             new_srv_data['announce_channel'] = str(prog_chan)
         new_srv_data['anime'] = {}
-        new_srv_data['anime']['alias'] = {}
+        new_srv_data['alias'] = {}
 
         json_d[str(srv_id)] = new_srv_data
         json_d['supermod'].append(str(adm_id)) # Add to supermod list
         print('Created new table for server: {}'.format(srv_id))
+
+        with open('nao_showtimes.json', 'w') as f: # Local save before commiting
+            json.dump(json_d, f, indent=4)
 
         success = await patch_json(json_d)
         if success:
@@ -451,6 +454,9 @@ class ShowtimesAdmin:
             await self.bot.say('Gagal menghapus admin dari data super admin')
             return
 
+        with open('nao_showtimes.json', 'w') as f: # Local save before commiting
+            json.dump(json_d, f, indent=4)
+
         success = await patch_json(json_d)
         if success:
             await self.bot.say('Sukses menghapus server `{s}` dari naoTimes'.format(s=srv_id))
@@ -487,6 +493,9 @@ class ShowtimesAdmin:
             return
 
         srv['serverowner'].append(str(adm_id))
+
+        with open('nao_showtimes.json', 'w') as f: # Local save before commiting
+            json.dump(json_d, f, indent=4)
 
         success = await patch_json(json_d)
         if success:
@@ -529,6 +538,9 @@ class ShowtimesAdmin:
             await self.bot.say('Server tidak dapat ditemukan dalam database.')
             return
 
+        with open('nao_showtimes.json', 'w') as f: # Local save before commiting
+            json.dump(json_d, f, indent=4)
+
         success = await patch_json(json_d)
         if success:
             await self.bot.say('Sukses menghapus admin `{a}` dari server `{s}`'.format(s=srv_id, a=adm_id))
@@ -557,15 +569,13 @@ class ShowtimesAdmin:
         res = await self.bot.wait_for_reaction(message=preview_msg, user=ctx.message.author, timeout=15, check=checkReaction)
 
         if res is None:
-            await self.bot.say('***Timeout!***')
             await self.bot.clear_reactions(preview_msg)
-            return
+            return await self.bot.say('***Timeout!***')
         elif '✅' in str(res.reaction.emoji):
             success = await patch_json(json_d)
             await self.bot.clear_reactions(preview_msg)
             if success:
-                await self.bot.edit_message(preview_msg, '**Patching success!, try it with !tagih**')
-                return
+                return await self.bot.edit_message(preview_msg, '**Patching success!, try it with !tagih**')
             await self.bot.edit_message(preview_msg, '**Patching failed!, try it again later**')
         elif '❌' in str(res.reaction.emoji):
             print('@@ Patch Cancelled')

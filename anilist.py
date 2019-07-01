@@ -32,10 +32,10 @@ query ($page: Int, $perPage: Int, $search: String) {
                 large
             }
             averageScore
-            format
-            volumes
             chapters
+            volumes
             episodes
+            format
             status
             source
             genres
@@ -193,7 +193,10 @@ async def fetch_anilist(title, method):
         other_title = entry['title']['native']
         english_title = entry['title']['english']
         if english_title:
-            other_title += '\n' + english_title
+            if other_title:
+                other_title += '\n' + english_title
+            else:
+                other_title = english_title
 
         score_rate = entry['averageScore']
         if score_rate:
@@ -280,7 +283,7 @@ class Anilist:
         if isinstance(aqres, str):
             return await self.bot.say(aqres)
 
-        max_page = aqres['data_total']  
+        max_page = aqres['data_total']
         resdata = aqres['result']
 
         first_run = True
@@ -330,7 +333,7 @@ class Anilist:
                 return e.startswith(tuple(reactmoji))
 
             res = await self.bot.wait_for_reaction(message=msg, user=ctx.message.author, timeout=30, check=check_reaction)
-            if res is None:
+            if not res:
                 return await self.bot.clear_reactions(msg)
             elif '⏪' in str(res.reaction.emoji):
                 num = num - 1
@@ -464,7 +467,7 @@ class Anilist:
                 return e.startswith(tuple(reactmoji))
 
             res = await self.bot.wait_for_reaction(message=msg, user=ctx.message.author, timeout=30, check=check_reaction)
-            if res is None:
+            if not res:
                 return await self.bot.clear_reactions(msg)
             elif '⏪' in str(res.reaction.emoji):
                 num = num - 1

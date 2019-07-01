@@ -276,9 +276,6 @@ tags_replacing = {
     r"\\s": r"\\1S1"
 }
 
-def setup(bot):
-    bot.add_cog(WebParser(bot))
-
 def fix_spacing(n):
     for x, y in text_replacing.items():
         n = re.sub(x, y, n)
@@ -352,7 +349,7 @@ async def chunked_translate(sub_data, number, target_lang, untranslated, mode='.
         line = re.sub(regex_newline, r"\1\\LNGSX \2", org_line) # Change newline
         if tags_exists:
             line = scramble_tags(line)
-            line = re.sub(r'(})', r'} ', line) # Add some chars for proper translating
+            line = re.sub(r'(})', r'} ', line) # Add some line for proper translating
         blob = TextBlob(line)
         try:
             res = str(blob.translate(to=target_lang))
@@ -579,3 +576,6 @@ class WebParser:
                     value="Tidak ada" if not datap['takbaku'] else datap['takbaku'],
                     inline=False)
                 msg = await self.bot.edit_message(msg, embed=embed)
+
+def setup(bot):
+    bot.add_cog(WebParser(bot))

@@ -36,7 +36,7 @@ async def fetch_newest_db(CONFIG_DATA):
     async with aiohttp.ClientSession() as session:
         while True:
             try:
-                async with session.get(url.format(u=CONFIG_DATA['github_info']['username'])) as r:
+                async with session.get(url.format(u=CONFIG_DATA['github_info']['username'], g=CONFIG_DATA['gist_id'])) as r:
                     try:
                         r_data = await r.text()
                         js_data = json.loads(r_data)
@@ -74,13 +74,13 @@ async def init_bot():
 
     try:
         print('@@ Initiating discord.py')
-        description = '''Penyuruh Fansub biar kerja cepat\nversi 1.3.5 || Dibuat oleh: N4O#8868'''
+        description = '''Penyuruh Fansub biar kerja cepat\nversi 1.4.0 || Dibuat oleh: N4O#8868'''
         bot = commands.Bot(commands.when_mentioned_or('!'), description=description)
         bot.remove_command('help')
+        await fetch_newest_db(config)
         for load in internal_modules():
             bot.load_extension(load)
             print('Loaded ' + load + ' Modules')
-        await fetch_newest_db(config)
         print('### Success Loading Discord.py ###')
     except Exception as exc:
         print('### Failed to load Discord.py ###')
@@ -208,7 +208,7 @@ async def info():
     infog.add_field(name="Bahasa", value="Discord.py dengan Python 3.6", inline=False)
     infog.add_field(name="Fungsi", value="Menagih utang fansub (!help)", inline=False)
     infog.add_field(name="Uptime", value=create_uptime())
-    infog.set_footer(text="naoTimes versi 1.3.5 || Dibuat oleh N4O#8868", icon_url='https://p.n4o.xyz/i/nao250px.png')
+    infog.set_footer(text="naoTimes versi 1.4.0 || Dibuat oleh N4O#8868", icon_url='https://p.n4o.xyz/i/nao250px.png')
     await bot.say(embed=infog)
 
 @bot.command(pass_context=True)
