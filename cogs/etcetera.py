@@ -718,7 +718,7 @@ class Helper:
 
     @prefix.error
     async def prefix_error(self, error, ctx):
-        if isinstance(error, commands.MissingPermissions):
+        if isinstance(error, commands.errors.CheckFailure):
             server_message = str(ctx.message.server.id)
             with open('prefixes.json') as fp:
                 prefix_data = json.load(fp)
@@ -729,7 +729,6 @@ class Helper:
             helpmain.add_field(name="*Catatan*", value="Semua command bisa dilihat infonya dengan !help <nama command>", inline=False)
             helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 1.4.1")
             await self.bot.say(embed=helpmain)
-
 
 
 def setup(bot):
