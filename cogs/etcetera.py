@@ -187,7 +187,7 @@ class Helper:
         if ctx.invoked_subcommand is None:
             helpmain = discord.Embed(title="Bantuan Perintah", description="versi 1.4.1", color=0x00aaaa)
             helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-            helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+            helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
             helpmain.add_field(name='!help', value="```Memunculkan bantuan perintah```", inline=False)
             helpmain.add_field(name='!help showtimes', value="```Memunculkan bantuan perintah showtimes```", inline=False)
             helpmain.add_field(name='!help anilist', value="```Memunculkan bantuan perintah anilist```", inline=False)
@@ -207,7 +207,7 @@ class Helper:
             return
         helpmain = discord.Embed(title="Bantuan Perintah (Admin)", description="versi 1.4.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='!supermotd', value="```Mengirimkan pesan berantai ke tiap admin fansub yang terdaftar di naoTimes```", inline=False)
         helpmain.add_field(name='!bundir', value="```Menyuruh bot untuk bundir```", inline=False)
         helpmain.add_field(name='!reinkarnasi', value="```Membunuh dan mematikan bot```", inline=False)
@@ -222,7 +222,7 @@ class Helper:
             return
         helpmain = discord.Embed(title="Bantuan Perintah (!bundir)", description="versi 1.4.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='!bundir', value="```Mematikan bot untuk maintenance atau semacamnya```", inline=False)
         helpmain.add_field(name="*Catatan*", value="Semua command bisa dilihat infonya dengan !help <nama command>", inline=False)
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 1.4.1")
@@ -234,7 +234,7 @@ class Helper:
             return
         helpmain = discord.Embed(title="Bantuan Perintah (!reinkarnasi)", description="versi 1.4.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='!reinkarnasi', value="```Mematikan bot lalu menghidupkannya kembali ke Isekai```", inline=False)
         helpmain.add_field(name="*Catatan*", value="Semua command bisa dilihat infonya dengan !help <nama command>", inline=False)
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 1.4.1")
@@ -246,7 +246,7 @@ class Helper:
             return
         helpmain = discord.Embed(title="Bantuan Perintah (!reload)", description="versi 1.4.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='!reload <module>', value="```<module>: Nama module yang ingin direload.\nModule: etcetera, anilist, showtimes```", inline=False)
         helpmain.add_field(name="*Catatan*", value="Semua command bisa dilihat infonya dengan !help <nama command>", inline=False)
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 1.4.1")
@@ -260,7 +260,7 @@ class Helper:
             if mode_n == 1:
                 helpmain = discord.Embed(title="Bantuan Perintah (Showtimes) [1/2]", description="versi 1.4.1", color=0x00aaaa)
                 helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-                helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+                helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
                 helpmain.add_field(name='!tagih <judul>', value="```Menagih utang fansub tukang diley maupun tidak untuk memberikan mereka tekanan```", inline=False)
                 helpmain.add_field(name='!jadwal', value="```Melihat jadwal anime musiman yang di ambil.```", inline=False)
                 helpmain.add_field(name='!staff <judul>', value="```Melihat staff yang mengerjakan sebuah garapan```", inline=False)
@@ -314,7 +314,7 @@ class Helper:
     async def parser(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (Web Parsing)", description="versi 1.4.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='!anibin <judul>', value="```Mencari tau resolusi asli sebuah anime lewat anibin```", inline=False)
         helpmain.add_field(name='!kbbi <kata>', value="```Mencari informasi kata di KBBI Daring```", inline=False)
         helpmain.add_field(name='!speedsub <kode bahasa>', value="```Google Translate file subtitle ke bahasa lain```", inline=False)
@@ -328,7 +328,7 @@ class Helper:
     async def kbbi(self):
         helpmain = discord.Embed(title="Bantuan Perintah (!kbbi)", description="versi 1.4.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='!kbbi <kata>', value='```<kata> merupakan query yang akan dicari nanti```', inline=False)
         helpmain.add_field(name='Contoh', value="!kbbi contoh", inline=False)
         helpmain.add_field(name='Aliases', value="!kbbi", inline=False)
@@ -340,7 +340,7 @@ class Helper:
     async def speedsub(self):
         helpmain = discord.Embed(title="Bantuan Perintah (!speedsub)", description="versi 1.4.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='!speedsub <kode bahasa>', value=speedsub_help, inline=False)
         helpmain.add_field(name='Contoh', value="!speedsub\n!speedsub jv (Translate ke jawa)", inline=False)
         helpmain.add_field(name='Aliases', value="!speedsub, !fastsub, !gtlsub", inline=False)
@@ -352,7 +352,7 @@ class Helper:
     async def anilist(self):
         helpmain = discord.Embed(title="Bantuan Perintah (Anilist)", description="versi 1.4.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='!anime <judul>', value="```Melihat informasi anime.```", inline=False)
         helpmain.add_field(name='!manga <judul>', value="```Melihat informasi manga.```", inline=False)
         helpmain.add_field(name="*Catatan*", value="Semua command bisa dilihat infonya dengan !help <nama command>", inline=False)
@@ -363,7 +363,7 @@ class Helper:
     async def anime(self):
         helpmain = discord.Embed(title="Bantuan Perintah (!anime)", description="versi 1.4.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='!anime <judul>', value=animanga_textdata, inline=False)
         helpmain.add_field(name='Tambahan', value='⏪ **(Selanjutnya)** ⏩ **(Sebelumnya)** ✅ **(Selesai melihat)**\n⏳ **(Waktu Episode selanjutnya)** 👍 **(Melihat Info kembali)**', inline=False)
         helpmain.add_field(name='Contoh', value="```!anime hitoribocchi```", inline=False)
@@ -376,7 +376,7 @@ class Helper:
     async def manga(self):
         helpmain = discord.Embed(title="Bantuan Perintah (!manga)", description="versi 1.4.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='!manga <judul>', value=animanga_textdata, inline=False)
         helpmain.add_field(name='Tambahan', value='⏪ **(Selanjutnya)** ⏩ **(Sebelumnya)** ✅ **(Selesai melihat)**', inline=False)
         helpmain.add_field(name='Contoh', value="```!manga hitoribocchi```", inline=False)
@@ -389,7 +389,7 @@ class Helper:
     async def anibin(self):
         helpmain = discord.Embed(title="Bantuan Perintah (!anibin)", description="versi 1.4.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name="!anibin <judul>", value=simple_textdata, inline=False)
         helpmain.add_field(name="Contoh", value="!anibin 私に天使が舞い降りた", inline=False)
         helpmain.add_field(name="Aliases", value="None (Tidak Ada)", inline=False)
@@ -402,7 +402,7 @@ class Helper:
     async def tagih(self):
         helpmain = discord.Embed(title="Bantuan Perintah (!tagih)", description="versi 1.4.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='!tagih <judul>', value=simple_textdata, inline=False)
         helpmain.add_field(name="Contoh", value="```!tagih hitoribocchi```", inline=False)
         helpmain.add_field(name='Aliases', value="!tagih, !blame, !mana", inline=False)
@@ -414,7 +414,7 @@ class Helper:
     async def jadwal(self):
         helpmain = discord.Embed(title="Bantuan Perintah (!jadwal)", description="versi 1.4.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='!jadwal', value="```Melihat jadwal anime musiman yang di ambil.```", inline=False)
         helpmain.add_field(name='Aliases', value="!jadwal, !airing", inline=False)
         helpmain.add_field(name="*Catatan*", value="Semua command bisa dilihat infonya dengan !help <nama command>", inline=False)
@@ -425,7 +425,7 @@ class Helper:
     async def staff(self):
         helpmain = discord.Embed(title="Bantuan Perintah (!staff)", description="versi 1.4.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='!staff <judul>', value=simple_textdata, inline=False)
         helpmain.add_field(name="Contoh", value="!staff hitoribocchi", inline=False)
         helpmain.add_field(name='Aliases', value="!staff, !tukangdelay, !pendelay", inline=False)
@@ -437,7 +437,7 @@ class Helper:
     async def beres(self):
         helpmain = discord.Embed(title="Bantuan Perintah (!beres)", description="versi 1.4.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='!beres <posisi> <judul>', value=tanda_textdata, inline=False)
         helpmain.add_field(name="Contoh", value="!beres enc hitoribocchi", inline=False)
         helpmain.add_field(name='Aliases', value="!beres, !done", inline=False)
@@ -449,7 +449,7 @@ class Helper:
     async def gakjadi(self):
         helpmain = discord.Embed(title="Bantuan Perintah (!gakjadi)", description="versi 1.4.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='!gakjadi <posisi> <judul>', value=tanda_textdata, inline=False)
         helpmain.add_field(name="Contoh", value="!gakjadi enc hitoribocchi", inline=False)
         helpmain.add_field(name='Aliases', value="!gakjadi, !undone, !cancel", inline=False)
@@ -461,7 +461,7 @@ class Helper:
     async def rilis(self):
         helpmain = discord.Embed(title="Bantuan Perintah (!rilis)", description="versi 1.4.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='!rilis <judul>', value=simple_textdata, inline=False)
         helpmain.add_field(name='!rilis batch <jumlah> <judul>', value=simpleplex_textdata, inline=False)
         helpmain.add_field(name='!rilis semua <judul>', value=simple_textdata, inline=False)
@@ -476,7 +476,7 @@ class Helper:
     async def alias(self):
         helpmain = discord.Embed(title="Bantuan Perintah (!alias)", description="versi 1.4.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='!alias', value='```Tambahkan alias baru dengan command ini, cukup jalankan `!alias` untuk memulai proses```', inline=False)
         helpmain.add_field(name='!alias list <judul>', value=simple_textdata, inline=False)
         helpmain.add_field(name='!alias hapus <judul>', value=simple_textdata, inline=False)
@@ -491,7 +491,7 @@ class Helper:
     async def tambahepisode(self):
         helpmain = discord.Embed(title="Bantuan Perintah (!tambahepisode)", description="versi 1.4.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='!tambahepisode <jumlah> <judul>', value=simpleplex_textdata, inline=False)
         helpmain.add_field(name="Contoh", value="!tambahepisode 3 hitoribocchi", inline=False)
         helpmain.add_field(name="Tambahan", value="Hanya bisa dipake oleh Admin", inline=False)
@@ -504,7 +504,7 @@ class Helper:
     async def hapusepisode(self):
         helpmain = discord.Embed(title="Bantuan Perintah (!hapusepisode)", description="versi 1.4.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='!hapusepisode <range> <judul>', value=simpleplex_textdata2, inline=False)
         helpmain.add_field(name="Contoh", value="!hapusepisode 13 hitoribocchi\n!hapusepisode 13-14 hitoribocchi", inline=False)
         helpmain.add_field(name="Tambahan", value="Hanya bisa dipake oleh Admin", inline=False)
@@ -517,7 +517,7 @@ class Helper:
     async def ubahstaff(self):
         helpmain = discord.Embed(title="Bantuan Perintah (!ubahstaff)", description="versi 1.4.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='!ubahstaff <id_staff> <posisi> <judul>', value=ubahstaff_textdata, inline=False)
         helpmain.add_field(name="Contoh", value="!ubahstaff 499999999 tl tate", inline=False)
         helpmain.add_field(name="Tambahan", value="Hanya bisa dipake oleh Admin", inline=False)
@@ -530,7 +530,7 @@ class Helper:
     async def ubahrole(self):
         helpmain = discord.Embed(title="Bantuan Perintah (!ubahrole)", description="versi 1.4.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='!ubahrole <id_role> <judul>', value=ubahrole_textdata, inline=False)
         helpmain.add_field(name="Contoh", value="!ubahrole 564112534530031655 tate", inline=False)
         helpmain.add_field(name="Tambahan", value="Hanya bisa dipake oleh Admin", inline=False)
@@ -543,7 +543,7 @@ class Helper:
     async def tandakan(self):
         helpmain = discord.Embed(title="Bantuan Perintah (!tandakan)", description="versi 1.4.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='!tandakan <posisi> <episode> <judul>', value=tandakan_textdata, inline=False)
         helpmain.add_field(name="Contoh", value="!tandakan tl 3 tate", inline=False)
         helpmain.add_field(name='Aliases', value="!tandakan, !mark", inline=False)
@@ -555,7 +555,7 @@ class Helper:
     async def tambahutang(self):
         helpmain = discord.Embed(title="Bantuan Perintah (!tambahutang)", description="versi 1.4.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='!tambahutang', value="Jalankan dan masukan semua info dan ubah sebelum menambah ke database", inline=False)
         helpmain.add_field(name="Contoh", value="!tambahutang", inline=False)
         helpmain.add_field(name='Aliases', value="!tambahutang, !add, !tambah", inline=False)
@@ -567,7 +567,7 @@ class Helper:
     async def lupakanutang(self):
         helpmain = discord.Embed(title="Bantuan Perintah (!lupakanutang)", description="versi 1.3.5", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='!lupakanutang <judul>', value=simple_textdata, inline=False)
         helpmain.add_field(name="Contoh", value="!lupakanutang hitoribocchi", inline=False)
         helpmain.add_field(name='Aliases', value="!lupakanutang, !buangutang, !buang, !lupakan, !remove, !drop", inline=False)
@@ -579,7 +579,7 @@ class Helper:
     async def prefix(self):
         helpmain = discord.Embed(title="Bantuan Perintah (!prefix)", description="versi 1.4.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='!prefix <prefix>', value="Menambah server custom prefix baru ke server ini\nLihat custom prefix server dengan ketik `!prefix`", inline=False)
         helpmain.add_field(name='!prefix clear', value="Menghapus server custom prefix dari server ini", inline=False)
         helpmain.add_field(name='Minimum Permission', value="- Manage Server")
@@ -592,7 +592,7 @@ class Helper:
     async def info(self):
         helpmain = discord.Embed(title="Bantuan Perintah (!info)", description="versi 1.4.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='!info', value="Melihat Informasi bot ini", inline=False)
         helpmain.add_field(name="*Catatan*", value="Semua command bisa dilihat infonya dengan !help <nama command>", inline=False)
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 1.4.1")
@@ -602,7 +602,7 @@ class Helper:
     async def ping(self):
         helpmain = discord.Embed(title="Bantuan Perintah (!ping)", description="versi 1.4.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='!ping', value="Melihat cepat rambat koneksi dari server ke discord dan ke github", inline=False)
         helpmain.add_field(name="*Catatan*", value="Semua command bisa dilihat infonya dengan !help <nama command>", inline=False)
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 1.4.1")
@@ -686,7 +686,7 @@ class Helper:
         if not msg:
             helpmain = discord.Embed(title="Prefix", description="versi 1.4.1", color=0x00aaaa)
             helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-            helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+            helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
             helpmain.add_field(name='Prefix Server', value=prefix_data.get(server_message, 'Tidak ada'), inline=False)
             helpmain.add_field(name="*Catatan*", value="Semua command bisa dilihat infonya dengan !help <nama command>", inline=False)
             helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 1.4.1")
@@ -717,11 +717,14 @@ class Helper:
         await self.bot.say(send_txt.format(pre_=msg))
 
     @prefix.error
-    async def prefix_error(error, ctx):
+    async def prefix_error(self, error, ctx):
         if isinstance(error, commands.MissingPermissions):
+            server_message = str(ctx.message.server.id)
+            with open('prefixes.json') as fp:
+                prefix_data = json.load(fp)
             helpmain = discord.Embed(title="Prefix", description="versi 1.4.1", color=0x00aaaa)
             helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-            helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+            helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
             helpmain.add_field(name='Prefix Server', value=prefix_data.get(server_message, 'Tidak ada'), inline=False)
             helpmain.add_field(name="*Catatan*", value="Semua command bisa dilihat infonya dengan !help <nama command>", inline=False)
             helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 1.4.1")

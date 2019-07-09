@@ -275,7 +275,7 @@ async def reload(ctx, *, module=None):
     if not module:
         helpmain = discord.Embed(title="Reload", description="versi 1.4.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='Module/Cogs List', value="\n".join(['- ' + cl for cl in cogs_list]), inline=False)
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 1.4.1")
         return await bot.say(embed=helpmain)
@@ -315,7 +315,7 @@ async def load(ctx, *, module=None):
     if not module:
         helpmain = discord.Embed(title="Load", description="versi 1.4.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='Module/Cogs List', value="\n".join(['- ' + cl for cl in cogs_list]), inline=False)
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 1.4.1")
         return await bot.say(embed=helpmain)
@@ -354,7 +354,7 @@ async def unload(ctx, *, module=None):
     if not module:
         helpmain = discord.Embed(title="Unload", description="versi 1.4.1", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='Module/Cogs List', value="\n".join(['- ' + cl for cl in cogs_list]), inline=False)
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 1.4.1")
         return await bot.say(embed=helpmain)

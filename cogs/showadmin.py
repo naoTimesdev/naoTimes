@@ -84,7 +84,7 @@ class ShowtimesAdmin:
                 return
             helpmain = discord.Embed(title="Bantuan Perintah (!ntadmin)", description="versi 1.4.1", color=0x00aaaa)
             helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-            helpmain.set_author(name="naoTimesAdmin", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+            helpmain.set_author(name="naoTimesAdmin", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
             helpmain.add_field(name='!ntadmin', value="```Memunculkan bantuan perintah```", inline=False)
             helpmain.add_field(name='!ntadmin tambah <server id> <id admin> <progress_channel>', value="```Menambahkan server baru ke naoTimes```", inline=False)
             helpmain.add_field(name='!ntadmin hapus <server id>', value="```Menghapus server dari naoTimes```", inline=False)

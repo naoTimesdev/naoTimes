@@ -2554,7 +2554,7 @@ class Showtimes:
         if not ctx.invoked_subcommand:
             helpmain = discord.Embed(title="Bantuan Perintah (!kolaborasi)", description="versi 1.4.1", color=0x00aaaa)
             helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-            helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+            helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
             helpmain.add_field(name='!kolaborasi', value="```Memunculkan bantuan perintah```", inline=False)
             helpmain.add_field(name='!kolaborasi dengan <server_id_kolaborasi> <judul>', value="```Kolaborasi anime tertentu dengan fansub/server lain```", inline=False)
             helpmain.add_field(name='!kolaborasi konfirmasi <kode>', value="```Konfirmasi kolaborasi anime dengan kode unik```", inline=False)
