@@ -2552,7 +2552,7 @@ class Showtimes:
     @commands.group(pass_context=True, aliases=['joint', 'join', 'koleb'])
     async def kolaborasi(self, ctx):
         if not ctx.invoked_subcommand:
-            helpmain = discord.Embed(title="Bantuan Perintah (!kolaborasi)", description="versi 1.4.0", color=0x00aaaa)
+            helpmain = discord.Embed(title="Bantuan Perintah (!kolaborasi)", description="versi 1.4.1", color=0x00aaaa)
             helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
             helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
             helpmain.add_field(name='!kolaborasi', value="```Memunculkan bantuan perintah```", inline=False)
@@ -2561,7 +2561,7 @@ class Showtimes:
             helpmain.add_field(name='!kolaborasi putus <judul>', value="```Memutuskan hubungan sinkronisasi data dengan semua fansub yang diajak kolaborasi```", inline=False)
             helpmain.add_field(name='!kolaborasi batalkan <server_id_kolaborasi> <kode>', value="```Membatalkan kode konfirmasi kolaborasi dengan fansub lain```", inline=False)
             helpmain.add_field(name='Aliases', value="!kolaborasi, !joint, !join, !koleb", inline=False)
-            helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 1.4.0")
+            helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 1.4.1")
             await self.bot.say(embed=helpmain)
 
 

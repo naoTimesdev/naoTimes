@@ -13,17 +13,7 @@ import discord
 import requests
 from discord.ext import commands
 
-
-def internal_modules():
-    """Get all internal modules"""
-    modules = [
-        "showtimes",
-        "etcetera",
-        "anilist",
-        "showadmin",
-        "parser"
-    ]
-    return modules
+cogs_list = ['cogs.' + x.replace('.py', '') for x in os.listdir('cogs') if x.endswith('.py')]
 
 async def fetch_newest_db(CONFIG_DATA):
     """
@@ -48,6 +38,29 @@ async def fetch_newest_db(CONFIG_DATA):
                         continue
             except session.ClientError:
                 continue
+
+def prefixes(bot, message):
+    """
+    A modified version of discord.ext.command.when_mentioned_or
+    """
+    server = message.server
+
+    with open('prefixes.json') as f:
+        pre = json.load(f)
+    default_ = "!"
+
+    id_srv = server.id
+    pre_data = []
+    pre_ = pre_data.append(pre.get(id_srv, default_))
+    if default_ not in pre_data:
+        pre_data.append(default_)
+    if '.' not in pre_data:
+        pre_data.append('.')
+    if server is not None:
+        pre_data.append('{0.me.mention} '.format(server))
+    pre_data.append('{0.user.mention} '.format(bot))
+
+    return pre_data
 
 async def init_bot():
     """
@@ -74,8 +87,8 @@ async def init_bot():
 
     try:
         print('@@ Initiating discord.py')
-        description = '''Penyuruh Fansub biar kerja cepat\nversi 1.4.0 || Dibuat oleh: N4O#8868'''
-        bot = commands.Bot(commands.when_mentioned_or('!'), description=description)
+        description = '''Penyuruh Fansub biar kerja cepat\nversi 1.4.1 || Dibuat oleh: N4O#8868'''
+        bot = commands.Bot(command_prefix=prefixes, description=description)
         bot.remove_command('help')
         await fetch_newest_db(config)
         for load in internal_modules():
@@ -208,7 +221,7 @@ async def info():
     infog.add_field(name="Bahasa", value="Discord.py dengan Python 3.6", inline=False)
     infog.add_field(name="Fungsi", value="Menagih utang fansub (!help)", inline=False)
     infog.add_field(name="Uptime", value=create_uptime())
-    infog.set_footer(text="naoTimes versi 1.4.0 || Dibuat oleh N4O#8868", icon_url='https://p.n4o.xyz/i/nao250px.png')
+    infog.set_footer(text="naoTimes versi 1.4.1 || Dibuat oleh N4O#8868", icon_url='https://p.n4o.xyz/i/nao250px.png')
     await bot.say(embed=infog)
 
 @bot.command(pass_context=True)
@@ -220,7 +233,7 @@ async def bundir():
     try:
         await bot.say(":gun: Membunuh bot...")
         print('!!!! Memulai proses')
-        for unload in internal_modules():
+        for unload in cogs_list:
             bot.unload_extension(unload)
             print('Unloaded ' + unload + ' Modules')
         print('### Modules unloaded')
@@ -241,7 +254,7 @@ async def reinkarnasi():
     try:
         await bot.say(":sparkles: Proses Reinkarnasi Dimulai...")
         print('!!!! Memulai proses')
-        for reload_mod in internal_modules():
+        for reload_mod in cogs_list:
             bot.unload_extension(reload_mod)
             print('Unloaded ' + reload_mod + ' Modules')
         print('### Modules unloaded')
@@ -255,22 +268,30 @@ async def reinkarnasi():
 
 @bot.command(pass_context=True)
 @is_owner()
-async def reload(ctx, *, module: str):
+async def reload(ctx, *, module=None):
     """
     Restart salah satu module bot, owner only
     """
-    await bot.delete_message(ctx.message)
+    if not module:
+        helpmain = discord.Embed(title="Reload", description="versi 1.4.1", color=0x00aaaa)
+        helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
+        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.add_field(name='Module/Cogs List', value="\n".join(['- ' + cl for cl in cogs_list]), inline=False)
+        helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 1.4.1")
+        return await bot.say(embed=helpmain)
     timetext = 'Started process at'
-    rel1 = discord.Embed(title="Module", color=0x8ceeff)
+    rel1 = discord.Embed(title="Reload Module", color=0x8ceeff)
     rel1.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
     rel1.add_field(name=module, value="Status: PROCESSING", inline=False)
     rel1.set_footer(text=timetext)
     sayd = await bot.say(embed=rel1)
+    if 'cogs.' not in module:
+        module = 'cogs.' + module
     try:
         ctx.bot.unload_extension(module)
         ctx.bot.load_extension(module)
         timetext = 'Module reloaded'
-        rel2 = discord.Embed(title="Module", color=0x6ce170)
+        rel2 = discord.Embed(title="Reload Module", color=0x6ce170)
         rel2.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
         rel2.add_field(name=module, value="Status: SUCCESS", inline=False)
         rel2.set_footer(text=timetext)
@@ -278,6 +299,84 @@ async def reload(ctx, *, module: str):
     except Exception as e:
         timetext = 'Failed'
         rel3 = discord.Embed(title="Module", color=0xe73030)
+        rel3.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
+        rel3.add_field(name=module, value="Status: ERROR - {}".format(str(e)), inline=False)
+        rel3.set_footer(text=timetext)
+        await bot.edit_message(sayd, embed=rel3)
+        print(e)
+
+
+@bot.command(pass_context=True)
+@is_owner()
+async def load(ctx, *, module=None):
+    """
+    Load salah satu module bot, owner only
+    """
+    if not module:
+        helpmain = discord.Embed(title="Load", description="versi 1.4.1", color=0x00aaaa)
+        helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
+        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.add_field(name='Module/Cogs List', value="\n".join(['- ' + cl for cl in cogs_list]), inline=False)
+        helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 1.4.1")
+        return await bot.say(embed=helpmain)
+    timetext = 'Started process at'
+    rel1 = discord.Embed(title="Load Module", color=0x8ceeff)
+    rel1.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
+    rel1.add_field(name=module, value="Status: PROCESSING", inline=False)
+    rel1.set_footer(text=timetext)
+    sayd = await bot.say(embed=rel1)
+    if 'cogs.' not in module:
+        module = 'cogs.' + module
+    try:
+        ctx.bot.load_extension(module)
+        timetext = 'Module Loaded'
+        rel2 = discord.Embed(title="Load Module", color=0x6ce170)
+        rel2.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
+        rel2.add_field(name=module, value="Status: SUCCESS", inline=False)
+        rel2.set_footer(text=timetext)
+        await bot.edit_message(sayd, embed=rel2)
+    except Exception as e:
+        timetext = 'Failed'
+        rel3 = discord.Embed(title="Load Module", color=0xe73030)
+        rel3.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
+        rel3.add_field(name=module, value="Status: ERROR - {}".format(str(e)), inline=False)
+        rel3.set_footer(text=timetext)
+        await bot.edit_message(sayd, embed=rel3)
+        print(e)
+
+
+@bot.command(pass_context=True)
+@is_owner()
+async def unload(ctx, *, module=None):
+    """
+    Unload salah satu module bot, owner only
+    """
+    if not module:
+        helpmain = discord.Embed(title="Unload", description="versi 1.4.1", color=0x00aaaa)
+        helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
+        helpmain.set_author(name="naoTimes", icon_url="https://cdn.discordapp.com/avatars/558256913926848537/3ea22efbc3100ba9a68ee19ef931b7bc.webp?size=1024")
+        helpmain.add_field(name='Module/Cogs List', value="\n".join(['- ' + cl for cl in cogs_list]), inline=False)
+        helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 1.4.1")
+        return await bot.say(embed=helpmain)
+    timetext = 'Started process at'
+    rel1 = discord.Embed(title="Unload Module", color=0x8ceeff)
+    rel1.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
+    rel1.add_field(name=module, value="Status: PROCESSING", inline=False)
+    rel1.set_footer(text=timetext)
+    sayd = await bot.say(embed=rel1)
+    if 'cogs.' not in module:
+        module = 'cogs.' + module
+    try:
+        ctx.bot.unload_extension(module)
+        timetext = 'Module unloaded'
+        rel2 = discord.Embed(title="Unload Module", color=0x6ce170)
+        rel2.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
+        rel2.add_field(name=module, value="Status: SUCCESS", inline=False)
+        rel2.set_footer(text=timetext)
+        await bot.edit_message(sayd, embed=rel2)
+    except Exception as e:
+        timetext = 'Failed'
+        rel3 = discord.Embed(title="Unload Module", color=0xe73030)
         rel3.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
         rel3.add_field(name=module, value="Status: ERROR - {}".format(str(e)), inline=False)
         rel3.set_footer(text=timetext)

@@ -312,8 +312,14 @@ async def query_take_first_result(query):
     soup_data = BS4(response, 'html.parser')
     first_query = soup_data.find('div', attrs={'class': 'date-posts'})
 
+    if not first_query:
+        return None, None, None
+
     # Query results
     query_title = first_query.find('h3', attrs={'class': 'post-title entry-title'}).text.strip()
+
+    if not query_title:
+        return None, None, None
 
     content_data = str(first_query.find('div', attrs={'class': 'post-body entry-content'}))
     n_from = content_data.find('評価:')
