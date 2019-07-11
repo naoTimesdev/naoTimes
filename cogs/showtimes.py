@@ -719,7 +719,7 @@ class Showtimes:
                         embed = discord.Embed(title="{}".format(matches[0]), color=0x1eb5a6)
                         embed.add_field(name='Rilis!', value=embed_text_data, inline=False)
                         embed.set_footer(text="Pada: {}".format(get_current_time()))
-                        return await self.bot.send_message(target_chan, embed=embed)
+                        await self.bot.send_message(target_chan, embed=embed)
             if 'announce_channel' in server_data:
                 announce_chan = server_data['announce_channel']
                 target_chan = discord.Object(announce_chan)
