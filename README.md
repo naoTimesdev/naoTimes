@@ -15,7 +15,8 @@
 <p align="center">:warning: <b>Laporkan kesalahan di <a href="https://github.com/noaione/naoTimes/issues">Issues</a></b> :warning:</p>
 
 ## Informasi
-Versi rewrite, bot akan direwrite yang akan menggunakan discord.py versi terbaru
+Versi rewrite, bot dalam proses rewrite dan akan menggunakan discord.py versi terbaru
+
 Fitur tambahan (Rencana):
 - RSS (Untuk rilisan)
 
