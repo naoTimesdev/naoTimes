@@ -474,7 +474,7 @@ class WebParser(commands.Cog):
         await ctx.send('**{user}** aku memilih: **{res}**'.format(user=ctx.message.author.name, res=result.strip()))
 
 
-    @commands.command(pass_context=True, aliases=['fastsub', 'gtlsub'])
+    @commands.command(aliases=['fastsub', 'gtlsub'])
     async def speedsub(self, ctx, targetlang='id'):
         print('@@ Running speedsub command')
         channel = ctx.message.channel
@@ -529,7 +529,7 @@ class WebParser(commands.Cog):
         os.remove(output_file) # Translated subtitle
 
 
-    @commands.command(pass_context=True)
+    @commands.command()
     async def kbbi(self, ctx, * q_kbbi):
         print('@@ Running kbbi command')
         q_kbbi = " ".join(q_kbbi)

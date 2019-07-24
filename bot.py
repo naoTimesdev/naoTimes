@@ -49,7 +49,7 @@ def prefixes(bot, message):
         pre = json.load(f)
     default_ = "!!"
 
-    id_srv = server.id
+    id_srv = str(server.id)
     pre_data = []
     pre_ = pre_data.append(pre.get(id_srv, default_))
     if default_ not in pre_data:
