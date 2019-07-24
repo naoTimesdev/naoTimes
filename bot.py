@@ -201,7 +201,7 @@ async def ping(ctx):
         await channel.send(embed=pingbed)
 
 @bot.command()
-async def info():
+async def info(ctx):
     """
     Melihat Informasi bot
     """
