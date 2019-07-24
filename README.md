@@ -1,7 +1,7 @@
 <h1 align="center">
     naoTimes
 </h1>
-<p align="center"><b>versi 1.4.1</b><br>Bot berbahasa Indonesia untuk membantu tracking garapan fansubber.</p>
+<p align="center"><b>versi 2.0.0</b><br>Bot berbahasa Indonesia untuk membantu tracking garapan fansubber.</p>
 <p align="center">Prefix: <b>!</b><br/>Bantuan: <b>!help</b></p>
 
 <p align="center">
@@ -13,6 +13,11 @@
 </p>
 
 <p align="center">:warning: <b>Laporkan kesalahan di <a href="https://github.com/noaione/naoTimes/issues">Issues</a></b> :warning:</p>
+
+## Informasi
+Versi rewrite, bot akan direwrite yang akan menggunakan discord.py versi terbaru
+Fitur tambahan (Rencana):
+- RSS (Untuk rilisan)
 
 ## Invite bot
 Males setup sendiri? Mau simple dan cepet?
@@ -28,7 +33,7 @@ Admin ID:
 
 ## Requirements
 - Python 3.6+ (Diusahakan jangan Python 3.7)
-- Discord.py (Async version)
+- Discord.py
 - BeautifulSoup4
 - aiohttp>=3.4.2
 - kbbi

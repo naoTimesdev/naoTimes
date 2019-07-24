@@ -2,3 +2,6 @@ __pycache__
 *.json
 *.bat
 *.log
+
+# Enviroment
+discordpy

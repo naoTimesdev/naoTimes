@@ -4,6 +4,7 @@
 import asyncio
 import json
 import os
+import random
 import re
 import uuid
 
@@ -374,37 +375,104 @@ async def chunked_translate(sub_data, number, target_lang, untranslated, mode='.
     return sub_data, untranslated
 
 
-class WebParser:
+async def post_requests(url, data):
+    async with aiohttp.ClientSession() as sesi:
+        async with sesi.post(url, data=data) as resp:
+            response = await resp.json()
+    return response
+
+class WebParser(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    async def __error(self, ctx, error):
-        if not isinstance(error, commands.UserInputError):
-            raise error
+    @commands.command(aliases=["safelink"])
+    async def pengaman(self, ctx, *, url_text):
+        """
+        Safelinking never been more safe before :)
+        """
+        server_message = str(ctx.message.guild.id)
+        print('Requested !safelink at: ' + server_message)
+        await ctx.message.delete()
+        msg = await ctx.send('Mengamankan tautan...')
 
-        try:
-            await ctx.send(error)
-        except discord.Forbidden:
-            pass
+        regex_validator = re.compile(
+                r'^(?:http|ftp)s?://' # http:// or https://
+                r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|' #domain...
+                r'localhost|' #localhost...
+                r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})' # ...or ip
+                r'(?::\d+)?' # optional port
+                r'(?:/?|[/?]\S+)$', re.IGNORECASE)
+        if re.match(regex_validator, url_text) is None:
+            return await ctx.send('Mohon gunakan format alamat tautan yang valid (gunakan `http://` atau `https://`)')
+        
+        post_response = await post_requests('https://meme.n4o.xyz/api/v1/safelink', {"secure": url_text})
+        await msg.delete()
 
-    @commands.command(pass_context=True)
+        await ctx.send('Tautan berhasil diamankan:\n<{l}>'.format(l=post_response['uri']))
+
+
+    @commands.command(aliases=["shorten"])
+    async def pemendek(self, ctx, *, url_text):
+        """
+        Shortening never be more eazy before :)
+        """
+        server_message = str(ctx.message.guild.id)
+        print('Requested !pemendek at: ' + server_message)
+        await ctx.message.delete()
+        msg = await ctx.send('Memendekan tautan...')
+
+        regex_validator = re.compile(
+                r'^(?:http|ftp)s?://' # http:// or https://
+                r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|' #domain...
+                r'localhost|' #localhost...
+                r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})' # ...or ip
+                r'(?::\d+)?' # optional port
+                r'(?:/?|[/?]\S+)$', re.IGNORECASE)
+        if re.match(regex_validator, url_text) is None:
+            return await ctx.send('Mohon gunakan format alamat tautan yang valid (gunakan `http://` atau `https://`)')
+        
+        post_response = await post_requests('https://meme.n4o.xyz/api/v1/shorten', {"shorten": url_text})
+        await msg.delete()
+
+        await ctx.send('Tautan berhasil dipendekan:\n<{l}>'.format(l=post_response['uri']))
+
+
+    @commands.command()
     async def anibin(self, ctx, *, query):
         """
         Mencari native resolution dari sebuah anime di anibin
         """
-        server_message = str(ctx.message.server.id)
+        server_message = str(ctx.message.guild.id)
         print('Requested !anibin at: ' + server_message)
 
         search_title, search_native, search_studio = await query_take_first_result(query)
 
         if not search_title:
-            return await self.bot.say('Tidak dapat menemukan anime yang diberikan, mohon gunakan kanji jika belum.')
+            return await ctx.send('Tidak dapat menemukan anime yang diberikan, mohon gunakan kanji jika belum.')
 
         embed = discord.Embed(title="Anibin Native Resolution", color=0xffae00)
         embed.add_field(name=search_title, value=search_native, inline=False)
-        #embed.add_field(name=last_text, value=last_status, inline=False)
         embed.set_footer(text="Studio Animasi: {}".format(search_studio))
-        await self.bot.say(embed=embed)
+        await ctx.send(embed=embed)
+
+
+    @commands.command()
+    async def pilih(self, ctx, *, input_data):
+        server_message = str(ctx.message.guild.id)
+        print('Requested !pilih at: ' + server_message)
+
+        inp_d = input_data.split(',')
+
+        if not inp_d:
+            return await ctx.send('Tidak ada input untuk dipilih\nGunakan `,` sebagai pemisah.')
+
+        if len(inp_d) < 2:
+            return await ctx.send('Hanya ada 1 input untuk dipilih\nGunakan `,` sebagai pemisah.')
+
+        result = random.choice(inp_d)
+
+        await ctx.send('**{user}** aku memilih: **{res}**'.format(user=ctx.message.author.name, res=result.strip()))
+
 
     @commands.command(pass_context=True, aliases=['fastsub', 'gtlsub'])
     async def speedsub(self, ctx, targetlang='id'):
@@ -413,20 +481,20 @@ class WebParser:
         DICT_LANG = dict(LANGUAGES_LIST)
 
         if targetlang not in DICT_LANG:
-            return await self.bot.say('Tidak dapat menemukan bahasa tersebut\nSilakan cari informasinya di ISO 639-1')
+            return await ctx.send('Tidak dapat menemukan bahasa tersebut\nSilakan cari informasinya di ISO 639-1')
 
         if not ctx.message.attachments:
-            return await self.bot.say('Mohon attach file subtitle lalu jalankan dengan `!speedsub`\nSubtitle yang didukung adalah: .ass dan .srt')
+            return await ctx.send('Mohon attach file subtitle lalu jalankan dengan `!speedsub`\nSubtitle yang didukung adalah: .ass dan .srt')
         attachment = ctx.message.attachments[0]
         uri = attachment['url']
         filename = attachment['filename']
         ext_ = filename[filename.rfind('.'):]
 
         if ext_ not in ['.ass', '.srt']:
-            await self.bot.delete_message(ctx.message)
-            return await self.bot.say('Mohon attach file subtitle lalu jalankan dengan `!speedsub`\nSubtitle yang didukung adalah: .ass dan .srt')
+            await ctx.message.delete()
+            return await ctx.send('Mohon attach file subtitle lalu jalankan dengan `!speedsub`\nSubtitle yang didukung adalah: .ass dan .srt')
 
-        await self.bot.say('Memproses `{fn}`...\nTarget alihbahasa: **{t}**'.format(fn=filename, t=DICT_LANG[targetlang]))
+        await ctx.send('Memproses `{fn}`...\nTarget alihbahasa: **{t}**'.format(fn=filename, t=DICT_LANG[targetlang]))
         # Start downloading .json file
         print('@@ Downloading file')
         async with aiohttp.ClientSession() as sesi:
@@ -434,7 +502,7 @@ class WebParser:
                 data = await resp.text()
                 with open(filename, 'w') as f:
                     f.write(data)
-                await self.bot.delete_message(ctx.message)
+                await ctx.message.delete()
 
         parsed_sub = pysubs2.load(filename)
         n_sub = range(len(parsed_sub))
@@ -455,10 +523,11 @@ class WebParser:
         if untrans != 0:
             subtitle += '\nSebanyak **{}/{}** baris tidak dialihbahasakan'.format(untrans, len(n_sub))
         print('@@ Sending translated subtitle')
-        await self.bot.send_file(channel, output_file, content=subtitle)
+        await channel.send(file=output_file, content=subtitle)
         print('@@ Cleanup')
         os.remove(filename) # Original subtitle
         os.remove(output_file) # Translated subtitle
+
 
     @commands.command(pass_context=True)
     async def kbbi(self, ctx, * q_kbbi):
@@ -469,7 +538,7 @@ class WebParser:
             cari_kata = KBBI(q_kbbi)
         except KBBI.TidakDitemukan:
             print('@@ No results.')
-            return await self.bot.say('Tidak dapat menemukan kata tersebut di KBBI')
+            return await ctx.send('Tidak dapat menemukan kata tersebut di KBBI')
 
         json_d = cari_kata.serialisasi()[q_kbbi]
         dataset = []
@@ -525,7 +594,7 @@ class WebParser:
                 embed.add_field(name='Bentuk tak baku',
                     value="Tidak ada" if not datap['takbaku'] else datap['takbaku'],
                     inline=False)
-                msg = await self.bot.say(embed=embed)
+                msg = await ctx.send(embed=embed)
                 first_run = False
 
             if dataset_total < 2:
@@ -538,50 +607,54 @@ class WebParser:
                 to_react = ['⏪', '⏩', '✅']
 
             for react in to_react:
-                await self.bot.add_reaction(msg, react)
+                await msg.add_reaction(react)
 
             def check_react(reaction, user):
                 e = str(reaction.emoji)
-                return e.startswith(tuple(to_react))
+                return user == ctx.message.author and str(reaction.emoji) in to_react
 
-            res = await self.bot.wait_for_reaction(message=msg, user=ctx.message.author, timeout=20, check=check_react)
-            
-            if res is None:
-                return await self.bot.clear_reactions(msg)
-            elif '✅' in str(res.reaction.emoji):
-                return await self.bot.clear_reactions(msg)
-            elif '⏪' in str(res.reaction.emoji):
-                await self.bot.clear_reactions(msg)
-                pos -= 1
-                datap = dataset[pos - 1]
-                embed=discord.Embed(title="KBBI: {}".format(q_kbbi), color=0x81e28d)
-                embed.add_field(name=datap['nama'], value=datap['makna'], inline=False)
-                embed.add_field(name='Contoh',
-                    value="Tidak ada" if not datap['contoh'] else datap['contoh'],
-                    inline=False)
-                embed.add_field(name='Kata Dasar',
-                    value="Tidak ada" if not datap['kata_dasar'] else datap['kata_dasar'],
-                    inline=False)
-                embed.add_field(name='Bentuk tak baku',
-                    value="Tidak ada" if not datap['takbaku'] else datap['takbaku'],
-                    inline=False)
-                msg = await self.bot.edit_message(msg, embed=embed)
-            elif '⏩' in str(res.reaction.emoji):
-                await self.bot.clear_reactions(msg)
-                pos += 1
-                datap = dataset[pos - 1]
-                embed=discord.Embed(title="KBBI: {}".format(q_kbbi), color=0x81e28d)
-                embed.add_field(name=datap['nama'], value=datap['makna'], inline=False)
-                embed.add_field(name='Contoh',
-                    value="Tidak ada" if not datap['contoh'] else datap['contoh'],
-                    inline=False)
-                embed.add_field(name='Kata Dasar',
-                    value="Tidak ada" if not datap['kata_dasar'] else datap['kata_dasar'],
-                    inline=False)
-                embed.add_field(name='Bentuk tak baku',
-                    value="Tidak ada" if not datap['takbaku'] else datap['takbaku'],
-                    inline=False)
-                msg = await self.bot.edit_message(msg, embed=embed)
+            try:
+                res, user = await ctx.wait_for('reaction_add', timeout=20.0, check=check_react)
+            except asyncio.TimeoutError:
+                return await msg.clear_reactions()
+            else:
+                if user != ctx.message.author:
+                    pass
+                elif '✅' in str(res.reaction.emoji):
+                    return await msg.clear_reactions()
+                elif '⏪' in str(res.reaction.emoji):
+                    await msg.clear_reactions()
+                    pos -= 1
+                    datap = dataset[pos - 1]
+                    embed=discord.Embed(title="KBBI: {}".format(q_kbbi), color=0x81e28d)
+                    embed.add_field(name=datap['nama'], value=datap['makna'], inline=False)
+                    embed.add_field(name='Contoh',
+                        value="Tidak ada" if not datap['contoh'] else datap['contoh'],
+                        inline=False)
+                    embed.add_field(name='Kata Dasar',
+                        value="Tidak ada" if not datap['kata_dasar'] else datap['kata_dasar'],
+                        inline=False)
+                    embed.add_field(name='Bentuk tak baku',
+                        value="Tidak ada" if not datap['takbaku'] else datap['takbaku'],
+                        inline=False)
+                    msg = await msg.edit(embed=embed)
+                elif '⏩' in str(res.reaction.emoji):
+                    await msg.clear_reactions()
+                    pos += 1
+                    datap = dataset[pos - 1]
+                    embed=discord.Embed(title="KBBI: {}".format(q_kbbi), color=0x81e28d)
+                    embed.add_field(name=datap['nama'], value=datap['makna'], inline=False)
+                    embed.add_field(name='Contoh',
+                        value="Tidak ada" if not datap['contoh'] else datap['contoh'],
+                        inline=False)
+                    embed.add_field(name='Kata Dasar',
+                        value="Tidak ada" if not datap['kata_dasar'] else datap['kata_dasar'],
+                        inline=False)
+                    embed.add_field(name='Bentuk tak baku',
+                        value="Tidak ada" if not datap['takbaku'] else datap['takbaku'],
+                        inline=False)
+                    msg = await msg.edit(embed=embed)
+
 
 def setup(bot):
     bot.add_cog(WebParser(bot))

@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# -*- coding: utf-8  -*-
 #!/usr/bin/env python3
 
 import json
@@ -43,11 +43,11 @@ def prefixes(bot, message):
     """
     A modified version of discord.ext.command.when_mentioned_or
     """
-    server = message.server
+    server = message.guild
 
     with open('prefixes.json') as f:
         pre = json.load(f)
-    default_ = "!"
+    default_ = "!!"
 
     id_srv = server.id
     pre_data = []
@@ -56,9 +56,7 @@ def prefixes(bot, message):
         pre_data.append(default_)
     if '.' not in pre_data:
         pre_data.append('.')
-    if server is not None:
-        pre_data.append('{0.me.mention} '.format(server))
-    pre_data.append('{0.user.mention} '.format(bot))
+    pre_data = [bot.user.mention + ' ', '<@!%s> ' % bot.user.id] + pre_data
 
     return pre_data
 
@@ -87,11 +85,11 @@ async def init_bot():
 
     try:
         print('@@ Initiating discord.py')
-        description = '''Penyuruh Fansub biar kerja cepat\nversi 1.4.1 || Dibuat oleh: N4O#8868'''
+        description = '''Penyuruh Fansub biar kerja cepat\nversi 2.0.0 || Dibuat oleh: N4O#8868'''
         bot = commands.Bot(command_prefix=prefixes, description=description)
         bot.remove_command('help')
         await fetch_newest_db(config)
-        for load in internal_modules():
+        for load in cogs_list:
             bot.load_extension(load)
             print('Loaded ' + load + ' Modules')
         print('### Success Loading Discord.py ###')
@@ -110,18 +108,13 @@ async def on_ready():
     """Bot loaded here"""
     print('Connected to discord.')
     presence = 'Mengamati rilisan fansub | !help'
-    await bot.change_presence(game=discord.Game(name=presence))
+    activity = discord.Game(name=presence, type=3)
+    await bot.change_presence(activity=activity)
     print('---------------------------------------------------------------')
     print('Logged in as:')
-    print('Bot name: ' + bot.user.name)
-    print('With Client ID: ' + bot.user.id)
+    print('Bot name: {}'.format(bot.user.name))
+    print('With Client ID: {}'.format(bot.user.id))
     print('---------------------------------------------------------------')
-
-def is_owner():
-    """Check if owner"""
-    def predicate(ctx):
-        return int(ctx.message.author.id) == int(bot_config['owner_id'])
-    return commands.check(predicate)
 
 async def other_ping_test():
     """Github and anilist ping test"""
@@ -180,7 +173,7 @@ def create_uptime():
 
     return return_text + '{} minggu {} hari {} jam {} menit {} detik'.format(up_weeks, up_days, up_hours, up_minutes, up_secs)
 
-@bot.command(pass_context=True)
+@bot.command()
 async def ping(ctx):
     """
     pong!
@@ -192,22 +185,22 @@ async def ping(ctx):
 
     print('Menjalankan tes ping discord')
     t1 = time.time()
-    await bot.send_typing(channel)
-    t2 = time.time()
-    print('Selesai')
+    async with channel.typing():
+        t2 = time.time()
+        print('Selesai')
 
-    print('Menghitung hasil')
-    dis_test = round((t2-t1)*1000)
+        print('Menghitung hasil')
+        dis_test = round((t2-t1)*1000)
 
-    pingbed = discord.Embed(title="Ping Test", color=0xffffff)
-    pingbed.set_thumbnail(url="https://emojipedia-us.s3.dualstack.us-west-1.amazonaws.com/thumbs/240/twitter/180/satellite-antenna_1f4e1.png")
-    pingbed.add_field(name='Discord', value='{}ms'.format(dis_test), inline=False)
-    pingbed.add_field(name='GitHub', value='{}ms'.format(other_test['github']), inline=False)
-    pingbed.add_field(name='Anilist.co', value='{}ms'.format(other_test['anilist']), inline=False)
-    pingbed.set_footer(text="Tested using \"sophisticated\" ping method ")
-    await bot.say(embed=pingbed)
+        pingbed = discord.Embed(title="Ping Test", color=0xffffff)
+        pingbed.set_thumbnail(url="https://emojipedia-us.s3.dualstack.us-west-1.amazonaws.com/thumbs/240/twitter/180/satellite-antenna_1f4e1.png")
+        pingbed.add_field(name='Discord', value='{}ms'.format(dis_test), inline=False)
+        pingbed.add_field(name='GitHub', value='{}ms'.format(other_test['github']), inline=False)
+        pingbed.add_field(name='Anilist.co', value='{}ms'.format(other_test['anilist']), inline=False)
+        pingbed.set_footer(text="Tested using \"sophisticated\" ping method ")
+        await channel.send(embed=pingbed)
 
-@bot.command(pass_context=True)
+@bot.command()
 async def info():
     """
     Melihat Informasi bot
@@ -221,17 +214,17 @@ async def info():
     infog.add_field(name="Bahasa", value="Discord.py dengan Python 3.6", inline=False)
     infog.add_field(name="Fungsi", value="Menagih utang fansub (!help)", inline=False)
     infog.add_field(name="Uptime", value=create_uptime())
-    infog.set_footer(text="naoTimes versi 1.4.1 || Dibuat oleh N4O#8868", icon_url='https://p.n4o.xyz/i/nao250px.png')
-    await bot.say(embed=infog)
+    infog.set_footer(text="naoTimes versi 2.0.0 || Dibuat oleh N4O#8868", icon_url='https://p.n4o.xyz/i/nao250px.png')
+    await ctx.send(embed=infog)
 
-@bot.command(pass_context=True)
-@is_owner()
-async def bundir():
+@bot.command()
+@commands.is_owner()
+async def bundir(ctx):
     """
     Mematikan bot, owner only
     """
     try:
-        await bot.say(":gun: Membunuh bot...")
+        await ctx.send(":gun: Membunuh bot...")
         print('!!!! Memulai proses')
         for unload in cogs_list:
             bot.unload_extension(unload)
@@ -240,19 +233,21 @@ async def bundir():
         await bot.logout()
         await bot.close()
         async_loop.close()
+        #res = requests.patch('https://api.heroku.com/apps/nao-times/formation/f8aa4e6a-7189-4cf5-8829-b031574e2cef', data={"quantity": 0, "size": "Free"}, headers={'Accept': 'application/vnd.heroku+json; version=3', 'Authorization': 'Bearer 9ab0ac6e-cb20-4610-8cc1-cec4a75f53da'})
+        #print(res.text)
         print('### Connection closed')
         exit(0)
-    except commands.CheckFailure:
-        await bot.say("Kamu tidak bisa menjalankan perintah ini\n**Alasan:** Bukan Owner Bot")
+    except commands.NotOwner:
+        await ctx.send("Kamu tidak bisa menjalankan perintah ini\n**Alasan:** Bukan Owner Bot")
 
-@bot.command(pass_context=True)
-@is_owner()
-async def reinkarnasi():
+@bot.command()
+@commands.is_owner()
+async def reinkarnasi(ctx):
     """
     Mematikan lalu menghidupkan bot, owner only
     """
     try:
-        await bot.say(":sparkles: Proses Reinkarnasi Dimulai...")
+        await ctx.send(":sparkles: Proses Reinkarnasi Dimulai...")
         print('!!!! Memulai proses')
         for reload_mod in cogs_list:
             bot.unload_extension(reload_mod)
@@ -263,125 +258,130 @@ async def reinkarnasi():
         print('### Connection closed')
         async_loop.close()
         os.execv(sys.executable, ['python'] + sys.argv)
-    except commands.CheckFailure:
-        await bot.say("Kamu tidak bisa menjalankan perintah ini\n**Alasan:** Bukan Owner Bot")
+    except commands.NotOwner:
+        await ctx.send("Kamu tidak bisa menjalankan perintah ini\n**Alasan:** Bukan Owner Bot")
 
-@bot.command(pass_context=True)
-@is_owner()
+@bot.command()
+@commands.is_owner()
 async def reload(ctx, *, module=None):
     """
     Restart salah satu module bot, owner only
     """
     if not module:
-        helpmain = discord.Embed(title="Reload", description="versi 1.4.1", color=0x00aaaa)
+        helpmain = discord.Embed(title="Reload", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
         helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='Module/Cogs List', value="\n".join(['- ' + cl for cl in cogs_list]), inline=False)
-        helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 1.4.1")
-        return await bot.say(embed=helpmain)
+        helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
+        return await ctx.send(embed=helpmain)
     timetext = 'Started process at'
     rel1 = discord.Embed(title="Reload Module", color=0x8ceeff)
     rel1.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
     rel1.add_field(name=module, value="Status: PROCESSING", inline=False)
     rel1.set_footer(text=timetext)
-    sayd = await bot.say(embed=rel1)
+    sayd = await ctx.send(embed=rel1)
     if 'cogs.' not in module:
         module = 'cogs.' + module
     try:
-        ctx.bot.unload_extension(module)
-        ctx.bot.load_extension(module)
+        bot.unload_extension(module)
+        bot.load_extension(module)
         timetext = 'Module reloaded'
         rel2 = discord.Embed(title="Reload Module", color=0x6ce170)
         rel2.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
         rel2.add_field(name=module, value="Status: SUCCESS", inline=False)
         rel2.set_footer(text=timetext)
-        await bot.edit_message(sayd, embed=rel2)
+        await sayd.edit(embed=rel2)
     except Exception as e:
         timetext = 'Failed'
         rel3 = discord.Embed(title="Module", color=0xe73030)
         rel3.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
         rel3.add_field(name=module, value="Status: ERROR - {}".format(str(e)), inline=False)
         rel3.set_footer(text=timetext)
-        await bot.edit_message(sayd, embed=rel3)
+        await sayd.edit(embed=rel3)
         print(e)
 
 
-@bot.command(pass_context=True)
-@is_owner()
+@bot.command()
+@commands.is_owner()
 async def load(ctx, *, module=None):
     """
     Load salah satu module bot, owner only
     """
     if not module:
-        helpmain = discord.Embed(title="Load", description="versi 1.4.1", color=0x00aaaa)
+        helpmain = discord.Embed(title="Load", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
         helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='Module/Cogs List', value="\n".join(['- ' + cl for cl in cogs_list]), inline=False)
-        helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 1.4.1")
-        return await bot.say(embed=helpmain)
+        helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
+        return await ctx.send(embed=helpmain)
     timetext = 'Started process at'
     rel1 = discord.Embed(title="Load Module", color=0x8ceeff)
     rel1.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
     rel1.add_field(name=module, value="Status: PROCESSING", inline=False)
     rel1.set_footer(text=timetext)
-    sayd = await bot.say(embed=rel1)
+    sayd = await ctx.send(embed=rel1)
     if 'cogs.' not in module:
         module = 'cogs.' + module
     try:
-        ctx.bot.load_extension(module)
+        bot.load_extension(module)
         timetext = 'Module Loaded'
         rel2 = discord.Embed(title="Load Module", color=0x6ce170)
         rel2.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
         rel2.add_field(name=module, value="Status: SUCCESS", inline=False)
         rel2.set_footer(text=timetext)
-        await bot.edit_message(sayd, embed=rel2)
+        await sayd.edit(embed=rel2)
     except Exception as e:
         timetext = 'Failed'
         rel3 = discord.Embed(title="Load Module", color=0xe73030)
         rel3.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
         rel3.add_field(name=module, value="Status: ERROR - {}".format(str(e)), inline=False)
         rel3.set_footer(text=timetext)
-        await bot.edit_message(sayd, embed=rel3)
+        await sayd.edit(embed=rel3)
         print(e)
 
 
-@bot.command(pass_context=True)
-@is_owner()
+@bot.command()
+@commands.is_owner()
 async def unload(ctx, *, module=None):
     """
     Unload salah satu module bot, owner only
     """
     if not module:
-        helpmain = discord.Embed(title="Unload", description="versi 1.4.1", color=0x00aaaa)
+        helpmain = discord.Embed(title="Unload", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
         helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(name='Module/Cogs List', value="\n".join(['- ' + cl for cl in cogs_list]), inline=False)
-        helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 1.4.1")
-        return await bot.say(embed=helpmain)
+        helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
+        return await ctx.send(embed=helpmain)
     timetext = 'Started process at'
     rel1 = discord.Embed(title="Unload Module", color=0x8ceeff)
     rel1.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
     rel1.add_field(name=module, value="Status: PROCESSING", inline=False)
     rel1.set_footer(text=timetext)
-    sayd = await bot.say(embed=rel1)
+    sayd = await ctx.send(embed=rel1)
     if 'cogs.' not in module:
         module = 'cogs.' + module
     try:
-        ctx.bot.unload_extension(module)
+        bot.unload_extension(module)
         timetext = 'Module unloaded'
         rel2 = discord.Embed(title="Unload Module", color=0x6ce170)
         rel2.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
         rel2.add_field(name=module, value="Status: SUCCESS", inline=False)
         rel2.set_footer(text=timetext)
-        await bot.edit_message(sayd, embed=rel2)
+        await sayd.edit(embed=rel2)
     except Exception as e:
         timetext = 'Failed'
         rel3 = discord.Embed(title="Unload Module", color=0xe73030)
         rel3.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
         rel3.add_field(name=module, value="Status: ERROR - {}".format(str(e)), inline=False)
         rel3.set_footer(text=timetext)
-        await bot.edit_message(sayd, embed=rel3)
+        await sayd.edit(embed=rel3)
         print(e)
 
+try:
+    bot.run(bot_config['bot_token'], bot=True, reconnect=True)
+except KeyboardInterrupt:
+    bot.logout()
+finally:
+    bot.close()
 
-bot.run(bot_config['bot_token'])
