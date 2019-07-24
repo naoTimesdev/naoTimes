@@ -614,46 +614,45 @@ class WebParser(commands.Cog):
                 return user == ctx.message.author and str(reaction.emoji) in to_react
 
             try:
-                res, user = await ctx.wait_for('reaction_add', timeout=20.0, check=check_react)
+                res, user = await self.bot.wait_for('reaction_add', timeout=20.0, check=check_react)
             except asyncio.TimeoutError:
                 return await msg.clear_reactions()
-            else:
-                if user != ctx.message.author:
-                    pass
-                elif '✅' in str(res.reaction.emoji):
-                    return await msg.clear_reactions()
-                elif '⏪' in str(res.reaction.emoji):
-                    await msg.clear_reactions()
-                    pos -= 1
-                    datap = dataset[pos - 1]
-                    embed=discord.Embed(title="KBBI: {}".format(q_kbbi), color=0x81e28d)
-                    embed.add_field(name=datap['nama'], value=datap['makna'], inline=False)
-                    embed.add_field(name='Contoh',
-                        value="Tidak ada" if not datap['contoh'] else datap['contoh'],
-                        inline=False)
-                    embed.add_field(name='Kata Dasar',
-                        value="Tidak ada" if not datap['kata_dasar'] else datap['kata_dasar'],
-                        inline=False)
-                    embed.add_field(name='Bentuk tak baku',
-                        value="Tidak ada" if not datap['takbaku'] else datap['takbaku'],
-                        inline=False)
-                    msg = await msg.edit(embed=embed)
-                elif '⏩' in str(res.reaction.emoji):
-                    await msg.clear_reactions()
-                    pos += 1
-                    datap = dataset[pos - 1]
-                    embed=discord.Embed(title="KBBI: {}".format(q_kbbi), color=0x81e28d)
-                    embed.add_field(name=datap['nama'], value=datap['makna'], inline=False)
-                    embed.add_field(name='Contoh',
-                        value="Tidak ada" if not datap['contoh'] else datap['contoh'],
-                        inline=False)
-                    embed.add_field(name='Kata Dasar',
-                        value="Tidak ada" if not datap['kata_dasar'] else datap['kata_dasar'],
-                        inline=False)
-                    embed.add_field(name='Bentuk tak baku',
-                        value="Tidak ada" if not datap['takbaku'] else datap['takbaku'],
-                        inline=False)
-                    msg = await msg.edit(embed=embed)
+            if user != ctx.message.author:
+                pass
+            elif '✅' in str(res.emoji):
+                return await msg.clear_reactions()
+            elif '⏪' in str(res.emoji):
+                await msg.clear_reactions()
+                pos -= 1
+                datap = dataset[pos - 1]
+                embed=discord.Embed(title="KBBI: {}".format(q_kbbi), color=0x81e28d)
+                embed.add_field(name=datap['nama'], value=datap['makna'], inline=False)
+                embed.add_field(name='Contoh',
+                    value="Tidak ada" if not datap['contoh'] else datap['contoh'],
+                    inline=False)
+                embed.add_field(name='Kata Dasar',
+                    value="Tidak ada" if not datap['kata_dasar'] else datap['kata_dasar'],
+                    inline=False)
+                embed.add_field(name='Bentuk tak baku',
+                    value="Tidak ada" if not datap['takbaku'] else datap['takbaku'],
+                    inline=False)
+                await msg.edit(embed=embed)
+            elif '⏩' in str(res.emoji):
+                await msg.clear_reactions()
+                pos += 1
+                datap = dataset[pos - 1]
+                embed=discord.Embed(title="KBBI: {}".format(q_kbbi), color=0x81e28d)
+                embed.add_field(name=datap['nama'], value=datap['makna'], inline=False)
+                embed.add_field(name='Contoh',
+                    value="Tidak ada" if not datap['contoh'] else datap['contoh'],
+                    inline=False)
+                embed.add_field(name='Kata Dasar',
+                    value="Tidak ada" if not datap['kata_dasar'] else datap['kata_dasar'],
+                    inline=False)
+                embed.add_field(name='Bentuk tak baku',
+                    value="Tidak ada" if not datap['takbaku'] else datap['takbaku'],
+                    inline=False)
+                await msg.edit(embed=embed)
 
 
 def setup(bot):

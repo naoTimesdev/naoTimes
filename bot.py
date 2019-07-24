@@ -274,6 +274,7 @@ async def reload(ctx, *, module=None):
         helpmain.add_field(name='Module/Cogs List', value="\n".join(['- ' + cl for cl in cogs_list]), inline=False)
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         return await ctx.send(embed=helpmain)
+    print('Reloading module')
     timetext = 'Started process at'
     rel1 = discord.Embed(title="Reload Module", color=0x8ceeff)
     rel1.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
@@ -314,6 +315,7 @@ async def load(ctx, *, module=None):
         helpmain.add_field(name='Module/Cogs List', value="\n".join(['- ' + cl for cl in cogs_list]), inline=False)
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         return await ctx.send(embed=helpmain)
+    print('Loading module')
     timetext = 'Started process at'
     rel1 = discord.Embed(title="Load Module", color=0x8ceeff)
     rel1.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
@@ -353,6 +355,7 @@ async def unload(ctx, *, module=None):
         helpmain.add_field(name='Module/Cogs List', value="\n".join(['- ' + cl for cl in cogs_list]), inline=False)
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         return await ctx.send(embed=helpmain)
+    print('Unloading module')
     timetext = 'Started process at'
     rel1 = discord.Embed(title="Unload Module", color=0x8ceeff)
     rel1.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
@@ -378,10 +381,5 @@ async def unload(ctx, *, module=None):
         await sayd.edit(embed=rel3)
         print(e)
 
-try:
-    bot.run(bot_config['bot_token'], bot=True, reconnect=True)
-except KeyboardInterrupt:
-    bot.logout()
-finally:
-    bot.close()
 
+bot.run(bot_config['bot_token'], bot=True, reconnect=True)
