@@ -311,6 +311,7 @@ class Anilist(commands.Cog):
 
 
     @commands.command(aliases=['animu', 'kartun', 'ani'])
+    @commands.guild_only()
     async def anime(self, ctx, *, judul):
         """Mencari informasi anime lewat API anilist.co"""
         print('[@] Searching anime: {}'.format(judul))
@@ -460,6 +461,7 @@ class Anilist(commands.Cog):
 
 
     @commands.command(aliases=['komik', 'mango'])
+    @commands.guild_only()
     async def manga(self, ctx, *, judul):
         """Mencari informasi manga lewat API anilist.co"""
         print('[@] Searching manga: {}'.format(judul))

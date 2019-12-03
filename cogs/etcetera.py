@@ -794,6 +794,7 @@ class Helper(commands.Cog):
         await ctx.send(embed=invi)
 
     @commands.command()
+    @commands.guild_only()
     async def supermotd(self, ctx):
         if int(ctx.message.author.id) != int(bot_config['owner_id']):
             print('@@ Someone want to use supermotd but not the bot owner, ignoring...')
@@ -861,6 +862,7 @@ class Helper(commands.Cog):
 
 
     @commands.command()
+    @commands.guild_only()
     @commands.has_permissions(manage_server=True)
     async def prefix(self, ctx, *, msg=None):
         server_message = str(ctx.message.guild.id)
