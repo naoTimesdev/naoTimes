@@ -2,21 +2,24 @@
 #!/usr/bin/env python3
 
 import asyncio
+import ctypes
 import json
 import os
 import random
 import re
-import uuid
+from datetime import datetime
+from typing import Union
+from urllib.parse import urlencode
 
 import aiohttp
 import discord
 import discord.ext.commands as commands
 import pysubs2
-import pytz
-
 from bs4 import BeautifulSoup as BS4
 from kbbi import KBBI
 from textblob import TextBlob
+
+from nthelper.romkan import to_hepburn
 
 LANGUAGES_LIST = [
     ('aa', 'Afar'),
@@ -277,22 +280,19 @@ tags_replacing = {
     r"\\s": r"\\1S1"
 }
 
-def fix_spacing(n):
+async def fix_spacing(n):
     for x, y in text_replacing.items():
         n = re.sub(x, y, n)
     return n
 
-def scramble_tags(n):
+async def secure_tags(n, reverse=False):
     for x, y in tags_replacing.items():
-        n = re.sub(x, y, n)
-    return n
+        tags_ = [x, y, n]
+        if reverse:
+            tags_ = [y, x, n]
+        n = re.sub(*tags_)
 
-def unscramble_tags(n):
-    for x, y in tags_replacing.items():
-        n = re.sub(y, x, n)
-    return n
-
-def fix_taggings(n):
+async def fix_taggings(n):
     slashes1 = re.compile(r'(\\ )')
     slashes2 = re.compile(r'( \\)')
     open_ = re.compile(r'( \()')
@@ -311,10 +311,17 @@ async def query_take_first_result(query):
 
     # Let's fiddle with the data
     soup_data = BS4(response, 'html.parser')
-    first_query = soup_data.find('div', attrs={'class': 'date-posts'})
+    query_list = soup_data.find_all('div', attrs={'class': 'date-posts'})
 
-    if not first_query:
+    if not query_list:
         return None, None, None
+
+    if query_list[0].find('table'):
+        if len(query_list) < 2: # Skip if there's nothing anymore :(
+            return None, None, None
+        first_query = query_list[1]
+    else:
+        first_query = query_list[0]
 
     # Query results
     query_title = first_query.find('h3', attrs={'class': 'post-title entry-title'}).text.strip()
@@ -340,31 +347,128 @@ async def query_take_first_result(query):
     return [query_title, nat_res, studio]
 
 
+class AsyncTranslator:
+    def __init__(self, target_lang):
+        print('[@] AsyncTranslator: Spawning new ClientSession')
+        self.target_l = target_lang
+        self.source_l = None
+
+        self.url = "http://translate.google.com/translate_a/t?client=webapp&dt=bd&dt=ex&dt=ld&dt=md&dt=qca&dt=rw&dt=rm&dt=ss&dt=t&dt=at&ie=UTF-8&oe=UTF-8&otf=2&ssel=0&tsel=0&kc=1"
+
+        headers = {
+            'Accept': '*/*',
+            'Connection': 'keep-alive',
+            'User-Agent': (
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_8) '
+                'AppleWebKit/535.19 (KHTML, like Gecko) Chrome/18.0.1025.168 Safari/535.19')
+        }
+
+        self.session = aiohttp.ClientSession(headers=headers)
+        #await self.detect_language()
+
+    def _calculate_tk(self, source):
+        """Reverse engineered cross-site request protection."""
+        # Source: https://github.com/soimort/translate-shell/issues/94#issuecomment-165433715
+        # Source: http://www.liuxiatool.com/t.php
+
+        tkk = [406398, 561666268 + 1526272306]
+        b = tkk[0]
+
+        d = source.encode('utf-8')
+
+        def RL(a, b):
+            for c in range(0, len(b) - 2, 3):
+                d = b[c + 2]
+                d = ord(d) - 87 if d >= 'a' else int(d)
+                xa = ctypes.c_uint32(a).value
+                d = xa >> d if b[c + 1] == '+' else xa << d
+                a = a + d & 4294967295 if b[c] == '+' else a ^ d
+            return ctypes.c_int32(a).value
+
+        a = b
+
+        for di in d:
+            a = RL(a + di, "+-a^+6")
+
+        a = RL(a, "+-3^+b+-f")
+        a ^= tkk[1]
+        a = a if a >= 0 else ((a & 2147483647) + 2147483648)
+        a %= pow(10, 6)
+
+        tk = '{0:d}.{1:d}'.format(a, a ^ b)
+        return tk
+
+    async def close_connection(self):
+        await self.session.close()
+
+    async def detect_language(self, test_string):
+        if self.source_l:
+            return None
+        data = {'q': test_string}
+        url = u'{url}&sl=auto&tk={tk}&{q}'.format(url=self.url, tk=self._calculate_tk(test_string), q=urlencode(data))
+        print('[@] AsyncTranslator: Detecting source language...')
+        response = await self.session.get(url)
+        resp = await response.text()
+        result, language = json.loads(resp)
+        self.source_l = language
+        print('[@] AsyncTranslator: Detected: {}'.format(language))
+
+        return language
+
+    async def translate(self, string_=None):
+        if not self.source_l:
+            print('[@] AsyncTranslator: Source not detected yet, detecting...')
+            await self.detect_language(string_)
+        data = {"q": string_}
+        url = u'{url}&sl={from_lang}&tl={to_lang}&hl={to_lang}&tk={tk}&{q}'.format(
+            url=self.url,
+            from_lang=self.source_l,
+            to_lang=self.target_l,
+            tk=self._calculate_tk(string_),
+            q=urlencode(data)
+        )
+        response = await self.session.get(url)
+        resp = await response.text()
+        result = json.loads(resp)
+        if isinstance(result, list):
+            try:
+                result = result[0]  # ignore detected language
+            except IndexError:
+                pass
+
+        # Validate
+        if not result:
+            raise Exception('An error detected while translating..')
+        if result.strip() == string_.strip():
+            raise Exception('Returned result are the same as input.')
+        return result
+
+
 async def chunked_translate(sub_data, number, target_lang, untranslated, mode='.ass'):
     """
     Process A chunked part of translation
     Since async keep crashing :/
     """
     # Translate every 30 lines
-    print('@@ Processing lines number {} to {}'.format(number[0]+1, number[-1]+1))
+    print('[@] Processing lines number {} to {}'.format(number[0]+1, number[-1]+1))
     regex_tags = re.compile(r"[{}]+")
     regex_newline = re.compile(r"(\w)?\\N(\w)?")
     regex_newline_reverse = re.compile(r"(\w)?\\ LNGSX (\w?)")
+    Translator = AsyncTranslator(target_lang)
     for n in number:
         org_line = sub_data[n].text
         tags_exists = re.match(regex_tags, org_line)
         line = re.sub(regex_newline, r"\1\\LNGSX \2", org_line) # Change newline
         if tags_exists:
-            line = scramble_tags(line)
+            line = await secure_tags(line)
             line = re.sub(r'(})', r'} ', line) # Add some line for proper translating
-        blob = TextBlob(line)
         try:
-            res = str(blob.translate(to=target_lang))
+            res = await Translator.translate(line)
             if tags_exists:
-                res = fix_taggings(res)
-                res = unscramble_tags(res)
+                res = await fix_taggings(res)
+                res = await secure_tags(res, True)
             res = re.sub(regex_newline_reverse, r'\1\\N\2', res)
-            res = fix_spacing(res)
+            res = await fix_spacing(res)
             if mode == '.ass':
                 sub_data[n].text = res + '{' + org_line + '}'
             else:
@@ -372,7 +476,109 @@ async def chunked_translate(sub_data, number, target_lang, untranslated, mode='.
         except Exception as err:
             print('Translation Problem (Line {nl}): {e}'.format(nl=n+1, e=err))
             untranslated += 1
+    await Translator.close_connection() # Close connection
     return sub_data, untranslated
+
+
+async def persamaankata(cari: str, mode: str = 'sinonim') -> Union[str, None]:
+    """Mencari antonim/sinonim dari persamaankata.com"""
+    async with aiohttp.ClientSession() as sesi:
+        async with sesi.get('http://m.persamaankata.com/search.php?q={}'.format(cari)) as resp:
+            response = await resp.text()
+            if resp.status > 299:
+                return 'Tidak dapat terhubung dengan API.'
+
+    soup_data = BS4(response, 'html.parser')
+    tesaurus = soup_data.find_all('div', attrs={'class': 'thesaurus_group'})
+
+    if not tesaurus:
+        return 'Tidak ada hasil.'
+
+    if mode == 'antonim' and len(tesaurus) < 2:
+        return 'Tidak ada hasil.'
+    elif mode == 'antonim' and len(tesaurus) > 1:
+        result = tesaurus[1].text.strip().splitlines()[1:]
+        return list(filter(None, result))
+    else:
+        result = tesaurus[0].text.strip().splitlines()[1:]
+        return list(filter(None, result))
+    return 'Tidak ada hasil.'
+
+
+async def fetch_jisho(query: str) -> Union[None, dict]:
+    async with aiohttp.ClientSession() as sesi:
+        try:
+            async with sesi.get('http://jisho.org/api/v1/search/words?keyword={}'.format(query)) as r:
+                try:
+                    data = await r.json()
+                except IndexError:
+                    return 'ERROR: Terjadi kesalahan internal'
+                if r.status != 200:
+                    if r.status == 404:
+                        return "ERROR: Tidak dapat menemukan kata tersebut"
+                    elif r.status == 500:
+                        return "ERROR: Internal Error :/"
+                try:
+                    query_result = data['data']
+                except IndexError:
+                    return "ERROR: Tidak ada hasil."
+        except aiohttp.ClientError:
+            return 'ERROR: Koneksi terputus'
+
+    full_query_results = []
+    for q in query_result:
+        words_ = []
+        for w in q['japanese']:
+            word = w['word']
+            reading = w['reading']
+            hepburn = to_hepburn(reading)
+            words_.append((word, reading, hepburn))
+
+        senses_ = []
+        for s in q['senses']:
+            try:
+                english_def = s['english_definitions']
+            except:
+                english_def = '(?)'
+            senses_.append((english_def))
+
+        dataset = {
+            "words": words_,
+            "senses": senses_
+        }
+
+        full_query_results.append(dataset)
+    return {'result': full_query_results, 'data_total': len(full_query_results)}
+
+
+async def yahoo_finance(from_, to_):
+    data_ = {
+        "data": {
+            "base": from_.upper(),
+            "period": "day",
+            "term": to_.upper()
+        },
+        "method": "spotRateHistory"
+    }
+    base_head = {
+        'Host': 'adsynth-ofx-quotewidget-prod.herokuapp.com',
+        'Origin': 'https://widget-yahoo.ofx.com',
+        'Referer': 'https://widget-yahoo.ofx.com/',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.97 Safari/537.36',
+    }
+    async with aiohttp.ClientSession(headers=base_head) as sesi:
+        async with sesi.post("https://adsynth-ofx-quotewidget-prod.herokuapp.com/api/1", json=data_) as resp:
+            try:
+                response = await resp.json()
+                if response['data']['HistoricalPoints']:
+                    latest = response['data']['HistoricalPoints'][-1]
+                else:
+                    return response["data"]["CurrentInterbankRate"]
+            except:
+                response = await resp.text()
+                return 'Tidak dapat terhubung dengan API.\nAPI Response: ```\n' + response + '\n```'
+
+    return latest['InterbankRate']
 
 
 async def post_requests(url, data):
@@ -384,58 +590,6 @@ async def post_requests(url, data):
 class WebParser(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-
-    @commands.command(aliases=["safelink"])
-    async def pengaman(self, ctx, *, url_text):
-        """
-        Safelinking never been more safe before :)
-        """
-        server_message = str(ctx.message.guild.id)
-        print('Requested !safelink at: ' + server_message)
-        await ctx.message.delete()
-        msg = await ctx.send('Mengamankan tautan...')
-
-        regex_validator = re.compile(
-                r'^(?:http|ftp)s?://' # http:// or https://
-                r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|' #domain...
-                r'localhost|' #localhost...
-                r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})' # ...or ip
-                r'(?::\d+)?' # optional port
-                r'(?:/?|[/?]\S+)$', re.IGNORECASE)
-        if re.match(regex_validator, url_text) is None:
-            return await ctx.send('Mohon gunakan format alamat tautan yang valid (gunakan `http://` atau `https://`)')
-        
-        post_response = await post_requests('https://meme.n4o.xyz/api/v1/safelink', {"secure": url_text})
-        await msg.delete()
-
-        await ctx.send('Tautan berhasil diamankan:\n<{l}>'.format(l=post_response['uri']))
-
-
-    @commands.command(aliases=["shorten"])
-    async def pemendek(self, ctx, *, url_text):
-        """
-        Shortening never be more eazy before :)
-        """
-        server_message = str(ctx.message.guild.id)
-        print('Requested !pemendek at: ' + server_message)
-        await ctx.message.delete()
-        msg = await ctx.send('Memendekan tautan...')
-
-        regex_validator = re.compile(
-                r'^(?:http|ftp)s?://' # http:// or https://
-                r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|' #domain...
-                r'localhost|' #localhost...
-                r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})' # ...or ip
-                r'(?::\d+)?' # optional port
-                r'(?:/?|[/?]\S+)$', re.IGNORECASE)
-        if re.match(regex_validator, url_text) is None:
-            return await ctx.send('Mohon gunakan format alamat tautan yang valid (gunakan `http://` atau `https://`)')
-        
-        post_response = await post_requests('https://meme.n4o.xyz/api/v1/shorten', {"shorten": url_text})
-        await msg.delete()
-
-        await ctx.send('Tautan berhasil dipendekan:\n<{l}>'.format(l=post_response['uri']))
-
 
     @commands.command()
     async def anibin(self, ctx, *, query):
@@ -454,7 +608,6 @@ class WebParser(commands.Cog):
         embed.add_field(name=search_title, value=search_native, inline=False)
         embed.set_footer(text="Studio Animasi: {}".format(search_studio))
         await ctx.send(embed=embed)
-
 
     @commands.command()
     async def pilih(self, ctx, *, input_data):
@@ -476,7 +629,7 @@ class WebParser(commands.Cog):
 
     @commands.command(aliases=['fastsub', 'gtlsub'])
     async def speedsub(self, ctx, targetlang='id'):
-        print('@@ Running speedsub command')
+        print('[@] Running speedsub command')
         channel = ctx.message.channel
         DICT_LANG = dict(LANGUAGES_LIST)
 
@@ -495,8 +648,8 @@ class WebParser(commands.Cog):
             return await ctx.send('Mohon attach file subtitle lalu jalankan dengan `!speedsub`\nSubtitle yang didukung adalah: .ass dan .srt')
 
         await ctx.send('Memproses `{fn}`...\nTarget alihbahasa: **{t}**'.format(fn=filename, t=DICT_LANG[targetlang]))
-        # Start downloading .json file
-        print('@@ Downloading file')
+        # Start downloading .ass/.srt file
+        print('[@] Downloading file')
         async with aiohttp.ClientSession() as sesi:
             async with sesi.get(uri) as resp:
                 data = await resp.text()
@@ -510,34 +663,197 @@ class WebParser(commands.Cog):
         chunked_number = [n_sub[i:i + 30] for i in range(0, len(n_sub), 30)]
 
         untrans = 0
-        print('@@ Processing a total of {} lines with `{}` mode'.format(len(n_sub), ext_))
+        print('[@] Processing a total of {} lines with `{}` mode'.format(len(n_sub), ext_))
         for n_chunk in chunked_number:
             # Trying this to test if discord.py will destroy itself because it waited to long.
             parsed_sub, untrans = await chunked_translate(parsed_sub, n_chunk, targetlang, untrans, ext_)
 
-        print('@@ Dumping results...')
+        print('[@] Dumping results...')
         output_file = "{fn}.{l}{e}".format(fn=filename, l=targetlang, e=ext_)
         parsed_sub.save(output_file)
 
         subtitle = 'Berkas telah dialihbahasakan ke bahasa **{}**'.format(DICT_LANG[targetlang])
         if untrans != 0:
             subtitle += '\nSebanyak **{}/{}** baris tidak dialihbahasakan'.format(untrans, len(n_sub))
-        print('@@ Sending translated subtitle')
+        print('[@] Sending translated subtitle')
         await channel.send(file=output_file, content=subtitle)
-        print('@@ Cleanup')
+        print('[@] Cleanup')
         os.remove(filename) # Original subtitle
         os.remove(output_file) # Translated subtitle
 
 
+    @commands.command(aliases=['konversiuang', 'currency'])
+    async def kurs(self, ctx, from_, to_, total=None):
+        if total:
+            try:
+                total = float(total)
+            except ValueError:
+                return await ctx.send('Bukan jumlah uang yang valid (jangan memakai koma, pakai titik)')
+
+        with open('currencydata.json', 'r', encoding='utf-8') as fp:
+            currency_data = json.load(fp)
+
+        from_, to_ = from_.upper(), to_.upper()
+
+        if from_ not in currency_data:
+            return await ctx.send('Tidak dapat menemukan kode negara mata utang **{}** di database'.format(from_))
+        if to_ not in currency_data:
+            return await ctx.send('Tidak dapat menemukan kode negara mata utang **{}** di database'.format(to_))
+
+        curr_ = await yahoo_finance(from_, to_)
+        if isinstance(curr_, str):
+            return await ctx.send(curr_)
+
+        if not total:
+            total = 1.0
+        conv_num = round(total * curr_)
+        embed = discord.Embed(title=":gear: Konversi mata uang",
+        colour=discord.Colour(0x50e3c2),
+        description=":small_red_triangle_down: {f_} ke {d_}\n:small_orange_diamond: {sf_}{sa_}\n:small_blue_diamond: {df_}{da_}".format(
+            f_ = from_,
+            d_ = to_,
+            sf_ = currency_data[from_]['symbols'][0],
+            sa_ = total,
+            df_ = currency_data[to_]['symbols'][0],
+            da_ = conv_num
+        ),
+        timestamp=datetime.now())
+        embed.set_footer(text="Diprakasai dengan yahoo!finance ", icon_url="https://ihateani.me/o/y!.png")
+
+        await ctx.send(embed=embed)
+
+    @commands.command(aliases=['persamaankata', 'persamaan'])
+    async def sinonim(self, ctx, * q_):
+        if not isinstance(q_, str):
+            q_ = " ".join(q_)
+        print('[@] Running sinonim command')
+
+        result = await persamaankata(q_, 'Sinonim')
+        if not isinstance(result, list):
+            return await ctx.send(result)
+        result = "\n".join(result)
+        embed = discord.Embed(title="Sinonim: {}".format(q_), color=0x81e28d)
+        embed.set_footer(text='Diprakasai dengan: persamaankata.com')
+        if not result:
+            embed.add_field(name=q_, value='Tidak ada hasil', inline=False)
+            return await ctx.send(embed=embed)
+
+        embed.add_field(name=q_, value=result, inline=False)
+        await ctx.send(embed=embed)
+
+    @commands.command(aliases=['lawankata'])
+    async def antonim(self, ctx, * q_):
+        if not isinstance(q_, str):
+            q_ = " ".join(q_)
+        print('[@] Running antonim command')
+
+        result = await persamaankata(q_, 'antonim')
+        if not isinstance(result, list):
+            return await ctx.send(result)
+        result = "\n".join(result)
+        embed = discord.Embed(title="Antonim: {}".format(q_), color=0x81e28d)
+        embed.set_footer(text='Diprakasai dengan: persamaankata.com')
+        if not result:
+            embed.add_field(name=q_, value='Tidak ada hasil', inline=False)
+            return await ctx.send(embed=embed)
+
+        embed.add_field(name=q_, value=result, inline=False)
+        await ctx.send(embed=embed)
+
+
+    @commands.command(aliases=['kanji'])
+    async def jisho(self, ctx, *, q_):
+        if not isinstance(q_, str):
+            q_ = " ".join(q_)
+
+        print('[@] Running jisho command')
+
+        jqres = await fetch_jisho(q_)
+        if isinstance(jqres, str):
+            return await ctx.send(jqres)
+
+        dataset_total = jqres['data_total']
+        dataset = jqres['result']
+
+        first_run = True
+        pos = 1
+        while True:
+            if first_run:
+                data = dataset[pos - 1]
+                embed = discord.Embed(color=0x81e28d)
+                embed.set_author(name='Jisho: ' + q_, url='https://jisho.org/search/%s' % q_, icon_url="https://ihateani.me/o/jishoico.png")
+
+                for i in data['words']:
+                    format_value = '**Cara baca**: {}\n**Hepburn**: {}'.format(i[1], i[2])
+                    embed.add_field(name=i[0], value=format_value, inline=False)
+
+                eng_ = [i[0] if i[0] is not None else '(?)' for i in data['senses']]
+                embed.add_field(name="Definisi", value='\n'.join(eng_), inline=True)
+
+                first_run = False
+                msg = await ctx.send(embed=embed)
+
+            reactmoji = []
+            if dataset_total < 2:
+                break
+            elif pos == 1:
+                reactmoji = ['⏩']
+            elif dataset_total == pos:
+                reactmoji = ['⏪']
+            elif pos > 1 and pos < dataset_total:
+                reactmoji = ['⏪', '⏩']
+
+            for react in reactmoji:
+                await msg.add_reaction(react)
+
+            def check_react(reaction, user):
+                e = str(reaction.emoji)
+                return user == ctx.message.author and str(reaction.emoji) in reactmoji
+
+            try:
+                res, user = await self.bot.wait_for('reaction_add', timeout=20.0, check=check_react)
+            except asyncio.TimeoutError:
+                return await msg.clear_reactions()
+            if user != ctx.message.author:
+                pass
+            elif '⏪' in str(res.emoji):
+                await msg.clear_reactions()
+                pos -= 1
+                data = dataset[pos - 1]
+                embed = discord.Embed(color=0x81e28d)
+                embed.set_author(name='Jisho: ' + q_, url='https://jisho.org/search/%s' % q_, icon_url="https://ihateani.me/o/jishoico.png")
+
+                for i in data['words']:
+                    format_value = '**Cara baca**: {}\n**Hepburn**: {}'.format(i[1], i[2])
+                    embed.add_field(name=i[0], value=format_value, inline=False)
+
+                eng_ = [i[0] if i[0] is not None else '(?)' for i in data['senses']]
+                embed.add_field(name="Definisi", value='\n'.join(eng_), inline=True)
+                await msg.edit(embed=embed)
+            elif '⏩' in str(res.emoji):
+                await msg.clear_reactions()
+                pos += 1
+                data = dataset[pos - 1]
+                embed = discord.Embed(color=0x81e28d)
+                embed.set_author(name='Jisho: ' + q_, url='https://jisho.org/search/%s' % q_, icon_url="https://ihateani.me/o/jishoico.png")
+
+                for i in data['words']:
+                    format_value = '**Cara baca**: {}\n**Hepburn**: {}'.format(i[1], i[2])
+                    embed.add_field(name=i[0], value=format_value, inline=False)
+
+                eng_ = [i[0] if i[0] is not None else '(?)' for i in data['senses']]
+                embed.add_field(name="Definisi", value='\n'.join(eng_), inline=True)
+                await msg.edit(embed=embed)
+
+
     @commands.command()
-    async def kbbi(self, ctx, * q_kbbi):
-        print('@@ Running kbbi command')
-        q_kbbi = " ".join(q_kbbi)
+    async def kbbi(self, ctx, *, q_kbbi):
+        print('[@] Running kbbi command')
 
         try:
             cari_kata = KBBI(q_kbbi)
         except KBBI.TidakDitemukan:
-            print('@@ No results.')
+            print('[@] No results.')
             return await ctx.send('Tidak dapat menemukan kata tersebut di KBBI')
 
         json_d = cari_kata.serialisasi()[q_kbbi]
