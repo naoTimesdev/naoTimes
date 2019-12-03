@@ -1,13 +1,14 @@
-# -*- coding: utf-8  -*-
+# -*- coding: utf-8 -*-
 #!/usr/bin/env python3
 
+import asyncio
 import json
 import logging
 import os
 import sys
 import time
+from itertools import cycle
 
-import asyncio
 import aiohttp
 import discord
 import requests
@@ -19,9 +20,9 @@ async def fetch_newest_db(CONFIG_DATA):
     """
     Fetch the newest naoTimes database from github
     """
-    print('@@ Fetching newest database')
+    print('[#] Fetching newest naoTimes database...')
     if CONFIG_DATA['gist_id'] == "":
-        return print('@@ naoTimes are not setted up, skipping...')
+        return print('[#] naoTimes are not setted up, skipping...')
     url = 'https://gist.githubusercontent.com/{u}/{g}/raw/nao_showtimes.json'
     async with aiohttp.ClientSession() as session:
         while True:
@@ -32,7 +33,7 @@ async def fetch_newest_db(CONFIG_DATA):
                         js_data = json.loads(r_data)
                         with open('nao_showtimes.json', 'w') as f:
                             json.dump(js_data, f, indent=4)
-                        print('@@ Fetched and saved.')
+                        print('[@] Fetched and saved.')
                         return
                     except IndexError:
                         continue
@@ -51,11 +52,13 @@ def prefixes(bot, message):
 
     id_srv = str(server.id)
     pre_data = []
-    pre_ = pre_data.append(pre.get(id_srv, default_))
-    if default_ not in pre_data:
+    pre_ = pre.get(id_srv)
+    if not pre_:
         pre_data.append(default_)
-    if '.' not in pre_data:
-        pre_data.append('.')
+    else:
+        pre_data.append(pre_)
+    if 'ntd.' not in pre_data:
+        pre_data.append('ntd.')
     pre_data = [bot.user.mention + ' ', '<@!%s> ' % bot.user.id] + pre_data
 
     return pre_data
@@ -69,52 +72,107 @@ async def init_bot():
         - Fetching naoTimes main database
         - Setting some global variable
     """
-    print('@@ Loading logger...')
+    print('[@] Initializing logger...')
     logger = logging.getLogger('discord')
     logger.setLevel(logging.ERROR)
     handler = logging.FileHandler(filename='discord.log', encoding='utf-8', mode='w')
     handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
     logger.addHandler(handler)
 
-    print('@@ Set global start time')
+    print('[@] Set global start time')
     global_start_time = time.time()
 
-    print('@@ Looking up config')
+    print('[@] Looking up config')
     with open('config.json', 'r') as fp:
         config = json.load(fp)
 
     try:
-        print('@@ Initiating discord.py')
+        print('[@] Initiating discord.py')
         description = '''Penyuruh Fansub biar kerja cepat\nversi 2.0.0 || Dibuat oleh: N4O#8868'''
         bot = commands.Bot(command_prefix=prefixes, description=description)
         bot.remove_command('help')
         await fetch_newest_db(config)
         for load in cogs_list:
-            bot.load_extension(load)
-            print('Loaded ' + load + ' Modules')
-        print('### Success Loading Discord.py ###')
+            try:
+                bot.load_extension(load)
+                print('[#] Loaded ' + load + ' Module')
+            except Exception as e:
+                print('[!!] Failed Loading ' + load + ' Module')
+                print('\t' + str(e))
+        print('[@!!] Success Loading Discord.py')
     except Exception as exc:
-        print('### Failed to load Discord.py ###')
-        print(exc)
+        print('[#!!] Failed to load Discord.py ###')
+        print('\t' + str(exc))
     return bot, config, logger, global_start_time
 
 # Initiate everything
-print('@@ Initiating bot...')
+print('[@] Initiating bot...')
 async_loop = asyncio.get_event_loop()
 bot, bot_config, logger, global_start_time = async_loop.run_until_complete(init_bot())
+presence_status = [
+    "Mengamati rilisan fansub | !help",
+    "Membantu Fansub | !help",
+    "Menambah utang | !help",
+    "Membersihkan nama baik | !help",
+    "Ngememe | !help",
+    "Membersihkan sampah masyarakat | !help",
+    "Mengikuti event wibu | !help",
+    "Menjadi babu | !help",
+    "Memantau hal yang berbau Yuri | !help",
+    "!help | !help",
+    "Apa Kabar Fansub Indonesia? | !help",
+    "Memantau drama | !help",
+    "Bot ini masih belum legal | !help",
+    "Mengoleksi berhala | !help",
+    "Memburu buronan 1001 Fansub | !help",
+    "Menagih utang | !help",
+    "Menunggu Fanshare bubar | !help",
+    "Mencatat Delayan Fansub | !help",
+    "Mengintai waifu orang | !help",
+    "Waifu kalian sampah | !help",
+    "Membeli waifu di toko terdekat | !help"
+    "Reinkarnasi Fansub mati | !help",
+    "Menuju Isekai | !help",
+    "Leecher harap menagih dalam 120x24 jam | !help",
+    "Membuka donasi | !help",
+    "Menunggu rilisan | !help",
+    "Mengelus kepala owner bot | !help",
+    "Membuat Fansub | !help",
+    "Membuli Fansub | !help",
+    "Membuat Meme berstandar SNI",
+    "Mengembalikan kode etik Fansub | !help",
+    "Meniduri waifu anda | !help",
+    "Mengamati paha | !help",
+    "Berternak dolar | !help",
+    "Kapan nikah? Ngesub mulu. | !help",
+    "Kapan pensi? | !help",
+    "Gagal pensi | !help",
+    "Judul Anime - Episode (v9999) | !help"
+]
 
 @bot.event
 async def on_ready():
     """Bot loaded here"""
-    print('Connected to discord.')
+    print('[$] Connected to discord.')
     presence = 'Mengamati rilisan fansub | !help'
-    activity = discord.Game(name=presence, type=3)
+    activity = discord.Game(name=presence_status[0], type=3)
     await bot.change_presence(activity=activity)
     print('---------------------------------------------------------------')
     print('Logged in as:')
     print('Bot name: {}'.format(bot.user.name))
     print('With Client ID: {}'.format(bot.user.id))
     print('---------------------------------------------------------------')
+
+async def change_bot_presence():
+    await bot.wait_until_ready()
+    print('[@] Loaded auto-presence.')
+    presences = cycle(presence_status)
+
+    while not bot.is_closed:
+        await asyncio.sleep(30)
+        current_status = next(presences)
+        activity = discord.Game(name=current_status, type=3)
+        await bot.change_presence(activity=activity)
 
 async def other_ping_test():
     """Github and anilist ping test"""
@@ -211,7 +269,7 @@ async def info(ctx):
     infog.add_field(name="Info", value="Dijalankan di Heroku server US", inline=False)
     infog.add_field(name="Dibuat", value="Gak tau, tiba-tiba jadi.", inline=False)
     infog.add_field(name="Pembuat", value="N4O#8868", inline=False)
-    infog.add_field(name="Bahasa", value="Discord.py dengan Python 3.6", inline=False)
+    infog.add_field(name="Bahasa", value="Discord.py v{} dengan Python 3.6".format(discord.__version__), inline=False)
     infog.add_field(name="Fungsi", value="Menagih utang fansub (!help)", inline=False)
     infog.add_field(name="Uptime", value=create_uptime())
     infog.set_footer(text="naoTimes versi 2.0.0 || Dibuat oleh N4O#8868", icon_url='https://p.n4o.xyz/i/nao250px.png')
@@ -225,17 +283,15 @@ async def bundir(ctx):
     """
     try:
         await ctx.send(":gun: Membunuh bot...")
-        print('!!!! Memulai proses')
+        print('[!!] Starting process...')
         for unload in cogs_list:
             bot.unload_extension(unload)
-            print('Unloaded ' + unload + ' Modules')
-        print('### Modules unloaded')
+            print('[#] Unloaded ' + unload + ' module.')
+        print('[@] All modules unloaded.')
         await bot.logout()
         await bot.close()
+        print('[!!] Connection closed.')
         async_loop.close()
-        #res = requests.patch('https://api.heroku.com/apps/nao-times/formation/f8aa4e6a-7189-4cf5-8829-b031574e2cef', data={"quantity": 0, "size": "Free"}, headers={'Accept': 'application/vnd.heroku+json; version=3', 'Authorization': 'Bearer 9ab0ac6e-cb20-4610-8cc1-cec4a75f53da'})
-        #print(res.text)
-        print('### Connection closed')
         exit(0)
     except commands.NotOwner:
         await ctx.send("Kamu tidak bisa menjalankan perintah ini\n**Alasan:** Bukan Owner Bot")
@@ -248,14 +304,14 @@ async def reinkarnasi(ctx):
     """
     try:
         await ctx.send(":sparkles: Proses Reinkarnasi Dimulai...")
-        print('!!!! Memulai proses')
-        for reload_mod in cogs_list:
-            bot.unload_extension(reload_mod)
-            print('Unloaded ' + reload_mod + ' Modules')
-        print('### Modules unloaded')
+        print('[!!] Starting process...')
+        for unload in cogs_list:
+            bot.unload_extension(unload)
+            print('[#] Unloaded ' + unload + ' module.')
+        print('[@] All modules unloaded.')
         await bot.logout()
         await bot.close()
-        print('### Connection closed')
+        print('[!!] Connection closed.')
         async_loop.close()
         os.execv(sys.executable, ['python'] + sys.argv)
     except commands.NotOwner:
@@ -274,7 +330,6 @@ async def reload(ctx, *, module=None):
         helpmain.add_field(name='Module/Cogs List', value="\n".join(['- ' + cl for cl in cogs_list]), inline=False)
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         return await ctx.send(embed=helpmain)
-    print('Reloading module')
     timetext = 'Started process at'
     rel1 = discord.Embed(title="Reload Module", color=0x8ceeff)
     rel1.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
@@ -284,7 +339,9 @@ async def reload(ctx, *, module=None):
     if 'cogs.' not in module:
         module = 'cogs.' + module
     try:
+        print('[#] Reloading ' + module + ' module.')
         bot.unload_extension(module)
+        print('[@] Reloaded.')
         bot.load_extension(module)
         timetext = 'Module reloaded'
         rel2 = discord.Embed(title="Reload Module", color=0x6ce170)
@@ -294,12 +351,12 @@ async def reload(ctx, *, module=None):
         await sayd.edit(embed=rel2)
     except Exception as e:
         timetext = 'Failed'
+        print('[!!] Failed: ' + str(e))
         rel3 = discord.Embed(title="Module", color=0xe73030)
         rel3.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
         rel3.add_field(name=module, value="Status: ERROR - {}".format(str(e)), inline=False)
         rel3.set_footer(text=timetext)
         await sayd.edit(embed=rel3)
-        print(e)
 
 
 @bot.command()
@@ -315,7 +372,6 @@ async def load(ctx, *, module=None):
         helpmain.add_field(name='Module/Cogs List', value="\n".join(['- ' + cl for cl in cogs_list]), inline=False)
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         return await ctx.send(embed=helpmain)
-    print('Loading module')
     timetext = 'Started process at'
     rel1 = discord.Embed(title="Load Module", color=0x8ceeff)
     rel1.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
@@ -325,7 +381,9 @@ async def load(ctx, *, module=None):
     if 'cogs.' not in module:
         module = 'cogs.' + module
     try:
+        print('[#] Loading ' + module + ' module.')
         bot.load_extension(module)
+        print('[@] Loaded.')
         timetext = 'Module Loaded'
         rel2 = discord.Embed(title="Load Module", color=0x6ce170)
         rel2.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
@@ -334,12 +392,12 @@ async def load(ctx, *, module=None):
         await sayd.edit(embed=rel2)
     except Exception as e:
         timetext = 'Failed'
+        print('[!!] Failed: ' + str(e))
         rel3 = discord.Embed(title="Load Module", color=0xe73030)
         rel3.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
         rel3.add_field(name=module, value="Status: ERROR - {}".format(str(e)), inline=False)
         rel3.set_footer(text=timetext)
         await sayd.edit(embed=rel3)
-        print(e)
 
 
 @bot.command()
@@ -355,7 +413,6 @@ async def unload(ctx, *, module=None):
         helpmain.add_field(name='Module/Cogs List', value="\n".join(['- ' + cl for cl in cogs_list]), inline=False)
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         return await ctx.send(embed=helpmain)
-    print('Unloading module')
     timetext = 'Started process at'
     rel1 = discord.Embed(title="Unload Module", color=0x8ceeff)
     rel1.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
@@ -365,7 +422,9 @@ async def unload(ctx, *, module=None):
     if 'cogs.' not in module:
         module = 'cogs.' + module
     try:
+        print('[#] Unloading ' + module + ' module.')
         bot.unload_extension(module)
+        print('[@] Unloaded.')
         timetext = 'Module unloaded'
         rel2 = discord.Embed(title="Unload Module", color=0x6ce170)
         rel2.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
@@ -374,12 +433,12 @@ async def unload(ctx, *, module=None):
         await sayd.edit(embed=rel2)
     except Exception as e:
         timetext = 'Failed'
+        print('[!!] Failed: ' + str(e))
         rel3 = discord.Embed(title="Unload Module", color=0xe73030)
         rel3.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
         rel3.add_field(name=module, value="Status: ERROR - {}".format(str(e)), inline=False)
         rel3.set_footer(text=timetext)
         await sayd.edit(embed=rel3)
-        print(e)
 
-
+bot.loop.create_task(change_bot_presence())
 bot.run(bot_config['bot_token'], bot=True, reconnect=True)
