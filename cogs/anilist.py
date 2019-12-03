@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 #!/usr/bin/env python3
 import asyncio
+import re
 import time
 from datetime import datetime, timedelta
 
 import aiohttp
 import discord
 import discord.ext.commands as commands
+
 
 def setup(bot):
     bot.add_cog(Anilist(bot))
