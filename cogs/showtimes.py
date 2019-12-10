@@ -80,6 +80,10 @@ async def patch_json(jsdata: dict) -> bool:
     """
     Send modified data back to github
     """
+    #TODO: Remove this whenever v2 is finished.
+    while True:
+        print('[@] Mock patching: yes.')
+        return True
     hh = {
         "description": "N4O Showtimes bot",
         "files": {
@@ -3512,7 +3516,6 @@ class ShowtimesConfigData(commands.Cog):
 
             status_list = program_info['status']
             max_episode = list(status_list.keys())[-1]
-            #_, poster_image, title, time_data, correct_episode_num = await fetch_anilist(program_info['anilist_id'], 1, max_episode, True)
 
             embed = discord.Embed(title="Menghapus Episode", description='Jumlah Episode Sekarang: {}'.format(max_episode), color=0x96df6a)
             embed.add_field(name='Masukan range episode yang ingin dihapus.', value=hapusepisode_instruct, inline=False)
@@ -3544,10 +3547,15 @@ class ShowtimesConfigData(commands.Cog):
                     pass
                 elif '✅' in str(res.emoji):
                     await await_msg.delete()
+                    await emb_msg.clear_reactions()
                     break
                 elif '❌' in str(res.emoji):
-                    pass
-                await await_msg.delete()
+                    await await_msg.delete()
+                    embed = discord.Embed(title="Menghapus Episode", description='Jumlah Episode Sekarang: {}'.format(max_episode), color=0x96df6a)
+                    embed.add_field(name='Masukan range episode yang ingin dihapus.', value=hapusepisode_instruct, inline=False)
+                    embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+                    await emb_msg.edit(embed=embed)
+                await emb_msg.clear_reactions()
 
 
             total_episode = jumlah_tambahan.split('-')
