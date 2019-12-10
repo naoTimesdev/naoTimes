@@ -1153,22 +1153,25 @@ class Showtimes(commands.Cog):
         cancel_toggled = False # Some easy check if it's gonna fucked up
         first_time = True
 
+        def check_if_author(m):
+            return m.author == ctx.message.author
+
         async def process_episode(table, emb_msg, author):
             print('[@] Memproses jumlah episode')
             embed = discord.Embed(title="Menambah Utang", color=0x96df6a)
             embed.set_thumbnail(url=table['poster_img'])
             embed.add_field(name='Jumlah Episode', value="Ketik Jumlah Episode perkiraan", inline=False)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+            await emb_msg.edit(embed=embed)
             
             while True:
-                await_msg = await self.bot.wait_for_message(author=author)
+                await_msg = await self.bot.wait_for('message', check=check_if_author)
 
                 if await_msg.content.isdigit():
-                    await self.bot.delete_message(await_msg)
+                    await await_msg.delete()
                     break
 
-                await self.bot.delete_message(await_msg)
+                await await_msg.delete()
 
             _, poster, title, time_data, correct_episode_num = await fetch_anilist(table['anilist_id'], 1, int(await_msg.content), True)
             table['episodes'] = correct_episode_num
@@ -1184,17 +1187,17 @@ class Showtimes(commands.Cog):
             emb_msg = await self.bot.edit_message(emb_msg, "", embed=embed)
 
             while True:
-                await_msg = await self.bot.wait_for_message(author=author)
+                await_msg = await self.bot.wait_for('message', check=check_if_author)
 
                 if not await_msg.content.startswith("!anime"):
                     if await_msg.content == ("cancel"):
                         return False, False
 
                     if await_msg.content.isdigit():
-                        await self.bot.delete_message(await_msg)
+                        await await_msg.delete()
                         break
 
-                    await self.bot.delete_message(await_msg)
+                    await await_msg.delete()
 
             _, poster_image, title, time_data, correct_episode_num = await fetch_anilist(await_msg.content, 1, 1, True)
 
@@ -1202,24 +1205,26 @@ class Showtimes(commands.Cog):
             embed.set_thumbnail(url=poster_image)
             embed.add_field(name='Apakah benar?', value="Judul: **{}**".format(title), inline=False)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+            await emb_msg.edit(embed=embed)
 
             to_react = ['✅', '❌']
             for reaction in to_react:
-                    await self.bot.add_reaction(emb_msg, reaction)
-            def checkReaction(reaction, user):
+                    await emb_msg.add_reaction(reaction)
+
+            def check_react(reaction, user):
                 e = str(reaction.emoji)
-                return e.startswith(('✅', '❌'))
+                return user == ctx.message.author and str(reaction.emoji) in to_react
 
-            res = await self.bot.wait_for_reaction(message=emb_msg, user=author, check=checkReaction)
-
-            if '✅' in str(res.reaction.emoji):
+            res, user = await self.bot.wait_for('reaction_add', check=check_react)
+            if user != ctx.message.author:
+                pass
+            elif '✅' in str(res.emoji):
                 table['ani_title'] = title
                 table['poster_img'] = poster_image
                 table['anilist_id'] = str(await_msg.content)
-                await self.bot.clear_reactions(emb_msg)
-            elif '❌' in str(res.reaction.emoji):
-                await self.bot.clear_reactions(emb_msg)
+                await emb_msg.clear_reactions()
+            elif '❌' in str(res.emoji):
+                await emb_msg.clear_reactions()
                 return False, False
 
             if correct_episode_num == 1:
@@ -1238,21 +1243,20 @@ class Showtimes(commands.Cog):
             embed.set_thumbnail(url=table['poster_img'])
             embed.add_field(name='Role ID', value="Ketik ID Role atau mention rolenya\nAtau ketik `auto` untuk membuatnya otomatis", inline=False)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+            await emb_msg.edit(embed=embed)
 
             while True:
-                await_msg = await self.bot.wait_for_message(author=author)
+                await_msg = await self.bot.wait_for('message', check=check_if_author)
 
                 mentions = await_msg.role_mentions
 
                 if not mentions:
                     if await_msg.content.isdigit():
                         table['role_id'] = await_msg.content
-                        await self.bot.delete_message(await_msg)
+                        await await_msg.delete()
                         break
                     elif await_msg.content.startswith('auto'):
-                        c_role = await self.bot.create_role(
-                            author.server,
+                        c_role = await ctx.message.guild.create_role(
                             name=table['anime'],
                             colour=discord.Colour(0xdf2705),
                             mentionable=True
@@ -1261,10 +1265,10 @@ class Showtimes(commands.Cog):
                         break
                 else:
                     table['role_id'] = mentions[0].id
-                    await self.bot.delete_message(await_msg)
+                    await await_msg.delete()
                     break
 
-                #await self.bot.delete_message(await_msg)
+                #await await_msg.delete()
 
             return table, emb_msg
 
@@ -1274,21 +1278,21 @@ class Showtimes(commands.Cog):
             embed.set_thumbnail(url=table['poster_img'])
             embed.add_field(name='TLCer ID', value="Ketik ID TLC atau mention orangnya", inline=False)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+            await emb_msg.edit(embed=embed)
 
             while True:
-                await_msg = await self.bot.wait_for_message(author=author)
+                await_msg = await self.bot.wait_for('message', check=check_if_author)
                 mentions = await_msg.mentions
                 if not mentions:
                     if await_msg.content.isdigit():
                         table['tlcer_id'] = await_msg.content
-                        await self.bot.delete_message(await_msg)
+                        await await_msg.delete()
                         break
                 else:
                     table['tlcer_id'] = mentions[0].id
-                    await self.bot.delete_message(await_msg)
+                    await await_msg.delete()
                     break
-                #await self.bot.delete_message(await_msg)
+                #await await_msg.delete()
 
             return table, emb_msg
 
@@ -1298,21 +1302,21 @@ class Showtimes(commands.Cog):
             embed.set_thumbnail(url=table['poster_img'])
             embed.add_field(name='Translator ID', value="Ketik ID Translator atau mention orangnya", inline=False)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+            await emb_msg.edit(embed=embed)
 
             while True:
-                await_msg = await self.bot.wait_for_message(author=author)
+                await_msg = await self.bot.wait_for('message', check=check_if_author)
                 mentions = await_msg.mentions
                 if not mentions:
                     if await_msg.content.isdigit():
                         table['tlor_id'] = await_msg.content
-                        await self.bot.delete_message(await_msg)
+                        await await_msg.delete()
                         break
                 else:
                     table['tlor_id'] = mentions[0].id
-                    await self.bot.delete_message(await_msg)
+                    await await_msg.delete()
                     break
-                #await self.bot.delete_message(await_msg)
+                #await await_msg.delete()
 
             return table, emb_msg
 
@@ -1322,21 +1326,21 @@ class Showtimes(commands.Cog):
             embed.set_thumbnail(url=table['poster_img'])
             embed.add_field(name='Encoder ID', value="Ketik ID Encoder atau mention orangnya", inline=False)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+            await emb_msg.edit(embed=embed)
 
             while True:
-                await_msg = await self.bot.wait_for_message(author=author)
+                await_msg = await self.bot.wait_for('message', check=check_if_author)
                 mentions = await_msg.mentions
                 if not mentions:
                     if await_msg.content.isdigit():
                         table['encoder_id'] = await_msg.content
-                        await self.bot.delete_message(await_msg)
+                        await await_msg.delete()
                         break
                 else:
                     table['encoder_id'] = mentions[0].id
-                    await self.bot.delete_message(await_msg)
+                    await await_msg.delete()
                     break
-                #await self.bot.delete_message(await_msg)
+                #await await_msg.delete()
 
             return table, emb_msg
 
@@ -1346,21 +1350,21 @@ class Showtimes(commands.Cog):
             embed.set_thumbnail(url=table['poster_img'])
             embed.add_field(name='Editor ID', value="Ketik ID Editor atau mention orangnya", inline=False)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+            await emb_msg.edit(embed=embed)
 
             while True:
-                await_msg = await self.bot.wait_for_message(author=author)
+                await_msg = await self.bot.wait_for('message', check=check_if_author)
                 mentions = await_msg.mentions
                 if not mentions:
                     if await_msg.content.isdigit():
                         table['editor_id'] = await_msg.content
-                        await self.bot.delete_message(await_msg)
+                        await await_msg.delete()
                         break
                 else:
                     table['editor_id'] = mentions[0].id
-                    await self.bot.delete_message(await_msg)
+                    await await_msg.delete()
                     break
-                #await self.bot.delete_message(await_msg)
+                #await await_msg.delete()
 
             return table, emb_msg
 
@@ -1370,21 +1374,21 @@ class Showtimes(commands.Cog):
             embed.set_thumbnail(url=table['poster_img'])
             embed.add_field(name='Timer ID', value="Ketik ID Timer atau mention orangnya", inline=False)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+            await emb_msg.edit(embed=embed)
 
             while True:
-                await_msg = await self.bot.wait_for_message(author=author)
+                await_msg = await self.bot.wait_for('message', check=check_if_author)
                 mentions = await_msg.mentions
                 if not mentions:
                     if await_msg.content.isdigit():
                         table['timer_id'] = await_msg.content
-                        await self.bot.delete_message(await_msg)
+                        await await_msg.delete()
                         break
                 else:
                     table['timer_id'] = mentions[0].id
-                    await self.bot.delete_message(await_msg)
+                    await await_msg.delete()
                     break
-                #await self.bot.delete_message(await_msg)
+                #await await_msg.delete()
 
             return table, emb_msg
 
@@ -1394,21 +1398,21 @@ class Showtimes(commands.Cog):
             embed.set_thumbnail(url=table['poster_img'])
             embed.add_field(name='Typesetter ID', value="Ketik ID Typesetter atau mention orangnya", inline=False)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+            await emb_msg.edit(embed=embed)
 
             while True:
-                await_msg = await self.bot.wait_for_message(author=author)
+                await_msg = await self.bot.wait_for('message', check=check_if_author)
                 mentions = await_msg.mentions
                 if not mentions:
                     if await_msg.content.isdigit():
                         table['tser_id'] = await_msg.content
-                        await self.bot.delete_message(await_msg)
+                        await await_msg.delete()
                         break
                 else:
                     table['tser_id'] = mentions[0].id
-                    await self.bot.delete_message(await_msg)
+                    await await_msg.delete()
                     break
-                #await self.bot.delete_message(await_msg)
+                #await await_msg.delete()
 
             return table, emb_msg
 
@@ -1418,21 +1422,21 @@ class Showtimes(commands.Cog):
             embed.set_thumbnail(url=table['poster_img'])
             embed.add_field(name='Quality Checker ID', value="Ketik ID Quality Checker atau mention orangnya", inline=False)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+            await emb_msg.edit(embed=embed)
 
             while True:
-                await_msg = await self.bot.wait_for_message(author=author)
+                await_msg = await self.bot.wait_for('message', check=check_if_author)
                 mentions = await_msg.mentions
                 if not mentions:
                     if await_msg.content.isdigit():
                         table['qcer_id'] = await_msg.content
-                        await self.bot.delete_message(await_msg)
+                        await await_msg.delete()
                         break
                 else:
                     table['qcer_id'] = mentions[0].id
-                    await self.bot.delete_message(await_msg)
+                    await await_msg.delete()
                     break
-                #await self.bot.delete_message(await_msg)
+                #await await_msg.delete()
 
             return table, emb_msg
 
@@ -1473,22 +1477,24 @@ class Showtimes(commands.Cog):
                 embed.add_field(name='1⃣ Samakan waktu tayang', value="Status: **{}**\n\nBerguna untuk anime Netflix yang sekali rilis banyak".format(check_setting(table['settings']['time_data_are_the_same'])), inline=False)
                 embed.add_field(name='Lain-Lain', value="⏪ Kembali", inline=False)
                 embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-                emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+                await emb_msg.edit(embed=embed)
 
                 to_react = ['1⃣', '⏪'] # ["2⃣", '3⃣', '4⃣', '5⃣', '6⃣', '7⃣', '8⃣', '9⃣', '0⃣', '✅', '❌']
                 for reaction in to_react:
-                    await self.bot.add_reaction(emb_msg, reaction)
-                def checkReaction(reaction, user):
+                    await emb_msg.add_reaction(reaction)
+
+                def check_react(reaction, user):
                     e = str(reaction.emoji)
-                    return e.startswith(tuple(to_react))
+                    return user == ctx.message.author and str(reaction.emoji) in to_react
 
-                res = await self.bot.wait_for_reaction(message=emb_msg, user=msg_author, check=checkReaction)
-
-                if to_react[0] in str(res.reaction.emoji):
-                    await self.bot.clear_reactions(emb_msg)
+                res, user = await self.bot.wait_for('reaction_add', check=check_react)
+                if user != ctx.message.author:
+                    pass
+                elif to_react[0] in str(res.emoji):
+                    await emb_msg.clear_reactions()
                     table, emb_msg = await gear_1(table, emb_msg, table['settings']['time_data_are_the_same'])
-                elif to_react[-1] in str(res.reaction.emoji):
-                    await self.bot.clear_reactions(emb_msg)
+                elif to_react[-1] in str(res.emoji):
+                    await emb_msg.clear_reactions()
                     return table, emb_msg
 
         json_tables, emb_msg = await process_anilist(json_tables, emb_msg, msg_author)
@@ -1540,61 +1546,63 @@ class Showtimes(commands.Cog):
             embed.add_field(name="Lain-Lain", value="🔐 Pengaturan\n✅ Tambahkan!\n❌ Batalkan!", inline=False)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
             if first_time:
-                await self.bot.delete_message(emb_msg)
+                await emb_msg.delete()
                 emb_msg = await ctx.send(embed=embed)
                 first_time = False
             else:
-                emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+                await emb_msg.edit(embed=embed)
 
             to_react = ['1⃣', "2⃣", '3⃣', '4⃣', '5⃣', '6⃣', '7⃣', '8⃣', '9⃣', '0⃣', '🔐', '✅', '❌']
             for reaction in to_react:
-                    await self.bot.add_reaction(emb_msg, reaction)
-            def checkReaction(reaction, user):
+                await emb_msg.add_reaction(reaction)
+
+            def check_react(reaction, user):
                 e = str(reaction.emoji)
-                return e.startswith(tuple(to_react))
+                return user == ctx.message.author and str(reaction.emoji) in to_react
 
-            res = await self.bot.wait_for_reaction(message=emb_msg, user=msg_author, check=checkReaction)
-
-            if to_react[0] in str(res.reaction.emoji):
-                await self.bot.clear_reactions(emb_msg)
+            res, user = await self.bot.wait_for('reaction_add', check=check_react)
+            if user != ctx.message.author:
+                pass
+            elif to_react[0] in str(res.emoji):
+                await emb_msg.clear_reactions()
                 json_tables, emb_msg = await process_anilist(json_tables, emb_msg, msg_author)
-            elif to_react[1] in str(res.reaction.emoji):
-                await self.bot.clear_reactions(emb_msg)
+            elif to_react[1] in str(res.emoji):
+                await emb_msg.clear_reactions()
                 json_tables, emb_msg = await process_episode(json_tables, emb_msg, msg_author)
-            elif to_react[2] in str(res.reaction.emoji):
-                await self.bot.clear_reactions(emb_msg)
+            elif to_react[2] in str(res.emoji):
+                await emb_msg.clear_reactions()
                 json_tables, emb_msg = await process_role(json_tables, emb_msg, msg_author)
-            elif to_react[3] in str(res.reaction.emoji):
-                await self.bot.clear_reactions(emb_msg)
+            elif to_react[3] in str(res.emoji):
+                await emb_msg.clear_reactions()
                 json_tables, emb_msg = await process_tlor(json_tables, emb_msg, msg_author)
-            elif to_react[4] in str(res.reaction.emoji):
-                await self.bot.clear_reactions(emb_msg)
+            elif to_react[4] in str(res.emoji):
+                await emb_msg.clear_reactions()
                 json_tables, emb_msg = await process_tlcer(json_tables, emb_msg, msg_author)
-            elif to_react[5] in str(res.reaction.emoji):
-                await self.bot.clear_reactions(emb_msg)
+            elif to_react[5] in str(res.emoji):
+                await emb_msg.clear_reactions()
                 json_tables, emb_msg = await process_encoder(json_tables, emb_msg, msg_author)
-            elif to_react[6] in str(res.reaction.emoji):
-                await self.bot.clear_reactions(emb_msg)
+            elif to_react[6] in str(res.emoji):
+                await emb_msg.clear_reactions()
                 json_tables, emb_msg = await process_editor(json_tables, emb_msg, msg_author)
-            elif to_react[7] in str(res.reaction.emoji):
-                await self.bot.clear_reactions(emb_msg)
+            elif to_react[7] in str(res.emoji):
+                await emb_msg.clear_reactions()
                 json_tables, emb_msg = await process_timer(json_tables, emb_msg, msg_author)
-            if to_react[8] in str(res.reaction.emoji):
-                await self.bot.clear_reactions(emb_msg)
+            if to_react[8] in str(res.emoji):
+                await emb_msg.clear_reactions()
                 json_tables, emb_msg = await process_tser(json_tables, emb_msg, msg_author)
-            elif to_react[9] in str(res.reaction.emoji):
-                await self.bot.clear_reactions(emb_msg)
+            elif to_react[9] in str(res.emoji):
+                await emb_msg.clear_reactions()
                 json_tables, emb_msg = await process_qcer(json_tables, emb_msg, msg_author)
-            elif '🔐' in str(res.reaction.emoji):
-                await self.bot.clear_reactions(emb_msg)
+            elif '🔐' in str(res.emoji):
+                await emb_msg.clear_reactions()
                 json_tables, emb_msg = await process_pengaturan(json_tables, emb_msg, msg_author)
-            elif '✅' in str(res.reaction.emoji):
-                await self.bot.clear_reactions(emb_msg)
+            elif '✅' in str(res.emoji):
+                await emb_msg.clear_reactions()
                 break
-            elif '❌' in str(res.reaction.emoji):
+            elif '❌' in str(res.emoji):
                 print('[@] Cancelled')
                 cancel_toggled = True
-                await self.bot.clear_reactions(emb_msg)
+                await emb_msg.clear_reactions()
                 break
 
         if cancel_toggled:
@@ -1605,7 +1613,7 @@ class Showtimes(commands.Cog):
         embed=discord.Embed(title="Menambah Utang", color=0x56acf3)
         embed.add_field(name="Memproses!", value='Membuat data...', inline=True)
         embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-        emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+        await emb_msg.edit(embed=embed)
 
         new_anime_data = {}
         staff_data = {}
@@ -1648,7 +1656,7 @@ class Showtimes(commands.Cog):
         embed=discord.Embed(title="Menambah Utang", color=0x56acf3)
         embed.add_field(name="Memproses!", value='Mengirim data...', inline=True)
         embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-        emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+        await emb_msg.edit(embed=embed)
 
         print("[@] Sending data")
 
@@ -1661,7 +1669,7 @@ class Showtimes(commands.Cog):
         await ctx.send(embed=embed)
 
         success = await patch_json(json_d)
-        await self.bot.delete_message(emb_msg)
+        await emb_msg.delete()
 
         if success:
             print('[@] Sending message...')
@@ -1768,15 +1776,19 @@ class Showtimes(commands.Cog):
         rtext = 'Staff yang mengerjakaan **{}**\n**Admin**: '.format(matches[0])
         rtext += ''
 
-        for adm in srv_owner:
+        async def get_user_name(user_id):
             try:
-                user = await self.bot.get_user_info(adm)
-                rtext += '{}#{}'.format(user.name, user.discriminator)
+                user_data = self.bot.get_user(int(user_id))
+                return '{}#{}'.format(user_data.name, user_data.discriminator)
             except:
-                rtext += 'Unknown'
-            if len(adm) > 1:
-                if srv_owner[-1] != adm:
-                    rtext += ', '
+                return 'ERROR'
+
+        new_srv_owner = []
+        for adm in srv_owner:
+            user = await get_user_name(adm)
+            new_srv_owner.append(user)
+
+        rtext += ', '.join(new_srv_owner)
 
         rtext += '\n**Role**: {}'.format(get_role_name(server_data['anime'][matches[0]]['role_id'], ctx.message.guild.roles))
 
@@ -1785,7 +1797,7 @@ class Showtimes(commands.Cog):
             for other_srv in json_d[server_message]['anime'][matches[0]]['kolaborasi']:
                 if server_message == other_srv:
                     continue
-                server_data = self.bot.get_server(other_srv)
+                server_data = self.bot.get_guild(int(other_srv))
                 k_list.append(server_data.name)
             if k_list:
                 rtext += '\n**Kolaborasi dengan**: {}'.format(', '.join(k_list))
@@ -1794,8 +1806,8 @@ class Showtimes(commands.Cog):
 
         for k, v in staff_assignment.items():
             try:
-                user = await self.bot.get_user_info(v)
-                rtext += '**{}**: {}#{}\n'.format(k, user.name, user.discriminator)
+                user = await get_user_name(v)
+                rtext += '**{}**: {}\n'.format(k, user)
             except discord.errors.NotFound:
                 rtext += '**{}**: Unknown\n'.format(k)
 
@@ -1939,7 +1951,7 @@ class Showtimes(commands.Cog):
         if res is None:
             await self.bot.clear_reactions(preview_msg)
             return await ctx.send('***Timeout!***')
-        elif '✅' in str(res.reaction.emoji):
+        elif '✅' in str(res.emoji):
             # Process
             with open('nao_showtimes.json', 'w') as f: # Local save before commiting
                 json.dump(json_d, f, indent=4)
@@ -1948,7 +1960,7 @@ class Showtimes(commands.Cog):
             if success:
                 return await ctx.send('**Berhasil merubah database, harap dilihat sebelum mengaktifkannya kembali**')
             await ctx.send('**Terjadi kesalahan ketika ingin patching database**')
-        elif '❌' in str(res.reaction.emoji):
+        elif '❌' in str(res.emoji):
             print('[@] Cancelled')
             await self.bot.clear_reactions(preview_msg)
             await self.bot.edit_message(preview_msg, '**Cancelled, trigger this command later!**')
@@ -1999,16 +2011,19 @@ class ShowtimesAlias(commands.Cog):
                 "target_anime": ""
             }
 
+            def check_if_author(m):
+                return m.author == ctx.message.author
+
             async def process_anime(table, emb_msg, author, anime_list):
                 print('[@] Memproses anime')
                 embed = discord.Embed(title="Alias", color=0x96df6a)
                 embed.add_field(name='Judul/Garapan Anime', value="Ketik judul animenya (yang asli), bisa disingkat", inline=False)
                 embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-                emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+                await emb_msg.edit(embed=embed)
 
-                await_msg = await self.bot.wait_for_message(author=author)
+                await_msg = await self.bot.wait_for('message', check=check_if_author)
                 matches = get_close_matches(await_msg.content, anime_list)
-                await self.bot.delete_message(await_msg)
+                await await_msg.delete()
                 if not matches:
                     await ctx.send('Tidak dapat menemukan judul tersebut di database')
                     return False, False
@@ -2019,24 +2034,25 @@ class ShowtimesAlias(commands.Cog):
                 embed = discord.Embed(title="Alias", color=0x96df6a)
                 embed.add_field(name='Apakah benar?', value="Judul: **{}**".format(matches[0]), inline=False)
                 embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-                await self.bot.delete_message(emb_msg)
+                await emb_msg.delete()
                 emb_msg = await ctx.send(embed=embed)
 
                 to_react = ['✅', '❌']
                 for reaction in to_react:
-                        await self.bot.add_reaction(emb_msg, reaction)
-                def checkReaction(reaction, user):
+                    await emb_msg.add_reaction(reaction)
+                def check_react(reaction, user):
                     e = str(reaction.emoji)
-                    return e.startswith(('✅', '❌'))
+                    return user == ctx.message.author and str(reaction.emoji) in to_react
 
-                res = await self.bot.wait_for_reaction(message=emb_msg, user=author, check=checkReaction)
-
-                if '✅' in str(res.reaction.emoji):
+                res, user = await self.bot.wait_for('reaction_add', check=check_react)
+                if user != ctx.message.author:
+                    pass
+                elif '✅' in str(res.emoji):
                     table['target_anime'] = matches[0]
-                    await self.bot.clear_reactions(emb_msg)
-                elif '❌' in str(res.reaction.emoji):
+                    await emb_msg.clear_reactions()
+                elif '❌' in str(res.emoji):
                     await ctx.send('**Dibatalkan!**')
-                    await self.bot.clear_reactions(emb_msg)
+                    await emb_msg.clear_reactions()
                     return False, False
 
                 return table, emb_msg
@@ -2046,11 +2062,11 @@ class ShowtimesAlias(commands.Cog):
                 embed = discord.Embed(title="Alias", color=0x96df6a)
                 embed.add_field(name='Alias', value="Ketik alias yang diinginkan", inline=False)
                 embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-                emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+                await emb_msg.edit(embed=embed)
 
-                await_msg = await self.bot.wait_for_message(author=author)
+                await_msg = await self.bot.wait_for('message', check=check_if_author)
                 table['alias_anime'] = await_msg.content
-                await self.bot.delete_message(await_msg)
+                await await_msg.delete()
 
                 return table, emb_msg
 
@@ -2070,34 +2086,34 @@ class ShowtimesAlias(commands.Cog):
                 embed.add_field(name="Lain-Lain", value="✅ Tambahkan!\n❌ Batalkan!", inline=False)
                 embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
                 if first_time:
-                    await self.bot.delete_message(emb_msg)
+                    await emb_msg.delete()
                     emb_msg = await ctx.send(embed=embed)
                     first_time = False
                 else:
-                    emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+                    await emb_msg.edit(embed=embed)
 
                 to_react = ['1⃣', "2⃣", '✅', '❌']
                 for reaction in to_react:
-                        await self.bot.add_reaction(emb_msg, reaction)
+                        await emb_msg.add_reaction(reaction)
                 def checkReaction(reaction, user):
                     e = str(reaction.emoji)
                     return e.startswith(tuple(to_react))
 
                 res = await self.bot.wait_for_reaction(message=emb_msg, user=msg_author, check=checkReaction)
 
-                if to_react[0] in str(res.reaction.emoji):
-                    await self.bot.clear_reactions(emb_msg)
+                if to_react[0] in str(res.emoji):
+                    await emb_msg.clear_reactions()
                     json_tables, emb_msg = await process_anime(json_tables, emb_msg, msg_author, srv_anilist)
-                elif to_react[1] in str(res.reaction.emoji):
-                    await self.bot.clear_reactions(emb_msg)
+                elif to_react[1] in str(res.emoji):
+                    await emb_msg.clear_reactions()
                     json_tables, emb_msg = await process_alias(json_tables, emb_msg, msg_author)
-                elif '✅' in str(res.reaction.emoji):
-                    await self.bot.clear_reactions(emb_msg)
+                elif '✅' in str(res.emoji):
+                    await emb_msg.clear_reactions()
                     break
-                elif '❌' in str(res.reaction.emoji):
+                elif '❌' in str(res.emoji):
                     print('[@] Cancelled.')
                     cancel_toggled = True
-                    await self.bot.clear_reactions(emb_msg)
+                    await emb_msg.clear_reactions()
                     break
 
             if cancel_toggled:
@@ -2108,7 +2124,7 @@ class ShowtimesAlias(commands.Cog):
             embed=discord.Embed(title="Alias", color=0x56acf3)
             embed.add_field(name="Memproses!", value='Membuat data...', inline=True)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+            await emb_msg.edit(embed=embed)
 
             if json_tables['alias_anime'] in server_data['alias']:
                 embed=discord.Embed(title="Alias", color=0xe24545)
@@ -2121,7 +2137,7 @@ class ShowtimesAlias(commands.Cog):
                     inline=True
                 )
                 embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-                await self.bot.delete_message(emb_msg)
+                await emb_msg.delete()
                 return await ctx.send(embed=embed)
 
             json_d[server_message]['alias'][json_tables['alias_anime']] = json_tables['target_anime']
@@ -2129,7 +2145,7 @@ class ShowtimesAlias(commands.Cog):
             embed=discord.Embed(title="Alias", color=0x56acf3)
             embed.add_field(name="Memproses!", value='Mengirim data...', inline=True)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+            await emb_msg.edit(embed=embed)
 
             print("[@] Sending data")
 
@@ -2140,7 +2156,7 @@ class ShowtimesAlias(commands.Cog):
             embed.add_field(name="Sukses!", value='Alias **{} ({})** telah ditambahkan ke database\nDatabase utama akan diupdate sebentar lagi'.format(json_tables['alias_anime'], json_tables['target_anime']), inline=True)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
             await ctx.send(embed=embed)
-            await self.bot.delete_message(emb_msg)
+            await emb_msg.delete()
 
             success = await patch_json(json_d)
 
@@ -2275,7 +2291,7 @@ class ShowtimesAlias(commands.Cog):
             to_react.extend(react_ext)
 
             for reaction in to_react:
-                await self.bot.add_reaction(emb_msg, reaction)
+                await emb_msg.add_reaction(reaction)
 
             def checkReaction(reaction, user):
                 e = str(reaction.emoji)
@@ -2283,29 +2299,29 @@ class ShowtimesAlias(commands.Cog):
 
             res = await self.bot.wait_for_reaction(message=emb_msg, user=ctx.message.author, timeout=30, check=checkReaction)
             if res is None:
-                return await self.bot.clear_reactions(emb_msg)
-            elif '⏪' in str(res.reaction.emoji):
+                return await emb_msg.clear_reactions()
+            elif '⏪' in str(res.emoji):
                 n = n - 1
-                await self.bot.clear_reactions(emb_msg)
+                await emb_msg.clear_reactions()
                 embed=discord.Embed(title="Alias list", color=0x47e0a7)
                 embed.add_field(name='{}'.format(matches[0]), value=make_numbered_alias(alias_chunked[n-1]), inline=False)
                 embed.add_field(name="*Informasi*", value="1⃣-5⃣ Hapus `x` alias\n⏪ Sebelumnya\n⏩ Selanjutnya\n❌ Batalkan")
                 embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-                emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
-            elif '⏩' in str(res.reaction.emoji):
+                await emb_msg.edit(embed=embed)
+            elif '⏩' in str(res.emoji):
                 n = n + 1
-                await self.bot.clear_reactions(emb_msg)
+                await emb_msg.clear_reactions()
                 embed=discord.Embed(title="Alias list", color=0x47e0a7)
                 embed.add_field(name='{}'.format(matches[0]), value=make_numbered_alias(alias_chunked[n-1]), inline=False)
                 embed.add_field(name="*Informasi*", value="1⃣-5⃣ Hapus `x` alias\n⏪ Sebelumnya\n⏩ Selanjutnya\n❌ Batalkan")
                 embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-                emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
-            elif '❌' in str(res.reaction.emoji):
-                await self.bot.clear_reactions(emb_msg)
+                await emb_msg.edit(embed=embed)
+            elif '❌' in str(res.emoji):
+                await emb_msg.clear_reactions()
                 return await ctx.send('**Dibatalkan!**')
             else:
-                await self.bot.clear_reactions(emb_msg)
-                index_del = to_react.index(str(res.reaction.emoji))
+                await emb_msg.clear_reactions()
+                index_del = to_react.index(str(res.emoji))
                 n_del = alias_chunked[n-1][index_del]
                 del json_d[server_message]['alias'][n_del]
                 
@@ -2409,24 +2425,24 @@ class ShowtimesKolaborasi(commands.Cog):
                 emb_msg = await ctx.send(embed=embed)
                 first_time = False
             else:
-                emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+                await emb_msg.edit(embed=embed)
 
             to_react = ['✅', '❌']
             for reaction in to_react:
-                    await self.bot.add_reaction(emb_msg, reaction)
+                    await emb_msg.add_reaction(reaction)
             def checkReaction(reaction, user):
                 e = str(reaction.emoji)
                 return e.startswith(tuple(to_react))
 
             res = await self.bot.wait_for_reaction(message=emb_msg, user=msg_author, check=checkReaction)
 
-            if '✅' in str(res.reaction.emoji):
-                await self.bot.clear_reactions(emb_msg)
+            if '✅' in str(res.emoji):
+                await emb_msg.clear_reactions()
                 break
-            elif '❌' in str(res.reaction.emoji):
+            elif '❌' in str(res.emoji):
                 print('[@] Cancelled.')
                 cancel_toggled = True
-                await self.bot.clear_reactions(emb_msg)
+                await emb_msg.clear_reactions()
                 break
 
         if cancel_toggled:
@@ -2443,7 +2459,7 @@ class ShowtimesKolaborasi(commands.Cog):
         embed=discord.Embed(title="Kolaborasi", color=0x56acf3)
         embed.add_field(name="Memproses!", value='Mengirim data...', inline=True)
         embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-        emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+        await emb_msg.edit(embed=embed)
 
         print("[@] Sending data")
 
@@ -2453,7 +2469,7 @@ class ShowtimesKolaborasi(commands.Cog):
         embed=discord.Embed(title="Kolaborasi", color=0x96df6a)
         embed.add_field(name="Sukses!", value='Berikan kode berikut `{}` kepada fansub/server lain.\nDatabase utama akan diupdate sebentar lagi'.format(randomize_confirm), inline=True)
         embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-        await self.bot.delete_message(emb_msg)
+        await emb_msg.delete()
         await ctx.send(embed=embed)
 
         success = await patch_json(json_d)
@@ -2496,18 +2512,18 @@ class ShowtimesKolaborasi(commands.Cog):
 
         to_react = ['✅', '❌']
         for reaction in to_react:
-                await self.bot.add_reaction(emb_msg, reaction)
+                await emb_msg.add_reaction(reaction)
         def checkReaction(reaction, user):
             e = str(reaction.emoji)
             return e.startswith(tuple(to_react))
 
         res = await self.bot.wait_for_reaction(message=emb_msg, user=ctx.message.author, check=checkReaction)
 
-        if '✅' in str(res.reaction.emoji):
-            await self.bot.clear_reactions(emb_msg)
-        elif '❌' in str(res.reaction.emoji):
+        if '✅' in str(res.emoji):
+            await emb_msg.clear_reactions()
+        elif '❌' in str(res.emoji):
             print('[@] Cancelled.')
-            await self.bot.clear_reactions(emb_msg)
+            await emb_msg.clear_reactions()
             return await ctx.send('**Dibatalkan!**')
 
         ani_srv_role = ''
@@ -2517,7 +2533,11 @@ class ShowtimesKolaborasi(commands.Cog):
             del server_data['anime'][klb_data['anime']]
 
         if not ani_srv_role:
-            c_role = await self.bot.create_role(ctx.message.author.server, name=klb_data['anime'], colour=discord.Colour(0xdf2705), mentionable=True)
+            c_role = await ctx.message.guild.create_role(
+                name=klb_data['anime'],
+                colour=discord.Colour(0xdf2705),
+                mentionable=True
+            )
             ani_srv_role = str(c_role.id)
 
         other_anime_data = json_d[klb_data['server']]['anime'][klb_data['anime']]
@@ -2540,7 +2560,7 @@ class ShowtimesKolaborasi(commands.Cog):
         embed=discord.Embed(title="Kolaborasi", color=0x56acf3)
         embed.add_field(name="Memproses!", value='Mengirim data...', inline=True)
         embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-        emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+        await emb_msg.edit(embed=embed)
 
         print("[@] Sending data")
 
@@ -2550,7 +2570,7 @@ class ShowtimesKolaborasi(commands.Cog):
         embed=discord.Embed(title="Kolaborasi", color=0x96df6a)
         embed.add_field(name="Sukses!", value='Berhasil konfirmasi dengan server **{}**.\nDatabase utama akan diupdate sebentar lagi'.format(klb_data['server']), inline=True)
         embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-        await self.bot.delete_message(emb_msg)
+        await emb_msg.delete()
         await ctx.send(embed=embed)
 
         success = await patch_json(json_d)
@@ -2758,14 +2778,17 @@ class ShowtimesAdmin(commands.Cog):
             "progress_channel": ""
         }
 
+        def check_if_author(m):
+            return m.author == ctx.message.author
+
         async def process_gist(table, emb_msg, author):
             print('[@] Memproses database')
             embed = discord.Embed(title="naoTimes", color=0x96df6a)
             embed.add_field(name='Gist ID', value="Ketik ID Gist GitHub", inline=False)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+            await emb_msg.edit(embed=embed)
 
-            await_msg = await self.bot.wait_for_message(author=author)
+            await_msg = await self.bot.wait_for('message', check=check_if_author)
             table['id'] = await_msg.content
 
             return table, emb_msg
@@ -2775,15 +2798,15 @@ class ShowtimesAdmin(commands.Cog):
             embed = discord.Embed(title="naoTimes", color=0x96df6a)
             embed.add_field(name='#progress channel ID', value="Ketik ID channel", inline=False)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+            await emb_msg.edit(embed=embed)
 
             while True:
-                await_msg = await self.bot.wait_for_message(author=author)
+                await_msg = await self.bot.wait_for('message', check=check_if_author)
                 if await_msg.content.isdigit():
                     table['progress_channel'] = await_msg.content
-                    await self.bot.delete_message(await_msg)
+                    await await_msg.delete()
                     break
-                await self.bot.delete_message(await_msg)
+                await await_msg.delete()
 
             return table, emb_msg
 
@@ -2792,21 +2815,21 @@ class ShowtimesAdmin(commands.Cog):
             embed = discord.Embed(title="naoTimes", color=0x96df6a)
             embed.add_field(name='Owner ID', value="Ketik ID Owner server atau mention orangnya", inline=False)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+            await emb_msg.edit(embed=embed)
 
             while True:
-                await_msg = await self.bot.wait_for_message(author=author)
+                await_msg = await self.bot.wait_for('message', check=check_if_author)
                 mentions = await_msg.mentions
                 if not mentions:
                     if await_msg.content.isdigit():
                         table['owner_id'] = await_msg.content
-                        await self.bot.delete_message(await_msg)
+                        await await_msg.delete()
                         break
                 else:
                     table['owner_id'] = mentions[0].id
-                    await self.bot.delete_message(await_msg)
+                    await await_msg.delete()
                     break
-                await self.bot.delete_message(await_msg)
+                await await_msg.delete()
 
             return table, emb_msg
 
@@ -2824,37 +2847,37 @@ class ShowtimesAdmin(commands.Cog):
             embed.add_field(name="Lain-Lain", value="✅ Tambahkan!\n❌ Batalkan!", inline=False)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
             if first_time:
-                await self.bot.delete_message(emb_msg)
+                await emb_msg.delete()
                 emb_msg = await self.bot.say(embed=embed)
                 first_time = False
             else:
-                emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+                await emb_msg.edit(embed=embed)
 
             to_react = ['1⃣', "2⃣", '3⃣', '✅', '❌']
             for reaction in to_react:
-                    await self.bot.add_reaction(emb_msg, reaction)
+                    await emb_msg.add_reaction(reaction)
             def checkReaction(reaction, user):
                 e = str(reaction.emoji)
                 return e.startswith(tuple(to_react))
 
             res = await self.bot.wait_for_reaction(message=emb_msg, user=msg_author, check=checkReaction)
 
-            if to_react[0] in str(res.reaction.emoji):
-                await self.bot.clear_reactions(emb_msg)
+            if to_react[0] in str(res.emoji):
+                await emb_msg.clear_reactions()
                 json_tables, emb_msg = await process_gist(json_tables, emb_msg, msg_author)
-            elif to_react[1] in str(res.reaction.emoji):
-                await self.bot.clear_reactions(emb_msg)
+            elif to_react[1] in str(res.emoji):
+                await emb_msg.clear_reactions()
                 json_tables, emb_msg = await process_owner(json_tables, emb_msg, msg_author)
-            elif to_react[2] in str(res.reaction.emoji):
-                await self.bot.clear_reactions(emb_msg)
+            elif to_react[2] in str(res.emoji):
+                await emb_msg.clear_reactions()
                 json_tables, emb_msg = await process_progchan(json_tables, emb_msg, msg_author)
-            elif '✅' in str(res.reaction.emoji):
-                await self.bot.clear_reactions(emb_msg)
+            elif '✅' in str(res.emoji):
+                await emb_msg.clear_reactions()
                 break
-            elif '❌' in str(res.reaction.emoji):
+            elif '❌' in str(res.emoji):
                 print('[@] Cancelled')
                 cancel_toggled = True
-                await self.bot.clear_reactions(emb_msg)
+                await emb_msg.clear_reactions()
                 break
 
         if cancel_toggled:
@@ -2863,7 +2886,7 @@ class ShowtimesAdmin(commands.Cog):
         embed=discord.Embed(title="naoTimes", color=0x56acf3)
         embed.add_field(name="Memproses!", value='Mengirim data...', inline=True)
         embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-        emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+        await emb_msg.edit(embed=embed)
 
         main_data = {}
         server_data = {}
@@ -2905,7 +2928,7 @@ class ShowtimesAdmin(commands.Cog):
             embed.add_field(name="Sukses!", value='Sukses membuat database di github\nSilakan restart bot agar naoTimes dapat diaktifkan.\n\nLaporkan isu di: [GitHub Issue](https://github.com/noaione/naoTimes/issues)', inline=True)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
             await self.bot.say(embed=embed)
-            await self.bot.delete_message(emb_msg)
+            await emb_msg.delete()
 
     @ntadmin.command(pass_context=True)
     async def fetchdb(self, ctx):
@@ -2990,14 +3013,14 @@ class ShowtimesAdmin(commands.Cog):
             await self.bot.say('***Timeout!***')
             await self.bot.clear_reactions(preview_msg)
             return
-        elif '✅' in str(res.reaction.emoji):
+        elif '✅' in str(res.emoji):
             success = await patch_json(json_to_patch)
             await self.bot.clear_reactions(preview_msg)
             if success:
                 await self.bot.edit_message(preview_msg, '**Patching success!, try it with !tagih**')
                 return
             await self.bot.edit_message(preview_msg, '**Patching failed!, try it again later**')
-        elif '❌' in str(res.reaction.emoji):
+        elif '❌' in str(res.emoji):
             print('[@] Patch Cancelled')
             await self.bot.clear_reactions(preview_msg)
             await self.bot.edit_message(preview_msg, '**Ok, cancelled process**')
@@ -3197,13 +3220,13 @@ class ShowtimesAdmin(commands.Cog):
         if res is None:
             await self.bot.clear_reactions(preview_msg)
             return await self.bot.say('***Timeout!***')
-        elif '✅' in str(res.reaction.emoji):
+        elif '✅' in str(res.emoji):
             success = await patch_json(json_d)
             await self.bot.clear_reactions(preview_msg)
             if success:
                 return await self.bot.edit_message(preview_msg, '**Patching success!, try it with !tagih**')
             await self.bot.edit_message(preview_msg, '**Patching failed!, try it again later**')
-        elif '❌' in str(res.reaction.emoji):
+        elif '❌' in str(res.emoji):
             print('[@] Patch Cancelled')
             await self.bot.clear_reactions(preview_msg)
             await self.bot.edit_message(preview_msg, '**Ok, cancelled process**')
