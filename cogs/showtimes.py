@@ -139,13 +139,13 @@ def parse_anilist_start_date(startDate: str) -> int:
 
 
 def get_episode_airing(nodes: dict, episode: str) -> tuple:
+    if not nodes:
+        return None, '1' # No data
     for i in nodes:
         if i['episode'] == int(episode):
             return i['airingAt'], i['episode'] # return episodic data
     if len(nodes) == 1:
         return nodes[0]['airingAt'], nodes[-1]['episode'] # get the only airing data
-    if len(nodes) == 0:
-        return None, '1'
     return nodes[-1]['airingAt'], nodes[-1]['episode'] # get latest airing data
 
 
@@ -254,6 +254,12 @@ async def fetch_anilist(ani_id, current_ep, total_episode=None, return_time_data
         episodes = 0
     except IndexError:
         episodes = 0
+
+    if not airing_time_nodes:
+        airing_time_nodes = []
+        temporary_nodes = {}
+        temporary_nodes['airingAt'] = parse_anilist_start_date('{}{}{}'.format(start_date['year'], start_date['month'], start_date['day']))
+        airing_time_nodes.append(temporary_nodes)
 
     taimu = parse_ani_time(airing_time)
     if return_time_data:
@@ -1004,7 +1010,7 @@ class Showtimes(commands.Cog):
         Lupakan utang lama buat utang baru :D
         """
         server_message = str(ctx.message.guild.id)
-        print('Requested !lupakanutang at: ' + server_message)
+        print('[#] Requested !lupakanutang at: ' + server_message)
         json_d = await fetch_json()
 
         if server_message not in json_d:
@@ -1114,7 +1120,7 @@ class Showtimes(commands.Cog):
         Merupakan versi 2
         """
         server_message = str(ctx.message.guild.id)
-        print('Requested !tambahutang at: ' + server_message)
+        print('[#] Requested !tambahutang at: ' + server_message)
         json_d = await fetch_json()
 
         if server_message not in json_d:
@@ -1184,7 +1190,7 @@ class Showtimes(commands.Cog):
             embed = discord.Embed(title="Menambah Utang", color=0x96df6a)
             embed.add_field(name='Anilist ID', value="Ketik ID Anilist untuk anime yang diinginkan\n\nBisa gunakan `!anime <judul>` dan melihat bagian bawah untuk IDnya\n\nKetik *cancel* untuk membatalkan proses", inline=False)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-            emb_msg = await self.bot.edit_message(emb_msg, "", embed=embed)
+            await emb_msg.edit(content="", embed=embed)
 
             while True:
                 await_msg = await self.bot.wait_for('message', check=check_if_author)
@@ -1257,7 +1263,7 @@ class Showtimes(commands.Cog):
                         break
                     elif await_msg.content.startswith('auto'):
                         c_role = await ctx.message.guild.create_role(
-                            name=table['anime'],
+                            name=table['ani_title'],
                             colour=discord.Colour(0xdf2705),
                             mentionable=True
                         )
@@ -1309,11 +1315,11 @@ class Showtimes(commands.Cog):
                 mentions = await_msg.mentions
                 if not mentions:
                     if await_msg.content.isdigit():
-                        table['tlor_id'] = await_msg.content
+                        table['tlor_id'] = str(await_msg.content)
                         await await_msg.delete()
                         break
                 else:
-                    table['tlor_id'] = mentions[0].id
+                    table['tlor_id'] = str(mentions[0].id)
                     await await_msg.delete()
                     break
                 #await await_msg.delete()
@@ -1333,11 +1339,11 @@ class Showtimes(commands.Cog):
                 mentions = await_msg.mentions
                 if not mentions:
                     if await_msg.content.isdigit():
-                        table['encoder_id'] = await_msg.content
+                        table['encoder_id'] = str(await_msg.content)
                         await await_msg.delete()
                         break
                 else:
-                    table['encoder_id'] = mentions[0].id
+                    table['encoder_id'] = str(mentions[0].id)
                     await await_msg.delete()
                     break
                 #await await_msg.delete()
@@ -1357,11 +1363,11 @@ class Showtimes(commands.Cog):
                 mentions = await_msg.mentions
                 if not mentions:
                     if await_msg.content.isdigit():
-                        table['editor_id'] = await_msg.content
+                        table['editor_id'] = str(await_msg.content)
                         await await_msg.delete()
                         break
                 else:
-                    table['editor_id'] = mentions[0].id
+                    table['editor_id'] = str(mentions[0].id)
                     await await_msg.delete()
                     break
                 #await await_msg.delete()
@@ -1381,11 +1387,11 @@ class Showtimes(commands.Cog):
                 mentions = await_msg.mentions
                 if not mentions:
                     if await_msg.content.isdigit():
-                        table['timer_id'] = await_msg.content
+                        table['timer_id'] = str(await_msg.content)
                         await await_msg.delete()
                         break
                 else:
-                    table['timer_id'] = mentions[0].id
+                    table['timer_id'] = str(mentions[0].id)
                     await await_msg.delete()
                     break
                 #await await_msg.delete()
@@ -1405,11 +1411,11 @@ class Showtimes(commands.Cog):
                 mentions = await_msg.mentions
                 if not mentions:
                     if await_msg.content.isdigit():
-                        table['tser_id'] = await_msg.content
+                        table['tser_id'] = str(await_msg.content)
                         await await_msg.delete()
                         break
                 else:
-                    table['tser_id'] = mentions[0].id
+                    table['tser_id'] = str(mentions[0].id)
                     await await_msg.delete()
                     break
                 #await await_msg.delete()
@@ -1429,11 +1435,11 @@ class Showtimes(commands.Cog):
                 mentions = await_msg.mentions
                 if not mentions:
                     if await_msg.content.isdigit():
-                        table['qcer_id'] = await_msg.content
+                        table['qcer_id'] = str(await_msg.content)
                         await await_msg.delete()
                         break
                 else:
-                    table['qcer_id'] = mentions[0].id
+                    table['qcer_id'] = str(mentions[0].id)
                     await await_msg.delete()
                     break
                 #await await_msg.delete()
@@ -1516,10 +1522,10 @@ class Showtimes(commands.Cog):
 
         async def fetch_username_from_id(_id):
             try:
-                user = await self.bot.get_user_info(_id)
-                return '{}#{}'.format(user.name, user.discriminator)
-            except discord.errors.NotFound:
-                return 'Unknown'
+                user_data = self.bot.get_user(int(_id))
+                return '{}#{}'.format(user_data.name, user_data.discriminator)
+            except:
+                return 'ERROR'
 
         print('[@] Checkpoint before sending')
         while True:
@@ -1686,7 +1692,7 @@ class Showtimes(commands.Cog):
         Melihat jadwal anime musiman yang di ambil.
         """
         server_message = str(ctx.message.guild.id)
-        print('Requested !jadwal at: ' + server_message)
+        print('[#] Requested !jadwal at: ' + server_message)
         json_d = await fetch_json()
 
         try:
@@ -1732,7 +1738,7 @@ class Showtimes(commands.Cog):
         judul: Judul anime yang terdaftar
         """
         server_message = str(ctx.message.guild.id)
-        print('Requested !staff at: ' + server_message)
+        print('[#] Requested !staff at: ' + server_message)
         json_d = await fetch_json()
 
         try:
@@ -1824,7 +1830,7 @@ class Showtimes(commands.Cog):
         Mark something as done or undone for other episode without announcing it
         """
         server_message = str(ctx.message.guild.id)
-        print('Requested !tandakan at: ' + server_message)
+        print('[#] Requested !tandakan at: ' + server_message)
         json_d = await fetch_json()
 
         if server_message not in json_d:
@@ -1922,7 +1928,7 @@ class Showtimes(commands.Cog):
         """
         if int(ctx.message.author.id) != int(bot_config['owner_id']):
             return
-        print('Requested !globalpatcher by admin')
+        print('[#] Requested !globalpatcher by admin')
         json_d = await fetch_json()
 
         srv_list = []
@@ -1980,7 +1986,7 @@ class ShowtimesAlias(commands.Cog):
         """
         if not ctx.invoked_subcommand:
             server_message = str(ctx.message.guild.id)
-            print('Requested !alias at: ' + server_message)
+            print('[#] Requested !alias at: ' + server_message)
             json_d = await fetch_json()
 
             try:
@@ -2172,7 +2178,7 @@ class ShowtimesAlias(commands.Cog):
     @alias.command()
     async def list(self, ctx, *, judul):
         server_message = str(ctx.message.guild.id)
-        print('Requested !alias list at: ' + server_message)
+        print('[#] Requested !alias list at: ' + server_message)
         json_d = await fetch_json()
 
         if server_message not in json_d:
@@ -2219,7 +2225,7 @@ class ShowtimesAlias(commands.Cog):
     @alias.command(aliases=['remove'])
     async def hapus(self, ctx, *, judul):
         server_message = str(ctx.message.guild.id)
-        print('Requested !alias hapus at: ' + server_message)
+        print('[#] Requested !alias hapus at: ' + server_message)
         json_d = await fetch_json()
 
         if server_message not in json_d:
@@ -2366,7 +2372,7 @@ class ShowtimesKolaborasi(commands.Cog):
     async def dengan(self, ctx, server_id, *, judul):
         server_message = str(ctx.message.guild.id)
         msg_author = ctx.message.author
-        print('Requested !kolaborasi dengan at: ' + server_message)
+        print('[#] Requested !kolaborasi dengan at: ' + server_message)
         json_d = await fetch_json()
 
         if server_message not in json_d:
@@ -2486,7 +2492,7 @@ class ShowtimesKolaborasi(commands.Cog):
     @kolaborasi.command()
     async def konfirmasi(self, ctx, konfirm_id):
         server_message = str(ctx.message.guild.id)
-        print('Requested !kolaborasi konfirmasi at: ' + server_message)
+        print('[#] Requested !kolaborasi konfirmasi at: ' + server_message)
         json_d = await fetch_json()
 
         if server_message not in json_d:
@@ -2587,7 +2593,7 @@ class ShowtimesKolaborasi(commands.Cog):
     @kolaborasi.command()
     async def batalkan(self, ctx, server_id, konfirm_id):
         server_message = str(ctx.message.guild.id)
-        print('Requested !kolaborasi batalkan at: ' + server_message)
+        print('[#] Requested !kolaborasi batalkan at: ' + server_message)
         json_d = await fetch_json()
 
         if server_message not in json_d:
@@ -2633,7 +2639,7 @@ class ShowtimesKolaborasi(commands.Cog):
     @kolaborasi.command()
     async def putus(self, ctx, judul):
         server_message = str(ctx.message.guild.id)
-        print('Requested !kolaborasi batalkan at: ' + server_message)
+        print('[#] Requested !kolaborasi batalkan at: ' + server_message)
         json_d = await fetch_json()
 
         if server_message not in json_d:
@@ -2732,7 +2738,7 @@ class ShowtimesAdmin(commands.Cog):
     async def listserver(self, ctx):
         if int(ctx.message.author.id) != int(bot_config['owner_id']):
             return
-        print('Requested !ntadmin listserver by admin')
+        print('[#] Requested !ntadmin listserver by admin')
         json_d = await fetch_json()
         if not json_d:
             return
@@ -2934,7 +2940,7 @@ class ShowtimesAdmin(commands.Cog):
     async def fetchdb(self, ctx):
         if int(ctx.message.author.id) != int(bot_config['owner_id']):
             return
-        print('Requested !ntadmin fetchdb by admin')
+        print('[#] Requested !ntadmin fetchdb by admin')
         json_d = await fetch_json()
         if not json_d:
             return
@@ -2954,7 +2960,7 @@ class ShowtimesAdmin(commands.Cog):
     async def forcepull(self, ctx):
         if int(ctx.message.author.id) != int(bot_config['owner_id']):
             return
-        print('Requested !ntadmin forcepull by owner')
+        print('[#] Requested !ntadmin forcepull by owner')
         json_d = await fetch_json()
         if not json_d:
             return
@@ -2972,7 +2978,7 @@ class ShowtimesAdmin(commands.Cog):
         """
         if int(ctx.message.author.id) != int(bot_config['owner_id']):
             return
-        print('Requested !ntadmin patchdb by admin')
+        print('[#] Requested !ntadmin patchdb by admin')
 
         if ctx.message.attachments == []:
             await self.bot.delete_message(ctx.message)
@@ -3037,7 +3043,7 @@ class ShowtimesAdmin(commands.Cog):
         """
         if int(ctx.message.author.id) != int(bot_config['owner_id']):
             return
-        print('Requested !ntadmin tambah by admin')
+        print('[#] Requested !ntadmin tambah by admin')
         json_d = await fetch_json()
         if not json_d:
             return
@@ -3080,7 +3086,7 @@ class ShowtimesAdmin(commands.Cog):
         """
         if int(ctx.message.author.id) != int(bot_config['owner_id']):
             return
-        print('Requested !ntadmin hapus by admin')
+        print('[#] Requested !ntadmin hapus by admin')
         json_d = await fetch_json()
         if not json_d:
             return
@@ -3122,7 +3128,7 @@ class ShowtimesAdmin(commands.Cog):
         """
         if int(ctx.message.author.id) != int(bot_config['owner_id']):
             return
-        print('Requested !ntadmin tambahadmin by admin')
+        print('[#] Requested !ntadmin tambahadmin by admin')
         json_d = await fetch_json()
         if not json_d:
             return
@@ -3162,7 +3168,7 @@ class ShowtimesAdmin(commands.Cog):
         """
         if int(ctx.message.author.id) != int(bot_config['owner_id']):
             return
-        print('Requested !ntadmin hapusadmin by admin')
+        print('[#] Requested !ntadmin hapusadmin by admin')
         json_d = await fetch_json()
         if not json_d:
             return
@@ -3199,7 +3205,7 @@ class ShowtimesAdmin(commands.Cog):
     
     @ntadmin.command(pass_context=True)
     async def forceupdate(self, ctx):
-        print('Requested forceupdate by admin')
+        print('[#] Requested forceupdate by admin')
         if int(ctx.message.author.id) != int(bot_config['owner_id']):
             return
         json_d = await fetch_json()
@@ -3382,9 +3388,6 @@ class ShowtimesConfigData(commands.Cog):
                     staff_list[role] = str(mentions[0].id)
                     await await_msg.delete()
                     break
-
-            print(staff_list)
-
             return staff_list, emb_msg
 
 
