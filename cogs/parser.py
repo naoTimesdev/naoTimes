@@ -581,6 +581,45 @@ async def yahoo_finance(from_, to_):
     return latest['InterbankRate']
 
 
+async def coinmarketcap(from_, to_) -> float:
+    base_head = {
+        'accept': 'application/json, text/plain, */*',
+        'accept-encoding': 'gzip, deflate, br',
+        'accept-language': 'en-US,en;q=0.9,id-ID;q=0.8,id;q=0.7,ja-JP;q=0.6,ja;q=0.5',
+        'cache-control': 'no-cache',
+        'origin': 'https://coinmarketcap.com',
+        'referer': 'https://coinmarketcap.com/converter/',
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.108 Safari/537.36'
+    }
+    # USD: 2781
+    url_to_search = 'https://web-api.coinmarketcap.com/v1/tools/price-conversion?amount=1&convert_id={}&id={}'.format(to_, from_)
+    async with aiohttp.ClientSession(headers=base_head) as sesi:
+        async with sesi.get(url_to_search) as resp:
+            response = await resp.json()
+            if response['status']['error_message']:
+                return 'Tidak dapat terhubung dengan API.\nAPI Response: ```\n' + response['status']['error_message'] + '\n```'
+            if resp.status > 299:
+                return 'Tidak dapat terhubung dengan API.\nAPI Response: ```\n' + response['status']['error_message'] + '\n```'
+
+    return response["data"]["quote"][to_]["price"]
+
+
+def proper_rounding(curr_now: float, total: float) -> float:
+    nnr = 2
+    while True:
+        conv_num = round(curr_now * total, nnr)
+        str_ = str(conv_num).replace('.', '')
+        if str_.count('0') != len(str_):
+            break
+        nnr += 1
+    mm = str(conv_num)
+    if 'e-' in mm:
+        nnr = int(mm.split('e-')[1]) + 1
+    fmt_ = ',.' + str(nnr) + 'f'
+    fmt_data = format(conv_num, fmt_)
+    return fmt_data, nnr
+
+
 async def post_requests(url, data):
     async with aiohttp.ClientSession() as sesi:
         async with sesi.post(url, data=data) as resp:
@@ -690,35 +729,101 @@ class WebParser(commands.Cog):
             except ValueError:
                 return await ctx.send('Bukan jumlah uang yang valid (jangan memakai koma, pakai titik)')
 
+        mode = 'normal'
+
+        mode_list = {
+            'crypto': {
+                'source': 'CoinMarketCap dan yahoo!finance',
+                'logo': 'https://p.ihateani.me/PoEnh1XN.png'
+            },
+            'normal': {
+                'source': 'yahoo!finance',
+                'logo': 'https://ihateani.me/o/y!.png'
+            }
+        }
+
         with open('currencydata.json', 'r', encoding='utf-8') as fp:
             currency_data = json.load(fp)
 
+        with open('cryptodata.json', 'r', encoding='utf-8') as fp:
+            crypto_data = json.load(fp)
+
         from_, to_ = from_.upper(), to_.upper()
 
-        if from_ not in currency_data:
-            return await ctx.send('Tidak dapat menemukan kode negara mata utang **{}** di database'.format(from_))
-        if to_ not in currency_data:
-            return await ctx.send('Tidak dapat menemukan kode negara mata utang **{}** di database'.format(to_))
+        full_crypto_mode = False
+        if from_ in crypto_data and to_ in crypto_data:
+            mode = 'crypto'
+            crypto_from = str(crypto_data[from_]['id'])
+            crypto_to = str(crypto_data[to_]['id'])
+            curr_sym_from = crypto_data[from_]['symbol']
+            curr_sym_to = crypto_data[to_]['symbol']
+            curr_name_from = crypto_data[from_]['name']
+            curr_name_to = crypto_data[to_]['name']
+            full_crypto_mode = True
+        elif from_ in crypto_data:
+            mode = 'crypto'
+            crypto_from = str(crypto_data[from_]['id'])
+            crypto_to = '2781'
+            curr_sym_from = crypto_data[from_]['symbol']
+            curr_sym_to = currency_data[to_]['symbols'][0]
+            curr_name_from = crypto_data[from_]['name']
+            curr_name_to = currency_data[to_]['name']
+            from_ = 'USD'
+            to_ = to_
+            if to_ not in currency_data:
+                return await ctx.send('Tidak dapat menemukan kode negara mata utang **{}** di database'.format(to_))
+        elif to_ in crypto_data:
+            mode = 'crypto'
+            crypto_from = '2781'
+            crypto_to = str(crypto_data[to_]['id'])
+            curr_sym_from = currency_data[from_]['symbols'][0]
+            curr_sym_to = crypto_data[to_]['symbol']
+            curr_name_from = currency_data[from_]['name']
+            curr_name_to = crypto_data[to_]['name']
+            from_ = from_
+            to_ = 'USD'
+            if from_ not in currency_data:
+                return await ctx.send('Tidak dapat menemukan kode negara mata utang **{}** di database'.format(from_))
 
-        curr_ = await yahoo_finance(from_, to_)
-        if isinstance(curr_, str):
-            return await ctx.send(curr_)
+
+        if mode == 'normal':
+            if from_ not in currency_data:
+                return await ctx.send('Tidak dapat menemukan kode negara mata utang **{}** di database'.format(from_))
+            if to_ not in currency_data:
+                return await ctx.send('Tidak dapat menemukan kode negara mata utang **{}** di database'.format(to_))
+            curr_sym_from = currency_data[from_]['symbols'][0]
+            curr_sym_to = currency_data[to_]['symbols'][0]
+            curr_name_from = currency_data[from_]['name']
+            curr_name_to = currency_data[to_]['name']
+
+        if mode == 'crypto':
+            curr_crypto = await coinmarketcap(crypto_from, crypto_to)
+
+        if not full_crypto_mode:
+            curr_ = await yahoo_finance(from_, to_)
+            if isinstance(curr_, str):
+                return await ctx.send(curr_)
 
         if not total:
             total = 1.0
-        conv_num = round(total * curr_)
+        if full_crypto_mode and mode == 'crypto':
+            curr_ = curr_crypto
+        elif not full_crypto_mode and mode == 'crypto':
+            curr_ = curr_ * curr_crypto
+
+        conv_num, rounding_used = proper_rounding(curr_, total)
         embed = discord.Embed(title=":gear: Konversi mata uang",
-        colour=discord.Colour(0x50e3c2),
-        description=":small_red_triangle_down: {f_} ke {d_}\n:small_orange_diamond: {sf_}{sa_}\n:small_blue_diamond: {df_}{da_}".format(
-            f_ = from_,
-            d_ = to_,
-            sf_ = currency_data[from_]['symbols'][0],
+        colour=discord.Colour(0x50e3c2), 
+        description=":small_red_triangle_down: {f_} ke {d_}\n:small_orange_diamond: {sf_}{sa_:,}\n:small_blue_diamond: {df_}{da_}".format(
+            f_ = curr_name_from,
+            d_ = curr_name_to,
+            sf_ = curr_sym_from,
             sa_ = total,
-            df_ = currency_data[to_]['symbols'][0],
+            df_ = curr_sym_to,
             da_ = conv_num
         ),
         timestamp=datetime.now())
-        embed.set_footer(text="Diprakasai dengan yahoo!finance ", icon_url="https://ihateani.me/o/y!.png")
+        embed.set_footer(text="Diprakasai dengan {}".format(mode_list[mode]['source']), icon_url=mode_list[mode]['logo'])
 
         await ctx.send(embed=embed)
 
