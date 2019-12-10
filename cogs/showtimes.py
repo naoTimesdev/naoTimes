@@ -2735,11 +2735,11 @@ class ShowtimesAdmin(commands.Cog):
         Initiate naoTimes on this server so it can be used on other server
         Make sure everything is filled first before starting this command
         """
-        print('@@ Initiated naoTimes first-time setup')
+        print('[@] Initiated naoTimes first-time setup')
         if int(ctx.message.author.id) != int(bot_config['owner_id']):
             return
         if bot_config['gist_id'] != "":
-            print('@@ Already setup, skipping')
+            print('[@] Already setup, skipping')
             return await self.bot.say('naoTimes sudah dipersiapkan dan sudah bisa digunakan')
 
         print('Membuat data')
@@ -2755,7 +2755,7 @@ class ShowtimesAdmin(commands.Cog):
         }
 
         async def process_gist(table, emb_msg, author):
-            print('@@ Memproses database')
+            print('[@] Memproses database')
             embed = discord.Embed(title="naoTimes", color=0x96df6a)
             embed.add_field(name='Gist ID', value="Ketik ID Gist GitHub", inline=False)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
@@ -2767,7 +2767,7 @@ class ShowtimesAdmin(commands.Cog):
             return table, emb_msg
 
         async def process_progchan(table, emb_msg, author):
-            print('@@ Memproses #progress channel')
+            print('[@] Memproses #progress channel')
             embed = discord.Embed(title="naoTimes", color=0x96df6a)
             embed.add_field(name='#progress channel ID', value="Ketik ID channel", inline=False)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
@@ -2784,7 +2784,7 @@ class ShowtimesAdmin(commands.Cog):
             return table, emb_msg
 
         async def process_owner(table, emb_msg, author):
-            print('@@ Memproses ID Owner')
+            print('[@] Memproses ID Owner')
             embed = discord.Embed(title="naoTimes", color=0x96df6a)
             embed.add_field(name='Owner ID', value="Ketik ID Owner server atau mention orangnya", inline=False)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
@@ -2809,7 +2809,7 @@ class ShowtimesAdmin(commands.Cog):
         json_tables, emb_msg = await process_gist(json_tables, emb_msg, msg_author)
         json_tables, emb_msg = await process_progchan(json_tables, emb_msg, msg_author)
 
-        print('@@ Making sure.')
+        print('[@] Making sure.')
         first_time = True
         cancel_toggled = False
         while True:
@@ -2848,7 +2848,7 @@ class ShowtimesAdmin(commands.Cog):
                 await self.bot.clear_reactions(emb_msg)
                 break
             elif '❌' in str(res.reaction.emoji):
-                print('@@ Cancelled')
+                print('[@] Cancelled')
                 cancel_toggled = True
                 await self.bot.clear_reactions(emb_msg)
                 break
@@ -2871,7 +2871,7 @@ class ShowtimesAdmin(commands.Cog):
         server_data['alias'] = {}
 
         main_data[str(ctx.message.server.id)] = server_data
-        print('@@ Sending data')
+        print('[@] Sending data')
 
         hh = {
             "description": "N4O Showtimes bot",
@@ -2883,20 +2883,20 @@ class ShowtimesAdmin(commands.Cog):
             }
         }
 
-        print('@@ Patching gists')
+        print('[@] Patching gists')
         async with aiohttp.ClientSession(auth=aiohttp.BasicAuth(bot_config['github_info']['username'], bot_config['github_info']['password'])) as sesi2:
             async with sesi2.patch('https://api.github.com/gists/{}'.format(json_tables['gist_id']), json=hh) as resp:
                 r = await resp.json()
         try:
             m = r['message']
-            print('@@ Failed to patch: {}'.format(m))
-            return await self.bot.say('@@ Gagal memproses silakan cek bot log, membatalkan...')
+            print('[@] Failed to patch: {}'.format(m))
+            return await self.bot.say('[@] Gagal memproses silakan cek bot log, membatalkan...')
         except KeyError:
-            print('@@ Reconfiguring config files')
+            print('[@] Reconfiguring config files')
             bot_config['gist_id'] = json_tables['gist_id']
             with open('config.json', 'w') as fp:
                 json.dump(bot_config, fp, indent=4)
-            print('@@ Reconfigured. Every configuration are done, please restart.')
+            print('[@] Reconfigured. Every configuration are done, please restart.')
             embed=discord.Embed(title="naoTimes", color=0x56acf3)
             embed.add_field(name="Sukses!", value='Sukses membuat database di github\nSilakan restart bot agar naoTimes dapat diaktifkan.\n\nLaporkan isu di: [GitHub Issue](https://github.com/noaione/naoTimes/issues)', inline=True)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
@@ -2952,7 +2952,7 @@ class ShowtimesAdmin(commands.Cog):
             await self.bot.say('Please provide a valid .json file by uploading and add `!!ntadmin patchdb` command')
             return
 
-        print('@@ Fetching attachments')
+        print('[@] Fetching attachments')
 
         attachment = ctx.message.attachments[0]
         uri = attachment['url']
@@ -2964,14 +2964,14 @@ class ShowtimesAdmin(commands.Cog):
             return
 
         # Start downloading .json file
-        print('@@ Downloading file')
+        print('[@] Downloading file')
         async with aiohttp.ClientSession() as sesi:
             async with sesi.get(uri) as resp:
                 data = await resp.text()
                 await self.bot.delete_message(ctx.message)
                 json_to_patch = json.loads(data)
 
-        print('@@ Make sure.')
+        print('[@] Make sure.')
         preview_msg = await self.bot.say('**Are you sure you want to patch the database with provided .json file?**')
         to_react = ['✅', '❌']
         for reaction in to_react:
@@ -2994,7 +2994,7 @@ class ShowtimesAdmin(commands.Cog):
                 return
             await self.bot.edit_message(preview_msg, '**Patching failed!, try it again later**')
         elif '❌' in str(res.reaction.emoji):
-            print('@@ Patch Cancelled')
+            print('[@] Patch Cancelled')
             await self.bot.clear_reactions(preview_msg)
             await self.bot.edit_message(preview_msg, '**Ok, cancelled process**')
 
@@ -3178,7 +3178,7 @@ class ShowtimesAdmin(commands.Cog):
         json_d = await fetch_json()
         if not json_d:
             return
-        print('@@ Make sure')
+        print('[@] Make sure')
         
         preview_msg = await self.bot.say('**Are you sure you want to patch the database with local .json file?**')
         to_react = ['✅', '❌']
@@ -3200,7 +3200,7 @@ class ShowtimesAdmin(commands.Cog):
                 return await self.bot.edit_message(preview_msg, '**Patching success!, try it with !tagih**')
             await self.bot.edit_message(preview_msg, '**Patching failed!, try it again later**')
         elif '❌' in str(res.reaction.emoji):
-            print('@@ Patch Cancelled')
+            print('[@] Patch Cancelled')
             await self.bot.clear_reactions(preview_msg)
             await self.bot.edit_message(preview_msg, '**Ok, cancelled process**')
 
@@ -3446,7 +3446,7 @@ class ShowtimesConfigData(commands.Cog):
                     break
 
             xdddd = await ctx.send('Berhasil menambah role ID ke {}'.format(json_d[server_message]['anime'][matches[0]]['role_id']))
-            asyncio.sleep(2)
+            await asyncio.sleep(2)
             await xdddd.delete()
 
             return emb_msg
@@ -3502,7 +3502,7 @@ class ShowtimesConfigData(commands.Cog):
             json_d[server_message]['anime'][matches[0]]['last_update'] = str(int(round(time.time())))
 
             xdddd = await ctx.send('Berhasil menambah {} episode baru'.format(jumlah_tambahan))
-            asyncio.sleep(2)
+            await asyncio.sleep(2)
             await xdddd.delete()
 
             return emb_msg
@@ -3569,7 +3569,7 @@ class ShowtimesConfigData(commands.Cog):
             json_d[server_message]['anime'][matches[0]]['last_update'] = str(int(round(time.time())))
 
             xdddd = await ctx.send('Berhasil menghapus episode {} ke {}'.format(current, total))
-            asyncio.sleep(2)
+            await asyncio.sleep(2)
             await xdddd.delete()
 
             return emb_msg
