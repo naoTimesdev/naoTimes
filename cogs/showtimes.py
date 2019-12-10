@@ -51,6 +51,13 @@ query ($id: Int!) {
 }
 '''
 
+tambahepisode_instruct = """Jumlah yang dimaksud adalah jumlah yang ingin ditambahkan dari jumlah episode sekarang
+Misal ketik `4` dan total jumlah episode sekarang adalah `12`
+Maka total akan berubah menjadi `16` `(13, 14, 15, 16)`"""
+
+hapusepisode_instruct = """Ranged number, bisa satu digit untuk 1 episode saja atau range dari episode x sampai y
+Contoh: `4` untuk episode 4 saja || `4-6` untuk episode 4 sampai 6"""
+
 with open('config.json', 'r') as fp:
     bot_config = json.load(fp)
 
@@ -59,9 +66,9 @@ async def fetch_json() -> dict:
     """
     Open local database
     """
-    print('@@ Opening json file')
+    print('[@] Opening json file')
     if not os.path.isfile('nao_showtimes.json'):
-        print('@@ naoTimes are not initiated, skipping.')
+        print('[@] naoTimes are not initiated, skipping.')
         return {}
     with open('nao_showtimes.json', 'r') as fp:
         json_data = json.load(fp)
@@ -69,7 +76,7 @@ async def fetch_json() -> dict:
     return json_data
 
 
-async def patch_json(jsdata) -> bool:
+async def patch_json(jsdata: dict) -> bool:
     """
     Send modified data back to github
     """
@@ -83,7 +90,7 @@ async def patch_json(jsdata) -> bool:
         }
     }
 
-    print('@@ Patching gists')
+    print('[@] Patching gists')
     async with aiohttp.ClientSession(auth=aiohttp.BasicAuth(bot_config['github_info']['username'], bot_config['github_info']['password'])) as sesi2:
         async with sesi2.patch('https://api.github.com/gists/{}'.format(bot_config['gist_id']), json=hh) as resp:
             r = await resp.json()
@@ -92,21 +99,42 @@ async def patch_json(jsdata) -> bool:
         print('Can\'t patch: {}'.format(m))
         return False
     except KeyError:
-        print('@@ Done patching')
+        print('[@] Done patching')
         return True
 
 
-def is_minus(x) -> bool:
-    return x < 0
+async def fetch_newest_db(CONFIG_DATA):
+    """
+    Fetch the newest naoTimes database from github
+    """
+    print('[@] Fetching newest database')
+    if CONFIG_DATA['gist_id'] == "":
+        return print('[@!] naoTimes are not setted up, skipping...')
+    url = 'https://gist.githubusercontent.com/{u}/{g}/raw/nao_showtimes.json'
+    async with aiohttp.ClientSession() as session:
+        while True:
+            try:
+                async with session.get(url.format(u=CONFIG_DATA['github_info']['username'], g=CONFIG_DATA['gist_id'])) as r:
+                    try:
+                        r_data = await r.text()
+                        js_data = json.loads(r_data)
+                        with open('nao_showtimes.json', 'w') as f:
+                            json.dump(js_data, f, indent=4)
+                        print('[@] Fetched and saved.')
+                        return
+                    except IndexError:
+                        continue
+            except session.ClientError:
+                continue
 
 
-def parse_anilist_start_date(startDate) -> int:
+def parse_anilist_start_date(startDate: str) -> int:
     airing_start = datetime.strptime(startDate, '%Y%m%d')
     epoch_start = datetime(1970, 1, 1, 0, 0, 0)
     return int((airing_start - epoch_start).total_seconds())
 
 
-def get_episode_airing(nodes, episode) -> tuple:
+def get_episode_airing(nodes: dict, episode: str) -> tuple:
     for i in nodes:
         if i['episode'] == int(episode):
             return i['airingAt'], i['episode'] # return episodic data
@@ -117,13 +145,13 @@ def get_episode_airing(nodes, episode) -> tuple:
     return nodes[-1]['airingAt'], nodes[-1]['episode'] # get latest airing data
 
 
-def get_original_time(x, total) -> int:
+def get_original_time(x: int, total: int) -> int:
     for _ in range(total):
         x -= 24 * 3600 * 7
     return x
 
 
-def parse_ani_time(x) -> str:
+def parse_ani_time(x: int) -> str:
     sec = timedelta(seconds=abs(x))
     d = datetime(1, 1, 1) + sec
     print('Anilist Time: {} year {} month {} day {} hour {} minutes {} seconds'.format(d.year, d.month, d.day, d.hour, d.minute, d.second))
@@ -194,9 +222,10 @@ async def fetch_anilist(ani_id, current_ep, total_episode=None, return_time_data
             taimu = parse_ani_time(time_until)
         except:
             taimu = None
+            time_until = None
             next_episode = None
 
-        return taimu, next_episode
+        return taimu, time_until, next_episode
 
     poster = entry['coverImage']['large']
     start_date = entry['startDate']
@@ -243,7 +272,7 @@ async def fetch_anilist(ani_id, current_ep, total_episode=None, return_time_data
     return taimu, poster, title_rom
 
 
-def get_current_ep(status_list) -> list:
+def get_current_ep(status_list: dict) -> list:
     """
     Find episode `not_released` status in showtimes database
     If not exist return None
@@ -254,7 +283,7 @@ def get_current_ep(status_list) -> list:
     return None
 
 
-def get_not_released_ep(status_list) -> list:
+def get_not_released_ep(status_list: dict) -> list:
     """
     Find all episode `not_released` status in showtimes database
     If not exist return None/False
@@ -266,7 +295,7 @@ def get_not_released_ep(status_list) -> list:
     return ep_list
 
 
-def get_close_matches(target, lists) -> list:
+def get_close_matches(target: str, lists: list) -> list:
     """
     Find close matches from input target
     Sort everything if there's more than 2 results
@@ -275,12 +304,12 @@ def get_close_matches(target, lists) -> list:
     return sorted(list(filter(target_compiler.search, lists)))
 
 
-def check_role(needed_role, user_roles) -> bool:
+def check_role(needed_role, user_roles: list) -> bool:
     """
     Check if there's needed role for the anime
     """
     for role in user_roles:
-        if int(needed_role) == role.id:
+        if int(needed_role) == int(role.id):
             return True
     return False
 
@@ -394,7 +423,11 @@ def make_numbered_alias(alias_list: list) -> str:
     return "\n".join(t)
 
 
-def any_progress(status) -> bool:
+def is_minus(x: int) -> bool:
+    return x < 0
+
+
+def any_progress(status: dict) -> bool:
     for _, v in status.items():
         if v == 'y':
             return False
@@ -412,21 +445,8 @@ class Showtimes(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    def __local_check(self, ctx):
-        if not ctx.guild:
-            raise commands.NoPrivateMessage('Tidak bisa menjalankan perintah ini di private message.')
-        return True
-
-
-    async def __error(self, ctx, error):
-        if not isinstance(error, commands.UserInputError):
-            raise error
-
-        try:
-            await ctx.send(error)
-        except discord.Forbidden:
-            pass
-
+    def __str__(self):
+        return 'Showtimes Main'
 
     @commands.command(aliases=['blame', 'mana'])
     async def tagih(self, ctx, *, judul=None):
@@ -435,14 +455,14 @@ class Showtimes(commands.Cog):
         ---
         judul: Judul anime yang terdaftar
         """
-        server_message = str(ctx.message.server.id)
-        print('Requested !tagih at: ' + server_message)
+        server_message = str(ctx.message.guild.id)
+        print('[@] Requested !tagih at: ' + server_message)
         json_d = await fetch_json()
 
         if server_message not in json_d:
             return
         server_data = json_d[server_message]
-        print('Found server list')
+        print('[@] Found server list')
 
         srv_anilist = []
         srv_anilist_alias = []
@@ -465,7 +485,7 @@ class Showtimes(commands.Cog):
                 res = find_alias_anime(i, server_data['alias'])
                 if res not in matches: # To not duplicate result
                     matches.append(res)
-        print('Matches: {}'.format(", ".join(matches)))
+        print('[!] Matches: {}'.format(", ".join(matches)))
 
         if not matches:
             return await ctx.send('Tidak dapat menemukan judul tersebut di database')
@@ -490,9 +510,7 @@ class Showtimes(commands.Cog):
             last_text = 'Update Terakhir'
 
         current_ep_status = parse_status(status_list[current]['staff_status'])
-        print('Sending message to user request...')
-        print(current_ep_status)
-        print(last_status)
+        print('[#] Sending message to user request...')
 
         embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=0x1eb5a6)
         embed.set_thumbnail(url=poster_image)
@@ -506,14 +524,13 @@ class Showtimes(commands.Cog):
     async def rilis(self, ctx, *, data):
         data = data.split()
 
-        server_message = str(ctx.message.server.id)
-        print('Requested !rilis at: ' + server_message)
+        server_message = str(ctx.message.guild.id)
+        print('[@] Requested !rilis at: ' + server_message)
         json_d = await fetch_json()
 
-        try:
-            server_data = json_d[server_message]
-        except:
+        if server_message not in json_d:
             return
+        server_data = json_d[server_message]
 
         srv_owner = server_data['serverowner']
         srv_anilist = []
@@ -537,7 +554,7 @@ class Showtimes(commands.Cog):
             ---
             judul: Judul anime yang terdaftar
             """
-            print('Inherited normal rilis command')
+            print('[@] Inherited normal rilis command')
 
             judul = ' '.join(data)
 
@@ -551,7 +568,7 @@ class Showtimes(commands.Cog):
                     res = find_alias_anime(i, server_data['alias'])
                     if res not in matches: # To not duplicate result
                         matches.append(res)
-            print('Matches: {}'.format(", ".join(matches)))
+            print('[!] Matches: {}'.format(", ".join(matches)))
 
             if not matches:
                 return await ctx.send('Tidak dapat menemukan judul tersebut di database')
@@ -597,7 +614,7 @@ class Showtimes(commands.Cog):
             jumlah = data[1]
             judul = ' '.join(data[2:])
 
-            print('Inherited batch rilis command')
+            print('[@] Inherited batch rilis command')
 
             matches = get_close_matches(judul, srv_anilist)
             if srv_anilist_alias:
@@ -606,7 +623,7 @@ class Showtimes(commands.Cog):
                     res = find_alias_anime(i, server_data['alias'])
                     if res not in matches: # To not duplicate result
                         matches.append(res)
-            print('Matches: {}'.format(", ".join(matches)))
+            print('[!] Matches: {}'.format(", ".join(matches)))
 
             if not matches:
                 return await ctx.send('Tidak dapat menemukan judul tersebut di database')
@@ -651,7 +668,7 @@ class Showtimes(commands.Cog):
             if judul == ' ' or judul == '' or judul == '   ' or not judul:
                 return await ctx.send('**Mungkin**: {}'.format(', '.join(srv_anilist)))
 
-            print('Inherited all rilis command')
+            print('[!] Inherited all rilis command')
 
             matches = get_close_matches(judul, srv_anilist)
             if srv_anilist_alias:
@@ -660,7 +677,7 @@ class Showtimes(commands.Cog):
                     res = find_alias_anime(i, server_data['alias'])
                     if res not in matches: # To not duplicate result
                         matches.append(res)
-            print('Matches: {}'.format(", ".join(matches)))
+            print('[!] Matches: {}'.format(", ".join(matches)))
 
             if not matches:
                 return await ctx.send('Tidak dapat menemukan judul tersebut di database')
@@ -702,7 +719,7 @@ class Showtimes(commands.Cog):
 
         with open('nao_showtimes.json', 'w') as f: # Local save before commiting
             json.dump(json_d, f, indent=4)
-        print('@@ Sending message...')
+        print('[@] Sending message...')
         await ctx.send(text_data)
 
         success = await patch_json(json_d)
@@ -711,11 +728,10 @@ class Showtimes(commands.Cog):
             if koleb_list:
                 for other_srv in koleb_list:
                     if 'announce_channel' in json_d[other_srv]:
-                        print('@@ Sending progress info to everyone at {}'.format(other_srv))
+                        print('[@] Sending progress info to everyone at {}'.format(other_srv))
                         announce_chan = json_d[other_srv]['announce_channel']
                         # TODO: check this this
                         target_chan = ctx.get_channel(int(announce_chan))
-                        # target_chan = discord.Object(announce_chan)
                         embed = discord.Embed(title="{}".format(matches[0]), color=0x1eb5a6)
                         embed.add_field(name='Rilis!', value=embed_text_data, inline=False)
                         embed.set_footer(text="Pada: {}".format(get_current_time()))
@@ -724,17 +740,2910 @@ class Showtimes(commands.Cog):
                 announce_chan = server_data['announce_channel']
                 # TODO: check this this
                 target_chan = ctx.get_channel(int(announce_chan))
-                # target_chan = discord.Object(announce_chan)
                 embed = discord.Embed(title="{}".format(matches[0]), color=0x1eb5a6)
                 embed.add_field(name='Rilis!', value=embed_text_data, inline=False)
                 embed.set_footer(text="Pada: {}".format(get_current_time()))
                 await target_chan.send(embed=embed)
             return
-
-        server_in = self.bot.get_guild(bot_config['main_server'])
-        mod_mem_data = server_in.get_member(bot_config['owner_id'])
+        server_in = self.bot.get_guild(int(bot_config['main_server']))
+        mod_mem_data = server_in.get_member(int(bot_config['owner_id']))
         await mod_mem_data.send('Terjadi kesalahan patch pada server **{}**'.format(server_message))
 
 
+    @commands.command(aliases=['done'])
+    async def beres(self, ctx, posisi, *, judul):
+        """
+        Menyilang salah satu tugas pendelay
+        ---
+        posisi: tl, tlc, enc, ed, ts, atau qc
+        judul: Judul anime yang terdaftar
+        """
+        server_message = str(ctx.message.guild.id)
+        print('[@] Requested !beres at: ' + server_message)
+        posisi = posisi.lower()
+        list_posisi = ['tl', 'tlc', 'enc', 'ed', 'tm', 'ts', 'qc']
+        json_d = await fetch_json()
+
+        if server_message not in json_d:
+            return
+        server_data = json_d[server_message]
+
+        srv_owner = server_data['serverowner']
+        srv_anilist = []
+        srv_anilist_alias = []
+        for ani in server_data['anime']:
+            if ani == 'alias': # Don't use alias
+                continue
+            srv_anilist.append(ani)
+        for k, _ in server_data['alias'].items():
+            srv_anilist_alias.append(k)
+
+        if not judul:
+            if len(srv_anilist) < 1:
+                return await ctx.send('**Tidak ada anime yang terdaftar di database**')
+            return await ctx.send('**Mungkin**: {}'.format(', '.join(srv_anilist)))
+
+        matches = get_close_matches(judul, srv_anilist)
+        if srv_anilist_alias:
+            temp_anilias = get_close_matches(judul, srv_anilist_alias)
+            for i in temp_anilias:
+                res = find_alias_anime(i, server_data['alias'])
+                if res not in matches: # To not duplicate result
+                    matches.append(res)
+        print('Matches: {}'.format(", ".join(matches)))
+
+        if not matches:
+            return await ctx.send('Tidak dapat menemukan judul tersebut di database')
+        elif len(matches) > 1:
+            return await ctx.send('**Mungkin**: {}'.format(', '.join(matches)))
+
+        program_info = server_data['anime'][matches[0]]
+        status_list = program_info['status']
+
+        koleb_list = []
+        if 'kolaborasi' in program_info:
+            koleb_data = program_info['kolaborasi']
+            if koleb_data:
+                for ko_data in koleb_data:
+                    if server_message == ko_data:
+                        continue
+                    koleb_list.append(ko_data)
+
+        if not check_role(program_info['role_id'], ctx.message.author.roles):
+            if str(ctx.message.author.id) not in srv_owner:
+                return
+            else:
+                pass
+
+        current = get_current_ep(status_list)
+        if not current:
+            return await ctx.send('**Sudah beres digarap!**')
+
+        _, poster_image, _ = await fetch_anilist(program_info['anilist_id'], current)
+
+        if posisi not in list_posisi:
+            return await ctx.send('Tidak ada posisi itu\nYang tersedia: `tl`, `tlc`, `enc`, `ed`, `tm`, `ts`, dan `qc`')
+
+        if str(ctx.message.author.id) != program_info['staff_assignment'][posisi.upper()]:
+            if str(ctx.message.author.id) not in srv_owner:
+                return await ctx.send('**Bukan posisi situ untuk mengubahnya!**')
+
+        if koleb_list:
+            for other_srv in koleb_list:
+                json_d[other_srv]['anime'][matches[0]]['status'][current]['staff_status'][posisi.upper()] = 'y'
+                json_d[other_srv]['anime'][matches[0]]['last_update'] = str(int(round(time.time())))
+        json_d[server_message]['anime'][matches[0]]['status'][current]['staff_status'][posisi.upper()] = 'y'
+        json_d[server_message]['anime'][matches[0]]['last_update'] = str(int(round(time.time())))
+
+        current_ep_status = status_list[current]['staff_status']
+
+        with open('nao_showtimes.json', 'w') as f: # Local save before commiting
+            json.dump(json_d, f, indent=4)
+        print('[@] Sending progress info to staff')
+        await ctx.send('Berhasil mengubah status garapan {} - #{}'.format(matches[0], current))
+
+        success = await patch_json(json_d)
+
+        if success:
+            if koleb_list:
+                for other_srv in koleb_list:
+                    if 'announce_channel' in json_d[other_srv]:
+                        print('[@] Sending progress info to everyone at {}'.format(other_srv))
+                        announce_chan = json_d[other_srv]['announce_channel']
+                        target_chan = ctx.get_channel(int(announce_chan))
+                        embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=0x1eb5a6)
+                        embed.add_field(name='Status', value=parse_status(current_ep_status), inline=False)
+                        embed.set_footer(text="Pada: {}".format(get_current_time()))
+                        await target_chan.send(embed=embed)
+            embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=0x1eb5a6)
+            embed.add_field(name='Status', value=parse_status(current_ep_status), inline=False)
+            if 'announce_channel' in server_data:
+                announce_chan = server_data['announce_channel']
+                target_chan = ctx.get_channel(int(announce_chan))
+                embed.set_footer(text="Pada: {}".format(get_current_time()))
+                print('[@] Sending progress info to everyone')
+                await target_chan.send(embed=embed)
+            embed.add_field(name='Update Terakhir', value='Baru saja', inline=False)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            embed.set_thumbnail(url=poster_image)
+            return await ctx.send(embed=embed)
+        server_in = self.bot.get_guild(int(bot_config['main_server']))
+        mod_mem_data = server_in.get_member(int(bot_config['owner_id']))
+        await mod_mem_data.send('Terjadi kesalahan patch `beres` pada server **{}**'.format(server_message))
+
+
+    @commands.command(aliases=['undone', 'cancel'])
+    async def gakjadi(self, ctx, posisi, *, judul):
+        """
+        Menghilangkan tanda karena ada kesalahan
+        ---
+        posisi: tl, tlc, enc, ed, ts, atau qc
+        judul: Judul anime yang terdaftar
+        """
+        server_message = str(ctx.message.guild.id)
+        print('[@] Requested !gakjadi at: ' + server_message)
+        posisi = posisi.lower()
+        list_posisi = ['tl', 'tlc', 'enc', 'ed', 'tm', 'ts', 'qc']
+        json_d = await fetch_json()
+
+        if server_message not in json_d:
+            return
+        server_data = json_d[server_message]
+
+        srv_owner = server_data['serverowner']
+        srv_anilist = []
+        srv_anilist_alias = []
+        for ani in server_data['anime']:
+            if ani == 'alias': # Don't use alias
+                continue
+            srv_anilist.append(ani)
+        for k, _ in server_data['alias'].items():
+            srv_anilist_alias.append(k)
+
+        if not judul:
+            if len(srv_anilist) < 1:
+                return await ctx.send('**Tidak ada anime yang terdaftar di database**')
+            return await ctx.send('**Mungkin**: {}'.format(', '.join(srv_anilist)))
+
+        matches = get_close_matches(judul, srv_anilist)
+        if srv_anilist_alias:
+            temp_anilias = get_close_matches(judul, srv_anilist_alias)
+            for i in temp_anilias:
+                res = find_alias_anime(i, server_data['alias'])
+                if res not in matches: # To not duplicate result
+                    matches.append(res)
+        print('[!] Matches: {}'.format(", ".join(matches)))
+
+        if not matches:
+            return await ctx.send('Tidak dapat menemukan judul tersebut di database')
+        elif len(matches) > 1:
+            return await ctx.send('**Mungkin**: {}'.format(', '.join(matches)))
+
+        program_info = server_data['anime'][matches[0]]
+        status_list = program_info['status']
+
+        koleb_list = []
+        if 'kolaborasi' in program_info:
+            koleb_data = program_info['kolaborasi']
+            if koleb_data:
+                for ko_data in koleb_data:
+                    if server_message == ko_data:
+                        continue
+                    koleb_list.append(ko_data)
+
+        if not check_role(program_info['role_id'], ctx.message.author.roles):
+            if str(ctx.message.author.id) not in srv_owner:
+                return
+            else:
+                pass
+
+        current = get_current_ep(status_list)
+        if not current:
+            return await ctx.send('**Sudah beres digarap!**')
+
+        _, poster_image, title = await fetch_anilist(program_info['anilist_id'], current)
+
+        if posisi not in list_posisi:
+            return await ctx.send('Tidak ada posisi itu\nYang tersedia: `tl`, `tlc`, `enc`, `ed`, `tm`, `ts`, dan `qc`')
+
+        if str(ctx.message.author.id) != program_info['staff_assignment'][posisi.upper()]:
+            if str(ctx.message.author.id) not in srv_owner:
+                return await ctx.send('**Bukan posisi situ untuk mengubahnya!**')
+
+        if koleb_list:
+            for other_srv in koleb_list:
+                json_d[other_srv]['anime'][matches[0]]['status'][current]['staff_status'][posisi.upper()] = 'x'
+                json_d[other_srv]['anime'][matches[0]]['last_update'] = str(int(round(time.time())))
+        json_d[server_message]['anime'][matches[0]]['status'][current]['staff_status'][posisi.upper()] = 'x'
+        json_d[server_message]['anime'][matches[0]]['last_update'] = str(int(round(time.time())))
+
+        current_ep_status = status_list[current]['staff_status']
+
+        with open('nao_showtimes.json', 'w') as f: # Local save before commiting
+            json.dump(json_d, f, indent=4)
+        print('[@] Sending progress info to staff')
+        await ctx.send('Berhasil mengubah status garapan {} - #{}'.format(matches[0], current))
+
+        success = await patch_json(json_d)
+
+        if success:
+            if koleb_list:
+                for other_srv in koleb_list:
+                    if 'announce_channel' in json_d[other_srv]:
+                        print('[@] Sending progress info to everyone at {}'.format(other_srv))
+                        announce_chan = json_d[other_srv]['announce_channel']
+                        target_chan = ctx.get_channel(int(announce_chan))
+                        embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=0xb51e1e)
+                        embed.add_field(name='Status', value=parse_status(current_ep_status), inline=False)
+                        embed.set_footer(text="Pada: {}".format(get_current_time()))
+                        await target_chan.send(embed=embed)
+            embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=0xb51e1e)
+            embed.add_field(name='Status', value=parse_status(current_ep_status), inline=False)
+            if 'announce_channel' in server_data:
+                announce_chan = server_data['announce_channel']
+                target_chan = ctx.get_channel(int(announce_chan))
+                embed.set_footer(text="Pada: {}".format(get_current_time()))
+                print('[@] Sending progress info to everyone')
+                await target_chan.send(embed=embed)
+            embed.add_field(name='Update Terakhir', value='Baru saja', inline=False)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            embed.set_thumbnail(url=poster_image)
+            return await ctx.send(embed=embed)
+        server_in = self.bot.get_guild(int(bot_config['main_server']))
+        mod_mem_data = server_in.get_member(int(bot_config['owner_id']))
+        await mod_mem_data.send('Terjadi kesalahan patch pada server **{}**'.format(server_message))
+
+
+    @commands.command(aliases=['buangutang', 'buang', 'lupakan', 'remove', 'drop'])
+    async def lupakanutang(self, ctx, *, judul):
+        """
+        Lupakan utang lama buat utang baru :D
+        """
+        server_message = str(ctx.message.guild.id)
+        print('Requested !lupakanutang at: ' + server_message)
+        json_d = await fetch_json()
+
+        if server_message not in json_d:
+            return
+        server_data = json_d[server_message]
+
+        if str(ctx.message.author.id) not in server_data['serverowner']:
+            return await ctx.send('Hanya admin yang bisa membuang utang')
+
+        srv_anilist = []
+        srv_anilist_alias = []
+        for ani in server_data['anime']:
+            if ani == 'alias': # Don't use alias
+                continue
+            srv_anilist.append(ani)
+        for k, _ in server_data['alias'].items():
+            srv_anilist_alias.append(k)
+
+        if not judul:
+            if len(srv_anilist) < 1:
+                return await ctx.send('**Tidak ada anime yang terdaftar di database**')
+            return await ctx.send('**Mungkin**: {}'.format(', '.join(srv_anilist)))
+
+        matches = get_close_matches(judul, srv_anilist)
+        if srv_anilist_alias:
+            temp_anilias = get_close_matches(judul, srv_anilist_alias)
+            for i in temp_anilias:
+                res = find_alias_anime(i, server_data['alias'])
+                if res not in matches: # To not duplicate result
+                    matches.append(res)
+        print('Matches: {}'.format(", ".join(matches)))
+
+        if not matches:
+            return await ctx.send('Tidak dapat menemukan judul tersebut di database')
+        elif len(matches) > 1:
+            return await ctx.send('**Mungkin**: {}'.format(', '.join(matches)))
+
+        current = get_current_ep(json_d[server_message]['anime'][matches[0]]['status'])
+        try:
+            if json_d[server_message]['anime'][matches[0]]['status']['1']['status'] == 'not_released':
+                announce_it = False
+            elif not current:
+                announce_it = False
+            else:
+                announce_it = True
+        except KeyError:
+            announce_it = True
+
+        program_info = json_d[server_message]['anime'][matches[0]]
+
+        koleb_list = []
+        if 'kolaborasi' in program_info:
+            koleb_data = program_info['kolaborasi']
+            if koleb_data:
+                for ko_data in koleb_data:
+                    if server_message == ko_data:
+                        continue
+                    koleb_list.append(ko_data)
+
+        if koleb_list:
+            for other_srv in koleb_list:
+                if server_message in json_d[other_srv]['anime'][matches[0]]['kolaborasi']:
+                    json_d[other_srv]['anime'][matches[0]]['kolaborasi'].remove(server_message)
+
+        del json_d[server_message]['anime'][matches[0]]
+
+        with open('nao_showtimes.json', 'w') as f: # Local save before commiting
+            json.dump(json_d, f, indent=4)
+        print('[@] Sending message to staff...')
+        await ctx.send('Berhasil menghapus **{}** dari daftar utang'.format(matches[0]))
+
+        success = await patch_json(json_d)
+        if success:
+            if koleb_list:
+                for other_srv in koleb_list:
+                    if 'announce_channel' in json_d[other_srv]:
+                        print('[@] Sending progress info to everyone at {}'.format(other_srv))
+                        announce_chan = json_d[other_srv]['announce_channel']
+                        target_chan = ctx.get_channel(int(announce_chan))
+                        embed = discord.Embed(title="{}".format(matches[0]), color=0xb51e1e)
+                        embed.add_field(name='Dropped...', value="{} telah di drop dari fansub ini :(".format(matches[0]), inline=False)
+                        embed.set_footer(text="Pada: {}".format(get_current_time()))
+                        if announce_it:
+                            print('[@] Sending message to user...')
+                            await target_chan.send(embed=embed)
+            if 'announce_channel' in server_data:
+                announce_chan = server_data['announce_channel']
+                target_chan = ctx.get_channel(int(announce_chan))
+                embed = discord.Embed(title="{}".format(matches[0]), color=0xb51e1e)
+                embed.add_field(name='Dropped...', value="{} telah di drop dari fansub ini :(".format(matches[0]), inline=False)
+                embed.set_footer(text="Pada: {}".format(get_current_time()))
+                if announce_it:
+                    print('[@] Sending message to user...')
+                    await target_chan.send(embed=embed)
+            return
+        server_in = self.bot.get_guild(int(bot_config['main_server']))
+        mod_mem_data = server_in.get_member(int(bot_config['owner_id']))
+        await mod_mem_data.send('Terjadi kesalahan patch `buangutang` pada server **{}**'.format(server_message))
+
+
+    @commands.command(aliases=['add', 'tambah'])
+    async def tambahutang(self, ctx):
+        """
+        Membuat utang baru, ambil semua user id dan role id yang diperlukan.
+        ----
+        Menggunakan embed agar terlihat lebih enak dibanding sebelumnya
+        Merupakan versi 2
+        """
+        server_message = str(ctx.message.guild.id)
+        print('Requested !tambahutang at: ' + server_message)
+        json_d = await fetch_json()
+
+        if server_message not in json_d:
+            return
+        server_data = json_d[server_message]
+
+        if str(ctx.message.author.id) not in server_data['serverowner']:
+            return await ctx.send('Hanya admin yang bisa menambah utang')
+
+        print('Membuat data')
+        embed = discord.Embed(title="Menambah Utang", color=0x56acf3)
+        embed.add_field(name='Memulai Proses!', value="Mempersiapkan...", inline=False)
+        embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+        emb_msg = await ctx.send(embed=embed)
+        current_time = int(round(time.time()))
+        msg_author = ctx.message.author
+        json_tables = {
+            "ani_title": "",
+            "anilist_id": "",
+            "episodes": "",
+            "time_data": "",
+            "poster_img": "",
+            "role_id": "",
+            "tlor_id": "",
+            "tlcer_id": "",
+            "encoder_id": "",
+            "editor_id": "",
+            "timer_id": "",
+            "tser_id": "",
+            "qcer_id": "",
+            "settings": {
+                'time_data_are_the_same': False
+            },
+            "old_time_data": []
+        }
+        cancel_toggled = False # Some easy check if it's gonna fucked up
+        first_time = True
+
+        async def process_episode(table, emb_msg, author):
+            print('[@] Memproses jumlah episode')
+            embed = discord.Embed(title="Menambah Utang", color=0x96df6a)
+            embed.set_thumbnail(url=table['poster_img'])
+            embed.add_field(name='Jumlah Episode', value="Ketik Jumlah Episode perkiraan", inline=False)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+            
+            while True:
+                await_msg = await self.bot.wait_for_message(author=author)
+
+                if await_msg.content.isdigit():
+                    await self.bot.delete_message(await_msg)
+                    break
+
+                await self.bot.delete_message(await_msg)
+
+            _, poster, title, time_data, correct_episode_num = await fetch_anilist(table['anilist_id'], 1, int(await_msg.content), True)
+            table['episodes'] = correct_episode_num
+            table['time_data'] = time_data
+
+            return table, emb_msg
+
+        async def process_anilist(table, emb_msg, author):
+            print('[@] Memproses Anilist data')
+            embed = discord.Embed(title="Menambah Utang", color=0x96df6a)
+            embed.add_field(name='Anilist ID', value="Ketik ID Anilist untuk anime yang diinginkan\n\nBisa gunakan `!anime <judul>` dan melihat bagian bawah untuk IDnya\n\nKetik *cancel* untuk membatalkan proses", inline=False)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            emb_msg = await self.bot.edit_message(emb_msg, "", embed=embed)
+
+            while True:
+                await_msg = await self.bot.wait_for_message(author=author)
+
+                if not await_msg.content.startswith("!anime"):
+                    if await_msg.content == ("cancel"):
+                        return False, False
+
+                    if await_msg.content.isdigit():
+                        await self.bot.delete_message(await_msg)
+                        break
+
+                    await self.bot.delete_message(await_msg)
+
+            _, poster_image, title, time_data, correct_episode_num = await fetch_anilist(await_msg.content, 1, 1, True)
+
+            embed = discord.Embed(title="Menambah Utang", color=0x96df6a)
+            embed.set_thumbnail(url=poster_image)
+            embed.add_field(name='Apakah benar?', value="Judul: **{}**".format(title), inline=False)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+
+            to_react = ['✅', '❌']
+            for reaction in to_react:
+                    await self.bot.add_reaction(emb_msg, reaction)
+            def checkReaction(reaction, user):
+                e = str(reaction.emoji)
+                return e.startswith(('✅', '❌'))
+
+            res = await self.bot.wait_for_reaction(message=emb_msg, user=author, check=checkReaction)
+
+            if '✅' in str(res.reaction.emoji):
+                table['ani_title'] = title
+                table['poster_img'] = poster_image
+                table['anilist_id'] = str(await_msg.content)
+                await self.bot.clear_reactions(emb_msg)
+            elif '❌' in str(res.reaction.emoji):
+                await self.bot.clear_reactions(emb_msg)
+                return False, False
+
+            if correct_episode_num == 1:
+                print('[@] Correct episode are not grabbed, asking user...')
+                table, emb_msg = await process_episode(table, emb_msg, author)
+            else:
+                print('[@] Total episodes exist, using that to continue...')
+                table['episodes'] = correct_episode_num
+                table['time_data'] = time_data
+
+            return table, emb_msg
+
+        async def process_role(table, emb_msg, author):
+            print('[@] Memproses Role')
+            embed = discord.Embed(title="Menambah Utang", color=0x96df6a)
+            embed.set_thumbnail(url=table['poster_img'])
+            embed.add_field(name='Role ID', value="Ketik ID Role atau mention rolenya\nAtau ketik `auto` untuk membuatnya otomatis", inline=False)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+
+            while True:
+                await_msg = await self.bot.wait_for_message(author=author)
+
+                mentions = await_msg.role_mentions
+
+                if not mentions:
+                    if await_msg.content.isdigit():
+                        table['role_id'] = await_msg.content
+                        await self.bot.delete_message(await_msg)
+                        break
+                    elif await_msg.content.startswith('auto'):
+                        c_role = await self.bot.create_role(
+                            author.server,
+                            name=table['anime'],
+                            colour=discord.Colour(0xdf2705),
+                            mentionable=True
+                        )
+                        table['role_id'] = str(c_role.id)
+                        break
+                else:
+                    table['role_id'] = mentions[0].id
+                    await self.bot.delete_message(await_msg)
+                    break
+
+                #await self.bot.delete_message(await_msg)
+
+            return table, emb_msg
+
+        async def process_tlcer(table, emb_msg, author):
+            print('[@] Memproses TLCer')
+            embed = discord.Embed(title="Menambah Utang", color=0x96df6a)
+            embed.set_thumbnail(url=table['poster_img'])
+            embed.add_field(name='TLCer ID', value="Ketik ID TLC atau mention orangnya", inline=False)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+
+            while True:
+                await_msg = await self.bot.wait_for_message(author=author)
+                mentions = await_msg.mentions
+                if not mentions:
+                    if await_msg.content.isdigit():
+                        table['tlcer_id'] = await_msg.content
+                        await self.bot.delete_message(await_msg)
+                        break
+                else:
+                    table['tlcer_id'] = mentions[0].id
+                    await self.bot.delete_message(await_msg)
+                    break
+                #await self.bot.delete_message(await_msg)
+
+            return table, emb_msg
+
+        async def process_tlor(table, emb_msg, author):
+            print('[@] Memproses TLor')
+            embed = discord.Embed(title="Menambah Utang", color=0x96df6a)
+            embed.set_thumbnail(url=table['poster_img'])
+            embed.add_field(name='Translator ID', value="Ketik ID Translator atau mention orangnya", inline=False)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+
+            while True:
+                await_msg = await self.bot.wait_for_message(author=author)
+                mentions = await_msg.mentions
+                if not mentions:
+                    if await_msg.content.isdigit():
+                        table['tlor_id'] = await_msg.content
+                        await self.bot.delete_message(await_msg)
+                        break
+                else:
+                    table['tlor_id'] = mentions[0].id
+                    await self.bot.delete_message(await_msg)
+                    break
+                #await self.bot.delete_message(await_msg)
+
+            return table, emb_msg
+
+        async def process_encoder(table, emb_msg, author):
+            print('[@] Memproses Encoder')
+            embed = discord.Embed(title="Menambah Utang", color=0x96df6a)
+            embed.set_thumbnail(url=table['poster_img'])
+            embed.add_field(name='Encoder ID', value="Ketik ID Encoder atau mention orangnya", inline=False)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+
+            while True:
+                await_msg = await self.bot.wait_for_message(author=author)
+                mentions = await_msg.mentions
+                if not mentions:
+                    if await_msg.content.isdigit():
+                        table['encoder_id'] = await_msg.content
+                        await self.bot.delete_message(await_msg)
+                        break
+                else:
+                    table['encoder_id'] = mentions[0].id
+                    await self.bot.delete_message(await_msg)
+                    break
+                #await self.bot.delete_message(await_msg)
+
+            return table, emb_msg
+
+        async def process_editor(table, emb_msg, author):
+            print('[@] Memproses Editor')
+            embed = discord.Embed(title="Menambah Utang", color=0x96df6a)
+            embed.set_thumbnail(url=table['poster_img'])
+            embed.add_field(name='Editor ID', value="Ketik ID Editor atau mention orangnya", inline=False)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+
+            while True:
+                await_msg = await self.bot.wait_for_message(author=author)
+                mentions = await_msg.mentions
+                if not mentions:
+                    if await_msg.content.isdigit():
+                        table['editor_id'] = await_msg.content
+                        await self.bot.delete_message(await_msg)
+                        break
+                else:
+                    table['editor_id'] = mentions[0].id
+                    await self.bot.delete_message(await_msg)
+                    break
+                #await self.bot.delete_message(await_msg)
+
+            return table, emb_msg
+
+        async def process_timer(table, emb_msg, author):
+            print('[@] Memproses Timer')
+            embed = discord.Embed(title="Menambah Utang", color=0x96df6a)
+            embed.set_thumbnail(url=table['poster_img'])
+            embed.add_field(name='Timer ID', value="Ketik ID Timer atau mention orangnya", inline=False)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+
+            while True:
+                await_msg = await self.bot.wait_for_message(author=author)
+                mentions = await_msg.mentions
+                if not mentions:
+                    if await_msg.content.isdigit():
+                        table['timer_id'] = await_msg.content
+                        await self.bot.delete_message(await_msg)
+                        break
+                else:
+                    table['timer_id'] = mentions[0].id
+                    await self.bot.delete_message(await_msg)
+                    break
+                #await self.bot.delete_message(await_msg)
+
+            return table, emb_msg
+
+        async def process_tser(table, emb_msg, author):
+            print('[@] Memproses Typesetter')
+            embed = discord.Embed(title="Menambah Utang", color=0x96df6a)
+            embed.set_thumbnail(url=table['poster_img'])
+            embed.add_field(name='Typesetter ID', value="Ketik ID Typesetter atau mention orangnya", inline=False)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+
+            while True:
+                await_msg = await self.bot.wait_for_message(author=author)
+                mentions = await_msg.mentions
+                if not mentions:
+                    if await_msg.content.isdigit():
+                        table['tser_id'] = await_msg.content
+                        await self.bot.delete_message(await_msg)
+                        break
+                else:
+                    table['tser_id'] = mentions[0].id
+                    await self.bot.delete_message(await_msg)
+                    break
+                #await self.bot.delete_message(await_msg)
+
+            return table, emb_msg
+
+        async def process_qcer(table, emb_msg, author):
+            print('[@] Memproses QCer')
+            embed = discord.Embed(title="Menambah Utang", color=0x96df6a)
+            embed.set_thumbnail(url=table['poster_img'])
+            embed.add_field(name='Quality Checker ID', value="Ketik ID Quality Checker atau mention orangnya", inline=False)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+
+            while True:
+                await_msg = await self.bot.wait_for_message(author=author)
+                mentions = await_msg.mentions
+                if not mentions:
+                    if await_msg.content.isdigit():
+                        table['qcer_id'] = await_msg.content
+                        await self.bot.delete_message(await_msg)
+                        break
+                else:
+                    table['qcer_id'] = mentions[0].id
+                    await self.bot.delete_message(await_msg)
+                    break
+                #await self.bot.delete_message(await_msg)
+
+            return table, emb_msg
+
+        def check_setting(gear):
+            if not gear:
+                return '❌'
+            return '✅'
+
+        async def process_pengaturan(table, emb_msg, author):
+            # Inner settings
+            async def gear_1(table, emb_msg, gear_data):
+                print('[@] Mengatur time_data agar sama')
+                if not gear_data:
+                    table['old_time_data'] = table['time_data'] # Make sure old time data are not deleted
+                    time_table = table['time_data']
+                    new_time_table = []
+                    for _ in time_table:
+                        new_time_table.append(time_table[0])
+                    
+                    table['time_data'] = new_time_table
+                    table['settings']['time_data_are_the_same'] = True
+                    print(table['time_data'])
+                    return table, emb_msg
+                
+                new_time_table = []
+                for i, _ in enumerate(table['time_data']):
+                    new_time_table.append(table['old_time_data'][i])
+
+                table['old_time_data'] = [] # Remove old time data because it resetted
+                table['settings']['time_data_are_the_same'] = False
+                print(table['time_data'])
+                return table, emb_msg
+
+            print('[@] Showing toogleable settings.')
+            while True:
+                embed = discord.Embed(title="Menambah Utang", color=0x96df6a)
+                embed.set_thumbnail(url=table['poster_img'])
+                embed.add_field(name='1⃣ Samakan waktu tayang', value="Status: **{}**\n\nBerguna untuk anime Netflix yang sekali rilis banyak".format(check_setting(table['settings']['time_data_are_the_same'])), inline=False)
+                embed.add_field(name='Lain-Lain', value="⏪ Kembali", inline=False)
+                embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+                emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+
+                to_react = ['1⃣', '⏪'] # ["2⃣", '3⃣', '4⃣', '5⃣', '6⃣', '7⃣', '8⃣', '9⃣', '0⃣', '✅', '❌']
+                for reaction in to_react:
+                    await self.bot.add_reaction(emb_msg, reaction)
+                def checkReaction(reaction, user):
+                    e = str(reaction.emoji)
+                    return e.startswith(tuple(to_react))
+
+                res = await self.bot.wait_for_reaction(message=emb_msg, user=msg_author, check=checkReaction)
+
+                if to_react[0] in str(res.reaction.emoji):
+                    await self.bot.clear_reactions(emb_msg)
+                    table, emb_msg = await gear_1(table, emb_msg, table['settings']['time_data_are_the_same'])
+                elif to_react[-1] in str(res.reaction.emoji):
+                    await self.bot.clear_reactions(emb_msg)
+                    return table, emb_msg
+
+        json_tables, emb_msg = await process_anilist(json_tables, emb_msg, msg_author)
+
+        if not json_tables:
+            print('[@] Proses `tambahutang` dibatalkan')
+            return await ctx.send('**Dibatalkan.**')
+
+        json_tables, emb_msg = await process_role(json_tables, emb_msg, msg_author)
+        json_tables, emb_msg = await process_tlor(json_tables, emb_msg, msg_author)
+        json_tables, emb_msg = await process_tlcer(json_tables, emb_msg, msg_author)
+        json_tables, emb_msg = await process_encoder(json_tables, emb_msg, msg_author)
+        json_tables, emb_msg = await process_editor(json_tables, emb_msg, msg_author)
+        json_tables, emb_msg = await process_timer(json_tables, emb_msg, msg_author)
+        json_tables, emb_msg = await process_tser(json_tables, emb_msg, msg_author)
+        json_tables, emb_msg = await process_qcer(json_tables, emb_msg, msg_author)
+
+        print(json_tables)
+
+        async def fetch_username_from_id(_id):
+            try:
+                user = await self.bot.get_user_info(_id)
+                return '{}#{}'.format(user.name, user.discriminator)
+            except discord.errors.NotFound:
+                return 'Unknown'
+
+        print('[@] Checkpoint before sending')
+        while True:
+            tl_ = await fetch_username_from_id(json_tables['tlor_id'])
+            tlc_ = await fetch_username_from_id(json_tables['tlcer_id'])
+            enc_ = await fetch_username_from_id(json_tables['encoder_id'])
+            ed_ = await fetch_username_from_id(json_tables['editor_id'])
+            tm_ = await fetch_username_from_id(json_tables['timer_id'])
+            ts_ = await fetch_username_from_id(json_tables['tser_id'])
+            qc_ = await fetch_username_from_id(json_tables['qcer_id'])
+
+            embed=discord.Embed(title="Menambah Utang", description="Periksa data!\nReact jika ingin diubah.", color=0xe7e363)
+            embed.set_thumbnail(url=json_tables['poster_img'])
+            embed.add_field(name="1⃣ Judul", value="{} ({})".format(json_tables['ani_title'], json_tables['anilist_id']), inline=False)
+            embed.add_field(name='2⃣ Episode', value="{}".format(json_tables['episodes']), inline=False)
+            embed.add_field(name='3⃣ Role', value="{}".format(get_role_name(json_tables['role_id'], ctx.message.guild.roles)), inline=False)
+            embed.add_field(name="4⃣ Translator", value=tl_, inline=True)
+            embed.add_field(name="5⃣ TLCer", value=tlc_, inline=True)
+            embed.add_field(name="6⃣ Encoder", value=enc_, inline=True)
+            embed.add_field(name="7⃣ Editor", value=ed_, inline=True)
+            embed.add_field(name="8⃣ Timer", value=tm_, inline=True)
+            embed.add_field(name="9⃣ Typesetter", value=ts_, inline=True)
+            embed.add_field(name="0⃣ Quality Checker", value=qc_, inline=True)
+            embed.add_field(name="Lain-Lain", value="🔐 Pengaturan\n✅ Tambahkan!\n❌ Batalkan!", inline=False)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            if first_time:
+                await self.bot.delete_message(emb_msg)
+                emb_msg = await ctx.send(embed=embed)
+                first_time = False
+            else:
+                emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+
+            to_react = ['1⃣', "2⃣", '3⃣', '4⃣', '5⃣', '6⃣', '7⃣', '8⃣', '9⃣', '0⃣', '🔐', '✅', '❌']
+            for reaction in to_react:
+                    await self.bot.add_reaction(emb_msg, reaction)
+            def checkReaction(reaction, user):
+                e = str(reaction.emoji)
+                return e.startswith(tuple(to_react))
+
+            res = await self.bot.wait_for_reaction(message=emb_msg, user=msg_author, check=checkReaction)
+
+            if to_react[0] in str(res.reaction.emoji):
+                await self.bot.clear_reactions(emb_msg)
+                json_tables, emb_msg = await process_anilist(json_tables, emb_msg, msg_author)
+            elif to_react[1] in str(res.reaction.emoji):
+                await self.bot.clear_reactions(emb_msg)
+                json_tables, emb_msg = await process_episode(json_tables, emb_msg, msg_author)
+            elif to_react[2] in str(res.reaction.emoji):
+                await self.bot.clear_reactions(emb_msg)
+                json_tables, emb_msg = await process_role(json_tables, emb_msg, msg_author)
+            elif to_react[3] in str(res.reaction.emoji):
+                await self.bot.clear_reactions(emb_msg)
+                json_tables, emb_msg = await process_tlor(json_tables, emb_msg, msg_author)
+            elif to_react[4] in str(res.reaction.emoji):
+                await self.bot.clear_reactions(emb_msg)
+                json_tables, emb_msg = await process_tlcer(json_tables, emb_msg, msg_author)
+            elif to_react[5] in str(res.reaction.emoji):
+                await self.bot.clear_reactions(emb_msg)
+                json_tables, emb_msg = await process_encoder(json_tables, emb_msg, msg_author)
+            elif to_react[6] in str(res.reaction.emoji):
+                await self.bot.clear_reactions(emb_msg)
+                json_tables, emb_msg = await process_editor(json_tables, emb_msg, msg_author)
+            elif to_react[7] in str(res.reaction.emoji):
+                await self.bot.clear_reactions(emb_msg)
+                json_tables, emb_msg = await process_timer(json_tables, emb_msg, msg_author)
+            if to_react[8] in str(res.reaction.emoji):
+                await self.bot.clear_reactions(emb_msg)
+                json_tables, emb_msg = await process_tser(json_tables, emb_msg, msg_author)
+            elif to_react[9] in str(res.reaction.emoji):
+                await self.bot.clear_reactions(emb_msg)
+                json_tables, emb_msg = await process_qcer(json_tables, emb_msg, msg_author)
+            elif '🔐' in str(res.reaction.emoji):
+                await self.bot.clear_reactions(emb_msg)
+                json_tables, emb_msg = await process_pengaturan(json_tables, emb_msg, msg_author)
+            elif '✅' in str(res.reaction.emoji):
+                await self.bot.clear_reactions(emb_msg)
+                break
+            elif '❌' in str(res.reaction.emoji):
+                print('[@] Cancelled')
+                cancel_toggled = True
+                await self.bot.clear_reactions(emb_msg)
+                break
+
+        if cancel_toggled:
+            return await ctx.send('**Dibatalkan!**')
+
+        # Everything are done and now processing data
+        print(json_tables)
+        embed=discord.Embed(title="Menambah Utang", color=0x56acf3)
+        embed.add_field(name="Memproses!", value='Membuat data...', inline=True)
+        embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+        emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+
+        new_anime_data = {}
+        staff_data = {}
+        status = {}
+
+        new_anime_data["anilist_id"] = json_tables['anilist_id']
+        new_anime_data["last_update"] = str(current_time)
+        new_anime_data["role_id"] = json_tables['role_id']
+
+        staff_data["TL"] = json_tables['tlor_id']
+        staff_data["TLC"] = json_tables['tlcer_id']
+        staff_data["ENC"] = json_tables['encoder_id']
+        staff_data["ED"] = json_tables['editor_id']
+        staff_data["TM"] = json_tables['timer_id']
+        staff_data["TS"] = json_tables['tser_id']
+        staff_data["QC"] = json_tables['qcer_id']
+        new_anime_data["staff_assignment"] = staff_data
+
+        for x in range(int(json_tables['episodes'])):
+            st_data = {}
+            staff_status = {}
+
+            staff_status["TL"] = "x"
+            staff_status["TLC"] = "x"
+            staff_status["ENC"] = "x"
+            staff_status["ED"] = "x"
+            staff_status["TM"] = "x"
+            staff_status["TS"] = "x"
+            staff_status["QC"] = "x"
+
+            st_data["status"] = "not_released"
+            st_data["airing_time"] = json_tables['time_data'][x]
+            st_data["staff_status"] = staff_status
+            status[str(x+1)] = st_data
+
+        new_anime_data["status"] = status
+
+        json_d[server_message]["anime"][json_tables['ani_title']] = new_anime_data
+
+        embed=discord.Embed(title="Menambah Utang", color=0x56acf3)
+        embed.add_field(name="Memproses!", value='Mengirim data...', inline=True)
+        embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+        emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+
+        print("[@] Sending data")
+
+        with open('nao_showtimes.json', 'w') as f: # Local save before commiting
+            json.dump(json_d, f, indent=4)
+        print('[@] Sended.')
+        embed=discord.Embed(title="Menambah Utang", color=0x96df6a)
+        embed.add_field(name="Sukses!", value='**{}** telah ditambahkan ke database\nDatabase utama akan diupdate sebentar lagi'.format(json_tables['ani_title']), inline=True)
+        embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+        await ctx.send(embed=embed)
+
+        success = await patch_json(json_d)
+        await self.bot.delete_message(emb_msg)
+
+        if success:
+            print('[@] Sending message...')
+            return await ctx.send("Berhasil menambahkan **{}** ke dalam database utama naoTimes".format(json_tables['ani_title']))
+        await ctx.send('Gagal menambahkan ke database utama, owner telah diberikan pesan untuk membenarkan masalahnya')
+        server_in = self.bot.get_guild(int(bot_config['main_server']))
+        mod_mem_data = server_in.get_member(int(bot_config['owner_id']))
+        await mod_mem_data.send('Terjadi kesalahan patch `tambahutang` pada server **{}**'.format(server_message))
+
+
+    @commands.command(aliases=['airing'])
+    async def jadwal(self, ctx):
+        """
+        Melihat jadwal anime musiman yang di ambil.
+        """
+        server_message = str(ctx.message.guild.id)
+        print('Requested !jadwal at: ' + server_message)
+        json_d = await fetch_json()
+
+        try:
+            server_data = json_d[server_message]
+            print('Found server list')
+        except:
+            return
+
+        time_data_list = {}
+        for ani in server_data['anime']:
+            if ani == 'alias':
+                continue
+            time_data, time_until, episode = await fetch_anilist(server_data['anime'][ani]['anilist_id'], 1, jadwal_only=True)
+            if not isinstance(time_data, str):
+                continue
+            if time_until in time_data_list: # For anime that air at the same time
+                time_until += 1
+                while True:
+                    if time_until not in time_data_list:
+                        break
+                    time_until += 1
+            time_data_list[int(time_until)] = [ani, time_data, episode]
+
+        sorted_time = sorted(deepcopy(time_data_list))
+        appendtext = ''
+        for s in sorted_time:
+            animay, time_data, episode = time_data_list[s]
+            appendtext += '**{}** - #{}\n'.format(animay, episode)
+            appendtext += time_data + '\n\n'
+
+        if appendtext != '':
+            print('Sending message...')
+            await ctx.send(appendtext.strip())
+        else:
+            await ctx.send('**Tidak ada utang pada musim ini yang terdaftar**')
+
+
+    @commands.command(aliases=['tukangdelay', 'pendelay'])
+    async def staff(self, ctx, *, judul):
+        """
+        Menagih utang fansub tukang diley maupun tidak untuk memberikan mereka tekanan
+        ---
+        judul: Judul anime yang terdaftar
+        """
+        server_message = str(ctx.message.guild.id)
+        print('Requested !staff at: ' + server_message)
+        json_d = await fetch_json()
+
+        try:
+            server_data = json_d[server_message]
+            print('Found server list')
+        except:
+            return
+
+        srv_owner = server_data['serverowner']
+        srv_anilist = []
+        srv_anilist_alias = []
+        for ani in server_data['anime']:
+            if ani == 'alias': # Don't use alias
+                continue
+            srv_anilist.append(ani)
+        for k, _ in server_data['alias'].items():
+            srv_anilist_alias.append(k)
+
+        if not judul:
+            if len(srv_anilist) < 1:
+                return await ctx.send('**Tidak ada anime yang terdaftar di database**')
+            return await ctx.send('**Mungkin**: {}'.format(', '.join(srv_anilist)))
+
+        matches = get_close_matches(judul, srv_anilist)
+        if srv_anilist_alias:
+            temp_anilias = get_close_matches(judul, srv_anilist_alias)
+            for i in temp_anilias:
+                res = find_alias_anime(i, server_data['alias'])
+                if res not in matches: # To not duplicate result
+                    matches.append(res)
+        print('Matches: {}'.format(", ".join(matches)))
+
+        if not matches:
+            return await ctx.send('Tidak dapat menemukan judul tersebut di database')
+        elif len(matches) > 1:
+            return await ctx.send('**Mungkin**: {}'.format(', '.join(matches)))
+
+        staff_assignment = server_data['anime'][matches[0]]['staff_assignment']
+        print('Got staff_asignment')
+
+        rtext = 'Staff yang mengerjakaan **{}**\n**Admin**: '.format(matches[0])
+        rtext += ''
+
+        for adm in srv_owner:
+            try:
+                user = await self.bot.get_user_info(adm)
+                rtext += '{}#{}'.format(user.name, user.discriminator)
+            except:
+                rtext += 'Unknown'
+            if len(adm) > 1:
+                if srv_owner[-1] != adm:
+                    rtext += ', '
+
+        rtext += '\n**Role**: {}'.format(get_role_name(server_data['anime'][matches[0]]['role_id'], ctx.message.guild.roles))
+
+        if 'kolaborasi' in json_d[server_message]['anime'][matches[0]]:
+            k_list = []
+            for other_srv in json_d[server_message]['anime'][matches[0]]['kolaborasi']:
+                if server_message == other_srv:
+                    continue
+                server_data = self.bot.get_server(other_srv)
+                k_list.append(server_data.name)
+            if k_list:
+                rtext += '\n**Kolaborasi dengan**: {}'.format(', '.join(k_list))
+
+        rtext += '\n\n'
+
+        for k, v in staff_assignment.items():
+            try:
+                user = await self.bot.get_user_info(v)
+                rtext += '**{}**: {}#{}\n'.format(k, user.name, user.discriminator)
+            except discord.errors.NotFound:
+                rtext += '**{}**: Unknown\n'.format(k)
+
+        rtext += '\n**Jika ada yang Unknown, admin dapat menggantikannya**'
+        print(rtext)
+
+        print('[@] Sending message...')
+        await ctx.send(rtext)
+
+
+    @commands.command(aliases=['mark'])
+    async def tandakan(self, ctx, posisi, episode_n, *, judul):
+        """
+        Mark something as done or undone for other episode without announcing it
+        """
+        server_message = str(ctx.message.guild.id)
+        print('Requested !tandakan at: ' + server_message)
+        json_d = await fetch_json()
+
+        if server_message not in json_d:
+            return
+        server_data = json_d[server_message]
+
+        srv_owner = server_data['serverowner']
+        srv_anilist = []
+        srv_anilist_alias = []
+        for ani in server_data['anime']:
+            if ani == 'alias': # Don't use alias
+                continue
+            srv_anilist.append(ani)
+        for k, _ in server_data['alias'].items():
+            srv_anilist_alias.append(k)
+
+        if not judul:
+            if len(srv_anilist) < 1:
+                return await ctx.send('**Tidak ada anime yang terdaftar di database**')
+            return await ctx.send('**Mungkin**: {}'.format(', '.join(sorted(srv_anilist))))
+
+        matches = get_close_matches(judul, srv_anilist)
+        if srv_anilist_alias:
+            temp_anilias = get_close_matches(judul, srv_anilist_alias)
+            for i in temp_anilias:
+                res = find_alias_anime(i, server_data['alias'])
+                if res not in matches: # To not duplicate result
+                    matches.append(res)
+        print('Matches: {}'.format(", ".join(matches)))
+
+        if not matches:
+            return await ctx.send('Tidak dapat menemukan judul tersebut di database')
+        elif len(matches) > 1:
+            return await ctx.send('**Mungkin**: {}'.format(', '.join(matches)))
+
+        program_info = server_data['anime'][matches[0]]
+        status_list = program_info['status']
+
+        current = get_current_ep(status_list)
+        if not current:
+            return await ctx.send('**Sudah beres digarap!**')
+
+        koleb_list = []
+        if 'kolaborasi' in program_info:
+            koleb_data = program_info['kolaborasi']
+            if koleb_data:
+                for ko_data in koleb_data:
+                    if server_message == ko_data:
+                        continue
+                    koleb_list.append(ko_data)
+
+        posisi = posisi.upper()
+
+        # Toggle status section
+        if posisi.lower() not in ['tl', 'tlc', 'enc', 'ed', 'ts', 'tm', 'qc']:
+            return await ctx.send('Tidak ada posisi tersebut!')
+
+        if str(ctx.message.author.id) != program_info['staff_assignment'][posisi.upper()]:
+            if str(ctx.message.author.id) not in srv_owner:
+                return await ctx.send('**Bukan posisi situ untuk mengubahnya!**')
+
+        pos_status = status_list[str(episode_n)]['staff_status']
+
+        if koleb_list:
+            for other_srv in koleb_list:
+                if pos_status[posisi] == 'x':
+                    json_d[other_srv]["anime"][matches[0]]['status'][str(episode_n)]['staff_status'][posisi] = 'y'
+                elif pos_status[posisi] == 'y':
+                    json_d[other_srv]["anime"][matches[0]]['status'][str(episode_n)]['staff_status'][posisi] = 'x'
+
+        if pos_status[posisi] == 'x':
+            json_d[server_message]["anime"][matches[0]]['status'][str(episode_n)]['staff_status'][posisi] = 'y'
+            txt_msg = 'Berhasil mengubah status **{st}** **{an}** episode **#{ep}** ke **beres**'
+        elif pos_status[posisi] == 'y':
+            json_d[server_message]["anime"][matches[0]]['status'][str(episode_n)]['staff_status'][posisi] = 'x'
+            txt_msg = 'Berhasil mengubah status **{st}** **{an}** episode **#{ep}** ke **belum beres**'
+
+        with open('nao_showtimes.json', 'w') as f: # Local save before commiting
+            json.dump(json_d, f, indent=4)
+        print('[@] Berhasil menandakan ke database local')
+        await ctx.send(txt_msg.format(st=posisi, an=matches[0], ep=episode_n))
+
+        success = await patch_json(json_d)
+        if not success:
+            server_in = self.bot.get_guild(int(bot_config['main_server']))
+            mod_mem_data = server_in.get_member(int(bot_config['owner_id']))
+            await mod_mem_data.send('Terjadi kesalahan patch pada server **{}**'.format(server_message))
+
+
+    @commands.command()
+    async def globalpatcher(self, ctx):
+        """
+        Global showtimes patcher, dangerous to use.
+        You can change this to batch modify the database
+        """
+        if int(ctx.message.author.id) != int(bot_config['owner_id']):
+            return
+        print('Requested !globalpatcher by admin')
+        json_d = await fetch_json()
+
+        srv_list = []
+        for k in json_d:
+            srv_list.append(k)
+
+        srv_list.remove('supermod')
+
+        print('[@] Start doing stuff')
+        for srv in srv_list:
+            print('[@] Processing server: ' + srv)
+            json_d[srv]['alias'] = json_d[srv]['anime']['alias']
+            del json_d[srv]['anime']['alias']
+            print('\n')
+
+        preview_msg = await ctx.send('**This will patch and modify and move alias position**\nDo you want to continue?')
+        to_react = ['✅', '❌']
+        for reaction in to_react:
+                await self.bot.add_reaction(preview_msg, reaction)
+        def checkReaction(reaction, user):
+            e = str(reaction.emoji)
+            return e.startswith(('✅', '❌'))
+
+        res = await self.bot.wait_for_reaction(message=preview_msg, user=ctx.message.author, timeout=30, check=checkReaction)
+
+        if res is None:
+            await self.bot.clear_reactions(preview_msg)
+            return await ctx.send('***Timeout!***')
+        elif '✅' in str(res.reaction.emoji):
+            # Process
+            with open('nao_showtimes.json', 'w') as f: # Local save before commiting
+                json.dump(json_d, f, indent=4)
+            success = await patch_json(json_d)
+            await self.bot.clear_reactions(preview_msg)
+            if success:
+                return await ctx.send('**Berhasil merubah database, harap dilihat sebelum mengaktifkannya kembali**')
+            await ctx.send('**Terjadi kesalahan ketika ingin patching database**')
+        elif '❌' in str(res.reaction.emoji):
+            print('[@] Cancelled')
+            await self.bot.clear_reactions(preview_msg)
+            await self.bot.edit_message(preview_msg, '**Cancelled, trigger this command later!**')
+
+
+class ShowtimesAlias(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+
+    def __str__(self):
+        return 'Showtimes Alias'
+
+    @commands.group()
+    async def alias(self, ctx):
+        """
+        Initiate alias creation for certain anime
+        """
+        if not ctx.invoked_subcommand:
+            server_message = str(ctx.message.guild.id)
+            print('Requested !alias at: ' + server_message)
+            json_d = await fetch_json()
+
+            try:
+                server_data = json_d[server_message]
+            except:
+                return
+
+            srv_anilist = []
+            for ani in server_data['anime']:
+                if ani == 'alias': # Don't use alias
+                    continue
+                srv_anilist.append(ani)
+
+            if str(ctx.message.author.id) not in server_data['serverowner']:
+                return await ctx.send('Hanya admin yang bisa menambah alias')
+
+            if len(srv_anilist) < 1:
+                return await ctx.send("Tidak ada anime yang terdaftar di database")
+
+            print('Membuat data')
+            embed = discord.Embed(title="Alias", color=0x56acf3)
+            embed.add_field(name='Memulai Proses!', value="Mempersiapkan...", inline=False)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            emb_msg = await ctx.send(embed=embed)
+            msg_author = ctx.message.author
+            json_tables = {
+                "alias_anime": "",
+                "target_anime": ""
+            }
+
+            async def process_anime(table, emb_msg, author, anime_list):
+                print('[@] Memproses anime')
+                embed = discord.Embed(title="Alias", color=0x96df6a)
+                embed.add_field(name='Judul/Garapan Anime', value="Ketik judul animenya (yang asli), bisa disingkat", inline=False)
+                embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+                emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+
+                await_msg = await self.bot.wait_for_message(author=author)
+                matches = get_close_matches(await_msg.content, anime_list)
+                await self.bot.delete_message(await_msg)
+                if not matches:
+                    await ctx.send('Tidak dapat menemukan judul tersebut di database')
+                    return False, False
+                elif len(matches) > 1:
+                    await ctx.send('**Mungkin**: {}'.format(', '.join(matches)))
+                    return False, False
+
+                embed = discord.Embed(title="Alias", color=0x96df6a)
+                embed.add_field(name='Apakah benar?', value="Judul: **{}**".format(matches[0]), inline=False)
+                embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+                await self.bot.delete_message(emb_msg)
+                emb_msg = await ctx.send(embed=embed)
+
+                to_react = ['✅', '❌']
+                for reaction in to_react:
+                        await self.bot.add_reaction(emb_msg, reaction)
+                def checkReaction(reaction, user):
+                    e = str(reaction.emoji)
+                    return e.startswith(('✅', '❌'))
+
+                res = await self.bot.wait_for_reaction(message=emb_msg, user=author, check=checkReaction)
+
+                if '✅' in str(res.reaction.emoji):
+                    table['target_anime'] = matches[0]
+                    await self.bot.clear_reactions(emb_msg)
+                elif '❌' in str(res.reaction.emoji):
+                    await ctx.send('**Dibatalkan!**')
+                    await self.bot.clear_reactions(emb_msg)
+                    return False, False
+
+                return table, emb_msg
+
+            async def process_alias(table, emb_msg, author):
+                print('[@] Memproses alias')
+                embed = discord.Embed(title="Alias", color=0x96df6a)
+                embed.add_field(name='Alias', value="Ketik alias yang diinginkan", inline=False)
+                embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+                emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+
+                await_msg = await self.bot.wait_for_message(author=author)
+                table['alias_anime'] = await_msg.content
+                await self.bot.delete_message(await_msg)
+
+                return table, emb_msg
+
+            json_tables, emb_msg = await process_anime(json_tables, emb_msg, msg_author, srv_anilist)
+
+            if not json_tables:
+                return print('[@] Cancelled process.')
+
+            json_tables, emb_msg = await process_alias(json_tables, emb_msg, msg_author)
+            print('[@] Making sure.')
+            first_time = True
+            cancel_toggled = False
+            while True:
+                embed=discord.Embed(title="Alias", description="Periksa data!\nReact jika ingin diubah.", color=0xe7e363)
+                embed.add_field(name="1⃣ Anime/Garapan", value="{}".format(json_tables['target_anime']), inline=False)
+                embed.add_field(name='2⃣ Alias', value="{}".format(json_tables['alias_anime']), inline=False)
+                embed.add_field(name="Lain-Lain", value="✅ Tambahkan!\n❌ Batalkan!", inline=False)
+                embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+                if first_time:
+                    await self.bot.delete_message(emb_msg)
+                    emb_msg = await ctx.send(embed=embed)
+                    first_time = False
+                else:
+                    emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+
+                to_react = ['1⃣', "2⃣", '✅', '❌']
+                for reaction in to_react:
+                        await self.bot.add_reaction(emb_msg, reaction)
+                def checkReaction(reaction, user):
+                    e = str(reaction.emoji)
+                    return e.startswith(tuple(to_react))
+
+                res = await self.bot.wait_for_reaction(message=emb_msg, user=msg_author, check=checkReaction)
+
+                if to_react[0] in str(res.reaction.emoji):
+                    await self.bot.clear_reactions(emb_msg)
+                    json_tables, emb_msg = await process_anime(json_tables, emb_msg, msg_author, srv_anilist)
+                elif to_react[1] in str(res.reaction.emoji):
+                    await self.bot.clear_reactions(emb_msg)
+                    json_tables, emb_msg = await process_alias(json_tables, emb_msg, msg_author)
+                elif '✅' in str(res.reaction.emoji):
+                    await self.bot.clear_reactions(emb_msg)
+                    break
+                elif '❌' in str(res.reaction.emoji):
+                    print('[@] Cancelled.')
+                    cancel_toggled = True
+                    await self.bot.clear_reactions(emb_msg)
+                    break
+
+            if cancel_toggled:
+                return await ctx.send('**Dibatalkan!**')
+
+            # Everything are done and now processing data
+            print(json_tables)
+            embed=discord.Embed(title="Alias", color=0x56acf3)
+            embed.add_field(name="Memproses!", value='Membuat data...', inline=True)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+
+            if json_tables['alias_anime'] in server_data['alias']:
+                embed=discord.Embed(title="Alias", color=0xe24545)
+                embed.add_field(
+                    name="Dibatalkan!", 
+                    value='Alias **{}** sudah terdaftar untuk **{}**'.format(
+                        json_tables['alias_anime'], 
+                        server_data['alias'][json_tables['alias_anime']]
+                        ), 
+                    inline=True
+                )
+                embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+                await self.bot.delete_message(emb_msg)
+                return await ctx.send(embed=embed)
+
+            json_d[server_message]['alias'][json_tables['alias_anime']] = json_tables['target_anime']
+
+            embed=discord.Embed(title="Alias", color=0x56acf3)
+            embed.add_field(name="Memproses!", value='Mengirim data...', inline=True)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+
+            print("[@] Sending data")
+
+            with open('nao_showtimes.json', 'w') as f: # Local save before commiting
+                json.dump(json_d, f, indent=4)
+            print('[@] Sended.')
+            embed=discord.Embed(title="Alias", color=0x96df6a)
+            embed.add_field(name="Sukses!", value='Alias **{} ({})** telah ditambahkan ke database\nDatabase utama akan diupdate sebentar lagi'.format(json_tables['alias_anime'], json_tables['target_anime']), inline=True)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            await ctx.send(embed=embed)
+            await self.bot.delete_message(emb_msg)
+
+            success = await patch_json(json_d)
+
+            if success:
+                print('[@] Sending message...')
+                return await ctx.send("Berhasil menambahkan alias **{} ({})** ke dalam database utama naoTimes".format(json_tables['alias_anime'], json_tables['target_anime']))
+            await ctx.send('Gagal menambahkan ke database utama, owner telah diberikan pesan untuk membenarkan masalahnya')
+            server_in = self.bot.get_guild(int(bot_config['main_server']))
+            mod_mem_data = server_in.get_member(int(bot_config['owner_id']))
+            await mod_mem_data.send('Terjadi kesalahan patch `alias` pada server **{}**'.format(server_message))
+
+
+    @alias.command()
+    async def list(self, ctx, *, judul):
+        server_message = str(ctx.message.guild.id)
+        print('Requested !alias list at: ' + server_message)
+        json_d = await fetch_json()
+
+        if server_message not in json_d:
+            return
+        server_data = json_d[server_message]
+
+        srv_anilist = []
+        for ani in server_data['anime']:
+            if ani == 'alias': # Don't use alias
+                continue
+            srv_anilist.append(ani)
+
+        if not judul:
+            if len(srv_anilist) < 1:
+                return await ctx.send('**Tidak ada anime yang terdaftar di database**')
+            return await ctx.send('**Mungkin**: {}'.format(', '.join(sorted(srv_anilist))))
+
+        matches = get_close_matches(judul, srv_anilist)
+        print('Matches: {}'.format(", ".join(matches)))
+
+        if not matches:
+            return await ctx.send('Tidak dapat menemukan judul tersebut di database')
+        elif len(matches) > 1:
+            return await ctx.send('**Mungkin**: {}'.format(', '.join(matches)))
+
+        srv_anilist_alias = []
+        for k, v in server_data['alias'].items():
+            if v in matches:
+                srv_anilist_alias.append(k)
+
+        text_value = ''
+        if not srv_anilist_alias:
+            text_value += 'Tidak ada'
+
+        if not text_value:
+            text_value += make_numbered_alias(srv_anilist_alias)
+        
+        embed=discord.Embed(title="Alias list", color=0x47e0a7)
+        embed.add_field(name=matches[0], value=text_value, inline=False)
+        embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+        await ctx.send(embed=embed)
+
+
+    @alias.command(aliases=['remove'])
+    async def hapus(self, ctx, *, judul):
+        server_message = str(ctx.message.guild.id)
+        print('Requested !alias hapus at: ' + server_message)
+        json_d = await fetch_json()
+
+        if server_message not in json_d:
+            return
+        server_data = json_d[server_message]
+
+        if str(ctx.message.author.id) not in server_data['serverowner']:
+            return await ctx.send('Hanya admin yang bisa menghapus alias')
+
+        srv_anilist = []
+        for ani in server_data['anime']:
+            if ani == 'alias': # Don't use alias
+                continue
+            srv_anilist.append(ani)
+
+        if not server_data['alias']:
+            return await ctx.send('Tidak ada alias yang terdaftar.')
+
+        if not judul:
+            if len(srv_anilist) < 1:
+                return await ctx.send('**Tidak ada anime yang terdaftar di database**')
+            return await ctx.send('**Mungkin**: {}'.format(', '.join(sorted(srv_anilist))))
+
+        matches = get_close_matches(judul, srv_anilist)
+        print('Matches: {}'.format(", ".join(matches)))
+
+        if not matches:
+            return await ctx.send('Tidak dapat menemukan judul tersebut di database')
+        elif len(matches) > 1:
+            return await ctx.send('**Mungkin**: {}'.format(', '.join(matches)))
+
+        srv_anilist_alias = []
+        for k, v in server_data['alias'].items():
+            if v in matches:
+                srv_anilist_alias.append(k)
+
+        if not srv_anilist_alias:
+            return await ctx.send('Tidak ada alias yang terdaftar untuk judul **{}**'.format(matches[0]))
+        
+        alias_chunked = [srv_anilist_alias[i:i + 5] for i in range(0, len(srv_anilist_alias), 5)]
+        print(alias_chunked)
+
+        first_run = True
+        n = 1
+        max_n = len(alias_chunked)
+        while True:
+            if first_run:
+                n = 1
+                first_run = False
+                embed=discord.Embed(title="Alias list", color=0x47e0a7)
+                embed.add_field(name='{}'.format(matches[0]), value=make_numbered_alias(alias_chunked[n-1]), inline=False)
+                embed.add_field(name="*Informasi*", value="1⃣-5⃣ Hapus `x` alias\n⏪ Sebelumnya\n⏩ Selanjutnya\n❌ Batalkan")
+                embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+                emb_msg = await ctx.send(embed=embed)
+
+            react_ext = []
+            to_react = ['1⃣', "2⃣", '3⃣', '4⃣', '5⃣'] # 5 per page
+            if max_n == 1 and n == 1:
+                pass
+            elif n == 1:
+                react_ext.append('⏩')
+            elif n == max_n:
+                react_ext.append('⏪')
+            elif n > 1 and n < max_n:
+                react_ext.extend(['⏪', '⏩'])
+
+            react_ext.append('❌')
+            to_react = to_react[0:len(alias_chunked[n-1])]
+            to_react.extend(react_ext)
+
+            for reaction in to_react:
+                await self.bot.add_reaction(emb_msg, reaction)
+
+            def checkReaction(reaction, user):
+                e = str(reaction.emoji)
+                return e.startswith(tuple(to_react))
+
+            res = await self.bot.wait_for_reaction(message=emb_msg, user=ctx.message.author, timeout=30, check=checkReaction)
+            if res is None:
+                return await self.bot.clear_reactions(emb_msg)
+            elif '⏪' in str(res.reaction.emoji):
+                n = n - 1
+                await self.bot.clear_reactions(emb_msg)
+                embed=discord.Embed(title="Alias list", color=0x47e0a7)
+                embed.add_field(name='{}'.format(matches[0]), value=make_numbered_alias(alias_chunked[n-1]), inline=False)
+                embed.add_field(name="*Informasi*", value="1⃣-5⃣ Hapus `x` alias\n⏪ Sebelumnya\n⏩ Selanjutnya\n❌ Batalkan")
+                embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+                emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+            elif '⏩' in str(res.reaction.emoji):
+                n = n + 1
+                await self.bot.clear_reactions(emb_msg)
+                embed=discord.Embed(title="Alias list", color=0x47e0a7)
+                embed.add_field(name='{}'.format(matches[0]), value=make_numbered_alias(alias_chunked[n-1]), inline=False)
+                embed.add_field(name="*Informasi*", value="1⃣-5⃣ Hapus `x` alias\n⏪ Sebelumnya\n⏩ Selanjutnya\n❌ Batalkan")
+                embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+                emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+            elif '❌' in str(res.reaction.emoji):
+                await self.bot.clear_reactions(emb_msg)
+                return await ctx.send('**Dibatalkan!**')
+            else:
+                await self.bot.clear_reactions(emb_msg)
+                index_del = to_react.index(str(res.reaction.emoji))
+                n_del = alias_chunked[n-1][index_del]
+                del json_d[server_message]['alias'][n_del]
+                
+                with open('nao_showtimes.json', 'w') as f: # Local save before commiting
+                    json.dump(json_d, f, indent=4)
+
+                await ctx.send('Alias **{} ({})** telah dihapus dari database'.format(n_del, matches[0]))
+                
+                success = await patch_json(json_d)
+
+                if success:
+                    break
+                await ctx.send('Gagal menambahkan ke database utama, owner telah diberikan pesan untuk membenarkan masalahnya')
+                server_in = self.bot.get_guild(int(bot_config['main_server']))
+                mod_mem_data = server_in.get_member(int(bot_config['owner_id']))
+                return await mod_mem_data.send('Terjadi kesalahan patch `alias hapus` pada server **{}**'.format(server_message))
+
+
+class ShowtimesKolaborasi(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+
+    def __str__(self):
+        return 'Showtimes Kolaborasi'
+
+    @commands.group(aliases=['joint', 'join', 'koleb'])
+    async def kolaborasi(self, ctx):
+        if not ctx.invoked_subcommand:
+            helpmain = discord.Embed(title="Bantuan Perintah (!kolaborasi)", description="versi 1.5.0", color=0x00aaaa)
+            helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
+            helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
+            helpmain.add_field(name='!kolaborasi', value="```Memunculkan bantuan perintah```", inline=False)
+            helpmain.add_field(name='!kolaborasi dengan <server_id_kolaborasi> <judul>', value="```Kolaborasi anime tertentu dengan fansub/server lain```", inline=False)
+            helpmain.add_field(name='!kolaborasi konfirmasi <kode>', value="```Konfirmasi kolaborasi anime dengan kode unik```", inline=False)
+            helpmain.add_field(name='!kolaborasi putus <judul>', value="```Memutuskan hubungan sinkronisasi data dengan semua fansub yang diajak kolaborasi```", inline=False)
+            helpmain.add_field(name='!kolaborasi batalkan <server_id_kolaborasi> <kode>', value="```Membatalkan kode konfirmasi kolaborasi dengan fansub lain```", inline=False)
+            helpmain.add_field(name='Aliases', value="!kolaborasi, !joint, !join, !koleb", inline=False)
+            helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 1.5.0")
+            await ctx.send(embed=helpmain)
+
+    @kolaborasi.command()
+    async def dengan(self, ctx, server_id, *, judul):
+        server_message = str(ctx.message.guild.id)
+        msg_author = ctx.message.author
+        print('Requested !kolaborasi dengan at: ' + server_message)
+        json_d = await fetch_json()
+
+        if server_message not in json_d:
+            return
+        server_data = json_d[server_message]
+
+        if str(ctx.message.author.id) not in server_data['serverowner']:
+            return await ctx.send('Hanya admin yang bisa memulai kolaborasi')
+
+        if server_id not in json_d:
+            return await ctx.send('Tidak dapat menemukan server tersebut di database')
+
+        srv_anilist = []
+        srv_anilist_alias = []
+        for ani in server_data['anime']:
+            if ani == 'alias': # Don't use alias
+                continue
+            srv_anilist.append(ani)
+        for k, _ in server_data['alias'].items():
+            srv_anilist_alias.append(k)
+
+        if not judul:
+            if len(srv_anilist) < 1:
+                return await ctx.send('**Tidak ada anime yang terdaftar di database**')
+            return await ctx.send('**Mungkin**: {}'.format(', '.join(srv_anilist)))
+
+        matches = get_close_matches(judul, srv_anilist)
+        if srv_anilist_alias:
+            temp_anilias = get_close_matches(judul, srv_anilist_alias)
+            for i in temp_anilias:
+                res = find_alias_anime(i, server_data['alias'])
+                if res not in matches: # To not duplicate result
+                    matches.append(res)
+        print('Matches: {}'.format(", ".join(matches)))
+
+        if not matches:
+            return await ctx.send('Tidak dapat menemukan judul tersebut di database')
+        elif len(matches) > 1:
+            return await ctx.send('**Mungkin**: {}'.format(', '.join(matches)))
+
+        if 'kolaborasi' in server_data['anime'][matches[0]]:
+            if server_id in server_data['anime'][matches[0]]['kolaborasi']:
+                return await ctx.send('Server tersebut sudah diajak kolaborasi.')
+
+        randomize_confirm = ''.join(choice(ascii_lowercase+digits) for i in range(16))
+
+        cancel_toggled = False
+        first_time = True
+        while True:
+            embed=discord.Embed(title="Kolaborasi", description="Periksa data!\nReact jika ingin diubah.", color=0xe7e363)
+            embed.add_field(name="Anime/Garapan", value=matches[0], inline=False)
+            embed.add_field(name='Server', value=server_id, inline=False)
+            embed.add_field(name="Lain-Lain", value="✅ Tambahkan!\n❌ Batalkan!", inline=False)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            if first_time:
+                emb_msg = await ctx.send(embed=embed)
+                first_time = False
+            else:
+                emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+
+            to_react = ['✅', '❌']
+            for reaction in to_react:
+                    await self.bot.add_reaction(emb_msg, reaction)
+            def checkReaction(reaction, user):
+                e = str(reaction.emoji)
+                return e.startswith(tuple(to_react))
+
+            res = await self.bot.wait_for_reaction(message=emb_msg, user=msg_author, check=checkReaction)
+
+            if '✅' in str(res.reaction.emoji):
+                await self.bot.clear_reactions(emb_msg)
+                break
+            elif '❌' in str(res.reaction.emoji):
+                print('[@] Cancelled.')
+                cancel_toggled = True
+                await self.bot.clear_reactions(emb_msg)
+                break
+
+        if cancel_toggled:
+            return await ctx.send('**Dibatalkan!**')
+
+        table_data = {}
+        table_data['anime'] = matches[0]
+        table_data['server'] = server_message
+
+        if 'konfirmasi' not in json_d[server_id]:
+            json_d[server_id]['konfirmasi'] = {}
+        json_d[server_id]['konfirmasi'][randomize_confirm] = table_data
+
+        embed=discord.Embed(title="Kolaborasi", color=0x56acf3)
+        embed.add_field(name="Memproses!", value='Mengirim data...', inline=True)
+        embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+        emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+
+        print("[@] Sending data")
+
+        with open('nao_showtimes.json', 'w') as f: # Local save before commiting
+            json.dump(json_d, f, indent=4)
+        print('[@] Sended.')
+        embed=discord.Embed(title="Kolaborasi", color=0x96df6a)
+        embed.add_field(name="Sukses!", value='Berikan kode berikut `{}` kepada fansub/server lain.\nDatabase utama akan diupdate sebentar lagi'.format(randomize_confirm), inline=True)
+        embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+        await self.bot.delete_message(emb_msg)
+        await ctx.send(embed=embed)
+
+        success = await patch_json(json_d)
+
+        if success:
+            print('[@] Sending message...')
+            return await ctx.send("Berikan kode berikut `{rand}` kepada fansub/server lain.\nKonfirmasi di server lain dengan `!kolaborasi konfirmasi {rand}`".format(rand=randomize_confirm))
+        await ctx.send('Gagal menambahkan ke database utama, owner telah diberikan pesan untuk membenarkan masalahnya')
+        server_in = self.bot.get_guild(int(bot_config['main_server']))
+        mod_mem_data = server_in.get_member(int(bot_config['owner_id']))
+        await mod_mem_data.send('Terjadi kesalahan patch `kolaborasi dengan` pada server **{}**'.format(server_message))
+
+
+    @kolaborasi.command()
+    async def konfirmasi(self, ctx, konfirm_id):
+        server_message = str(ctx.message.guild.id)
+        print('Requested !kolaborasi konfirmasi at: ' + server_message)
+        json_d = await fetch_json()
+
+        if server_message not in json_d:
+            return
+        server_data = json_d[server_message]
+
+        if str(ctx.message.author.id) not in server_data['serverowner']:
+            return await ctx.send('Hanya admin yang bisa konfirmasi kolaborasi.')
+
+        if 'konfirmasi' not in server_data:
+            return await ctx.send('Tidak ada kolaborasi yang harus dikonfirmasi.')
+        if konfirm_id not in server_data['konfirmasi']:
+            return await ctx.send('Tidak dapat menemukan kode kolaborasi yang diberikan.')
+
+        klb_data = server_data['konfirmasi'][konfirm_id]
+
+        embed=discord.Embed(title="Konfirmasi Kolaborasi", color=0xe7e363)
+        embed.add_field(name="Anime/Garapan", value=klb_data['anime'], inline=False)
+        embed.add_field(name='Server', value=klb_data['server'], inline=False)
+        embed.add_field(name="Lain-Lain", value="✅ Konfirmasi!\n❌ Batalkan!", inline=False)
+        embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+        emb_msg = await ctx.send(embed=embed)
+
+        to_react = ['✅', '❌']
+        for reaction in to_react:
+                await self.bot.add_reaction(emb_msg, reaction)
+        def checkReaction(reaction, user):
+            e = str(reaction.emoji)
+            return e.startswith(tuple(to_react))
+
+        res = await self.bot.wait_for_reaction(message=emb_msg, user=ctx.message.author, check=checkReaction)
+
+        if '✅' in str(res.reaction.emoji):
+            await self.bot.clear_reactions(emb_msg)
+        elif '❌' in str(res.reaction.emoji):
+            print('[@] Cancelled.')
+            await self.bot.clear_reactions(emb_msg)
+            return await ctx.send('**Dibatalkan!**')
+
+        ani_srv_role = ''
+        if klb_data['anime'] in server_data['anime']:
+            print('[@] Existing data, removing and changing from other server')
+            ani_srv_role += server_data['anime'][klb_data['anime']]['role_id']
+            del server_data['anime'][klb_data['anime']]
+
+        if not ani_srv_role:
+            c_role = await self.bot.create_role(ctx.message.author.server, name=klb_data['anime'], colour=discord.Colour(0xdf2705), mentionable=True)
+            ani_srv_role = str(c_role.id)
+
+        other_anime_data = json_d[klb_data['server']]['anime'][klb_data['anime']]
+        copied_data = deepcopy(other_anime_data)
+        json_d[server_message]['anime'][klb_data['anime']] = copied_data
+        json_d[server_message]['anime'][klb_data['anime']]['role_id'] = ani_srv_role
+
+        join_srv = [klb_data['server'], server_message]
+        if 'kolaborasi' in server_data['anime'][klb_data['anime']]:
+            join_srv.extend(server_data['anime'][klb_data['anime']]['kolaborasi'])
+        join_srv = list(dict.fromkeys(join_srv))
+        if 'kolaborasi' in other_anime_data:
+            join_srv.extend(other_anime_data['kolaborasi'])
+        join_srv = list(dict.fromkeys(join_srv))
+        other_anime_data['kolaborasi'] = join_srv
+
+        json_d[server_message]['anime'][klb_data['anime']]['kolaborasi'] = join_srv
+        del json_d[server_message]['konfirmasi'][konfirm_id]
+
+        embed=discord.Embed(title="Kolaborasi", color=0x56acf3)
+        embed.add_field(name="Memproses!", value='Mengirim data...', inline=True)
+        embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+        emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+
+        print("[@] Sending data")
+
+        with open('nao_showtimes.json', 'w') as f: # Local save before commiting
+            json.dump(json_d, f, indent=4)
+        print('[@] Sended.')
+        embed=discord.Embed(title="Kolaborasi", color=0x96df6a)
+        embed.add_field(name="Sukses!", value='Berhasil konfirmasi dengan server **{}**.\nDatabase utama akan diupdate sebentar lagi'.format(klb_data['server']), inline=True)
+        embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+        await self.bot.delete_message(emb_msg)
+        await ctx.send(embed=embed)
+
+        success = await patch_json(json_d)
+
+        if success:
+            print('[@] Sending message...')
+            return await ctx.send("Berhasil menambahkan kolaborasi dengan **{}** ke dalam database utama naoTimes\nBerikan role berikut agar bisa menggunakan perintah staff <@&{}>".format(klb_data['server'], ani_srv_role))
+        await ctx.send('Gagal menambahkan ke database utama, owner telah diberikan pesan untuk membenarkan masalahnya')
+        server_in = self.bot.get_guild(int(bot_config['main_server']))
+        mod_mem_data = server_in.get_member(int(bot_config['owner_id']))
+        await mod_mem_data.send('Terjadi kesalahan patch `kolaborasi konfirmasi` pada server **{}**'.format(server_message))
+
+
+    @kolaborasi.command()
+    async def batalkan(self, ctx, server_id, konfirm_id):
+        server_message = str(ctx.message.guild.id)
+        print('Requested !kolaborasi batalkan at: ' + server_message)
+        json_d = await fetch_json()
+
+        if server_message not in json_d:
+            return
+        server_data = json_d[server_message]
+
+        if str(ctx.message.author.id) not in server_data['serverowner']:
+            return await ctx.send('Hanya admin yang bisa membatalkan kolaborasi')
+
+        if server_id not in json_d:
+            return await ctx.send('Tidak dapat menemukan server tersebut di database')
+
+        other_srv_data = json_d[server_id]
+
+        if 'konfirmasi' not in other_srv_data:
+            return await ctx.send('Tidak ada kolaborasi yang harus dikonfirmasi.')
+        if konfirm_id not in other_srv_data['konfirmasi']:
+            return await ctx.send('Tidak dapat menemukan kode kolaborasi yang diberikan.')
+
+        del json_d[server_id]['konfirmasi'][konfirm_id]
+
+        print("[@] Sending data")
+
+        with open('nao_showtimes.json', 'w') as f: # Local save before commiting
+            json.dump(json_d, f, indent=4)
+        print('[@] Sended.')
+        embed=discord.Embed(title="Kolaborasi", color=0x96df6a)
+        embed.add_field(name="Sukses!", value='Berhasil membatalkan kode konfirmasi **{}**.\nDatabase utama akan diupdate sebentar lagi'.format(konfirm_id), inline=True)
+        embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+        await ctx.send(embed=embed)
+
+        success = await patch_json(json_d)
+
+        if success:
+            print('[@] Sending message...')
+            return await ctx.send("Berhasil membatalkan kode konfirmasi **{}** dari database utama naoTimes".format(konfirm_id))
+        await ctx.send('Gagal menambahkan ke database utama, owner telah diberikan pesan untuk membenarkan masalahnya')
+        server_in = self.bot.get_guild(int(bot_config['main_server']))
+        mod_mem_data = server_in.get_member(int(bot_config['owner_id']))
+        await mod_mem_data.send('Terjadi kesalahan patch `kolaborasi batalkan` pada server **{}**'.format(server_message))
+
+
+    @kolaborasi.command()
+    async def putus(self, ctx, judul):
+        server_message = str(ctx.message.guild.id)
+        print('Requested !kolaborasi batalkan at: ' + server_message)
+        json_d = await fetch_json()
+
+        if server_message not in json_d:
+            return
+        server_data = json_d[server_message]
+
+        if str(ctx.message.author.id) not in server_data['serverowner']:
+            return await ctx.send('Hanya admin yang bisa memputuskan kolaborasi')
+
+        srv_anilist = []
+        srv_anilist_alias = []
+        for ani in server_data['anime']:
+            if ani == 'alias': # Don't use alias
+                continue
+            srv_anilist.append(ani)
+        for k, _ in server_data['alias'].items():
+            srv_anilist_alias.append(k)
+
+        if not judul:
+            if len(srv_anilist) < 1:
+                return await ctx.send('**Tidak ada anime yang terdaftar di database**')
+            return await ctx.send('**Mungkin**: {}'.format(', '.join(srv_anilist)))
+
+        matches = get_close_matches(judul, srv_anilist)
+        if srv_anilist_alias:
+            temp_anilias = get_close_matches(judul, srv_anilist_alias)
+            for i in temp_anilias:
+                res = find_alias_anime(i, server_data['alias'])
+                if res not in matches: # To not duplicate result
+                    matches.append(res)
+        print('Matches: {}'.format(", ".join(matches)))
+
+        if not matches:
+            return await ctx.send('Tidak dapat menemukan judul tersebut di database')
+        elif len(matches) > 1:
+            return await ctx.send('**Mungkin**: {}'.format(', '.join(matches)))
+
+        program_info = server_data['anime'][matches[0]]
+        status_list = program_info['status']
+
+        if 'kolaborasi' not in program_info:
+            return await ctx.send('Tidak ada kolaborasi sama sekali pada judul ini.')
+
+        for x in program_info['kolaborasi']:
+            json_d[x]['anime'][matches[0]]['kolaborasi'].remove(server_message)
+        del json_d[server_message]['anime'][matches[0]]['kolaborasi']
+        print("[@] Sending data")
+
+        with open('nao_showtimes.json', 'w') as f: # Local save before commiting
+            json.dump(json_d, f, indent=4)
+        print('[@] Sended.')
+        embed=discord.Embed(title="Kolaborasi", color=0x96df6a)
+        embed.add_field(name="Sukses!", value='Berhasil memputuskan kolaborasi **{}**.\nDatabase utama akan diupdate sebentar lagi'.format(matches[0]), inline=True)
+        embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+        await ctx.send(embed=embed)
+
+        success = await patch_json(json_d)
+
+        if success:
+            print('[@] Sending message...')
+            return await ctx.send("Berhasil memputuskan kolaborasi **{}** dari database utama naoTimes".format(matches[0]))
+        await ctx.send('Gagal menambahkan ke database utama, owner telah diberikan pesan untuk membenarkan masalahnya')
+        server_in = self.bot.get_guild(int(bot_config['main_server']))
+        mod_mem_data = server_in.get_member(int(bot_config['owner_id']))
+        await mod_mem_data.send('Terjadi kesalahan patch `kolaborasi putus` pada server **{}**'.format(server_message))
+
+
+class ShowtimesAdmin(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+
+    def __str__(self):
+        return 'Showtimes Admin'
+
+    @commands.group(pass_context=True, aliases=['naotimesadmin', 'naoadmin'])
+    async def ntadmin(self, ctx):
+        if ctx.invoked_subcommand is None:
+            if int(ctx.message.author.id) != int(bot_config['owner_id']):
+                return
+            helpmain = discord.Embed(title="Bantuan Perintah (!ntadmin)", description="versi 1.5.0", color=0x00aaaa)
+            helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
+            helpmain.set_author(name="naoTimesAdmin", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
+            helpmain.add_field(name='!ntadmin', value="```Memunculkan bantuan perintah```", inline=False)
+            helpmain.add_field(name='!ntadmin tambah <server id> <id admin> <progress_channel>', value="```Menambahkan server baru ke naoTimes```", inline=False)
+            helpmain.add_field(name='!ntadmin hapus <server id>', value="```Menghapus server dari naoTimes```", inline=False)
+            helpmain.add_field(name='!ntadmin tambahadmin <server id> <id admin>', value="```Menambahkan admin baru ke server yang terdaftar```", inline=False)
+            helpmain.add_field(name='!ntadmin hapusadmin <server id> <id admin>', value="```Menghapus admin dari server yang terdaftar```", inline=False)
+            helpmain.add_field(name='!ntadmin fetchdb', value="```Mengambil database dan menguploadnya ke discord```", inline=False)
+            helpmain.add_field(name='!ntadmin patchdb', value="```Menganti database dengan attachments yang dicantumkan\nTambah attachments lalu tulis !ntadmin patchdb dan enter```", inline=False)
+            helpmain.add_field(name='!ntadmin forceupdate', value="```Memaksa update database utama gist dengan database local.```", inline=False)
+            helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 1.5.0")
+            await self.bot.say(embed=helpmain)
+
+
+    @ntadmin.command(pass_context=True)
+    async def listserver(self, ctx):
+        if int(ctx.message.author.id) != int(bot_config['owner_id']):
+            return
+        print('Requested !ntadmin listserver by admin')
+        json_d = await fetch_json()
+        if not json_d:
+            return
+
+        srv_list = []
+        for i, _ in json_d.items():
+            srv_ = discord.Object(i)
+            srv_list.append(srv_.name)
+
+        srv_list.remove('supermod')
+
+        text = '**List server ({} servers):**\n'.format(len(srv_list))
+        for x in srv_list:
+            text += x + '\n'
+
+        text = text.rstrip('\n')
+        
+        await self.bot.say(text)
+
+    
+    @ntadmin.command(pass_context=True)
+    async def initiate(self, ctx):
+        """
+        Initiate naoTimes on this server so it can be used on other server
+        Make sure everything is filled first before starting this command
+        """
+        print('@@ Initiated naoTimes first-time setup')
+        if int(ctx.message.author.id) != int(bot_config['owner_id']):
+            return
+        if bot_config['gist_id'] != "":
+            print('@@ Already setup, skipping')
+            return await self.bot.say('naoTimes sudah dipersiapkan dan sudah bisa digunakan')
+
+        print('Membuat data')
+        embed = discord.Embed(title="naoTimes", color=0x56acf3)
+        embed.add_field(name='Memulai Proses!', value="Mempersiapkan...", inline=False)
+        embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+        emb_msg = await self.bot.say(embed=embed)
+        msg_author = ctx.message.author
+        json_tables = {
+            "id": "",
+            "owner_id": str(msg_author.id),
+            "progress_channel": ""
+        }
+
+        async def process_gist(table, emb_msg, author):
+            print('@@ Memproses database')
+            embed = discord.Embed(title="naoTimes", color=0x96df6a)
+            embed.add_field(name='Gist ID', value="Ketik ID Gist GitHub", inline=False)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+
+            await_msg = await self.bot.wait_for_message(author=author)
+            table['id'] = await_msg.content
+
+            return table, emb_msg
+
+        async def process_progchan(table, emb_msg, author):
+            print('@@ Memproses #progress channel')
+            embed = discord.Embed(title="naoTimes", color=0x96df6a)
+            embed.add_field(name='#progress channel ID', value="Ketik ID channel", inline=False)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+
+            while True:
+                await_msg = await self.bot.wait_for_message(author=author)
+                if await_msg.content.isdigit():
+                    table['progress_channel'] = await_msg.content
+                    await self.bot.delete_message(await_msg)
+                    break
+                await self.bot.delete_message(await_msg)
+
+            return table, emb_msg
+
+        async def process_owner(table, emb_msg, author):
+            print('@@ Memproses ID Owner')
+            embed = discord.Embed(title="naoTimes", color=0x96df6a)
+            embed.add_field(name='Owner ID', value="Ketik ID Owner server atau mention orangnya", inline=False)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+
+            while True:
+                await_msg = await self.bot.wait_for_message(author=author)
+                mentions = await_msg.mentions
+                if not mentions:
+                    if await_msg.content.isdigit():
+                        table['owner_id'] = await_msg.content
+                        await self.bot.delete_message(await_msg)
+                        break
+                else:
+                    table['owner_id'] = mentions[0].id
+                    await self.bot.delete_message(await_msg)
+                    break
+                await self.bot.delete_message(await_msg)
+
+            return table, emb_msg
+
+        json_tables, emb_msg = await process_gist(json_tables, emb_msg, msg_author)
+        json_tables, emb_msg = await process_progchan(json_tables, emb_msg, msg_author)
+
+        print('@@ Making sure.')
+        first_time = True
+        cancel_toggled = False
+        while True:
+            embed=discord.Embed(title="naoTimes", description="Periksa data!\nReact jika ingin diubah.", color=0xe7e363)
+            embed.add_field(name="1⃣ Gists ID", value="{}".format(json_tables['id']), inline=False)
+            embed.add_field(name='2⃣ Owner ID', value="{}".format(json_tables['owner_id']), inline=False)
+            embed.add_field(name='3⃣ #progress channel ID', value="{}".format(json_tables['progress_channel']), inline=False)
+            embed.add_field(name="Lain-Lain", value="✅ Tambahkan!\n❌ Batalkan!", inline=False)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            if first_time:
+                await self.bot.delete_message(emb_msg)
+                emb_msg = await self.bot.say(embed=embed)
+                first_time = False
+            else:
+                emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+
+            to_react = ['1⃣', "2⃣", '3⃣', '✅', '❌']
+            for reaction in to_react:
+                    await self.bot.add_reaction(emb_msg, reaction)
+            def checkReaction(reaction, user):
+                e = str(reaction.emoji)
+                return e.startswith(tuple(to_react))
+
+            res = await self.bot.wait_for_reaction(message=emb_msg, user=msg_author, check=checkReaction)
+
+            if to_react[0] in str(res.reaction.emoji):
+                await self.bot.clear_reactions(emb_msg)
+                json_tables, emb_msg = await process_gist(json_tables, emb_msg, msg_author)
+            elif to_react[1] in str(res.reaction.emoji):
+                await self.bot.clear_reactions(emb_msg)
+                json_tables, emb_msg = await process_owner(json_tables, emb_msg, msg_author)
+            elif to_react[2] in str(res.reaction.emoji):
+                await self.bot.clear_reactions(emb_msg)
+                json_tables, emb_msg = await process_progchan(json_tables, emb_msg, msg_author)
+            elif '✅' in str(res.reaction.emoji):
+                await self.bot.clear_reactions(emb_msg)
+                break
+            elif '❌' in str(res.reaction.emoji):
+                print('@@ Cancelled')
+                cancel_toggled = True
+                await self.bot.clear_reactions(emb_msg)
+                break
+
+        if cancel_toggled:
+            return await self.bot.say('**Dibatalkan!**')
+
+        embed=discord.Embed(title="naoTimes", color=0x56acf3)
+        embed.add_field(name="Memproses!", value='Mengirim data...', inline=True)
+        embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+        emb_msg = await self.bot.edit_message(emb_msg, embed=embed)
+
+        main_data = {}
+        server_data = {}
+        main_data['supermod'] = [json_tables['owner_id']]
+        
+        server_data['serverowner'] = [json_tables['owner_id']]
+        server_data['announce_channel'] = json_tables['progress_channel']
+        server_data['anime'] = {}
+        server_data['alias'] = {}
+
+        main_data[str(ctx.message.server.id)] = server_data
+        print('@@ Sending data')
+
+        hh = {
+            "description": "N4O Showtimes bot",
+            "files": {
+                "nao_showtimes.json": {
+                    "filename": "nao_showtimes.json",
+                    "content": json.dumps(main_data, indent=4)
+                }
+            }
+        }
+
+        print('@@ Patching gists')
+        async with aiohttp.ClientSession(auth=aiohttp.BasicAuth(bot_config['github_info']['username'], bot_config['github_info']['password'])) as sesi2:
+            async with sesi2.patch('https://api.github.com/gists/{}'.format(json_tables['gist_id']), json=hh) as resp:
+                r = await resp.json()
+        try:
+            m = r['message']
+            print('@@ Failed to patch: {}'.format(m))
+            return await self.bot.say('@@ Gagal memproses silakan cek bot log, membatalkan...')
+        except KeyError:
+            print('@@ Reconfiguring config files')
+            bot_config['gist_id'] = json_tables['gist_id']
+            with open('config.json', 'w') as fp:
+                json.dump(bot_config, fp, indent=4)
+            print('@@ Reconfigured. Every configuration are done, please restart.')
+            embed=discord.Embed(title="naoTimes", color=0x56acf3)
+            embed.add_field(name="Sukses!", value='Sukses membuat database di github\nSilakan restart bot agar naoTimes dapat diaktifkan.\n\nLaporkan isu di: [GitHub Issue](https://github.com/noaione/naoTimes/issues)', inline=True)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            await self.bot.say(embed=embed)
+            await self.bot.delete_message(emb_msg)
+
+    @ntadmin.command(pass_context=True)
+    async def fetchdb(self, ctx):
+        if int(ctx.message.author.id) != int(bot_config['owner_id']):
+            return
+        print('Requested !ntadmin fetchdb by admin')
+        json_d = await fetch_json()
+        if not json_d:
+            return
+        channel = ctx.message.channel
+
+        print('Saving .json')
+        save_file_name = str(int(round(time.time()))) + '_naoTimes_database.json'
+        with open(save_file_name, 'w') as f:
+            json.dump(json_d, f)
+
+        print('Sending .json')
+        await self.bot.send_file(channel, save_file_name, content='Here you go!')
+        os.remove(save_file_name) # Cleanup
+
+
+    @ntadmin.command(pass_context=True)
+    async def forcepull(self, ctx):
+        if int(ctx.message.author.id) != int(bot_config['owner_id']):
+            return
+        print('Requested !ntadmin forcepull by owner')
+        json_d = await fetch_json()
+        if not json_d:
+            return
+        channel = ctx.message.channel
+
+        await fetch_newest_db(bot_config)
+        await self.bot.say('Newest database has been pulled and saved to local save')
+
+
+    @ntadmin.command(pass_context=True)
+    async def patchdb(self, ctx):
+        """
+        !! Warning !!
+        This will patch entire database
+        """
+        if int(ctx.message.author.id) != int(bot_config['owner_id']):
+            return
+        print('Requested !ntadmin patchdb by admin')
+
+        if ctx.message.attachments == []:
+            await self.bot.delete_message(ctx.message)
+            await self.bot.say('Please provide a valid .json file by uploading and add `!!ntadmin patchdb` command')
+            return
+
+        print('@@ Fetching attachments')
+
+        attachment = ctx.message.attachments[0]
+        uri = attachment['url']
+        filename = attachment['filename']
+
+        if filename[filename.rfind('.'):] != '.json':
+            await self.bot.delete_message(ctx.message)
+            await self.bot.say('Please provide a valid .json file by uploading and add `!!ntadmin patchdb` command')
+            return
+
+        # Start downloading .json file
+        print('@@ Downloading file')
+        async with aiohttp.ClientSession() as sesi:
+            async with sesi.get(uri) as resp:
+                data = await resp.text()
+                await self.bot.delete_message(ctx.message)
+                json_to_patch = json.loads(data)
+
+        print('@@ Make sure.')
+        preview_msg = await self.bot.say('**Are you sure you want to patch the database with provided .json file?**')
+        to_react = ['✅', '❌']
+        for reaction in to_react:
+                await self.bot.add_reaction(preview_msg, reaction)
+        def checkReaction(reaction, user):
+            e = str(reaction.emoji)
+            return e.startswith(('✅', '❌'))
+
+        res = await self.bot.wait_for_reaction(message=preview_msg, user=ctx.message.author, timeout=15, check=checkReaction)
+
+        if res is None:
+            await self.bot.say('***Timeout!***')
+            await self.bot.clear_reactions(preview_msg)
+            return
+        elif '✅' in str(res.reaction.emoji):
+            success = await patch_json(json_to_patch)
+            await self.bot.clear_reactions(preview_msg)
+            if success:
+                await self.bot.edit_message(preview_msg, '**Patching success!, try it with !tagih**')
+                return
+            await self.bot.edit_message(preview_msg, '**Patching failed!, try it again later**')
+        elif '❌' in str(res.reaction.emoji):
+            print('@@ Patch Cancelled')
+            await self.bot.clear_reactions(preview_msg)
+            await self.bot.edit_message(preview_msg, '**Ok, cancelled process**')
+
+
+    @ntadmin.command(pass_context=True)
+    async def tambah(self, ctx, srv_id, adm_id, prog_chan=None):
+        """
+        Menambah server baru ke database naoTimes
+        
+        :srv_id: server id
+        :adm_id: admin id
+        :prog_chan: #progress channel id
+        """
+        if int(ctx.message.author.id) != int(bot_config['owner_id']):
+            return
+        print('Requested !ntadmin tambah by admin')
+        json_d = await fetch_json()
+        if not json_d:
+            return
+        if srv_id is None:
+            await self.bot.say('Tidak ada input server dari user')
+            return
+
+        if adm_id is None:
+            await self.bot.say('Tidak ada input admin dari user')
+            return
+
+        new_srv_data = {}
+
+        new_srv_data['serverowner'] = [str(adm_id)]
+        if prog_chan:
+            new_srv_data['announce_channel'] = str(prog_chan)
+        new_srv_data['anime'] = {}
+        new_srv_data['alias'] = {}
+
+        json_d[str(srv_id)] = new_srv_data
+        json_d['supermod'].append(str(adm_id)) # Add to supermod list
+        print('Created new table for server: {}'.format(srv_id))
+
+        with open('nao_showtimes.json', 'w') as f: # Local save before commiting
+            json.dump(json_d, f, indent=4)
+
+        success = await patch_json(json_d)
+        if success:
+            await self.bot.say('Sukses menambah server dengan info berikut:\n```Server ID: {s}\nAdmin: {a}\nMemakai #progress Channel: {p}```'.format(s=srv_id, a=adm_id, p=bool(prog_chan)))
+            return
+        await self.bot.say('Gagal dalam menambah server baru :(')
+
+
+    @ntadmin.command(pass_context=True)
+    async def hapus(self, ctx, srv_id):
+        """
+        Menghapus server dari database naoTimes
+        
+        :srv_id: server id
+        """
+        if int(ctx.message.author.id) != int(bot_config['owner_id']):
+            return
+        print('Requested !ntadmin hapus by admin')
+        json_d = await fetch_json()
+        if not json_d:
+            return
+        if srv_id is None:
+            await self.bot.say('Tidak ada input server dari user')
+            return
+
+        try:
+            srv = json_d[str(srv_id)]
+            adm_id = srv['serverowner'][0]
+            print('Server found, deleting...')
+            del json_d[str(srv_id)]
+        except KeyError:
+            await self.bot.say('Server tidak dapat ditemukan dalam database.')
+            return
+
+        try:
+            json_d['supermod'].remove(adm_id)
+        except:
+            await self.bot.say('Gagal menghapus admin dari data super admin')
+            return
+
+        with open('nao_showtimes.json', 'w') as f: # Local save before commiting
+            json.dump(json_d, f, indent=4)
+
+        success = await patch_json(json_d)
+        if success:
+            await self.bot.say('Sukses menghapus server `{s}` dari naoTimes'.format(s=srv_id))
+            return
+        await self.bot.say('Gagal menghapus server :(')
+
+
+    @ntadmin.command(pass_context=True)
+    async def tambahadmin(self, ctx, srv_id, adm_id):
+        """
+        Menghapus server dari database naoTimes
+        
+        :srv_id: server id
+        """
+        if int(ctx.message.author.id) != int(bot_config['owner_id']):
+            return
+        print('Requested !ntadmin tambahadmin by admin')
+        json_d = await fetch_json()
+        if not json_d:
+            return
+        if srv_id is None:
+            await self.bot.say('Tidak ada input server dari user')
+            return
+
+        if adm_id is None:
+            await self.bot.say('Tidak ada input admin dari user')
+            return
+
+        try:
+            srv = json_d[str(srv_id)]
+            print('Server found, adding admin...')
+        except KeyError:
+            await self.bot.say('Server tidak dapat ditemukan dalam database.')
+            return
+
+        srv['serverowner'].append(str(adm_id))
+
+        with open('nao_showtimes.json', 'w') as f: # Local save before commiting
+            json.dump(json_d, f, indent=4)
+
+        success = await patch_json(json_d)
+        if success:
+            await self.bot.say('Sukses menambah admin `{a}` di server `{s}`'.format(s=srv_id, a=adm_id))
+            return
+        await self.bot.say('Gagal menambah admin :(')
+
+
+    @ntadmin.command(pass_context=True)
+    async def hapusadmin(self, ctx, srv_id, adm_id):
+        """
+        Menghapus server dari database naoTimes
+        
+        :srv_id: server id
+        """
+        if int(ctx.message.author.id) != int(bot_config['owner_id']):
+            return
+        print('Requested !ntadmin hapusadmin by admin')
+        json_d = await fetch_json()
+        if not json_d:
+            return
+        if srv_id is None:
+            await self.bot.say('Tidak ada input server dari user')
+            return
+
+        if adm_id is None:
+            await self.bot.say('Tidak ada input admin dari user')
+            return
+
+        try:
+            srv = json_d[str(srv_id)]
+            print('Server found, finding admin...')
+            admlist = srv['serverowner']
+            if str(adm_id) in admlist:
+                srv['serverowner'].remove(str(adm_id))
+            else:
+                await self.bot.say('Tidak dapat menemukan admin tersebut di server: `{}`'.format(srv_id))
+                return
+        except KeyError:
+            await self.bot.say('Server tidak dapat ditemukan dalam database.')
+            return
+
+        with open('nao_showtimes.json', 'w') as f: # Local save before commiting
+            json.dump(json_d, f, indent=4)
+
+        success = await patch_json(json_d)
+        if success:
+            await self.bot.say('Sukses menghapus admin `{a}` dari server `{s}`'.format(s=srv_id, a=adm_id))
+            return
+        await self.bot.say('Gagal menghapus admin :(')
+
+    
+    @ntadmin.command(pass_context=True)
+    async def forceupdate(self, ctx):
+        print('Requested forceupdate by admin')
+        if int(ctx.message.author.id) != int(bot_config['owner_id']):
+            return
+        json_d = await fetch_json()
+        if not json_d:
+            return
+        print('@@ Make sure')
+        
+        preview_msg = await self.bot.say('**Are you sure you want to patch the database with local .json file?**')
+        to_react = ['✅', '❌']
+        for reaction in to_react:
+                await self.bot.add_reaction(preview_msg, reaction)
+        def checkReaction(reaction, user):
+            e = str(reaction.emoji)
+            return e.startswith(('✅', '❌'))
+
+        res = await self.bot.wait_for_reaction(message=preview_msg, user=ctx.message.author, timeout=15, check=checkReaction)
+
+        if res is None:
+            await self.bot.clear_reactions(preview_msg)
+            return await self.bot.say('***Timeout!***')
+        elif '✅' in str(res.reaction.emoji):
+            success = await patch_json(json_d)
+            await self.bot.clear_reactions(preview_msg)
+            if success:
+                return await self.bot.edit_message(preview_msg, '**Patching success!, try it with !tagih**')
+            await self.bot.edit_message(preview_msg, '**Patching failed!, try it again later**')
+        elif '❌' in str(res.reaction.emoji):
+            print('@@ Patch Cancelled')
+            await self.bot.clear_reactions(preview_msg)
+            await self.bot.edit_message(preview_msg, '**Ok, cancelled process**')
+
+
+class ShowtimesConfigData(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+
+    async def choose_anime(self, ctx, matches):
+        first_run = True
+        matches = matches[:10]
+        reactmoji = ['1⃣', "2⃣", '3⃣', '4⃣', '5⃣', '6⃣', '7⃣', '8⃣', '9⃣', '0⃣']
+        res_matches = []
+        while True:
+            if first_run:
+                embed = discord.Embed(title='Mungkin:', color=0x96df6a)
+
+                format_value = []
+                for n, i in enumerate(matches):
+                    format_value.append('{}: **{}**'.format(n, i))
+                format_value.append('❌: **Batalkan**')
+                embed.description = '\n'.join(format_value)
+
+                embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+
+                first_run = False
+                msg = await ctx.send(embed=embed)
+
+            reactmoji = ['1⃣', "2⃣", '3⃣', '4⃣', '5⃣', '6⃣', '7⃣', '8⃣', '9⃣', '0⃣']
+            reactmoji_extension = ['❌']
+            
+            reactmoji = reactmoji[:len(matches)]
+            reactmoji.extend(reactmoji_extension)
+
+            for react in reactmoji:
+                await msg.add_reaction(react)
+
+            def check_react(reaction, user):
+                e = str(reaction.emoji)
+                return user == ctx.message.author and str(reaction.emoji) in reactmoji
+
+            try:
+                res, user = await self.bot.wait_for('reaction_add', timeout=20.0, check=check_react)
+            except asyncio.TimeoutError:
+                await msg.clear_reactions()
+                break
+            if user != ctx.message.author:
+                pass
+            elif '❌' in str(res.emoji):
+                await msg.clear_reactions()
+                break
+            else:
+                await msg.clear_reactions()
+                reaction_pos = reactmoji.index(str(res.emoji))
+                res_matches.append(matches[reaction_pos])
+                break
+        await msg.delete()
+        return res_matches
+
+    @commands.command()
+    async def ubahdata(self, ctx, *, judul):
+        server_message = str(ctx.message.guild.id)
+        print('[@] Requested !ubahdata at: ' + server_message)
+        POSISI_GARAPAN = ['tl', 'tlc', 'enc', 'ed', 'tm', 'ts', 'qc']
+        json_d = await fetch_json()
+
+        if server_message not in json_d:
+            return
+        server_data = json_d[server_message]
+
+        srv_anilist = []
+        srv_anilist_alias = []
+        for ani in server_data['anime']:
+            if ani == 'alias': # Don't use alias
+                continue
+            srv_anilist.append(ani)
+        for k, _ in server_data['alias'].items():
+            srv_anilist_alias.append(k)
+
+        if str(ctx.message.author.id) not in server_data['serverowner']:
+            return await ctx.send('Hanya admin yang bisa mengubah data garapan.')
+
+        if len(srv_anilist) < 1:
+            return await ctx.send('**Tidak ada anime yang terdaftar di database**')
+
+        if not judul:
+            if len(srv_anilist) < 1:
+                return await ctx.send('**Tidak ada anime yang terdaftar di database**')
+            return await ctx.send('**Mungkin**: {}'.format(', '.join(srv_anilist)))
+
+        matches = get_close_matches(judul, srv_anilist)
+        if srv_anilist_alias:
+            temp_anilias = get_close_matches(judul, srv_anilist_alias)
+            for i in temp_anilias:
+                res = find_alias_anime(i, server_data['alias'])
+                if res not in matches: # To not duplicate result
+                    matches.append(res)
+        print('[!] Matches: {}'.format(", ".join(matches)))
+
+        if not matches:
+            return await ctx.send('Tidak dapat menemukan judul tersebut di database')
+        elif len(matches) > 1:
+            matches = await self.choose_anime(ctx, matches)
+            if not matches:
+                return await ctx.send('**Dibatalkan**')
+
+        program_info = json_d[server_message]['anime'][matches[0]]
+
+        koleb_list = []
+        if 'kolaborasi' in program_info:
+            koleb_data = program_info['kolaborasi']
+            if koleb_data:
+                for ko_data in koleb_data:
+                    if server_message == ko_data:
+                        continue
+                    koleb_list.append(ko_data)
+
+        def check_if_author(m):
+            return m.author == ctx.message.author
+
+        async def get_user_name(user_id):
+            try:
+                user_data = self.bot.get_user(int(user_id))
+                return '{}#{}'.format(user_data.name, user_data.discriminator)
+            except:
+                return 'ERROR'
+
+        async def internal_change_staff(role, staff_list, emb_msg):
+            better_names =  {
+                "TL": "Translator",
+                "TLC": "TLCer",
+                "ENC": "Encoder",
+                "ED": "Editor",
+                "TM": "Timer",
+                "TS": "Typesetter",
+                "QC": "Quality Checker"
+            }
+            embed = discord.Embed(title="Mengubah Staff", color=0x96df6a)
+            embed.add_field(name='{} ID'.format(better_names[role]), value="Ketik ID {} atau mention orangnya".format(better_names[role]), inline=False)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            await emb_msg.edit(embed=embed)
+
+            while True:
+                await_msg = await self.bot.wait_for('message', check=check_if_author)
+                mentions = await_msg.mentions
+                if not mentions:
+                    if await_msg.content.isdigit():
+                        staff_list[role] = await_msg.content
+                        await await_msg.delete()
+                        break
+                else:
+                    staff_list[role] = str(mentions[0].id)
+                    await await_msg.delete()
+                    break
+
+            print(staff_list)
+
+            return staff_list, emb_msg
+
+
+        async def ubah_staff(emb_msg):
+            first_run = True
+            print('[@] Memproses Staff')
+            while True:
+                if first_run:
+                    staff_list = deepcopy(json_d[server_message]['anime'][matches[0]]['staff_assignment'])
+                    staff_list_key = list(staff_list.keys())
+                    first_run = False
+
+                staff_list_name = {}
+                for k, v in staff_list.items():
+                    usr_ = await get_user_name(v)
+                    staff_list_name[k] = usr_
+
+                embed=discord.Embed(title="Mengubah Staff", description="Anime: {}".format(matches[0]), color=0x96df6a)
+                embed.add_field(name="1⃣ TLor", value=staff_list_name['TL'], inline=False)
+                embed.add_field(name='2⃣ TLCer', value=staff_list_name['TLC'], inline=False)
+                embed.add_field(name='3⃣ Encoder', value=staff_list_name['ENC'], inline=False)
+                embed.add_field(name="4⃣ Editor", value=staff_list_name['ED'], inline=True)
+                embed.add_field(name="5⃣ Timer", value=staff_list_name['TM'], inline=True)
+                embed.add_field(name="6⃣ Typeseter", value=staff_list_name['TS'], inline=True)
+                embed.add_field(name="7⃣ QCer", value=staff_list_name['QC'], inline=True)
+                embed.add_field(name="Lain-Lain", value="✅ Selesai!", inline=False)
+                embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+                await emb_msg.edit(embed=embed)
+
+                reactmoji = ['1⃣', "2⃣", '3⃣', '4⃣', '5⃣', '6⃣', '7⃣', '✅']
+
+                for react in reactmoji:
+                    await emb_msg.add_reaction(react)
+
+                def check_react(reaction, user):
+                    e = str(reaction.emoji)
+                    return user == ctx.message.author and str(reaction.emoji) in reactmoji
+
+                res, user = await self.bot.wait_for('reaction_add', check=check_react)
+                if user != ctx.message.author:
+                    pass
+                elif '✅' in str(res.emoji):
+                    await emb_msg.clear_reactions()
+                    break
+                else:
+                    await emb_msg.clear_reactions()
+                    reaction_pos = reactmoji.index(str(res.emoji))
+                    staff_list, emb_msg = await internal_change_staff(staff_list_key[reaction_pos], staff_list, emb_msg)
+
+            json_d[server_message]['anime'][matches[0]]['staff_assignment'] = staff_list
+            if koleb_list:
+                for other_srv in koleb_list:
+                    json_d[other_srv]['anime'][matches[0]]['staff_assignment'] = staff_list
+
+            return emb_msg
+
+
+        async def ubah_role(emb_msg):
+            print('[@] Memproses Role')
+            embed = discord.Embed(title="Mengubah Role", color=0x96df6a)
+            embed.add_field(name='Role ID', value="Ketik ID Role atau mention rolenya\nAtau ketik `auto` untuk membuatnya otomatis", inline=False)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            await emb_msg.edit(embed=embed)
+
+            while True:
+                await_msg = await self.bot.wait_for('message', check=check_if_author)
+                mentions = await_msg.role_mentions
+
+                if not mentions:
+                    if await_msg.content.isdigit():
+                        json_d[server_message]['anime'][matches[0]]['role_id'] = await_msg.content
+                        await await_msg.delete()
+                        break
+                    elif await_msg.content.startswith('auto'):
+                        c_role = await ctx.message.guild.create_role(
+                            name=matches[0],
+                            colour=discord.Colour(0xdf2705),
+                            mentionable=True
+                        )
+                        json_d[server_message]['anime'][matches[0]]['role_id'] = str(c_role.id)
+                        await await_msg.delete()
+                        break
+                else:
+                    json_d[server_message]['anime'][matches[0]]['role_id'] = str(mentions[0].id)
+                    await await_msg.delete()
+                    break
+
+            xdddd = await ctx.send('Berhasil menambah role ID ke {}'.format(json_d[server_message]['anime'][matches[0]]['role_id']))
+            asyncio.sleep(2)
+            await xdddd.delete()
+
+            return emb_msg
+
+        async def tambah_episode(emb_msg):
+            print('[@] Memproses Tambah Episode')
+
+            status_list = program_info['status']
+            max_episode = list(status_list.keys())[-1]
+            _, poster_image, title, time_data, correct_episode_num = await fetch_anilist(program_info['anilist_id'], 1, max_episode, True)
+
+            embed = discord.Embed(title="Menambah Episode", description='Jumlah Episode Sekarang: {}'.format(max_episode), color=0x96df6a)
+            embed.add_field(name='Masukan jumlah episode yang diinginkan.', value=tambahepisode_instruct, inline=False)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            await emb_msg.edit(embed=embed)
+
+            jumlah_tambahan = None
+            while True:
+                await_msg = await self.bot.wait_for('message', check=check_if_author)
+                mentions = await_msg.role_mentions
+
+                if await_msg.content.isdigit():
+                    jumlah_tambahan = int(await_msg.content)
+                    await await_msg.delete()
+                    break
+            
+            for x in range(int(max_episode) + 1, int(max_episode) + jumlah_tambahan + 1): # range(int(c), int(c)+int(x))
+                st_data = {}
+                staff_status = {}
+
+                staff_status["TL"] = "x"
+                staff_status["TLC"] = "x"
+                staff_status["ENC"] = "x"
+                staff_status["ED"] = "x"
+                staff_status["TM"] = "x"
+                staff_status["TS"] = "x"
+                staff_status["QC"] = "x"
+
+                st_data["status"] = "not_released"
+                try:
+                    st_data["airing_time"] = time_data[x-1]
+                except IndexError:
+                    pass
+                st_data["staff_status"] = staff_status
+                if koleb_list:
+                    for other_srv in koleb_list:
+                        json_d[other_srv]['anime'][matches[0]]['status'][str(x)] = st_data
+                json_d[server_message]['anime'][matches[0]]['status'][str(x)] = st_data
+
+            if koleb_list:
+                for other_srv in koleb_list:
+                    json_d[other_srv]['anime'][matches[0]]['last_update'] = str(int(round(time.time())))
+            json_d[server_message]['anime'][matches[0]]['last_update'] = str(int(round(time.time())))
+
+            xdddd = await ctx.send('Berhasil menambah {} episode baru'.format(jumlah_tambahan))
+            asyncio.sleep(2)
+            await xdddd.delete()
+
+            return emb_msg
+
+        async def hapus_episode(emb_msg):
+            print('[@] Memproses Hapus Episode')
+
+            status_list = program_info['status']
+            max_episode = list(status_list.keys())[-1]
+            #_, poster_image, title, time_data, correct_episode_num = await fetch_anilist(program_info['anilist_id'], 1, max_episode, True)
+
+            embed = discord.Embed(title="Menghapus Episode", description='Jumlah Episode Sekarang: {}'.format(max_episode), color=0x96df6a)
+            embed.add_field(name='Masukan range episode yang ingin dihapus.', value=hapusepisode_instruct, inline=False)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            await emb_msg.edit(embed=embed)
+
+            jumlah_tambahan = None
+            while True:
+                await_msg = await self.bot.wait_for('message', check=check_if_author)
+                mentions = await_msg.role_mentions
+
+                jumlah_tambahan = await_msg.content
+                embed = discord.Embed(title="Menghapus Episode", color=0x96df6a)
+                embed.add_field(name='Apakah Yakin?', value="Range episode: **{}**".format(jumlah_tambahan), inline=False)
+                embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+                await emb_msg.edit(embed=embed)
+
+                reactmoji = ['✅', '❌']
+
+                for react in reactmoji:
+                    await emb_msg.add_reaction(react)
+
+                def check_react(reaction, user):
+                    e = str(reaction.emoji)
+                    return user == ctx.message.author and str(reaction.emoji) in reactmoji
+
+                res, user = await self.bot.wait_for('reaction_add', check=check_react)
+                if user != ctx.message.author:
+                    pass
+                elif '✅' in str(res.emoji):
+                    await await_msg.delete()
+                    break
+                elif '❌' in str(res.emoji):
+                    pass
+                await await_msg.delete()
+
+
+            total_episode = jumlah_tambahan.split('-')
+            if len(total_episode) < 2:
+                current = int(total_episode[0])
+                total = int(total_episode[0])
+            else:
+                current = int(total_episode[0])
+                total = int(total_episode[1])
+
+            if koleb_list:
+                for other_srv in koleb_list:
+                    for x in range(current, total+1): # range(int(c), int(c)+int(x))
+                        del json_d[other_srv]['anime'][matches[0]]['status'][str(x)]
+                    json_d[other_srv]['anime'][matches[0]]['last_update'] = str(int(round(time.time())))
+
+            for x in range(current, total+1): # range(int(c), int(c)+int(x))
+                del json_d[server_message]['anime'][matches[0]]['status'][str(x)]
+            json_d[server_message]['anime'][matches[0]]['last_update'] = str(int(round(time.time())))
+
+            xdddd = await ctx.send('Berhasil menghapus episode {} ke {}'.format(current, total))
+            asyncio.sleep(2)
+            await xdddd.delete()
+
+            return emb_msg
+
+        first_run = True
+        exit_command = False
+        while True:
+            guild_roles = ctx.message.guild.roles
+            total_episodes = len(json_d[server_message]['anime'][matches[0]]['status'])
+            role_id = json_d[server_message]['anime'][matches[0]]['role_id']
+            embed=discord.Embed(title="Mengubah Data", description="Anime: {}".format(matches[0]), color=0x96df6a)
+            embed.add_field(name="1⃣ Ubah Staff", value="Ubah staff yang mengerjakan anime ini.", inline=False)
+            embed.add_field(name='2⃣ Ubah Role', value="Ubah role discord yang digunakan:\nRole sekarang: {}".format(get_role_name(role_id, guild_roles)), inline=False)
+            embed.add_field(name='3⃣ Tambah Episode', value="Tambah jumlah episode\nTotal Episode sekarang: {}".format(total_episodes), inline=False)
+            embed.add_field(name="4⃣ Hapus Episode", value="Hapus episode tertentu.", inline=True)
+            embed.add_field(name="Lain-Lain", value="✅ Selesai!\n❌ Batalkan!", inline=False)
+            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+            if first_run:
+                emb_msg = await ctx.send(embed=embed)
+                first_run = False
+            else:
+                await emb_msg.edit(embed=embed)
+
+            reactmoji = ['1⃣', "2⃣", '3⃣', '4⃣', '✅', '❌']
+
+            for react in reactmoji:
+                await emb_msg.add_reaction(react)
+
+            def check_react(reaction, user):
+                e = str(reaction.emoji)
+                return user == ctx.message.author and str(reaction.emoji) in reactmoji
+
+            res, user = await self.bot.wait_for('reaction_add', check=check_react)
+            if user != ctx.message.author:
+                pass
+            elif reactmoji[0] in str(res.emoji):
+                await emb_msg.clear_reactions()
+                emb_msg = await ubah_staff(emb_msg)
+            elif reactmoji[1] in str(res.emoji):
+                await emb_msg.clear_reactions()
+                emb_msg = await ubah_role(emb_msg)
+            elif reactmoji[2] in str(res.emoji):
+                await emb_msg.clear_reactions()
+                emb_msg = await tambah_episode(emb_msg)
+            elif reactmoji[3] in str(res.emoji):
+                await emb_msg.clear_reactions()
+                emb_msg = await hapus_episode(emb_msg)
+            elif reactmoji[4] in str(res.emoji):
+                await emb_msg.clear_reactions()
+                await emb_msg.delete()
+                break
+            elif reactmoji[5] in str(res.emoji):
+                await emb_msg.clear_reactions()
+                await emb_msg.delete()
+                exit_command = True
+                break
+
+        if exit_command:
+            return await ctx.send('**Dibatalkan!**')
+
+        print('[!] Menyimpan data baru untuk garapan: ' +  matches[0])
+        with open('nao_showtimes.json', 'w') as f: # Local save before commiting
+            json.dump(json_d, f, indent=4)
+
+        await ctx.send('Berhasil menyimpan data baru untuk garapan **{}**'.format(matches[0]))
+
+
+ShowTimesCommands = [Showtimes, ShowtimesAdmin, ShowtimesAlias, ShowtimesKolaborasi, ShowtimesConfigData]
+
 def setup(bot):
-    bot.add_cog(Showtimes(bot))
+    for ShowTC in ShowTimesCommands:
+        try:
+            print('\t[#] Loading {} Commands...'.format(str(ShowTC)))
+            bot.add_cog(ShowTC(bot))
+            print('\t[@] Loaded.')
+        except Exception as ex:
+            print('\t[!] Failed: {}'.format(str(ex)))
