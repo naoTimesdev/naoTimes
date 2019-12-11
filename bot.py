@@ -334,6 +334,17 @@ async def ping(ctx):
         pingbed.set_footer(text="Tested using \"sophisticated\" ping method ")
         await channel.send(embed=pingbed)
 
+def get_version():
+    discord_ver = discord.__version__
+    py_ver = sys.version
+    return "```py\nDiscord.py v{d}\nPython {p}\n```".format(d=discord_ver, p=py_ver)
+
+def get_server():
+    import platform
+    uname = platform.uname()
+    fmt_plat = "```py\nOS: {0.system} {0.release} v{0.version}\nCPU: {0.processor} ({1} threads)\nPID: {2}\n```".format(uname, os.cpu_count(), os.getpid())
+    return fmt_plat
+
 @bot.command()
 async def info(ctx):
     """
@@ -342,10 +353,10 @@ async def info(ctx):
     infog = discord.Embed(title="naoTimes", description="Sang penagih utang fansub agar fansubnya mau gerak", color=0xde8730)
     infog.set_author(name="naoTimes", icon_url="https://slwordpress.rutgers.edu/wp-content/uploads/sites/98/2015/12/Info-I-Logo.png")
     infog.set_thumbnail(url="https://puu.sh/D3x1l/7f97e14c74.png")
-    infog.add_field(name="Info", value="Dijalankan di Heroku server US", inline=False)
+    infog.add_field(name="Server Info", value=get_server(), inline=False)
     infog.add_field(name="Dibuat", value="Gak tau, tiba-tiba jadi.", inline=False)
-    infog.add_field(name="Pembuat", value="N4O#8868", inline=False)
-    infog.add_field(name="Bahasa", value="Discord.py v{} dengan Python 3.6".format(discord.__version__), inline=False)
+    infog.add_field(name="Pembuat", value="{}".format(bot.owner.mention), inline=False)
+    infog.add_field(name="Bahasa", value=get_version(), inline=False)
     infog.add_field(name="Fungsi", value="Menagih utang fansub (!help)", inline=False)
     infog.add_field(name="Uptime", value=create_uptime())
     infog.set_footer(text="naoTimes versi 2.0.0 || Dibuat oleh N4O#8868", icon_url='https://p.n4o.xyz/i/nao250px.png')
@@ -425,12 +436,13 @@ async def reload(ctx, *, module=None):
         rel2.add_field(name=module, value="Status: SUCCESS", inline=False)
         rel2.set_footer(text=timetext)
         await sayd.edit(embed=rel2)
-    except Exception as e:
+    except Exception as error:
         timetext = 'Failed'
-        print('[!!] Failed: ' + str(e))
-        rel3 = discord.Embed(title="Module", color=0xe73030)
+        tb = traceback.format_exception(type(error), error, error.__traceback__)
+        print("".join(tb))
+        rel3 = discord.Embed(title="Module", description="Status: Error", color=0xe73030)
         rel3.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
-        rel3.add_field(name=module, value="Status: ERROR - {}".format(str(e)), inline=False)
+        rel3.add_field(name=module, value="```py\n{}\n```".format("".join(tb)), inline=False)
         rel3.set_footer(text=timetext)
         await sayd.edit(embed=rel3)
 
@@ -466,12 +478,13 @@ async def load(ctx, *, module=None):
         rel2.add_field(name=module, value="Status: SUCCESS", inline=False)
         rel2.set_footer(text=timetext)
         await sayd.edit(embed=rel2)
-    except Exception as e:
+    except Exception as error:
         timetext = 'Failed'
-        print('[!!] Failed: ' + str(e))
-        rel3 = discord.Embed(title="Load Module", color=0xe73030)
+        tb = traceback.format_exception(type(error), error, error.__traceback__)
+        print("".join(tb))
+        rel3 = discord.Embed(title="Module", description="Status: Error", color=0xe73030)
         rel3.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
-        rel3.add_field(name=module, value="Status: ERROR - {}".format(str(e)), inline=False)
+        rel3.add_field(name=module, value="```py\n{}\n```".format("".join(tb)), inline=False)
         rel3.set_footer(text=timetext)
         await sayd.edit(embed=rel3)
 
@@ -507,12 +520,13 @@ async def unload(ctx, *, module=None):
         rel2.add_field(name=module, value="Status: SUCCESS", inline=False)
         rel2.set_footer(text=timetext)
         await sayd.edit(embed=rel2)
-    except Exception as e:
+    except Exception as error:
         timetext = 'Failed'
-        print('[!!] Failed: ' + str(e))
-        rel3 = discord.Embed(title="Unload Module", color=0xe73030)
+        tb = traceback.format_exception(type(error), error, error.__traceback__)
+        print("".join(tb))
+        rel3 = discord.Embed(title="Module", description="Status: Error", color=0xe73030)
         rel3.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
-        rel3.add_field(name=module, value="Status: ERROR - {}".format(str(e)), inline=False)
+        rel3.add_field(name=module, value="```py\n{}\n```".format("".join(tb)), inline=False)
         rel3.set_footer(text=timetext)
         await sayd.edit(embed=rel3)
 
