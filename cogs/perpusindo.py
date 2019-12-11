@@ -345,7 +345,7 @@ class PerpusIndo(commands.Cog):
     @commands.guild_only()
     async def perpus(self, ctx):
         if not ctx.invoked_subcommand:
-            helpmain = discord.Embed(title="Bantuan Perintah (!perpus)", description="versi 1.5.0", color=0x00aaaa)
+            helpmain = discord.Embed(title="Bantuan Perintah (!perpus)", description="versi 2.0.0", color=0x00aaaa)
             helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
             helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
             helpmain.add_field(name='!perpus', value="```Memunculkan bantuan perintah```", inline=False)
@@ -353,7 +353,7 @@ class PerpusIndo(commands.Cog):
             helpmain.add_field(name='!perpus terbaru <argumen>', value="```Melihat 10 berkas terbaru (gunakan argumen -h untuk melihat bantuan)```", inline=False)
             helpmain.add_field(name='!perpus kategori', value="```Melihat kategori apa aja yang bisa dipakai```", inline=False)
             helpmain.add_field(name='Aliases', value="!perpus, !perpusindo, !pi", inline=False)
-            helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 1.5.0")
+            helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
             await ctx.send(embed=helpmain)
 
 
