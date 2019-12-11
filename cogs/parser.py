@@ -648,23 +648,6 @@ class WebParser(commands.Cog):
         embed.set_footer(text="Studio Animasi: {}".format(search_studio))
         await ctx.send(embed=embed)
 
-    @commands.command()
-    async def pilih(self, ctx, *, input_data):
-        server_message = str(ctx.message.guild.id)
-        print('Requested !pilih at: ' + server_message)
-
-        inp_d = input_data.split(',')
-
-        if not inp_d:
-            return await ctx.send('Tidak ada input untuk dipilih\nGunakan `,` sebagai pemisah.')
-
-        if len(inp_d) < 2:
-            return await ctx.send('Hanya ada 1 input untuk dipilih\nGunakan `,` sebagai pemisah.')
-
-        result = random.choice(inp_d)
-
-        await ctx.send('**{user}** aku memilih: **{res}**'.format(user=ctx.message.author.name, res=result.strip()))
-
 
     @commands.command(aliases=['fastsub', 'gtlsub'])
     async def speedsub(self, ctx, targetlang='id'):
