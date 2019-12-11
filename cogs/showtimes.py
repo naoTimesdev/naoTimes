@@ -7,7 +7,6 @@ import os
 import re
 import sys
 import time
-import traceback
 from calendar import monthrange
 from copy import deepcopy
 from datetime import datetime, timedelta
@@ -96,16 +95,17 @@ async def patch_json(jsdata: dict) -> bool:
         }
     }
 
-    print('[@] Patching gists')
-    async with aiohttp.ClientSession(auth=aiohttp.BasicAuth(bot_config['github_info']['username'], bot_config['github_info']['password'])) as sesi2:
+    print('[@] Patching showtimes gists')
+    headers = {'User-Agent': 'naoTimes v2.0'}
+    async with aiohttp.ClientSession(auth=aiohttp.BasicAuth(bot_config['github_info']['username'], bot_config['github_info']['personal_access_token']), headers=headers) as sesi2:
         async with sesi2.patch('https://api.github.com/gists/{}'.format(bot_config['gist_id']), json=hh) as resp:
             r = await resp.json()
     try:
         m = r['message']
-        print('Can\'t patch: {}'.format(m))
+        print('[!!] Can\'t patch showtimes: {}'.format(m))
         return False
     except KeyError:
-        print('[@] Done patching')
+        print('[@] Done patching showtimes')
         return True
 
 
@@ -453,46 +453,24 @@ def get_role_name(role_id, roles) -> str:
     return 'Unknown'
 
 
+async def patch_error_handling(bot, ctx):
+    current_time = time.time()
+    embed = discord.Embed(title="Patch Error Logger", colour=0x252aff, description="Terjadi kesalahan patch ke github...", timestamp=datetime.utcfromtimestamp(current_time))
+    embed.add_field(name="Cogs", value="[nT!] {0.cog_name}".format(ctx.command), inline=False)
+    embed.add_field(name="Perintah yang dipakai", value="{0.command}\n`{0.message.clean_content}`".format(ctx), inline=False)
+    embed.add_field(name="Server Insiden", value="{0.guild.name} ({0.guild.id})".format(ctx.message), inline=False)
+    embed.add_field(name="Orang yang memakainya", value="{0.author.name}#{0.author.discriminator} ({0.author.id})".format(ctx.message), inline=False)
+    embed.set_thumbnail(url="http://p.ihateani.me/1bnBuV9C")
+
+    await bot.owner.send(embed=embed)
+
+
 class Showtimes(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.cog_name = 'Showtimes'
 
     def __str__(self):
         return 'Showtimes Main'
-
-    @commands.Cog.listener()
-    async def on_command_error(self, ctx, error):
-        """The event triggered when an error is raised while invoking a command.
-        ctx   : Context
-        error : Exception"""
-
-        # This prevents any commands with local handlers being handled here in on_command_error.
-        if hasattr(ctx.command, 'on_error'):
-            return
-
-        ignored = (commands.CommandNotFound, commands.UserInputError)
-
-        # Allows us to check for original exceptions raised and sent to CommandInvokeError.
-        # If nothing is found. We keep the exception passed to on_command_error.
-        error = getattr(error, 'original', error)
-
-        # Anything in ignored will return and prevent anything happening.
-        if isinstance(error, ignored):
-            return
-        elif isinstance(error, commands.DisabledCommand):
-            return await ctx.send(f'{ctx.command} dinon-aktifkan.')
-        elif isinstance(error, commands.NoPrivateMessage):
-            try:
-                return await ctx.author.send(f'{ctx.command} tidak bisa dipakai di Private Messages.')
-            except:
-                pass
-
-        print('Ignoring exception in command {}:'.format(ctx.command), file=sys.stderr)
-        traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
-        tb = traceback.format_exception(type(error), error, error.__traceback__)
-        await ctx.send('**Error**: laporkan kesalahan ini dengan traceback dibawah ke N4O#8868 (Berikan juga apa command yang sedang digunakan!)\n```js\n{}\n```'.format(''.join(tb)))
-
 
     async def choose_anime(self, ctx, matches):
         print('[!] Asking user for input.')
@@ -856,9 +834,7 @@ class Showtimes(commands.Cog):
                 embed.set_footer(text="Pada: {}".format(get_current_time()))
                 await target_chan.send(embed=embed)
             return
-        server_in = self.bot.get_guild(int(bot_config['main_server']))
-        mod_mem_data = server_in.get_member(int(bot_config['owner_id']))
-        await mod_mem_data.send('Terjadi kesalahan patch pada server **{}**'.format(server_message))
+        await patch_error_handling(self.bot, ctx)
 
 
     @commands.command(aliases=['done'])
@@ -981,9 +957,7 @@ class Showtimes(commands.Cog):
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
             embed.set_thumbnail(url=poster_image)
             return await ctx.send(embed=embed)
-        server_in = self.bot.get_guild(int(bot_config['main_server']))
-        mod_mem_data = server_in.get_member(int(bot_config['owner_id']))
-        await mod_mem_data.send('Terjadi kesalahan patch `beres` pada server **{}**'.format(server_message))
+        await patch_error_handling(self.bot, ctx)
 
 
     @commands.command(aliases=['undone', 'cancel'])
@@ -1107,9 +1081,7 @@ class Showtimes(commands.Cog):
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
             embed.set_thumbnail(url=poster_image)
             return await ctx.send(embed=embed)
-        server_in = self.bot.get_guild(int(bot_config['main_server']))
-        mod_mem_data = server_in.get_member(int(bot_config['owner_id']))
-        await mod_mem_data.send('Terjadi kesalahan patch pada server **{}**'.format(server_message))
+        await patch_error_handling(self.bot, ctx)
 
 
     @commands.command(aliases=['add', 'tambah'])
@@ -1678,9 +1650,7 @@ class Showtimes(commands.Cog):
             print('[@] Sending message...')
             return await ctx.send("Berhasil menambahkan **{}** ke dalam database utama naoTimes".format(json_tables['ani_title']))
         await ctx.send('Gagal menambahkan ke database utama, owner telah diberikan pesan untuk membenarkan masalahnya')
-        server_in = self.bot.get_guild(int(bot_config['main_server']))
-        mod_mem_data = server_in.get_member(int(bot_config['owner_id']))
-        await mod_mem_data.send('Terjadi kesalahan patch `tambahutang` pada server **{}**'.format(server_message))
+        await patch_error_handling(self.bot, ctx)
 
 
     @commands.command(aliases=['airing'])
@@ -1917,20 +1887,18 @@ class Showtimes(commands.Cog):
 
         success = await patch_json(json_d)
         if not success:
-            server_in = self.bot.get_guild(int(bot_config['main_server']))
-            mod_mem_data = server_in.get_member(int(bot_config['owner_id']))
-            await mod_mem_data.send('Terjadi kesalahan patch pada server **{}**'.format(server_message))
+            await patch_error_handling(self.bot, ctx)
 
 
     @commands.command()
     @commands.guild_only()
+    @commands.is_owner()
     async def globalpatcher(self, ctx):
         """
         Global showtimes patcher, dangerous to use.
         You can change this to batch modify the database
         """
-        if int(ctx.message.author.id) != int(bot_config['owner_id']):
-            return
+
         print('[#] Requested !globalpatcher by admin')
         json_d = await fetch_json()
 
@@ -1949,30 +1917,33 @@ class Showtimes(commands.Cog):
 
         preview_msg = await ctx.send('**This will patch and modify and move alias position**\nDo you want to continue?')
         to_react = ['✅', '❌']
-        for reaction in to_react:
-                await self.bot.add_reaction(preview_msg, reaction)
-        def checkReaction(reaction, user):
+        for react in to_react:
+            await preview_msg.add_reaction(react)
+
+        def check_react(reaction, user):
             e = str(reaction.emoji)
-            return e.startswith(('✅', '❌'))
+            return user == ctx.message.author and str(reaction.emoji) in to_react
 
-        res = await self.bot.wait_for_reaction(message=preview_msg, user=ctx.message.author, timeout=30, check=checkReaction)
-
-        if res is None:
-            await self.bot.clear_reactions(preview_msg)
-            return await ctx.send('***Timeout!***')
+        try:
+            res, user = await self.bot.wait_for('reaction_add', timeout=20, check=check_react)
+        except asyncio.TimeoutError:
+            await ctx.send('***Timeout!***')
+            return await preview_msg.clear_reactions()
+        if user != ctx.message.author:
+            pass
         elif '✅' in str(res.emoji):
             # Process
             with open('nao_showtimes.json', 'w') as f: # Local save before commiting
                 json.dump(json_d, f, indent=4)
             success = await patch_json(json_d)
-            await self.bot.clear_reactions(preview_msg)
+            await preview_msg.clear_reactions()
             if success:
                 return await ctx.send('**Berhasil merubah database, harap dilihat sebelum mengaktifkannya kembali**')
             await ctx.send('**Terjadi kesalahan ketika ingin patching database**')
         elif '❌' in str(res.emoji):
             print('[@] Cancelled')
-            await self.bot.clear_reactions(preview_msg)
-            await self.bot.edit_message(preview_msg, '**Cancelled, trigger this command later!**')
+            await preview_msg.clear_reactions()
+            await preview_msg.edit(content='**Cancelled, trigger this command later!**')
 
 
 class ShowtimesAlias(commands.Cog):
@@ -1982,39 +1953,6 @@ class ShowtimesAlias(commands.Cog):
 
     def __str__(self):
         return 'Showtimes Alias'
-
-
-    @commands.Cog.listener()
-    async def on_command_error(self, ctx, error):
-        """The event triggered when an error is raised while invoking a command.
-        ctx   : Context
-        error : Exception"""
-
-        # This prevents any commands with local handlers being handled here in on_command_error.
-        if hasattr(ctx.command, 'on_error'):
-            return
-
-        ignored = (commands.CommandNotFound, commands.UserInputError)
-
-        # Allows us to check for original exceptions raised and sent to CommandInvokeError.
-        # If nothing is found. We keep the exception passed to on_command_error.
-        error = getattr(error, 'original', error)
-
-        # Anything in ignored will return and prevent anything happening.
-        if isinstance(error, ignored):
-            return
-        elif isinstance(error, commands.DisabledCommand):
-            return await ctx.send(f'{ctx.command} dinon-aktifkan.')
-        elif isinstance(error, commands.NoPrivateMessage):
-            try:
-                return await ctx.author.send(f'{ctx.command} tidak bisa dipakai di Private Messages.')
-            except:
-                pass
-
-        print('Ignoring exception in command {}:'.format(ctx.command), file=sys.stderr)
-        traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
-        tb = traceback.format_exception(type(error), error, error.__traceback__)
-        await ctx.send('**Error**: laporkan kesalahan ini dengan traceback dibawah ke N4O#8868 (Berikan juga apa command yang sedang digunakan!)\n```js\n{}\n```'.format(''.join(tb)))
 
     async def choose_anime(self, ctx, matches):
         print('[!] Asking user for input.')
@@ -2264,13 +2202,11 @@ class ShowtimesAlias(commands.Cog):
                 print('[@] Sending message...')
                 return await ctx.send("Berhasil menambahkan alias **{} ({})** ke dalam database utama naoTimes".format(json_tables['alias_anime'], json_tables['target_anime']))
             await ctx.send('Gagal menambahkan ke database utama, owner telah diberikan pesan untuk membenarkan masalahnya')
-            server_in = self.bot.get_guild(int(bot_config['main_server']))
-            mod_mem_data = server_in.get_member(int(bot_config['owner_id']))
-            await mod_mem_data.send('Terjadi kesalahan patch `alias` pada server **{}**'.format(server_message))
+            await patch_error_handling(self.bot, ctx)
 
 
-    @alias.command()
-    async def list(self, ctx, *, judul):
+    @alias.command(name="list")
+    async def _list_alias(self, ctx, *, judul):
         server_message = str(ctx.message.guild.id)
         print('[#] Requested !alias list at: ' + server_message)
         json_d = await fetch_json()
@@ -2395,16 +2331,19 @@ class ShowtimesAlias(commands.Cog):
             to_react = to_react[0:len(alias_chunked[n-1])]
             to_react.extend(react_ext)
 
-            for reaction in to_react:
-                await emb_msg.add_reaction(reaction)
+            for react in to_react:
+                await emb_msg.add_reaction(react)
 
-            def checkReaction(reaction, user):
+            def check_react(reaction, user):
                 e = str(reaction.emoji)
-                return e.startswith(tuple(to_react))
+                return user == ctx.message.author and str(reaction.emoji) in to_react
 
-            res = await self.bot.wait_for_reaction(message=emb_msg, user=ctx.message.author, timeout=30, check=checkReaction)
-            if res is None:
+            try:
+                res, user = await self.bot.wait_for('reaction_add', check=check_react, timeout=30.0)
+            except asyncio.TimeoutError:
                 return await emb_msg.clear_reactions()
+            if user != ctx.message.author:
+                pass
             elif '⏪' in str(res.emoji):
                 n = n - 1
                 await emb_msg.clear_reactions()
@@ -2426,6 +2365,7 @@ class ShowtimesAlias(commands.Cog):
                 return await ctx.send('**Dibatalkan!**')
             else:
                 await emb_msg.clear_reactions()
+                await emb_msg.delete()
                 index_del = to_react.index(str(res.emoji))
                 n_del = alias_chunked[n-1][index_del]
                 del json_d[server_message]['alias'][n_del]
@@ -2438,11 +2378,9 @@ class ShowtimesAlias(commands.Cog):
                 success = await patch_json(json_d)
 
                 if success:
-                    break
+                    return await emb_msg.delete()
                 await ctx.send('Gagal menambahkan ke database utama, owner telah diberikan pesan untuk membenarkan masalahnya')
-                server_in = self.bot.get_guild(int(bot_config['main_server']))
-                mod_mem_data = server_in.get_member(int(bot_config['owner_id']))
-                return await mod_mem_data.send('Terjadi kesalahan patch `alias hapus` pada server **{}**'.format(server_message))
+                await patch_error_handling(self.bot, ctx)
 
 
 class ShowtimesKolaborasi(commands.Cog):
@@ -2452,37 +2390,6 @@ class ShowtimesKolaborasi(commands.Cog):
 
     def __str__(self):
         return 'Showtimes Kolaborasi'
-
-
-    @commands.Cog.listener()
-    async def on_command_error(self, ctx, error):
-        """The event triggered when an error is raised while invoking a command.
-        ctx   : Context
-        error : Exception"""
-
-        # This prevents any commands with local handlers being handled here in on_command_error.
-        if hasattr(ctx.command, 'on_error'):
-            return
-
-        ignored = (commands.CommandNotFound, commands.UserInputError)
-
-        # Allows us to check for original exceptions raised and sent to CommandInvokeError.
-        # If nothing is found. We keep the exception passed to on_command_error.
-        error = getattr(error, 'original', error)
-
-        # Anything in ignored will return and prevent anything happening.
-        if isinstance(error, ignored):
-            return
-        elif isinstance(error, commands.DisabledCommand):
-            return await ctx.send(f'{ctx.command} dinon-aktifkan.')
-        elif isinstance(error, commands.NoPrivateMessage):
-            return await ctx.author.send(f'{ctx.command} tidak bisa dipakai di Private Messages.')
-
-        print('Ignoring exception in command {}:'.format(ctx.command), file=sys.stderr)
-        traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
-        tb = traceback.format_exception(type(error), error, error.__traceback__)
-        await ctx.send('**Error**: laporkan kesalahan ini dengan traceback dibawah ke N4O#8868 (Berikan juga apa command yang sedang digunakan!)\n```js\n{}\n```'.format(''.join(tb)))
-
 
     async def choose_anime(self, ctx, matches):
         print('[!] Asking user for input.')
@@ -2681,9 +2588,7 @@ class ShowtimesKolaborasi(commands.Cog):
             print('[@] Sending message...')
             return await ctx.send("Berikan kode berikut `{rand}` kepada fansub/server lain.\nKonfirmasi di server lain dengan `!kolaborasi konfirmasi {rand}`".format(rand=randomize_confirm))
         await ctx.send('Gagal menambahkan ke database utama, owner telah diberikan pesan untuk membenarkan masalahnya')
-        server_in = self.bot.get_guild(int(bot_config['main_server']))
-        mod_mem_data = server_in.get_member(int(bot_config['owner_id']))
-        await mod_mem_data.send('Terjadi kesalahan patch `kolaborasi dengan` pada server **{}**'.format(server_message))
+        await patch_error_handling(self.bot, ctx)
 
 
     @kolaborasi.command()
@@ -2791,9 +2696,7 @@ class ShowtimesKolaborasi(commands.Cog):
             print('[@] Sending message...')
             return await ctx.send("Berhasil menambahkan kolaborasi dengan **{}** ke dalam database utama naoTimes\nBerikan role berikut agar bisa menggunakan perintah staff <@&{}>".format(klb_data['server'], ani_srv_role))
         await ctx.send('Gagal menambahkan ke database utama, owner telah diberikan pesan untuk membenarkan masalahnya')
-        server_in = self.bot.get_guild(int(bot_config['main_server']))
-        mod_mem_data = server_in.get_member(int(bot_config['owner_id']))
-        await mod_mem_data.send('Terjadi kesalahan patch `kolaborasi konfirmasi` pada server **{}**'.format(server_message))
+        await patch_error_handling(self.bot, ctx)
 
 
     @kolaborasi.command()
@@ -2838,10 +2741,7 @@ class ShowtimesKolaborasi(commands.Cog):
             print('[@] Sending message...')
             return await ctx.send("Berhasil membatalkan kode konfirmasi **{}** dari database utama naoTimes".format(konfirm_id))
         await ctx.send('Gagal menambahkan ke database utama, owner telah diberikan pesan untuk membenarkan masalahnya')
-        server_in = self.bot.get_guild(int(bot_config['main_server']))
-        mod_mem_data = server_in.get_member(int(bot_config['owner_id']))
-        await mod_mem_data.send('Terjadi kesalahan patch `kolaborasi batalkan` pada server **{}**'.format(server_message))
-
+        await patch_error_handling(self.bot, ctx)
 
     @kolaborasi.command()
     async def putus(self, ctx, *, judul):
@@ -2916,58 +2816,22 @@ class ShowtimesKolaborasi(commands.Cog):
             print('[@] Sending message...')
             return await ctx.send("Berhasil memputuskan kolaborasi **{}** dari database utama naoTimes".format(matches[0]))
         await ctx.send('Gagal menambahkan ke database utama, owner telah diberikan pesan untuk membenarkan masalahnya')
-        server_in = self.bot.get_guild(int(bot_config['main_server']))
-        mod_mem_data = server_in.get_member(int(bot_config['owner_id']))
-        await mod_mem_data.send('Terjadi kesalahan patch `kolaborasi putus` pada server **{}**'.format(server_message))
+        await patch_error_handling(self.bot, ctx)
 
 
 class ShowtimesAdmin(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.cog_name = 'Showtimes Admin'
 
     def __str__(self):
         return 'Showtimes Admin'
 
 
-    @commands.Cog.listener()
-    async def on_command_error(self, ctx, error):
-        """The event triggered when an error is raised while invoking a command.
-        ctx   : Context
-        error : Exception"""
-
-        # This prevents any commands with local handlers being handled here in on_command_error.
-        if hasattr(ctx.command, 'on_error'):
-            return
-
-        ignored = (commands.CommandNotFound, commands.UserInputError)
-
-        # Allows us to check for original exceptions raised and sent to CommandInvokeError.
-        # If nothing is found. We keep the exception passed to on_command_error.
-        error = getattr(error, 'original', error)
-
-        # Anything in ignored will return and prevent anything happening.
-        if isinstance(error, ignored):
-            return
-        elif isinstance(error, commands.DisabledCommand):
-            return await ctx.send(f'{ctx.command} dinon-aktifkan.')
-        elif isinstance(error, commands.NoPrivateMessage):
-            try:
-                return await ctx.author.send(f'{ctx.command} tidak bisa dipakai di Private Messages.')
-            except:
-                pass
-
-        print('Ignoring exception in command {}:'.format(ctx.command), file=sys.stderr)
-        traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
-        tb = traceback.format_exception(type(error), error, error.__traceback__)
-        await ctx.send('**Error**: laporkan kesalahan ini dengan traceback dibawah ke N4O#8868 (Berikan juga apa command yang sedang digunakan!)\n```js\n{}\n```'.format(''.join(tb)))
-
-
     @commands.group(pass_context=True, aliases=['naotimesadmin', 'naoadmin'])
+    @commands.is_owner()
+    @commands.guild_only()
     async def ntadmin(self, ctx):
         if ctx.invoked_subcommand is None:
-            if int(ctx.message.author.id) != int(bot_config['owner_id']):
-                return
             helpmain = discord.Embed(title="Bantuan Perintah (!ntadmin)", description="versi 1.5.0", color=0x00aaaa)
             helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
             helpmain.set_author(name="naoTimesAdmin", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
@@ -2980,13 +2844,11 @@ class ShowtimesAdmin(commands.Cog):
             helpmain.add_field(name='!ntadmin patchdb', value="```Menganti database dengan attachments yang dicantumkan\nTambah attachments lalu tulis !ntadmin patchdb dan enter```", inline=False)
             helpmain.add_field(name='!ntadmin forceupdate', value="```Memaksa update database utama gist dengan database local.```", inline=False)
             helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 1.5.0")
-            await self.bot.say(embed=helpmain)
+            await ctx.send(embed=helpmain)
 
 
     @ntadmin.command(pass_context=True)
     async def listserver(self, ctx):
-        if int(ctx.message.author.id) != int(bot_config['owner_id']):
-            return
         print('[#] Requested !ntadmin listserver by admin')
         json_d = await fetch_json()
         if not json_d:
@@ -3005,28 +2867,25 @@ class ShowtimesAdmin(commands.Cog):
 
         text = text.rstrip('\n')
         
-        await self.bot.say(text)
+        await ctx.send(text)
 
     
     @ntadmin.command(pass_context=True)
-    @commands.guild_only()
     async def initiate(self, ctx):
         """
         Initiate naoTimes on this server so it can be used on other server
         Make sure everything is filled first before starting this command
         """
         print('[@] Initiated naoTimes first-time setup')
-        if int(ctx.message.author.id) != int(bot_config['owner_id']):
-            return
         if bot_config['gist_id'] != "":
             print('[@] Already setup, skipping')
-            return await self.bot.say('naoTimes sudah dipersiapkan dan sudah bisa digunakan')
+            return await ctx.send('naoTimes sudah dipersiapkan dan sudah bisa digunakan')
 
         print('Membuat data')
         embed = discord.Embed(title="naoTimes", color=0x56acf3)
         embed.add_field(name='Memulai Proses!', value="Mempersiapkan...", inline=False)
         embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-        emb_msg = await self.bot.say(embed=embed)
+        emb_msg = await ctx.send(embed=embed)
         msg_author = ctx.message.author
         json_tables = {
             "id": "",
@@ -3045,7 +2904,7 @@ class ShowtimesAdmin(commands.Cog):
             await emb_msg.edit(embed=embed)
 
             await_msg = await self.bot.wait_for('message', check=check_if_author)
-            table['id'] = await_msg.content
+            table['id'] = str(await_msg.content)
 
             return table, emb_msg
 
@@ -3059,7 +2918,7 @@ class ShowtimesAdmin(commands.Cog):
             while True:
                 await_msg = await self.bot.wait_for('message', check=check_if_author)
                 if await_msg.content.isdigit():
-                    table['progress_channel'] = await_msg.content
+                    table['progress_channel'] = str(await_msg.content)
                     await await_msg.delete()
                     break
                 await await_msg.delete()
@@ -3078,11 +2937,11 @@ class ShowtimesAdmin(commands.Cog):
                 mentions = await_msg.mentions
                 if not mentions:
                     if await_msg.content.isdigit():
-                        table['owner_id'] = await_msg.content
+                        table['owner_id'] = str(await_msg.content)
                         await await_msg.delete()
                         break
                 else:
-                    table['owner_id'] = mentions[0].id
+                    table['owner_id'] = str(mentions[0].id)
                     await await_msg.delete()
                     break
                 await await_msg.delete()
@@ -3104,21 +2963,23 @@ class ShowtimesAdmin(commands.Cog):
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
             if first_time:
                 await emb_msg.delete()
-                emb_msg = await self.bot.say(embed=embed)
+                emb_msg = await ctx.send(embed=embed)
                 first_time = False
             else:
                 await emb_msg.edit(embed=embed)
 
             to_react = ['1⃣', "2⃣", '3⃣', '✅', '❌']
-            for reaction in to_react:
-                    await emb_msg.add_reaction(reaction)
-            def checkReaction(reaction, user):
+            for react in to_react:
+                await emb_msg.add_reaction(react)
+
+            def check_react(reaction, user):
                 e = str(reaction.emoji)
-                return e.startswith(tuple(to_react))
+                return user == ctx.message.author and str(reaction.emoji) in to_react
 
-            res = await self.bot.wait_for_reaction(message=emb_msg, user=msg_author, check=checkReaction)
-
-            if to_react[0] in str(res.emoji):
+            res, user = await self.bot.wait_for('reaction_add', check=check_react)
+            if user != ctx.message.author:
+                pass
+            elif to_react[0] in str(res.emoji):
                 await emb_msg.clear_reactions()
                 json_tables, emb_msg = await process_gist(json_tables, emb_msg, msg_author)
             elif to_react[1] in str(res.emoji):
@@ -3137,7 +2998,7 @@ class ShowtimesAdmin(commands.Cog):
                 break
 
         if cancel_toggled:
-            return await self.bot.say('**Dibatalkan!**')
+            return await ctx.send('**Dibatalkan!**')
 
         embed=discord.Embed(title="naoTimes", color=0x56acf3)
         embed.add_field(name="Memproses!", value='Mengirim data...', inline=True)
@@ -3167,13 +3028,14 @@ class ShowtimesAdmin(commands.Cog):
         }
 
         print('[@] Patching gists')
-        async with aiohttp.ClientSession(auth=aiohttp.BasicAuth(bot_config['github_info']['username'], bot_config['github_info']['password'])) as sesi2:
+        headers = {'User-Agent': 'naoTimes v2.0'}
+        async with aiohttp.ClientSession(auth=aiohttp.BasicAuth(bot_config['github_info']['username'], bot_config['github_info']['personal_access_token']), headers=headers) as sesi2:
             async with sesi2.patch('https://api.github.com/gists/{}'.format(json_tables['gist_id']), json=hh) as resp:
                 r = await resp.json()
         try:
             m = r['message']
             print('[@] Failed to patch: {}'.format(m))
-            return await self.bot.say('[@] Gagal memproses silakan cek bot log, membatalkan...')
+            return await ctx.send('[@] Gagal memproses silakan cek bot log, membatalkan...')
         except KeyError:
             print('[@] Reconfiguring config files')
             bot_config['gist_id'] = json_tables['gist_id']
@@ -3183,13 +3045,11 @@ class ShowtimesAdmin(commands.Cog):
             embed=discord.Embed(title="naoTimes", color=0x56acf3)
             embed.add_field(name="Sukses!", value='Sukses membuat database di github\nSilakan restart bot agar naoTimes dapat diaktifkan.\n\nLaporkan isu di: [GitHub Issue](https://github.com/noaione/naoTimes/issues)', inline=True)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-            await self.bot.say(embed=embed)
+            await ctx.send(embed=embed)
             await emb_msg.delete()
 
     @ntadmin.command(pass_context=True)
     async def fetchdb(self, ctx):
-        if int(ctx.message.author.id) != int(bot_config['owner_id']):
-            return
         print('[#] Requested !ntadmin fetchdb by admin')
         json_d = await fetch_json()
         if not json_d:
@@ -3202,14 +3062,12 @@ class ShowtimesAdmin(commands.Cog):
             json.dump(json_d, f)
 
         print('Sending .json')
-        await self.bot.send_file(channel, save_file_name, content='Here you go!')
+        await channel.send(content='Here you go!', file=discord.File(save_file_name))
         os.remove(save_file_name) # Cleanup
 
 
     @ntadmin.command(pass_context=True)
     async def forcepull(self, ctx):
-        if int(ctx.message.author.id) != int(bot_config['owner_id']):
-            return
         print('[#] Requested !ntadmin forcepull by owner')
         json_d = await fetch_json()
         if not json_d:
@@ -3217,7 +3075,7 @@ class ShowtimesAdmin(commands.Cog):
         channel = ctx.message.channel
 
         await fetch_newest_db(bot_config)
-        await self.bot.say('Newest database has been pulled and saved to local save')
+        await ctx.send('Newest database has been pulled and saved to local save')
 
 
     @ntadmin.command(pass_context=True)
@@ -3227,60 +3085,59 @@ class ShowtimesAdmin(commands.Cog):
         !! Warning !!
         This will patch entire database
         """
-        if int(ctx.message.author.id) != int(bot_config['owner_id']):
-            return
         print('[#] Requested !ntadmin patchdb by admin')
 
         if ctx.message.attachments == []:
-            await self.bot.delete_message(ctx.message)
-            await self.bot.say('Please provide a valid .json file by uploading and add `!!ntadmin patchdb` command')
-            return
+            await ctx.message.delete()
+            return await ctx.send('Please provide a valid .json file by uploading and add `!!ntadmin patchdb` command')
 
         print('[@] Fetching attachments')
 
         attachment = ctx.message.attachments[0]
-        uri = attachment['url']
-        filename = attachment['filename']
+        uri = attachment.url
+        filename = attachment.filename
 
         if filename[filename.rfind('.'):] != '.json':
-            await self.bot.delete_message(ctx.message)
-            await self.bot.say('Please provide a valid .json file by uploading and add `!!ntadmin patchdb` command')
-            return
+            await ctx.message.delete()
+            return await ctx.send('Please provide a valid .json file by uploading and add `!!ntadmin patchdb` command')
 
         # Start downloading .json file
         print('[@] Downloading file')
         async with aiohttp.ClientSession() as sesi:
             async with sesi.get(uri) as resp:
                 data = await resp.text()
-                await self.bot.delete_message(ctx.message)
+                await ctx.message.delete()
                 json_to_patch = json.loads(data)
 
         print('[@] Make sure.')
-        preview_msg = await self.bot.say('**Are you sure you want to patch the database with provided .json file?**')
+        preview_msg = await ctx.send('**Are you sure you want to patch the database with provided .json file?**')
         to_react = ['✅', '❌']
-        for reaction in to_react:
-                await self.bot.add_reaction(preview_msg, reaction)
-        def checkReaction(reaction, user):
+        for react in to_react:
+            await preview_msg.add_reaction(react)
+
+        def check_react(reaction, user):
             e = str(reaction.emoji)
-            return e.startswith(('✅', '❌'))
+            return user == ctx.message.author and str(reaction.emoji) in to_react
 
-        res = await self.bot.wait_for_reaction(message=preview_msg, user=ctx.message.author, timeout=15, check=checkReaction)
-
-        if res is None:
-            await self.bot.say('***Timeout!***')
-            await self.bot.clear_reactions(preview_msg)
-            return
+        try:
+            res, user = await self.bot.wait_for('reaction_add', timeout=15, check=check_react)
+        except asyncio.TimeoutError:
+            await ctx.send('***Timeout!***')
+            return await preview_msg.clear_reactions()
+        if user != ctx.message.author:
+            pass
         elif '✅' in str(res.emoji):
+            with open('nao_showtimes.json', 'w') as fp:
+                json.dump(json_to_patch, fp, indent=4)
             success = await patch_json(json_to_patch)
-            await self.bot.clear_reactions(preview_msg)
+            await preview_msg.clear_reactions()
             if success:
-                await self.bot.edit_message(preview_msg, '**Patching success!, try it with !tagih**')
-                return
-            await self.bot.edit_message(preview_msg, '**Patching failed!, try it again later**')
+                return await preview_msg.edit(content='**Patching success!, try it with !tagih**')
+            await preview_msg.edit(content='**Patching failed!, try it again later**')
         elif '❌' in str(res.emoji):
             print('[@] Patch Cancelled')
-            await self.bot.clear_reactions(preview_msg)
-            await self.bot.edit_message(preview_msg, '**Ok, cancelled process**')
+            await preview_msg.clear_reactions()
+            await preview_msg.edit(content='**Ok, cancelled process**')
 
 
     @ntadmin.command(pass_context=True)
@@ -3292,19 +3149,19 @@ class ShowtimesAdmin(commands.Cog):
         :adm_id: admin id
         :prog_chan: #progress channel id
         """
-        if int(ctx.message.author.id) != int(bot_config['owner_id']):
-            return
+
         print('[#] Requested !ntadmin tambah by admin')
         json_d = await fetch_json()
         if not json_d:
             return
         if srv_id is None:
-            await self.bot.say('Tidak ada input server dari user')
-            return
+            return await ctx.send('Tidak ada input server dari user')
 
         if adm_id is None:
-            await self.bot.say('Tidak ada input admin dari user')
-            return
+            return await ctx.send('Tidak ada input admin dari user')
+
+        if srv_id in json_d:
+            return await ctx.send('Server `{}` tersebut telah terdaftar di database'.format(srv_id))
 
         new_srv_data = {}
 
@@ -3315,17 +3172,17 @@ class ShowtimesAdmin(commands.Cog):
         new_srv_data['alias'] = {}
 
         json_d[str(srv_id)] = new_srv_data
-        json_d['supermod'].append(str(adm_id)) # Add to supermod list
-        print('Created new table for server: {}'.format(srv_id))
+        if str(adm_id) not in json_d['supermod']:
+            json_d['supermod'].append(str(adm_id)) # Add to supermod list
+        print('[#] Created new table for server: {}'.format(srv_id))
 
         with open('nao_showtimes.json', 'w') as f: # Local save before commiting
             json.dump(json_d, f, indent=4)
 
         success = await patch_json(json_d)
         if success:
-            await self.bot.say('Sukses menambah server dengan info berikut:\n```Server ID: {s}\nAdmin: {a}\nMemakai #progress Channel: {p}```'.format(s=srv_id, a=adm_id, p=bool(prog_chan)))
-            return
-        await self.bot.say('Gagal dalam menambah server baru :(')
+            return await ctx.send('Sukses menambah server dengan info berikut:\n```Server ID: {s}\nAdmin: {a}\nMemakai #progress Channel: {p}```'.format(s=srv_id, a=adm_id, p=bool(prog_chan)))
+        await ctx.send('Gagal dalam menambah server baru :(')
 
 
     @ntadmin.command(pass_context=True)
@@ -3335,15 +3192,13 @@ class ShowtimesAdmin(commands.Cog):
         
         :srv_id: server id
         """
-        if int(ctx.message.author.id) != int(bot_config['owner_id']):
-            return
+
         print('[#] Requested !ntadmin hapus by admin')
         json_d = await fetch_json()
         if not json_d:
             return
         if srv_id is None:
-            await self.bot.say('Tidak ada input server dari user')
-            return
+            return await ctx.send('Tidak ada input server dari user')
 
         try:
             srv = json_d[str(srv_id)]
@@ -3351,52 +3206,48 @@ class ShowtimesAdmin(commands.Cog):
             print('Server found, deleting...')
             del json_d[str(srv_id)]
         except KeyError:
-            await self.bot.say('Server tidak dapat ditemukan dalam database.')
-            return
+            return await ctx.send('Server tidak dapat ditemukan dalam database.')
 
         try:
             json_d['supermod'].remove(adm_id)
         except:
-            await self.bot.say('Gagal menghapus admin dari data super admin')
-            return
+            return await ctx.send('Gagal menghapus admin dari data super admin')
 
         with open('nao_showtimes.json', 'w') as f: # Local save before commiting
             json.dump(json_d, f, indent=4)
 
         success = await patch_json(json_d)
         if success:
-            await self.bot.say('Sukses menghapus server `{s}` dari naoTimes'.format(s=srv_id))
-            return
-        await self.bot.say('Gagal menghapus server :(')
+            return await ctx.send('Sukses menghapus server `{s}` dari naoTimes'.format(s=srv_id))
+        await ctx.send('Gagal menghapus server :(')
 
 
     @ntadmin.command(pass_context=True)
     async def tambahadmin(self, ctx, srv_id, adm_id):
         """
-        Menghapus server dari database naoTimes
+        Menambah admin ke server ke database naoTimes
         
         :srv_id: server id
+        :adm_id: admin id
         """
-        if int(ctx.message.author.id) != int(bot_config['owner_id']):
-            return
+
         print('[#] Requested !ntadmin tambahadmin by admin')
         json_d = await fetch_json()
         if not json_d:
             return
         if srv_id is None:
-            await self.bot.say('Tidak ada input server dari user')
-            return
+            return await ctx.send('Tidak ada input server dari user')
 
         if adm_id is None:
-            await self.bot.say('Tidak ada input admin dari user')
-            return
+            return await ctx.send('Tidak ada input admin dari user')
 
         try:
             srv = json_d[str(srv_id)]
             print('Server found, adding admin...')
+            if adm_id in srv['serverowner']:
+                return await ctx.send('Admin `{}` telah terdaftar di server tersebut.'.format(adm_id))
         except KeyError:
-            await self.bot.say('Server tidak dapat ditemukan dalam database.')
-            return
+            return await ctx.send('Server tidak dapat ditemukan dalam database.')
 
         srv['serverowner'].append(str(adm_id))
 
@@ -3405,31 +3256,27 @@ class ShowtimesAdmin(commands.Cog):
 
         success = await patch_json(json_d)
         if success:
-            await self.bot.say('Sukses menambah admin `{a}` di server `{s}`'.format(s=srv_id, a=adm_id))
-            return
-        await self.bot.say('Gagal menambah admin :(')
+            return await ctx.send('Sukses menambah admin `{a}` di server `{s}`'.format(s=srv_id, a=adm_id))
+        await ctx.send('Gagal menambah admin :(')
 
 
     @ntadmin.command(pass_context=True)
     async def hapusadmin(self, ctx, srv_id, adm_id):
         """
-        Menghapus server dari database naoTimes
+        Menghapus admin dari server dari database naoTimes
         
         :srv_id: server id
+        :adm_id: admin id
         """
-        if int(ctx.message.author.id) != int(bot_config['owner_id']):
-            return
         print('[#] Requested !ntadmin hapusadmin by admin')
         json_d = await fetch_json()
         if not json_d:
             return
         if srv_id is None:
-            await self.bot.say('Tidak ada input server dari user')
-            return
+            return await ctx.send('Tidak ada input server dari user')
 
         if adm_id is None:
-            await self.bot.say('Tidak ada input admin dari user')
-            return
+            return await ctx.send('Tidak ada input admin dari user')
 
         try:
             srv = json_d[str(srv_id)]
@@ -3438,97 +3285,63 @@ class ShowtimesAdmin(commands.Cog):
             if str(adm_id) in admlist:
                 srv['serverowner'].remove(str(adm_id))
             else:
-                await self.bot.say('Tidak dapat menemukan admin tersebut di server: `{}`'.format(srv_id))
-                return
+                return await ctx.send('Tidak dapat menemukan admin tersebut di server: `{}`'.format(srv_id))
         except KeyError:
-            await self.bot.say('Server tidak dapat ditemukan dalam database.')
-            return
+            return await ctx.send('Server tidak dapat ditemukan dalam database.')
 
         with open('nao_showtimes.json', 'w') as f: # Local save before commiting
             json.dump(json_d, f, indent=4)
 
         success = await patch_json(json_d)
         if success:
-            await self.bot.say('Sukses menghapus admin `{a}` dari server `{s}`'.format(s=srv_id, a=adm_id))
-            return
-        await self.bot.say('Gagal menghapus admin :(')
+            return await ctx.send('Sukses menghapus admin `{a}` dari server `{s}`'.format(s=srv_id, a=adm_id))
+        await ctx.send('Gagal menghapus admin :(')
 
     
     @ntadmin.command(pass_context=True)
     @commands.guild_only()
     async def forceupdate(self, ctx):
         print('[#] Requested forceupdate by admin')
-        if int(ctx.message.author.id) != int(bot_config['owner_id']):
-            return
         json_d = await fetch_json()
         if not json_d:
             return
         print('[@] Make sure')
         
-        preview_msg = await self.bot.say('**Are you sure you want to patch the database with local .json file?**')
+        preview_msg = await ctx.send('**Are you sure you want to patch the database with local .json file?**')
         to_react = ['✅', '❌']
-        for reaction in to_react:
-                await self.bot.add_reaction(preview_msg, reaction)
-        def checkReaction(reaction, user):
+        for react in to_react:
+            await preview_msg.add_reaction(react)
+
+        def check_react(reaction, user):
             e = str(reaction.emoji)
-            return e.startswith(('✅', '❌'))
+            return user == ctx.message.author and str(reaction.emoji) in to_react
 
-        res = await self.bot.wait_for_reaction(message=preview_msg, user=ctx.message.author, timeout=15, check=checkReaction)
-
-        if res is None:
-            await self.bot.clear_reactions(preview_msg)
-            return await self.bot.say('***Timeout!***')
+        try:
+            res, user = await self.bot.wait_for('reaction_add', timeout=15, check=check_react)
+        except asyncio.TimeoutError:
+            await ctx.send('***Timeout!***')
+            return await preview_msg.clear_reactions()
+        if user != ctx.message.author:
+            pass
         elif '✅' in str(res.emoji):
             success = await patch_json(json_d)
-            await self.bot.clear_reactions(preview_msg)
+            await preview_msg.clear_reactions()
             if success:
-                return await self.bot.edit_message(preview_msg, '**Patching success!, try it with !tagih**')
-            await self.bot.edit_message(preview_msg, '**Patching failed!, try it again later**')
+                return await preview_msg.edit(content='**Patching success!, try it with !tagih**')
+            await preview_msg.edit(content='**Patching failed!, try it again later**')
         elif '❌' in str(res.emoji):
             print('[@] Patch Cancelled')
-            await self.bot.clear_reactions(preview_msg)
-            await self.bot.edit_message(preview_msg, '**Ok, cancelled process**')
+            await preview_msg.clear_reactions()
+            await preview_msg.edit(content='**Ok, cancelled process**')
 
 
 class ShowtimesConfigData(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.cog_name = 'Showtimes Data Configuration'
 
     def __str__(self):
         return 'Showtimes Data Configuration'
 
-    @commands.Cog.listener()
-    async def on_command_error(self, ctx, error):
-        """The event triggered when an error is raised while invoking a command.
-        ctx   : Context
-        error : Exception"""
-
-        # This prevents any commands with local handlers being handled here in on_command_error.
-        if hasattr(ctx.command, 'on_error'):
-            return
-
-        ignored = (commands.CommandNotFound, commands.UserInputError)
-
-        # Allows us to check for original exceptions raised and sent to CommandInvokeError.
-        # If nothing is found. We keep the exception passed to on_command_error.
-        error = getattr(error, 'original', error)
-
-        # Anything in ignored will return and prevent anything happening.
-        if isinstance(error, ignored):
-            return
-        elif isinstance(error, commands.DisabledCommand):
-            return await ctx.send(f'{ctx.command} dinon-aktifkan.')
-        elif isinstance(error, commands.NoPrivateMessage):
-            try:
-                return await ctx.author.send(f'{ctx.command} tidak bisa dipakai di Private Messages.')
-            except:
-                pass
-
-        print('Ignoring exception in command {}:'.format(ctx.command), file=sys.stderr)
-        traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
-        tb = traceback.format_exception(type(error), error, error.__traceback__)
-        await ctx.send('**Error**: laporkan kesalahan ini dengan traceback dibawah ke N4O#8868 (Berikan juga apa command yang sedang digunakan!)\n```js\n{}\n```'.format(''.join(tb)))
 
     async def choose_anime(self, ctx, matches):
         print('[!] Asking user for input.')
@@ -4039,9 +3852,7 @@ class ShowtimesConfigData(commands.Cog):
                         print('[@] Sending message to user...')
                         await target_chan.send(embed=embed)
                     return
-            server_in = self.bot.get_guild(int(bot_config['main_server']))
-            mod_mem_data = server_in.get_member(int(bot_config['owner_id']))
-            return await mod_mem_data.send('Terjadi kesalahan patch `buangutang` pada server **{}**'.format(server_message))
+            await patch_error_handling(self.bot, ctx)
 
         print('[!] Menyimpan data baru untuk garapan: ' +  matches[0])
         with open('nao_showtimes.json', 'w') as f: # Local save before commiting
