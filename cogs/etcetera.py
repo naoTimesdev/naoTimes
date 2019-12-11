@@ -972,8 +972,14 @@ class Helper(commands.Cog):
     async def prefix(self, ctx, *, msg=None):
         server_message = str(ctx.message.guild.id)
         print('Requested !prefix at: ' + server_message)
-        with open('prefixes.json') as fp:
-            prefix_data = json.load(fp)
+        if not os.path.isfile('prefixes.json'):
+            prefix_data = {}
+            print('[#] Creating prefixes.json')
+            with open('prefixes.json', 'w') as fw:
+                json.dump({}, fw)
+        else:
+            with open('prefixes.json') as fp:
+                prefix_data = json.load(fp)
 
         if not msg:
             helpmain = discord.Embed(title="Prefix", description="versi 2.0.0", color=0x00aaaa)
@@ -1012,8 +1018,14 @@ class Helper(commands.Cog):
     async def prefix_error(self, error, ctx):
         if isinstance(error, commands.errors.CheckFailure):
             server_message = str(ctx.message.guild.id)
-            with open('prefixes.json') as fp:
-                prefix_data = json.load(fp)
+            if not os.path.isfile('prefixes.json'):
+                prefix_data = {}
+                print('[#] Creating prefixes.json')
+                with open('prefixes.json', 'w') as fw:
+                    json.dump({}, fw)
+            else:
+                with open('prefixes.json') as fp:
+                    prefix_data = json.load(fp)
             helpmain = discord.Embed(title="Prefix", description="versi 2.0.0", color=0x00aaaa)
             helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
             helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
