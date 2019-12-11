@@ -3,9 +3,11 @@
 
 import asyncio
 import json
-import re
 import os
+import re
+import sys
 import time
+import traceback
 from calendar import monthrange
 from copy import deepcopy
 from datetime import datetime, timedelta
@@ -454,11 +456,100 @@ def get_role_name(role_id, roles) -> str:
 class Showtimes(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.cog_name = 'Showtimes'
 
     def __str__(self):
         return 'Showtimes Main'
 
+    @commands.Cog.listener()
+    async def on_command_error(self, ctx, error):
+        """The event triggered when an error is raised while invoking a command.
+        ctx   : Context
+        error : Exception"""
+
+        # This prevents any commands with local handlers being handled here in on_command_error.
+        if hasattr(ctx.command, 'on_error'):
+            return
+
+        ignored = (commands.CommandNotFound, commands.UserInputError)
+
+        # Allows us to check for original exceptions raised and sent to CommandInvokeError.
+        # If nothing is found. We keep the exception passed to on_command_error.
+        error = getattr(error, 'original', error)
+
+        # Anything in ignored will return and prevent anything happening.
+        if isinstance(error, ignored):
+            return
+        elif isinstance(error, commands.DisabledCommand):
+            return await ctx.send(f'{ctx.command} dinon-aktifkan.')
+        elif isinstance(error, commands.NoPrivateMessage):
+            try:
+                return await ctx.author.send(f'{ctx.command} tidak bisa dipakai di Private Messages.')
+            except:
+                pass
+
+        print('Ignoring exception in command {}:'.format(ctx.command), file=sys.stderr)
+        traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
+        tb = traceback.format_exception(type(error), error, error.__traceback__)
+        await ctx.send('**Error**: laporkan kesalahan ini dengan traceback dibawah ke N4O#8868 (Berikan juga apa command yang sedang digunakan!)\n```js\n{}\n```'.format(''.join(tb)))
+
+
+    async def choose_anime(self, ctx, matches):
+        print('[!] Asking user for input.')
+        first_run = True
+        matches = matches[:10]
+        reactmoji = ['1⃣', "2⃣", '3⃣', '4⃣', '5⃣', '6⃣', '7⃣', '8⃣', '9⃣', '0⃣']
+        res_matches = []
+        while True:
+            if first_run:
+                embed = discord.Embed(title='Mungkin:', color=0x8253b8)
+
+                format_value = []
+                for n, i in enumerate(matches):
+                    format_value.append('{} **{}**'.format(reactmoji[n], i))
+                format_value.append('❌ **Batalkan**')
+                embed.description = '\n'.join(format_value)
+
+                embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+
+                first_run = False
+                msg = await ctx.send(embed=embed)
+
+            reactmoji = ['1⃣', "2⃣", '3⃣', '4⃣', '5⃣', '6⃣', '7⃣', '8⃣', '9⃣', '0⃣']
+            reactmoji_extension = ['❌']
+
+            reactmoji = reactmoji[:len(matches)]
+            reactmoji.extend(reactmoji_extension)
+
+            for react in reactmoji:
+                await msg.add_reaction(react)
+
+            def check_react(reaction, user):
+                e = str(reaction.emoji)
+                return user == ctx.message.author and str(reaction.emoji) in reactmoji
+
+            try:
+                res, user = await self.bot.wait_for('reaction_add', timeout=20.0, check=check_react)
+            except asyncio.TimeoutError:
+                await msg.clear_reactions()
+                break
+            if user != ctx.message.author:
+                pass
+            elif '❌' in str(res.emoji):
+                await msg.clear_reactions()
+                break
+            else:
+                await msg.clear_reactions()
+                reaction_pos = reactmoji.index(str(res.emoji))
+                res_matches.append(matches[reaction_pos])
+                break
+        await msg.delete()
+        if res_matches:
+            print('[#] Picked: {}'.format(res_matches[0]))
+        return res_matches
+
     @commands.command(aliases=['blame', 'mana'])
+    @commands.guild_only()
     async def tagih(self, ctx, *, judul=None):
         """
         Menagih utang fansub tukang diley maupun tidak untuk memberikan mereka tekanan
@@ -500,7 +591,9 @@ class Showtimes(commands.Cog):
         if not matches:
             return await ctx.send('Tidak dapat menemukan judul tersebut di database')
         elif len(matches) > 1:
-            return await ctx.send('**Mungkin**: {}'.format(', '.join(matches)))
+            matches = await self.choose_anime(ctx, matches)
+            if not matches:
+                return await ctx.send('**Dibatalkan**')
 
         program_info = server_data['anime'][matches[0]]
         last_update = int(program_info['last_update'])
@@ -531,6 +624,7 @@ class Showtimes(commands.Cog):
 
 
     @commands.command(aliases=['release'])
+    @commands.guild_only()
     async def rilis(self, ctx, *, data):
         data = data.split()
 
@@ -583,7 +677,9 @@ class Showtimes(commands.Cog):
             if not matches:
                 return await ctx.send('Tidak dapat menemukan judul tersebut di database')
             elif len(matches) > 1:
-                return await ctx.send('**Mungkin**: {}'.format(', '.join(matches)))
+                matches = await self.choose_anime(ctx, matches)
+                if not matches:
+                    return await ctx.send('**Dibatalkan**')
 
             program_info = server_data['anime'][matches[0]]
             status_list = program_info['status']
@@ -638,7 +734,9 @@ class Showtimes(commands.Cog):
             if not matches:
                 return await ctx.send('Tidak dapat menemukan judul tersebut di database')
             elif len(matches) > 1:
-                return await ctx.send('**Mungkin**: {}'.format(', '.join(matches)))
+                matches = await self.choose_anime(ctx, matches)
+                if not matches:
+                    return await ctx.send('**Dibatalkan**')
 
             program_info = server_data['anime'][matches[0]]
             status_list = program_info['status']
@@ -692,7 +790,9 @@ class Showtimes(commands.Cog):
             if not matches:
                 return await ctx.send('Tidak dapat menemukan judul tersebut di database')
             elif len(matches) > 1:
-                return await ctx.send('**Mungkin**: {}'.format(', '.join(matches)))
+                matches = await self.choose_anime(ctx, matches)
+                if not matches:
+                    return await ctx.send('**Dibatalkan**')
 
             program_info = server_data['anime'][matches[0]]
             status_list = program_info['status']
@@ -741,7 +841,7 @@ class Showtimes(commands.Cog):
                         print('[@] Sending progress info to everyone at {}'.format(other_srv))
                         announce_chan = json_d[other_srv]['announce_channel']
                         # TODO: check this this
-                        target_chan = ctx.get_channel(int(announce_chan))
+                        target_chan = self.bot.get_channel(int(announce_chan))
                         embed = discord.Embed(title="{}".format(matches[0]), color=0x1eb5a6)
                         embed.add_field(name='Rilis!', value=embed_text_data, inline=False)
                         embed.set_footer(text="Pada: {}".format(get_current_time()))
@@ -749,7 +849,7 @@ class Showtimes(commands.Cog):
             if 'announce_channel' in server_data:
                 announce_chan = server_data['announce_channel']
                 # TODO: check this this
-                target_chan = ctx.get_channel(int(announce_chan))
+                target_chan = self.bot.get_channel(int(announce_chan))
                 embed = discord.Embed(title="{}".format(matches[0]), color=0x1eb5a6)
                 embed.add_field(name='Rilis!', value=embed_text_data, inline=False)
                 embed.set_footer(text="Pada: {}".format(get_current_time()))
@@ -800,12 +900,14 @@ class Showtimes(commands.Cog):
                 res = find_alias_anime(i, server_data['alias'])
                 if res not in matches: # To not duplicate result
                     matches.append(res)
-        print('Matches: {}'.format(", ".join(matches)))
+        print('[!] Matches: {}'.format(", ".join(matches)))
 
         if not matches:
             return await ctx.send('Tidak dapat menemukan judul tersebut di database')
         elif len(matches) > 1:
-            return await ctx.send('**Mungkin**: {}'.format(', '.join(matches)))
+            matches = await self.choose_anime(ctx, matches)
+            if not matches:
+                return await ctx.send('**Dibatalkan**')
 
         program_info = server_data['anime'][matches[0]]
         status_list = program_info['status']
@@ -860,7 +962,7 @@ class Showtimes(commands.Cog):
                     if 'announce_channel' in json_d[other_srv]:
                         print('[@] Sending progress info to everyone at {}'.format(other_srv))
                         announce_chan = json_d[other_srv]['announce_channel']
-                        target_chan = ctx.get_channel(int(announce_chan))
+                        target_chan = self.bot.get_channel(int(announce_chan))
                         embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=0x1eb5a6)
                         embed.add_field(name='Status', value=parse_status(current_ep_status), inline=False)
                         embed.set_footer(text="Pada: {}".format(get_current_time()))
@@ -869,7 +971,7 @@ class Showtimes(commands.Cog):
             embed.add_field(name='Status', value=parse_status(current_ep_status), inline=False)
             if 'announce_channel' in server_data:
                 announce_chan = server_data['announce_channel']
-                target_chan = ctx.get_channel(int(announce_chan))
+                target_chan = self.bot.get_channel(int(announce_chan))
                 embed.set_footer(text="Pada: {}".format(get_current_time()))
                 print('[@] Sending progress info to everyone')
                 await target_chan.send(embed=embed)
@@ -883,6 +985,7 @@ class Showtimes(commands.Cog):
 
 
     @commands.command(aliases=['undone', 'cancel'])
+    @commands.guild_only()
     async def gakjadi(self, ctx, posisi, *, judul):
         """
         Menghilangkan tanda karena ada kesalahan
@@ -927,7 +1030,9 @@ class Showtimes(commands.Cog):
         if not matches:
             return await ctx.send('Tidak dapat menemukan judul tersebut di database')
         elif len(matches) > 1:
-            return await ctx.send('**Mungkin**: {}'.format(', '.join(matches)))
+            matches = await self.choose_anime(ctx, matches)
+            if not matches:
+                return await ctx.send('**Dibatalkan**')
 
         program_info = server_data['anime'][matches[0]]
         status_list = program_info['status']
@@ -982,7 +1087,7 @@ class Showtimes(commands.Cog):
                     if 'announce_channel' in json_d[other_srv]:
                         print('[@] Sending progress info to everyone at {}'.format(other_srv))
                         announce_chan = json_d[other_srv]['announce_channel']
-                        target_chan = ctx.get_channel(int(announce_chan))
+                        target_chan = self.bot.get_channel(int(announce_chan))
                         embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=0xb51e1e)
                         embed.add_field(name='Status', value=parse_status(current_ep_status), inline=False)
                         embed.set_footer(text="Pada: {}".format(get_current_time()))
@@ -991,7 +1096,7 @@ class Showtimes(commands.Cog):
             embed.add_field(name='Status', value=parse_status(current_ep_status), inline=False)
             if 'announce_channel' in server_data:
                 announce_chan = server_data['announce_channel']
-                target_chan = ctx.get_channel(int(announce_chan))
+                target_chan = self.bot.get_channel(int(announce_chan))
                 embed.set_footer(text="Pada: {}".format(get_current_time()))
                 print('[@] Sending progress info to everyone')
                 await target_chan.send(embed=embed)
@@ -1004,114 +1109,8 @@ class Showtimes(commands.Cog):
         await mod_mem_data.send('Terjadi kesalahan patch pada server **{}**'.format(server_message))
 
 
-    @commands.command(aliases=['buangutang', 'buang', 'lupakan', 'remove', 'drop'])
-    async def lupakanutang(self, ctx, *, judul):
-        """
-        Lupakan utang lama buat utang baru :D
-        """
-        server_message = str(ctx.message.guild.id)
-        print('[#] Requested !lupakanutang at: ' + server_message)
-        json_d = await fetch_json()
-
-        if server_message not in json_d:
-            return
-        server_data = json_d[server_message]
-
-        if str(ctx.message.author.id) not in server_data['serverowner']:
-            return await ctx.send('Hanya admin yang bisa membuang utang')
-
-        srv_anilist = []
-        srv_anilist_alias = []
-        for ani in server_data['anime']:
-            if ani == 'alias': # Don't use alias
-                continue
-            srv_anilist.append(ani)
-        for k, _ in server_data['alias'].items():
-            srv_anilist_alias.append(k)
-
-        if not judul:
-            if len(srv_anilist) < 1:
-                return await ctx.send('**Tidak ada anime yang terdaftar di database**')
-            return await ctx.send('**Mungkin**: {}'.format(', '.join(srv_anilist)))
-
-        matches = get_close_matches(judul, srv_anilist)
-        if srv_anilist_alias:
-            temp_anilias = get_close_matches(judul, srv_anilist_alias)
-            for i in temp_anilias:
-                res = find_alias_anime(i, server_data['alias'])
-                if res not in matches: # To not duplicate result
-                    matches.append(res)
-        print('Matches: {}'.format(", ".join(matches)))
-
-        if not matches:
-            return await ctx.send('Tidak dapat menemukan judul tersebut di database')
-        elif len(matches) > 1:
-            return await ctx.send('**Mungkin**: {}'.format(', '.join(matches)))
-
-        current = get_current_ep(json_d[server_message]['anime'][matches[0]]['status'])
-        try:
-            if json_d[server_message]['anime'][matches[0]]['status']['1']['status'] == 'not_released':
-                announce_it = False
-            elif not current:
-                announce_it = False
-            else:
-                announce_it = True
-        except KeyError:
-            announce_it = True
-
-        program_info = json_d[server_message]['anime'][matches[0]]
-
-        koleb_list = []
-        if 'kolaborasi' in program_info:
-            koleb_data = program_info['kolaborasi']
-            if koleb_data:
-                for ko_data in koleb_data:
-                    if server_message == ko_data:
-                        continue
-                    koleb_list.append(ko_data)
-
-        if koleb_list:
-            for other_srv in koleb_list:
-                if server_message in json_d[other_srv]['anime'][matches[0]]['kolaborasi']:
-                    json_d[other_srv]['anime'][matches[0]]['kolaborasi'].remove(server_message)
-
-        del json_d[server_message]['anime'][matches[0]]
-
-        with open('nao_showtimes.json', 'w') as f: # Local save before commiting
-            json.dump(json_d, f, indent=4)
-        print('[@] Sending message to staff...')
-        await ctx.send('Berhasil menghapus **{}** dari daftar utang'.format(matches[0]))
-
-        success = await patch_json(json_d)
-        if success:
-            if koleb_list:
-                for other_srv in koleb_list:
-                    if 'announce_channel' in json_d[other_srv]:
-                        print('[@] Sending progress info to everyone at {}'.format(other_srv))
-                        announce_chan = json_d[other_srv]['announce_channel']
-                        target_chan = ctx.get_channel(int(announce_chan))
-                        embed = discord.Embed(title="{}".format(matches[0]), color=0xb51e1e)
-                        embed.add_field(name='Dropped...', value="{} telah di drop dari fansub ini :(".format(matches[0]), inline=False)
-                        embed.set_footer(text="Pada: {}".format(get_current_time()))
-                        if announce_it:
-                            print('[@] Sending message to user...')
-                            await target_chan.send(embed=embed)
-            if 'announce_channel' in server_data:
-                announce_chan = server_data['announce_channel']
-                target_chan = ctx.get_channel(int(announce_chan))
-                embed = discord.Embed(title="{}".format(matches[0]), color=0xb51e1e)
-                embed.add_field(name='Dropped...', value="{} telah di drop dari fansub ini :(".format(matches[0]), inline=False)
-                embed.set_footer(text="Pada: {}".format(get_current_time()))
-                if announce_it:
-                    print('[@] Sending message to user...')
-                    await target_chan.send(embed=embed)
-            return
-        server_in = self.bot.get_guild(int(bot_config['main_server']))
-        mod_mem_data = server_in.get_member(int(bot_config['owner_id']))
-        await mod_mem_data.send('Terjadi kesalahan patch `buangutang` pada server **{}**'.format(server_message))
-
-
     @commands.command(aliases=['add', 'tambah'])
+    @commands.guild_only()
     async def tambahutang(self, ctx):
         """
         Membuat utang baru, ambil semua user id dan role id yang diperlukan.
@@ -1268,6 +1267,7 @@ class Showtimes(commands.Cog):
                             mentionable=True
                         )
                         table['role_id'] = str(c_role.id)
+                        await await_msg.delete()
                         break
                 else:
                     table['role_id'] = mentions[0].id
@@ -1464,7 +1464,6 @@ class Showtimes(commands.Cog):
                     
                     table['time_data'] = new_time_table
                     table['settings']['time_data_are_the_same'] = True
-                    print(table['time_data'])
                     return table, emb_msg
                 
                 new_time_table = []
@@ -1473,7 +1472,6 @@ class Showtimes(commands.Cog):
 
                 table['old_time_data'] = [] # Remove old time data because it resetted
                 table['settings']['time_data_are_the_same'] = False
-                print(table['time_data'])
                 return table, emb_msg
 
             print('[@] Showing toogleable settings.')
@@ -1517,8 +1515,6 @@ class Showtimes(commands.Cog):
         json_tables, emb_msg = await process_timer(json_tables, emb_msg, msg_author)
         json_tables, emb_msg = await process_tser(json_tables, emb_msg, msg_author)
         json_tables, emb_msg = await process_qcer(json_tables, emb_msg, msg_author)
-
-        print(json_tables)
 
         async def fetch_username_from_id(_id):
             try:
@@ -1615,7 +1611,7 @@ class Showtimes(commands.Cog):
             return await ctx.send('**Dibatalkan!**')
 
         # Everything are done and now processing data
-        print(json_tables)
+        print('[!] Menyimpan utang baru.')
         embed=discord.Embed(title="Menambah Utang", color=0x56acf3)
         embed.add_field(name="Memproses!", value='Membuat data...', inline=True)
         embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
@@ -1687,6 +1683,7 @@ class Showtimes(commands.Cog):
 
 
     @commands.command(aliases=['airing'])
+    @commands.guild_only()
     async def jadwal(self, ctx):
         """
         Melihat jadwal anime musiman yang di ambil.
@@ -1731,6 +1728,7 @@ class Showtimes(commands.Cog):
 
 
     @commands.command(aliases=['tukangdelay', 'pendelay'])
+    @commands.guild_only()
     async def staff(self, ctx, *, judul):
         """
         Menagih utang fansub tukang diley maupun tidak untuk memberikan mereka tekanan
@@ -1769,12 +1767,14 @@ class Showtimes(commands.Cog):
                 res = find_alias_anime(i, server_data['alias'])
                 if res not in matches: # To not duplicate result
                     matches.append(res)
-        print('Matches: {}'.format(", ".join(matches)))
+        print('[!] Matches: {}'.format(", ".join(matches)))
 
         if not matches:
             return await ctx.send('Tidak dapat menemukan judul tersebut di database')
         elif len(matches) > 1:
-            return await ctx.send('**Mungkin**: {}'.format(', '.join(matches)))
+            matches = await self.choose_anime(ctx, matches)
+            if not matches:
+                return await ctx.send('**Dibatalkan**')
 
         staff_assignment = server_data['anime'][matches[0]]['staff_assignment']
         print('Got staff_asignment')
@@ -1818,13 +1818,13 @@ class Showtimes(commands.Cog):
                 rtext += '**{}**: Unknown\n'.format(k)
 
         rtext += '\n**Jika ada yang Unknown, admin dapat menggantikannya**'
-        print(rtext)
 
         print('[@] Sending message...')
         await ctx.send(rtext)
 
 
     @commands.command(aliases=['mark'])
+    @commands.guild_only()
     async def tandakan(self, ctx, posisi, episode_n, *, judul):
         """
         Mark something as done or undone for other episode without announcing it
@@ -1859,12 +1859,14 @@ class Showtimes(commands.Cog):
                 res = find_alias_anime(i, server_data['alias'])
                 if res not in matches: # To not duplicate result
                     matches.append(res)
-        print('Matches: {}'.format(", ".join(matches)))
+        print('[!] Matches: {}'.format(", ".join(matches)))
 
         if not matches:
             return await ctx.send('Tidak dapat menemukan judul tersebut di database')
         elif len(matches) > 1:
-            return await ctx.send('**Mungkin**: {}'.format(', '.join(matches)))
+            matches = await self.choose_anime(ctx, matches)
+            if not matches:
+                return await ctx.send('**Dibatalkan**')
 
         program_info = server_data['anime'][matches[0]]
         status_list = program_info['status']
@@ -1921,6 +1923,7 @@ class Showtimes(commands.Cog):
 
 
     @commands.command()
+    @commands.guild_only()
     async def globalpatcher(self, ctx):
         """
         Global showtimes patcher, dangerous to use.
@@ -1975,11 +1978,100 @@ class Showtimes(commands.Cog):
 class ShowtimesAlias(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.cog_name = 'Showtimes Alias'
 
     def __str__(self):
         return 'Showtimes Alias'
 
+
+    @commands.Cog.listener()
+    async def on_command_error(self, ctx, error):
+        """The event triggered when an error is raised while invoking a command.
+        ctx   : Context
+        error : Exception"""
+
+        # This prevents any commands with local handlers being handled here in on_command_error.
+        if hasattr(ctx.command, 'on_error'):
+            return
+
+        ignored = (commands.CommandNotFound, commands.UserInputError)
+
+        # Allows us to check for original exceptions raised and sent to CommandInvokeError.
+        # If nothing is found. We keep the exception passed to on_command_error.
+        error = getattr(error, 'original', error)
+
+        # Anything in ignored will return and prevent anything happening.
+        if isinstance(error, ignored):
+            return
+        elif isinstance(error, commands.DisabledCommand):
+            return await ctx.send(f'{ctx.command} dinon-aktifkan.')
+        elif isinstance(error, commands.NoPrivateMessage):
+            try:
+                return await ctx.author.send(f'{ctx.command} tidak bisa dipakai di Private Messages.')
+            except:
+                pass
+
+        print('Ignoring exception in command {}:'.format(ctx.command), file=sys.stderr)
+        traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
+        tb = traceback.format_exception(type(error), error, error.__traceback__)
+        await ctx.send('**Error**: laporkan kesalahan ini dengan traceback dibawah ke N4O#8868 (Berikan juga apa command yang sedang digunakan!)\n```js\n{}\n```'.format(''.join(tb)))
+
+    async def choose_anime(self, ctx, matches):
+        print('[!] Asking user for input.')
+        first_run = True
+        matches = matches[:10]
+        reactmoji = ['1⃣', "2⃣", '3⃣', '4⃣', '5⃣', '6⃣', '7⃣', '8⃣', '9⃣', '0⃣']
+        res_matches = []
+        while True:
+            if first_run:
+                embed = discord.Embed(title='Mungkin:', color=0x8253b8)
+
+                format_value = []
+                for n, i in enumerate(matches):
+                    format_value.append('{} **{}**'.format(reactmoji[n], i))
+                format_value.append('❌ **Batalkan**')
+                embed.description = '\n'.join(format_value)
+
+                embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+
+                first_run = False
+                msg = await ctx.send(embed=embed)
+
+            reactmoji = ['1⃣', "2⃣", '3⃣', '4⃣', '5⃣', '6⃣', '7⃣', '8⃣', '9⃣', '0⃣']
+            reactmoji_extension = ['❌']
+
+            reactmoji = reactmoji[:len(matches)]
+            reactmoji.extend(reactmoji_extension)
+
+            for react in reactmoji:
+                await msg.add_reaction(react)
+
+            def check_react(reaction, user):
+                e = str(reaction.emoji)
+                return user == ctx.message.author and str(reaction.emoji) in reactmoji
+
+            try:
+                res, user = await self.bot.wait_for('reaction_add', timeout=20.0, check=check_react)
+            except asyncio.TimeoutError:
+                await msg.clear_reactions()
+                break
+            if user != ctx.message.author:
+                pass
+            elif '❌' in str(res.emoji):
+                await msg.clear_reactions()
+                break
+            else:
+                await msg.clear_reactions()
+                reaction_pos = reactmoji.index(str(res.emoji))
+                res_matches.append(matches[reaction_pos])
+                break
+        await msg.delete()
+        if res_matches:
+            print('[#] Picked: {}'.format(res_matches[0]))
+        return res_matches
+
     @commands.group()
+    @commands.guild_only()
     async def alias(self, ctx):
         """
         Initiate alias creation for certain anime
@@ -2034,8 +2126,9 @@ class ShowtimesAlias(commands.Cog):
                     await ctx.send('Tidak dapat menemukan judul tersebut di database')
                     return False, False
                 elif len(matches) > 1:
-                    await ctx.send('**Mungkin**: {}'.format(', '.join(matches)))
-                    return False, False
+                    matches = await self.choose_anime(ctx, matches)
+                    if not matches:
+                        return await ctx.send('**Dibatalkan**')
 
                 embed = discord.Embed(title="Alias", color=0x96df6a)
                 embed.add_field(name='Apakah benar?', value="Judul: **{}**".format(matches[0]), inline=False)
@@ -2126,7 +2219,7 @@ class ShowtimesAlias(commands.Cog):
                 return await ctx.send('**Dibatalkan!**')
 
             # Everything are done and now processing data
-            print(json_tables)
+            print('[!] Menyimpan data alias.')
             embed=discord.Embed(title="Alias", color=0x56acf3)
             embed.add_field(name="Memproses!", value='Membuat data...', inline=True)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
@@ -2197,12 +2290,14 @@ class ShowtimesAlias(commands.Cog):
             return await ctx.send('**Mungkin**: {}'.format(', '.join(sorted(srv_anilist))))
 
         matches = get_close_matches(judul, srv_anilist)
-        print('Matches: {}'.format(", ".join(matches)))
+        print('[!] Matches: {}'.format(", ".join(matches)))
 
         if not matches:
             return await ctx.send('Tidak dapat menemukan judul tersebut di database')
         elif len(matches) > 1:
-            return await ctx.send('**Mungkin**: {}'.format(', '.join(matches)))
+            matches = await self.choose_anime(ctx, matches)
+            if not matches:
+                return await ctx.send('**Dibatalkan**')
 
         srv_anilist_alias = []
         for k, v in server_data['alias'].items():
@@ -2250,12 +2345,14 @@ class ShowtimesAlias(commands.Cog):
             return await ctx.send('**Mungkin**: {}'.format(', '.join(sorted(srv_anilist))))
 
         matches = get_close_matches(judul, srv_anilist)
-        print('Matches: {}'.format(", ".join(matches)))
+        print('[!] Matches: {}'.format(", ".join(matches)))
 
         if not matches:
             return await ctx.send('Tidak dapat menemukan judul tersebut di database')
         elif len(matches) > 1:
-            return await ctx.send('**Mungkin**: {}'.format(', '.join(matches)))
+            matches = await self.choose_anime(ctx, matches)
+            if not matches:
+                return await ctx.send('**Dibatalkan**')
 
         srv_anilist_alias = []
         for k, v in server_data['alias'].items():
@@ -2266,7 +2363,6 @@ class ShowtimesAlias(commands.Cog):
             return await ctx.send('Tidak ada alias yang terdaftar untuk judul **{}**'.format(matches[0]))
         
         alias_chunked = [srv_anilist_alias[i:i + 5] for i in range(0, len(srv_anilist_alias), 5)]
-        print(alias_chunked)
 
         first_run = True
         n = 1
@@ -2349,11 +2445,98 @@ class ShowtimesAlias(commands.Cog):
 class ShowtimesKolaborasi(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.cog_name = 'Showtimes Kolaborasi'
 
     def __str__(self):
         return 'Showtimes Kolaborasi'
 
+
+    @commands.Cog.listener()
+    async def on_command_error(self, ctx, error):
+        """The event triggered when an error is raised while invoking a command.
+        ctx   : Context
+        error : Exception"""
+
+        # This prevents any commands with local handlers being handled here in on_command_error.
+        if hasattr(ctx.command, 'on_error'):
+            return
+
+        ignored = (commands.CommandNotFound, commands.UserInputError)
+
+        # Allows us to check for original exceptions raised and sent to CommandInvokeError.
+        # If nothing is found. We keep the exception passed to on_command_error.
+        error = getattr(error, 'original', error)
+
+        # Anything in ignored will return and prevent anything happening.
+        if isinstance(error, ignored):
+            return
+        elif isinstance(error, commands.DisabledCommand):
+            return await ctx.send(f'{ctx.command} dinon-aktifkan.')
+        elif isinstance(error, commands.NoPrivateMessage):
+            return await ctx.author.send(f'{ctx.command} tidak bisa dipakai di Private Messages.')
+
+        print('Ignoring exception in command {}:'.format(ctx.command), file=sys.stderr)
+        traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
+        tb = traceback.format_exception(type(error), error, error.__traceback__)
+        await ctx.send('**Error**: laporkan kesalahan ini dengan traceback dibawah ke N4O#8868 (Berikan juga apa command yang sedang digunakan!)\n```js\n{}\n```'.format(''.join(tb)))
+
+
+    async def choose_anime(self, ctx, matches):
+        print('[!] Asking user for input.')
+        first_run = True
+        matches = matches[:10]
+        reactmoji = ['1⃣', "2⃣", '3⃣', '4⃣', '5⃣', '6⃣', '7⃣', '8⃣', '9⃣', '0⃣']
+        res_matches = []
+        while True:
+            if first_run:
+                embed = discord.Embed(title='Mungkin:', color=0x8253b8)
+
+                format_value = []
+                for n, i in enumerate(matches):
+                    format_value.append('{} **{}**'.format(reactmoji[n], i))
+                format_value.append('❌ **Batalkan**')
+                embed.description = '\n'.join(format_value)
+
+                embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+
+                first_run = False
+                msg = await ctx.send(embed=embed)
+
+            reactmoji = ['1⃣', "2⃣", '3⃣', '4⃣', '5⃣', '6⃣', '7⃣', '8⃣', '9⃣', '0⃣']
+            reactmoji_extension = ['❌']
+
+            reactmoji = reactmoji[:len(matches)]
+            reactmoji.extend(reactmoji_extension)
+
+            for react in reactmoji:
+                await msg.add_reaction(react)
+
+            def check_react(reaction, user):
+                e = str(reaction.emoji)
+                return user == ctx.message.author and str(reaction.emoji) in reactmoji
+
+            try:
+                res, user = await self.bot.wait_for('reaction_add', timeout=20.0, check=check_react)
+            except asyncio.TimeoutError:
+                await msg.clear_reactions()
+                break
+            if user != ctx.message.author:
+                pass
+            elif '❌' in str(res.emoji):
+                await msg.clear_reactions()
+                break
+            else:
+                await msg.clear_reactions()
+                reaction_pos = reactmoji.index(str(res.emoji))
+                res_matches.append(matches[reaction_pos])
+                break
+        await msg.delete()
+        if res_matches:
+            print('[#] Picked: {}'.format(res_matches[0]))
+        return res_matches
+
     @commands.group(aliases=['joint', 'join', 'koleb'])
+    @commands.guild_only()
     async def kolaborasi(self, ctx):
         if not ctx.invoked_subcommand:
             helpmain = discord.Embed(title="Bantuan Perintah (!kolaborasi)", description="versi 1.5.0", color=0x00aaaa)
@@ -2406,12 +2589,14 @@ class ShowtimesKolaborasi(commands.Cog):
                 res = find_alias_anime(i, server_data['alias'])
                 if res not in matches: # To not duplicate result
                     matches.append(res)
-        print('Matches: {}'.format(", ".join(matches)))
+        print('[!] Matches: {}'.format(", ".join(matches)))
 
         if not matches:
             return await ctx.send('Tidak dapat menemukan judul tersebut di database')
         elif len(matches) > 1:
-            return await ctx.send('**Mungkin**: {}'.format(', '.join(matches)))
+            matches = await self.choose_anime(ctx, matches)
+            if not matches:
+                return await ctx.send('**Dibatalkan**')
 
         if 'kolaborasi' in server_data['anime'][matches[0]]:
             if server_id in server_data['anime'][matches[0]]['kolaborasi']:
@@ -2637,7 +2822,7 @@ class ShowtimesKolaborasi(commands.Cog):
 
 
     @kolaborasi.command()
-    async def putus(self, ctx, judul):
+    async def putus(self, ctx, *, judul):
         server_message = str(ctx.message.guild.id)
         print('[#] Requested !kolaborasi batalkan at: ' + server_message)
         json_d = await fetch_json()
@@ -2670,12 +2855,14 @@ class ShowtimesKolaborasi(commands.Cog):
                 res = find_alias_anime(i, server_data['alias'])
                 if res not in matches: # To not duplicate result
                     matches.append(res)
-        print('Matches: {}'.format(", ".join(matches)))
+        print('[!] Matches: {}'.format(", ".join(matches)))
 
         if not matches:
             return await ctx.send('Tidak dapat menemukan judul tersebut di database')
         elif len(matches) > 1:
-            return await ctx.send('**Mungkin**: {}'.format(', '.join(matches)))
+            matches = await self.choose_anime(ctx, matches)
+            if not matches:
+                return await ctx.send('**Dibatalkan**')
 
         program_info = server_data['anime'][matches[0]]
         status_list = program_info['status']
@@ -2710,9 +2897,44 @@ class ShowtimesKolaborasi(commands.Cog):
 class ShowtimesAdmin(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.cog_name = 'Showtimes Admin'
 
     def __str__(self):
         return 'Showtimes Admin'
+
+
+    @commands.Cog.listener()
+    async def on_command_error(self, ctx, error):
+        """The event triggered when an error is raised while invoking a command.
+        ctx   : Context
+        error : Exception"""
+
+        # This prevents any commands with local handlers being handled here in on_command_error.
+        if hasattr(ctx.command, 'on_error'):
+            return
+
+        ignored = (commands.CommandNotFound, commands.UserInputError)
+
+        # Allows us to check for original exceptions raised and sent to CommandInvokeError.
+        # If nothing is found. We keep the exception passed to on_command_error.
+        error = getattr(error, 'original', error)
+
+        # Anything in ignored will return and prevent anything happening.
+        if isinstance(error, ignored):
+            return
+        elif isinstance(error, commands.DisabledCommand):
+            return await ctx.send(f'{ctx.command} dinon-aktifkan.')
+        elif isinstance(error, commands.NoPrivateMessage):
+            try:
+                return await ctx.author.send(f'{ctx.command} tidak bisa dipakai di Private Messages.')
+            except:
+                pass
+
+        print('Ignoring exception in command {}:'.format(ctx.command), file=sys.stderr)
+        traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
+        tb = traceback.format_exception(type(error), error, error.__traceback__)
+        await ctx.send('**Error**: laporkan kesalahan ini dengan traceback dibawah ke N4O#8868 (Berikan juga apa command yang sedang digunakan!)\n```js\n{}\n```'.format(''.join(tb)))
+
 
     @commands.group(pass_context=True, aliases=['naotimesadmin', 'naoadmin'])
     async def ntadmin(self, ctx):
@@ -2760,6 +2982,7 @@ class ShowtimesAdmin(commands.Cog):
 
     
     @ntadmin.command(pass_context=True)
+    @commands.guild_only()
     async def initiate(self, ctx):
         """
         Initiate naoTimes on this server so it can be used on other server
@@ -2903,7 +3126,7 @@ class ShowtimesAdmin(commands.Cog):
         server_data['anime'] = {}
         server_data['alias'] = {}
 
-        main_data[str(ctx.message.server.id)] = server_data
+        main_data[str(ctx.message.guild.id)] = server_data
         print('[@] Sending data')
 
         hh = {
@@ -2971,6 +3194,7 @@ class ShowtimesAdmin(commands.Cog):
 
 
     @ntadmin.command(pass_context=True)
+    @commands.guild_only()
     async def patchdb(self, ctx):
         """
         !! Warning !!
@@ -3204,6 +3428,7 @@ class ShowtimesAdmin(commands.Cog):
 
     
     @ntadmin.command(pass_context=True)
+    @commands.guild_only()
     async def forceupdate(self, ctx):
         print('[#] Requested forceupdate by admin')
         if int(ctx.message.author.id) != int(bot_config['owner_id']):
@@ -3241,20 +3466,57 @@ class ShowtimesAdmin(commands.Cog):
 class ShowtimesConfigData(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.cog_name = 'Showtimes Data Configuration'
+
+    def __str__(self):
+        return 'Showtimes Data Configuration'
+
+    @commands.Cog.listener()
+    async def on_command_error(self, ctx, error):
+        """The event triggered when an error is raised while invoking a command.
+        ctx   : Context
+        error : Exception"""
+
+        # This prevents any commands with local handlers being handled here in on_command_error.
+        if hasattr(ctx.command, 'on_error'):
+            return
+
+        ignored = (commands.CommandNotFound, commands.UserInputError)
+
+        # Allows us to check for original exceptions raised and sent to CommandInvokeError.
+        # If nothing is found. We keep the exception passed to on_command_error.
+        error = getattr(error, 'original', error)
+
+        # Anything in ignored will return and prevent anything happening.
+        if isinstance(error, ignored):
+            return
+        elif isinstance(error, commands.DisabledCommand):
+            return await ctx.send(f'{ctx.command} dinon-aktifkan.')
+        elif isinstance(error, commands.NoPrivateMessage):
+            try:
+                return await ctx.author.send(f'{ctx.command} tidak bisa dipakai di Private Messages.')
+            except:
+                pass
+
+        print('Ignoring exception in command {}:'.format(ctx.command), file=sys.stderr)
+        traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
+        tb = traceback.format_exception(type(error), error, error.__traceback__)
+        await ctx.send('**Error**: laporkan kesalahan ini dengan traceback dibawah ke N4O#8868 (Berikan juga apa command yang sedang digunakan!)\n```js\n{}\n```'.format(''.join(tb)))
 
     async def choose_anime(self, ctx, matches):
+        print('[!] Asking user for input.')
         first_run = True
         matches = matches[:10]
         reactmoji = ['1⃣', "2⃣", '3⃣', '4⃣', '5⃣', '6⃣', '7⃣', '8⃣', '9⃣', '0⃣']
         res_matches = []
         while True:
             if first_run:
-                embed = discord.Embed(title='Mungkin:', color=0x96df6a)
+                embed = discord.Embed(title='Mungkin:', color=0x8253b8)
 
                 format_value = []
                 for n, i in enumerate(matches):
-                    format_value.append('{}: **{}**'.format(n, i))
-                format_value.append('❌: **Batalkan**')
+                    format_value.append('{} **{}**'.format(reactmoji[n], i))
+                format_value.append('❌ **Batalkan**')
                 embed.description = '\n'.join(format_value)
 
                 embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
@@ -3264,7 +3526,7 @@ class ShowtimesConfigData(commands.Cog):
 
             reactmoji = ['1⃣', "2⃣", '3⃣', '4⃣', '5⃣', '6⃣', '7⃣', '8⃣', '9⃣', '0⃣']
             reactmoji_extension = ['❌']
-            
+
             reactmoji = reactmoji[:len(matches)]
             reactmoji.extend(reactmoji_extension)
 
@@ -3291,9 +3553,12 @@ class ShowtimesConfigData(commands.Cog):
                 res_matches.append(matches[reaction_pos])
                 break
         await msg.delete()
+        if res_matches:
+            print('[#] Picked: {}'.format(res_matches[0]))
         return res_matches
 
     @commands.command()
+    @commands.guild_only()
     async def ubahdata(self, ctx, *, judul):
         server_message = str(ctx.message.guild.id)
         print('[@] Requested !ubahdata at: ' + server_message)
@@ -3608,8 +3873,39 @@ class ShowtimesConfigData(commands.Cog):
 
             return emb_msg
 
+        async def hapus_utang_tanya(emb_msg):
+            delete_ = False
+            while True:
+                embed=discord.Embed(title="Menghapus Utang", description="Anime: {}".format(matches[0]), color=0xcc1c20)
+                embed.add_field(name='Peringatan!', value='Utang akan dihapus selama-lamanya dan tidak bisa dikembalikan!\nLanjutkan proses?', inline=False)
+                embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+                await emb_msg.edit(embed=embed)
+
+                reactmoji = ['✅', '❌']
+
+                for react in reactmoji:
+                    await emb_msg.add_reaction(react)
+
+                def check_react(reaction, user):
+                    e = str(reaction.emoji)
+                    return user == ctx.message.author and str(reaction.emoji) in reactmoji
+
+                res, user = await self.bot.wait_for('reaction_add', check=check_react)
+                if user != ctx.message.author:
+                    pass
+                elif '✅' in str(res.emoji):
+                    await emb_msg.clear_reactions()
+                    delete_ = True
+                    break
+                elif '❌' in str(res.emoji):
+                    await emb_msg.clear_reactions()
+                    break
+                await emb_msg.clear_reactions()
+            return emb_msg, delete_
+
         first_run = True
         exit_command = False
+        hapus_utang = False
         while True:
             guild_roles = ctx.message.guild.roles
             total_episodes = len(json_d[server_message]['anime'][matches[0]]['status'])
@@ -3618,7 +3914,8 @@ class ShowtimesConfigData(commands.Cog):
             embed.add_field(name="1⃣ Ubah Staff", value="Ubah staff yang mengerjakan anime ini.", inline=False)
             embed.add_field(name='2⃣ Ubah Role', value="Ubah role discord yang digunakan:\nRole sekarang: {}".format(get_role_name(role_id, guild_roles)), inline=False)
             embed.add_field(name='3⃣ Tambah Episode', value="Tambah jumlah episode\nTotal Episode sekarang: {}".format(total_episodes), inline=False)
-            embed.add_field(name="4⃣ Hapus Episode", value="Hapus episode tertentu.", inline=True)
+            embed.add_field(name="4⃣ Hapus Episode", value="Hapus episode tertentu.", inline=False)
+            embed.add_field(name="5⃣ Drop Garapan", value="Menghapus garapan ini dari daftar utang untuk selama-lamanya...", inline=False)
             embed.add_field(name="Lain-Lain", value="✅ Selesai!\n❌ Batalkan!", inline=False)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
             if first_run:
@@ -3627,7 +3924,7 @@ class ShowtimesConfigData(commands.Cog):
             else:
                 await emb_msg.edit(embed=embed)
 
-            reactmoji = ['1⃣', "2⃣", '3⃣', '4⃣', '✅', '❌']
+            reactmoji = ['1⃣', "2⃣", '3⃣', '4⃣', '5⃣', '✅', '❌']
 
             for react in reactmoji:
                 await emb_msg.add_reaction(react)
@@ -3653,16 +3950,70 @@ class ShowtimesConfigData(commands.Cog):
                 emb_msg = await hapus_episode(emb_msg)
             elif reactmoji[4] in str(res.emoji):
                 await emb_msg.clear_reactions()
+                emb_msg, hapus_utang = await hapus_utang_tanya(emb_msg)
+                if hapus_utang:
+                    await emb_msg.delete()
+                    break
+            elif reactmoji[5] in str(res.emoji):
+                await emb_msg.clear_reactions()
                 await emb_msg.delete()
                 break
-            elif reactmoji[5] in str(res.emoji):
+            elif reactmoji[6] in str(res.emoji):
                 await emb_msg.clear_reactions()
                 await emb_msg.delete()
                 exit_command = True
                 break
 
         if exit_command:
+            print('[!] Dibatalkan.')
             return await ctx.send('**Dibatalkan!**')
+        if hapus_utang:
+            print('[!] Menghapus dari daftar utang!')
+            current = get_current_ep(program_info['status'])
+            try:
+                if program_info['status']['1']['status'] == 'not_released':
+                    announce_it = False
+                elif not current:
+                    announce_it = False
+                else:
+                    announce_it = True
+            except KeyError:
+                announce_it = True
+
+            del json_d[server_message]['anime'][matches[0]]
+
+            with open('nao_showtimes.json', 'w') as f: # Local save before commiting
+                json.dump(json_d, f, indent=4)
+            print('[@] Sending message to staff...')
+            await ctx.send('Berhasil menghapus **{}** dari daftar utang'.format(matches[0]))
+
+            success = await patch_json(json_d)
+            if success:
+                if koleb_list:
+                    for other_srv in koleb_list:
+                        if 'announce_channel' in json_d[other_srv]:
+                            print('[@] Sending progress info to everyone at {}'.format(other_srv))
+                            announce_chan = json_d[other_srv]['announce_channel']
+                            target_chan = self.bot.get_channel(int(announce_chan))
+                            embed = discord.Embed(title="{}".format(matches[0]), color=0xb51e1e)
+                            embed.add_field(name='Dropped...', value="{} telah di drop dari fansub ini :(".format(matches[0]), inline=False)
+                            embed.set_footer(text="Pada: {}".format(get_current_time()))
+                            if announce_it:
+                                print('[@] Sending message to user...')
+                                await target_chan.send(embed=embed)
+                if 'announce_channel' in server_data:
+                    announce_chan = server_data['announce_channel']
+                    target_chan = self.bot.get_channel(int(announce_chan))
+                    embed = discord.Embed(title="{}".format(matches[0]), color=0xb51e1e)
+                    embed.add_field(name='Dropped...', value="{} telah di drop dari fansub ini :(".format(matches[0]), inline=False)
+                    embed.set_footer(text="Pada: {}".format(get_current_time()))
+                    if announce_it:
+                        print('[@] Sending message to user...')
+                        await target_chan.send(embed=embed)
+                    return
+            server_in = self.bot.get_guild(int(bot_config['main_server']))
+            mod_mem_data = server_in.get_member(int(bot_config['owner_id']))
+            return await mod_mem_data.send('Terjadi kesalahan patch `buangutang` pada server **{}**'.format(server_message))
 
         print('[!] Menyimpan data baru untuk garapan: ' +  matches[0])
         with open('nao_showtimes.json', 'w') as f: # Local save before commiting
@@ -3676,8 +4027,9 @@ ShowTimesCommands = [Showtimes, ShowtimesAdmin, ShowtimesAlias, ShowtimesKolabor
 def setup(bot):
     for ShowTC in ShowTimesCommands:
         try:
-            print('\t[#] Loading {} Commands...'.format(str(ShowTC)))
-            bot.add_cog(ShowTC(bot))
+            ShowTCLoad = ShowTC(bot)
+            print('\t[#] Loading {} Commands...'.format(str(ShowTCLoad)))
+            bot.add_cog(ShowTCLoad)
             print('\t[@] Loaded.')
         except Exception as ex:
             print('\t[!] Failed: {}'.format(str(ex)))
