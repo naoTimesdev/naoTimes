@@ -7,6 +7,8 @@ import logging
 import os
 import sys
 import time
+import traceback
+from datetime import datetime
 from itertools import cycle
 
 import aiohttp
@@ -24,14 +26,28 @@ async def fetch_newest_db(CONFIG_DATA):
     if CONFIG_DATA['gist_id'] == "":
         return print('[#] naoTimes are not setted up, skipping...')
     url = 'https://gist.githubusercontent.com/{u}/{g}/raw/nao_showtimes.json'
+    url_rss = 'https://gist.githubusercontent.com/{u}/{g}/raw/fansubrss.json'
     async with aiohttp.ClientSession() as session:
         while True:
             try:
-                async with session.get(url.format(u=CONFIG_DATA['github_info']['username'], g=CONFIG_DATA['gist_id'])) as r:
+                headers = {'User-Agent': 'naoTimes v2.0'}
+                print('\t[#] Fetching nao_showtimes.json')
+                async with session.get(url.format(u=CONFIG_DATA['github_info']['username'], g=CONFIG_DATA['gist_id']), headers=headers) as r:
                     try:
                         r_data = await r.text()
                         js_data = json.loads(r_data)
                         with open('nao_showtimes.json', 'w') as f:
+                            json.dump(js_data, f, indent=4)
+                        print('\t[@] Fetched and saved.')
+                        return
+                    except IndexError:
+                        continue
+                print('\t[#] Fetching fansubrss.json')
+                async with session.get(url_rss.format(u=CONFIG_DATA['github_info']['username'], g=CONFIG_DATA['gist_id']), headers=headers) as r:
+                    try:
+                        r_data = await r.text()
+                        js_data = json.loads(r_data)
+                        with open('fansubrss.json', 'w') as f:
                             json.dump(js_data, f, indent=4)
                         print('[@] Fetched and saved.')
                         return
@@ -50,9 +66,11 @@ def prefixes(bot, message):
         pre = json.load(f)
     default_ = "!!"
 
-    id_srv = str(server.id)
     pre_data = []
-    pre_ = pre.get(id_srv)
+    pre_ = None
+    if server:
+        id_srv = str(server.id)
+        pre_ = pre.get(id_srv)
     if not pre_:
         pre_data.append(default_)
     else:
@@ -79,9 +97,6 @@ async def init_bot():
     handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
     logger.addHandler(handler)
 
-    print('[@] Set global start time')
-    global_start_time = time.time()
-
     print('[@] Looking up config')
     with open('config.json', 'r') as fp:
         config = json.load(fp)
@@ -91,24 +106,18 @@ async def init_bot():
         description = '''Penyuruh Fansub biar kerja cepat\nversi 2.0.0 || Dibuat oleh: N4O#8868'''
         bot = commands.Bot(command_prefix=prefixes, description=description)
         bot.remove_command('help')
-        await fetch_newest_db(config)
-        for load in cogs_list:
-            try:
-                bot.load_extension(load)
-                print('[#] Loaded ' + load + ' Module')
-            except Exception as e:
-                print('[!!] Failed Loading ' + load + ' Module')
-                print('\t' + str(e))
+        #TODO: Enable this
+        #await fetch_newest_db(config)
         print('[@!!] Success Loading Discord.py')
     except Exception as exc:
         print('[#!!] Failed to load Discord.py ###')
         print('\t' + str(exc))
-    return bot, config, logger, global_start_time
+    return bot, config, logger
 
 # Initiate everything
 print('[@] Initiating bot...')
 async_loop = asyncio.get_event_loop()
-bot, bot_config, logger, global_start_time = async_loop.run_until_complete(init_bot())
+bot, bot_config, logger = async_loop.run_until_complete(init_bot())
 presence_status = [
     "Mengamati rilisan fansub | !help",
     "Membantu Fansub | !help",
@@ -158,10 +167,24 @@ async def on_ready():
     activity = discord.Game(name=presence_status[0], type=3)
     await bot.change_presence(activity=activity)
     print('---------------------------------------------------------------')
+    print('Bot Ready!')
+    print('Using Python {}'.format(sys.version))
+    print('And Using Discord.py v{}'.format(discord.__version__))
+    print('---------------------------------------------------------------')
     print('Logged in as:')
     print('Bot name: {}'.format(bot.user.name))
     print('With Client ID: {}'.format(bot.user.id))
     print('---------------------------------------------------------------')
+    if not hasattr(bot, 'uptime'):
+        bot.owner = (await bot.application_info()).owner
+        bot.uptime = time.time()
+        for load in cogs_list:
+            try:
+                bot.load_extension(load)
+                print('[#] Loaded ' + load + ' Module')
+            except Exception as e:
+                print('[!!] Failed Loading ' + load + ' Module')
+                print('\t' + str(e))
 
 async def change_bot_presence():
     await bot.wait_until_ready()
@@ -173,6 +196,59 @@ async def change_bot_presence():
         current_status = next(presences)
         activity = discord.Game(name=current_status, type=3)
         await bot.change_presence(activity=activity)
+
+async def send_hastebin(info):
+    async with aiohttp.ClientSession() as session:
+        async with session.post("https://hastebin.com/documents", data = str(info)) as resp:
+            if resp.status is 200:
+                return "Error Occured\nSince the log is way too long here's a hastebin logs.\nhttps://hastebin.com/{}.py".format((await resp.json())["key"])
+
+@bot.event
+async def on_command_error(ctx, error):
+    """The event triggered when an error is raised while invoking a command.
+    ctx   : Context
+    error : Exception"""
+
+    if hasattr(ctx.command, 'on_error'):
+        return
+
+    ignored = (commands.CommandNotFound, commands.UserInputError)
+    error = getattr(error, 'original', error)
+
+    if isinstance(error, ignored):
+        return
+    elif isinstance(error, commands.DisabledCommand):
+        return await ctx.send(f'`{ctx.command}`` dinon-aktifkan.')
+    elif isinstance(error, commands.NoPrivateMessage):
+        try:
+            return await ctx.author.send(f'`{ctx.command}`` tidak bisa dipakai di Private Messages.')
+        except:
+            pass
+
+    current_time = time.time()
+
+    print('Ignoring exception in command {}:'.format(ctx.command), file=sys.stderr)
+    traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
+    tb = traceback.format_exception(type(error), error, error.__traceback__)
+    error_fmt = "```An Error has occured...\nIn Command: {0.command}\nCogs: {0.command.cog_name}\nAuthor: {0.message.author} ({0.message.author.id})\n" \
+                    "Server: {0.message.guild.id}\nMessage: {0.message.clean_content}".format(ctx)
+    msg ="```py\n{}```\n{}\n```py\n{}\n```".format(datetime.utcnow().strftime("%b/%d/%Y %H:%M:%S UTC") + "\n"+ "ERROR!",error_fmt,"".join(tb).replace("`",""))
+
+    embed = discord.Embed(title="Error Logger", colour=0xff253e, description="Terjadi kesalahan atau Insiden baru-baru ini...", timestamp=datetime.utcfromtimestamp(current_time))
+    embed.add_field(name="Cogs", value="[nT!] {0.cog_name}".format(ctx.command), inline=False)
+    embed.add_field(name="Perintah yang dipakai", value="{0.command}\n`{0.message.clean_content}`".format(ctx), inline=False)
+    embed.add_field(name="Server Insiden", value="{0.guild.name} ({0.guild.id})".format(ctx.message), inline=False)
+    embed.add_field(name="Orang yang memakainya", value="{0.author.name}#{0.author.discriminator} ({0.author.id})".format(ctx.message), inline=False)
+    embed.add_field(name="Traceback", value="```py\n{}\n```".format("".join(tb)), inline=True)
+    embed.set_thumbnail(url="http://p.ihateani.me/1bnBuV9C")
+    try:
+        await bot.owner.send(embed=embed)
+    except:
+        if len(msg) > 1900:
+            msg = await send_hastebin(msg)
+        await bot.owner.send(msg)
+    await ctx.send('**Error**: Insiden internal ini telah dilaporkan ke N4O#8868, mohon tunggu jawabannya kembali.')
+    logger.error("".join(tb))
 
 async def other_ping_test():
     """Github and anilist ping test"""
@@ -212,7 +288,7 @@ async def other_ping_test():
 
 def create_uptime():
     current_time = time.time()
-    up_secs = int(round(current_time - global_start_time)) # Seconds
+    up_secs = int(round(current_time - bot.uptime)) # Seconds
 
     up_months = int(up_secs // 2592000) # 30 days format
     up_secs -= up_months * 2592000
