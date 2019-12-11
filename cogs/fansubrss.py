@@ -15,6 +15,8 @@ import feedparser
 from discord.ext import commands, tasks
 from markdownify import markdownify as mdparse
 
+with open('config.json', 'r') as fp:
+    bot_config = json.load(fp)
 
 async def fetch_json() -> dict:
     """
@@ -28,6 +30,33 @@ async def fetch_json() -> dict:
         json_data = json.load(fp)
     
     return json_data
+
+async def patch_json_rss(jsdata: dict) -> bool:
+    """
+    Send modified data back to github
+    """
+    hh = {
+        "description": "N4O Showtimes bot",
+        "files": {
+            "fansubrss.json": {
+                "filename": "fansubrss.json",
+                "content": json.dumps(jsdata, indent=4)
+            }
+        }
+    }
+
+    print('[@] Patching RSS gists')
+    headers = {'User-Agent': 'naoTimes v2.0'}
+    async with aiohttp.ClientSession(auth=aiohttp.BasicAuth(bot_config['github_info']['username'], bot_config['github_info']['personal_access_token']), headers=headers) as sesi2:
+        async with sesi2.patch('https://api.github.com/gists/{}'.format(bot_config['gist_id']), json=hh) as resp:
+            r = await resp.json()
+    try:
+        m = r['message']
+        print('[!!] Can\'t patch RSS: {}'.format(m))
+        return False
+    except KeyError:
+        print('[@] Done patching RSS')
+        return True
 
 def filter_data(entries) -> dict:
     """Remove unnecessary tags that just gonna trashed the data"""
@@ -158,7 +187,6 @@ async def parse_embed(embed_data, entry_data):
             del filtered['footer_img']
         filtered['footer'] = new_f
 
-    print(filtered)
     return filtered
 
 
@@ -189,6 +217,18 @@ def read_rss_data():
     return json_d_rss
 
 
+async def patch_error_handling(bot, ctx):
+    current_time = time.time()
+    embed = discord.Embed(title="Patch Error Logger", colour=0x252aff, description="Terjadi kesalahan patch ke github RSS...", timestamp=datetime.utcfromtimestamp(current_time))
+    embed.add_field(name="Cogs", value="[nT!] {0.cog_name}".format(ctx.command), inline=False)
+    embed.add_field(name="Perintah yang dipakai", value="{0.command}\n`{0.message.clean_content}`".format(ctx), inline=False)
+    embed.add_field(name="Server Insiden", value="{0.guild.name} ({0.guild.id})".format(ctx.message), inline=False)
+    embed.add_field(name="Orang yang memakainya", value="{0.author.name}#{0.author.discriminator} ({0.author.id})".format(ctx.message), inline=False)
+    embed.set_thumbnail(url="http://p.ihateani.me/1bnBuV9C")
+
+    await bot.owner.send(embed=embed)
+
+
 class FansubRSS(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -196,7 +236,7 @@ class FansubRSS(commands.Cog):
 
 
     @tasks.loop(minutes=5.0)
-    async def check_every_feed(self):
+    async def check_every_feed(self, ctx):
         print('[@] Routine 5 minute checks of fansub rss')
         json_d_rss = read_rss_data()
 
@@ -218,6 +258,9 @@ class FansubRSS(commands.Cog):
                         await channel.send(msg_format)
                 json_d_rss[k]['lastUpdate'] = entries[0]['title']
                 write_rss_data(json_d_rss)
+                result_patch = await patch_json_rss(json_d_rss)
+                if not result_patch:
+                    await patch_error_handling(self.bot, ctx)
             else:
                 print('[@] No new update.')
         print("[@] Finish checking, now sleeping for 5 minutes")
@@ -247,7 +290,7 @@ class FansubRSS(commands.Cog):
     async def lastupdate(self, ctx):
         json_d_rss = read_rss_data()
         server_message = str(ctx.message.guild.id)
-        print('Requested !fansubrss lastupdate at: ' + server_message)
+        print('[@] Requested !fansubrss lastupdate at: ' + server_message)
 
         if server_message not in json_d_rss:
             return
@@ -279,7 +322,7 @@ class FansubRSS(commands.Cog):
     @commands.guild_only()
     async def aktifkan(self, ctx):
         server_message = str(ctx.message.guild.id)
-        print('Requested !fansubrss aktifkan at: ' + server_message)
+        print('[@] Requested !fansubrss aktifkan at: ' + server_message)
         json_d_rss = read_rss_data()
 
         json_d = await fetch_json()
@@ -294,7 +337,7 @@ class FansubRSS(commands.Cog):
         if server_message in json_d_rss:
             return await ctx.send('RSS telah diaktifkan di server ini.')
 
-        print('Membuat data')
+        print('[!] Membuat data')
         embed = discord.Embed(title="Fansub RSS", color=0x56acf3)
         embed.add_field(name='Memulai Proses!', value="Mempersiapkan...", inline=False)
         embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
@@ -409,13 +452,16 @@ class FansubRSS(commands.Cog):
         embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
         await ctx.send(embed=embed)
         await emb_msg.delete()
+        result_patch = await patch_json_rss(json_d_rss)
+        if not result_patch:
+            await patch_error_handling(self.bot, ctx)
 
 
     @fansubrss.command(aliases=['pesan'])
     @commands.guild_only()
     async def formatpesan(self, ctx):
         server_message = str(ctx.message.guild.id)
-        print('Requested !fansubrss formatpesan at: ' + server_message)
+        print('[@] Requested !fansubrss formatpesan at: ' + server_message)
         json_d_rss = read_rss_data()
 
         json_d = await fetch_json()
@@ -468,13 +514,21 @@ class FansubRSS(commands.Cog):
             await msg_.delete()
             json_d_rss[server_message]['message'] = None
             write_rss_data(json_d_rss)
-            return await ctx.send('Berhasil menghapus pesan.')
+            await ctx.send('Berhasil menghapus pesan.')
+            result_patch = await patch_json_rss(json_d_rss)
+            if not result_patch:
+                await patch_error_handling(self.bot, ctx)
+            return
 
         if user_input.content == ("reset"):
             await msg_.delete()
             json_d_rss[server_message]['message'] = r":newspaper: | Rilisan Baru: **{title}**\n{link}"
             write_rss_data(json_d_rss)
-            return await ctx.send('Berhasil mengembalikan pesan ke bawaan naoTimes.')
+            await ctx.send('Berhasil mengembalikan pesan ke bawaan naoTimes.')
+            result_patch = await patch_json_rss(json_d_rss)
+            if not result_patch:
+                await patch_error_handling(self.bot, ctx)
+            return
 
         konten_pesan = user_input.content
 
@@ -488,13 +542,16 @@ class FansubRSS(commands.Cog):
         await fin.delete()
         await user_input.delete()
         await ctx.send('Berhasil mengubah format pesan ke `{}`'.format(konten_pesan))
+        result_patch = await patch_json_rss(json_d_rss)
+        if not result_patch:
+            await patch_error_handling(self.bot, ctx)
 
 
     @fansubrss.command(aliases=['embed'])
     @commands.guild_only()
     async def formatembed(self, ctx):
         server_message = str(ctx.message.guild.id)
-        print('Requested !fansubrss formatembed at: ' + server_message)
+        print('[@] Requested !fansubrss formatembed at: ' + server_message)
         json_d_rss = read_rss_data()
 
         json_d = await fetch_json()
@@ -601,6 +658,9 @@ class FansubRSS(commands.Cog):
             json_d_rss[server_message]['embed'] = embed
             write_rss_data(json_d_rss)
             return await ctx.send('Berhasil menghapus embed')
+            result_patch = await patch_json_rss(json_d_rss)
+            if not result_patch:
+                await patch_error_handling(self.bot, ctx)
 
         await msg_.delete()
         await msg2_.delete()
@@ -617,6 +677,9 @@ class FansubRSS(commands.Cog):
         #await fin.delete()
         #await user_input.delete()
         await ctx.send('Berhasil mengubah format embed!'.format(formatted_dict))
+        result_patch = await patch_json_rss(json_d_rss)
+        if not result_patch:
+            await patch_error_handling(self.bot, ctx)
 
 
 def setup(bot):
