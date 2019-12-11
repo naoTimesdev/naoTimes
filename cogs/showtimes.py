@@ -563,7 +563,7 @@ class Showtimes(commands.Cog):
         if server_message not in json_d:
             return
         server_data = json_d[server_message]
-        print('[@] Found server list')
+        print('[@] Found server info on database.')
 
         srv_anilist = []
         srv_anilist_alias = []
@@ -593,7 +593,7 @@ class Showtimes(commands.Cog):
         elif len(matches) > 1:
             matches = await self.choose_anime(ctx, matches)
             if not matches:
-                return await ctx.send('**Dibatalkan**')
+                return await ctx.send('**Dibatalkan!**')
 
         program_info = server_data['anime'][matches[0]]
         last_update = int(program_info['last_update'])
@@ -635,6 +635,7 @@ class Showtimes(commands.Cog):
         if server_message not in json_d:
             return
         server_data = json_d[server_message]
+        print('[@] Found server info on database.')
 
         srv_owner = server_data['serverowner']
         srv_anilist = []
@@ -679,7 +680,7 @@ class Showtimes(commands.Cog):
             elif len(matches) > 1:
                 matches = await self.choose_anime(ctx, matches)
                 if not matches:
-                    return await ctx.send('**Dibatalkan**')
+                    return await ctx.send('**Dibatalkan!**')
 
             program_info = server_data['anime'][matches[0]]
             status_list = program_info['status']
@@ -736,7 +737,7 @@ class Showtimes(commands.Cog):
             elif len(matches) > 1:
                 matches = await self.choose_anime(ctx, matches)
                 if not matches:
-                    return await ctx.send('**Dibatalkan**')
+                    return await ctx.send('**Dibatalkan!**')
 
             program_info = server_data['anime'][matches[0]]
             status_list = program_info['status']
@@ -792,7 +793,7 @@ class Showtimes(commands.Cog):
             elif len(matches) > 1:
                 matches = await self.choose_anime(ctx, matches)
                 if not matches:
-                    return await ctx.send('**Dibatalkan**')
+                    return await ctx.send('**Dibatalkan!**')
 
             program_info = server_data['anime'][matches[0]]
             status_list = program_info['status']
@@ -877,6 +878,7 @@ class Showtimes(commands.Cog):
         if server_message not in json_d:
             return
         server_data = json_d[server_message]
+        print('[@] Found server info on database.')
 
         srv_owner = server_data['serverowner']
         srv_anilist = []
@@ -907,7 +909,7 @@ class Showtimes(commands.Cog):
         elif len(matches) > 1:
             matches = await self.choose_anime(ctx, matches)
             if not matches:
-                return await ctx.send('**Dibatalkan**')
+                return await ctx.send('**Dibatalkan!**')
 
         program_info = server_data['anime'][matches[0]]
         status_list = program_info['status']
@@ -1002,6 +1004,7 @@ class Showtimes(commands.Cog):
         if server_message not in json_d:
             return
         server_data = json_d[server_message]
+        print('[@] Found server info on database.')
 
         srv_owner = server_data['serverowner']
         srv_anilist = []
@@ -1032,7 +1035,7 @@ class Showtimes(commands.Cog):
         elif len(matches) > 1:
             matches = await self.choose_anime(ctx, matches)
             if not matches:
-                return await ctx.send('**Dibatalkan**')
+                return await ctx.send('**Dibatalkan!**')
 
         program_info = server_data['anime'][matches[0]]
         status_list = program_info['status']
@@ -1125,6 +1128,7 @@ class Showtimes(commands.Cog):
         if server_message not in json_d:
             return
         server_data = json_d[server_message]
+        print('[@] Found server info on database.')
 
         if str(ctx.message.author.id) not in server_data['serverowner']:
             return await ctx.send('Hanya admin yang bisa menambah utang')
@@ -1159,9 +1163,9 @@ class Showtimes(commands.Cog):
         first_time = True
 
         def check_if_author(m):
-            return m.author == ctx.message.author
+            return m.author == msg_author
 
-        async def process_episode(table, emb_msg, author):
+        async def process_episode(table, emb_msg):
             print('[@] Memproses jumlah episode')
             embed = discord.Embed(title="Menambah Utang", color=0x96df6a)
             embed.set_thumbnail(url=table['poster_img'])
@@ -1184,7 +1188,7 @@ class Showtimes(commands.Cog):
 
             return table, emb_msg
 
-        async def process_anilist(table, emb_msg, author):
+        async def process_anilist(table, emb_msg):
             print('[@] Memproses Anilist data')
             embed = discord.Embed(title="Menambah Utang", color=0x96df6a)
             embed.add_field(name='Anilist ID', value="Ketik ID Anilist untuk anime yang diinginkan\n\nBisa gunakan `!anime <judul>` dan melihat bagian bawah untuk IDnya\n\nKetik *cancel* untuk membatalkan proses", inline=False)
@@ -1234,7 +1238,7 @@ class Showtimes(commands.Cog):
 
             if correct_episode_num == 1:
                 print('[@] Correct episode are not grabbed, asking user...')
-                table, emb_msg = await process_episode(table, emb_msg, author)
+                table, emb_msg = await process_episode(table, emb_msg)
             else:
                 print('[@] Total episodes exist, using that to continue...')
                 table['episodes'] = correct_episode_num
@@ -1242,7 +1246,7 @@ class Showtimes(commands.Cog):
 
             return table, emb_msg
 
-        async def process_role(table, emb_msg, author):
+        async def process_role(table, emb_msg):
             print('[@] Memproses Role')
             embed = discord.Embed(title="Menambah Utang", color=0x96df6a)
             embed.set_thumbnail(url=table['poster_img'])
@@ -1274,11 +1278,9 @@ class Showtimes(commands.Cog):
                     await await_msg.delete()
                     break
 
-                #await await_msg.delete()
-
             return table, emb_msg
 
-        async def process_tlcer(table, emb_msg, author):
+        async def process_tlcer(table, emb_msg):
             print('[@] Memproses TLCer')
             embed = discord.Embed(title="Menambah Utang", color=0x96df6a)
             embed.set_thumbnail(url=table['poster_img'])
@@ -1302,7 +1304,7 @@ class Showtimes(commands.Cog):
 
             return table, emb_msg
 
-        async def process_tlor(table, emb_msg, author):
+        async def process_tlor(table, emb_msg):
             print('[@] Memproses TLor')
             embed = discord.Embed(title="Menambah Utang", color=0x96df6a)
             embed.set_thumbnail(url=table['poster_img'])
@@ -1322,11 +1324,10 @@ class Showtimes(commands.Cog):
                     table['tlor_id'] = str(mentions[0].id)
                     await await_msg.delete()
                     break
-                #await await_msg.delete()
 
             return table, emb_msg
 
-        async def process_encoder(table, emb_msg, author):
+        async def process_encoder(table, emb_msg):
             print('[@] Memproses Encoder')
             embed = discord.Embed(title="Menambah Utang", color=0x96df6a)
             embed.set_thumbnail(url=table['poster_img'])
@@ -1350,7 +1351,7 @@ class Showtimes(commands.Cog):
 
             return table, emb_msg
 
-        async def process_editor(table, emb_msg, author):
+        async def process_editor(table, emb_msg):
             print('[@] Memproses Editor')
             embed = discord.Embed(title="Menambah Utang", color=0x96df6a)
             embed.set_thumbnail(url=table['poster_img'])
@@ -1374,7 +1375,7 @@ class Showtimes(commands.Cog):
 
             return table, emb_msg
 
-        async def process_timer(table, emb_msg, author):
+        async def process_timer(table, emb_msg):
             print('[@] Memproses Timer')
             embed = discord.Embed(title="Menambah Utang", color=0x96df6a)
             embed.set_thumbnail(url=table['poster_img'])
@@ -1398,7 +1399,7 @@ class Showtimes(commands.Cog):
 
             return table, emb_msg
 
-        async def process_tser(table, emb_msg, author):
+        async def process_tser(table, emb_msg):
             print('[@] Memproses Typesetter')
             embed = discord.Embed(title="Menambah Utang", color=0x96df6a)
             embed.set_thumbnail(url=table['poster_img'])
@@ -1422,7 +1423,7 @@ class Showtimes(commands.Cog):
 
             return table, emb_msg
 
-        async def process_qcer(table, emb_msg, author):
+        async def process_qcer(table, emb_msg):
             print('[@] Memproses QCer')
             embed = discord.Embed(title="Menambah Utang", color=0x96df6a)
             embed.set_thumbnail(url=table['poster_img'])
@@ -1451,7 +1452,7 @@ class Showtimes(commands.Cog):
                 return '❌'
             return '✅'
 
-        async def process_pengaturan(table, emb_msg, author):
+        async def process_pengaturan(table, emb_msg):
             # Inner settings
             async def gear_1(table, emb_msg, gear_data):
                 print('[@] Mengatur time_data agar sama')
@@ -1501,20 +1502,20 @@ class Showtimes(commands.Cog):
                     await emb_msg.clear_reactions()
                     return table, emb_msg
 
-        json_tables, emb_msg = await process_anilist(json_tables, emb_msg, msg_author)
+        json_tables, emb_msg = await process_anilist(json_tables, emb_msg)
 
         if not json_tables:
             print('[@] Proses `tambahutang` dibatalkan')
-            return await ctx.send('**Dibatalkan.**')
+            return await ctx.send('**Dibatalkan!**')
 
-        json_tables, emb_msg = await process_role(json_tables, emb_msg, msg_author)
-        json_tables, emb_msg = await process_tlor(json_tables, emb_msg, msg_author)
-        json_tables, emb_msg = await process_tlcer(json_tables, emb_msg, msg_author)
-        json_tables, emb_msg = await process_encoder(json_tables, emb_msg, msg_author)
-        json_tables, emb_msg = await process_editor(json_tables, emb_msg, msg_author)
-        json_tables, emb_msg = await process_timer(json_tables, emb_msg, msg_author)
-        json_tables, emb_msg = await process_tser(json_tables, emb_msg, msg_author)
-        json_tables, emb_msg = await process_qcer(json_tables, emb_msg, msg_author)
+        json_tables, emb_msg = await process_role(json_tables, emb_msg)
+        json_tables, emb_msg = await process_tlor(json_tables, emb_msg)
+        json_tables, emb_msg = await process_tlcer(json_tables, emb_msg)
+        json_tables, emb_msg = await process_encoder(json_tables, emb_msg)
+        json_tables, emb_msg = await process_editor(json_tables, emb_msg)
+        json_tables, emb_msg = await process_timer(json_tables, emb_msg)
+        json_tables, emb_msg = await process_tser(json_tables, emb_msg)
+        json_tables, emb_msg = await process_qcer(json_tables, emb_msg)
 
         async def fetch_username_from_id(_id):
             try:
@@ -1567,37 +1568,37 @@ class Showtimes(commands.Cog):
                 pass
             elif to_react[0] in str(res.emoji):
                 await emb_msg.clear_reactions()
-                json_tables, emb_msg = await process_anilist(json_tables, emb_msg, msg_author)
+                json_tables, emb_msg = await process_anilist(json_tables, emb_msg)
             elif to_react[1] in str(res.emoji):
                 await emb_msg.clear_reactions()
-                json_tables, emb_msg = await process_episode(json_tables, emb_msg, msg_author)
+                json_tables, emb_msg = await process_episode(json_tables, emb_msg)
             elif to_react[2] in str(res.emoji):
                 await emb_msg.clear_reactions()
-                json_tables, emb_msg = await process_role(json_tables, emb_msg, msg_author)
+                json_tables, emb_msg = await process_role(json_tables, emb_msg)
             elif to_react[3] in str(res.emoji):
                 await emb_msg.clear_reactions()
-                json_tables, emb_msg = await process_tlor(json_tables, emb_msg, msg_author)
+                json_tables, emb_msg = await process_tlor(json_tables, emb_msg)
             elif to_react[4] in str(res.emoji):
                 await emb_msg.clear_reactions()
-                json_tables, emb_msg = await process_tlcer(json_tables, emb_msg, msg_author)
+                json_tables, emb_msg = await process_tlcer(json_tables, emb_msg)
             elif to_react[5] in str(res.emoji):
                 await emb_msg.clear_reactions()
-                json_tables, emb_msg = await process_encoder(json_tables, emb_msg, msg_author)
+                json_tables, emb_msg = await process_encoder(json_tables, emb_msg)
             elif to_react[6] in str(res.emoji):
                 await emb_msg.clear_reactions()
-                json_tables, emb_msg = await process_editor(json_tables, emb_msg, msg_author)
+                json_tables, emb_msg = await process_editor(json_tables, emb_msg)
             elif to_react[7] in str(res.emoji):
                 await emb_msg.clear_reactions()
-                json_tables, emb_msg = await process_timer(json_tables, emb_msg, msg_author)
+                json_tables, emb_msg = await process_timer(json_tables, emb_msg)
             if to_react[8] in str(res.emoji):
                 await emb_msg.clear_reactions()
-                json_tables, emb_msg = await process_tser(json_tables, emb_msg, msg_author)
+                json_tables, emb_msg = await process_tser(json_tables, emb_msg)
             elif to_react[9] in str(res.emoji):
                 await emb_msg.clear_reactions()
-                json_tables, emb_msg = await process_qcer(json_tables, emb_msg, msg_author)
+                json_tables, emb_msg = await process_qcer(json_tables, emb_msg)
             elif '🔐' in str(res.emoji):
                 await emb_msg.clear_reactions()
-                json_tables, emb_msg = await process_pengaturan(json_tables, emb_msg, msg_author)
+                json_tables, emb_msg = await process_pengaturan(json_tables, emb_msg)
             elif '✅' in str(res.emoji):
                 await emb_msg.clear_reactions()
                 break
@@ -1692,11 +1693,10 @@ class Showtimes(commands.Cog):
         print('[#] Requested !jadwal at: ' + server_message)
         json_d = await fetch_json()
 
-        try:
-            server_data = json_d[server_message]
-            print('Found server list')
-        except:
+        if server_message not in json_d:
             return
+        server_data = json_d[server_message]
+        print('[@] Found server info on database.')
 
         time_data_list = {}
         for ani in server_data['anime']:
@@ -1739,11 +1739,10 @@ class Showtimes(commands.Cog):
         print('[#] Requested !staff at: ' + server_message)
         json_d = await fetch_json()
 
-        try:
-            server_data = json_d[server_message]
-            print('Found server list')
-        except:
+        if server_message not in json_d:
             return
+        server_data = json_d[server_message]
+        print('[@] Found server info on database.')
 
         srv_owner = server_data['serverowner']
         srv_anilist = []
@@ -1774,7 +1773,7 @@ class Showtimes(commands.Cog):
         elif len(matches) > 1:
             matches = await self.choose_anime(ctx, matches)
             if not matches:
-                return await ctx.send('**Dibatalkan**')
+                return await ctx.send('**Dibatalkan!**')
 
         staff_assignment = server_data['anime'][matches[0]]['staff_assignment']
         print('Got staff_asignment')
@@ -1836,6 +1835,7 @@ class Showtimes(commands.Cog):
         if server_message not in json_d:
             return
         server_data = json_d[server_message]
+        print('[@] Found server info on database.')
 
         srv_owner = server_data['serverowner']
         srv_anilist = []
@@ -1866,7 +1866,7 @@ class Showtimes(commands.Cog):
         elif len(matches) > 1:
             matches = await self.choose_anime(ctx, matches)
             if not matches:
-                return await ctx.send('**Dibatalkan**')
+                return await ctx.send('**Dibatalkan!**')
 
         program_info = server_data['anime'][matches[0]]
         status_list = program_info['status']
@@ -2081,10 +2081,10 @@ class ShowtimesAlias(commands.Cog):
             print('[#] Requested !alias at: ' + server_message)
             json_d = await fetch_json()
 
-            try:
-                server_data = json_d[server_message]
-            except:
+            if server_message not in json_d:
                 return
+            server_data = json_d[server_message]
+            print('[@] Found server info on database.')
 
             srv_anilist = []
             for ani in server_data['anime']:
@@ -2110,9 +2110,9 @@ class ShowtimesAlias(commands.Cog):
             }
 
             def check_if_author(m):
-                return m.author == ctx.message.author
+                return m.author == msg_author
 
-            async def process_anime(table, emb_msg, author, anime_list):
+            async def process_anime(table, emb_msg, anime_list):
                 print('[@] Memproses anime')
                 embed = discord.Embed(title="Alias", color=0x96df6a)
                 embed.add_field(name='Judul/Garapan Anime', value="Ketik judul animenya (yang asli), bisa disingkat", inline=False)
@@ -2128,7 +2128,7 @@ class ShowtimesAlias(commands.Cog):
                 elif len(matches) > 1:
                     matches = await self.choose_anime(ctx, matches)
                     if not matches:
-                        return await ctx.send('**Dibatalkan**')
+                        return await ctx.send('**Dibatalkan!**')
 
                 embed = discord.Embed(title="Alias", color=0x96df6a)
                 embed.add_field(name='Apakah benar?', value="Judul: **{}**".format(matches[0]), inline=False)
@@ -2141,10 +2141,10 @@ class ShowtimesAlias(commands.Cog):
                     await emb_msg.add_reaction(reaction)
                 def check_react(reaction, user):
                     e = str(reaction.emoji)
-                    return user == ctx.message.author and str(reaction.emoji) in to_react
+                    return user == msg_author and str(reaction.emoji) in to_react
 
                 res, user = await self.bot.wait_for('reaction_add', check=check_react)
-                if user != ctx.message.author:
+                if user != msg_author:
                     pass
                 elif '✅' in str(res.emoji):
                     table['target_anime'] = matches[0]
@@ -2156,7 +2156,7 @@ class ShowtimesAlias(commands.Cog):
 
                 return table, emb_msg
 
-            async def process_alias(table, emb_msg, author):
+            async def process_alias(table, emb_msg):
                 print('[@] Memproses alias')
                 embed = discord.Embed(title="Alias", color=0x96df6a)
                 embed.add_field(name='Alias', value="Ketik alias yang diinginkan", inline=False)
@@ -2169,12 +2169,12 @@ class ShowtimesAlias(commands.Cog):
 
                 return table, emb_msg
 
-            json_tables, emb_msg = await process_anime(json_tables, emb_msg, msg_author, srv_anilist)
+            json_tables, emb_msg = await process_anime(json_tables, emb_msg, srv_anilist)
 
             if not json_tables:
                 return print('[@] Cancelled process.')
 
-            json_tables, emb_msg = await process_alias(json_tables, emb_msg, msg_author)
+            json_tables, emb_msg = await process_alias(json_tables, emb_msg)
             print('[@] Making sure.')
             first_time = True
             cancel_toggled = False
@@ -2193,19 +2193,20 @@ class ShowtimesAlias(commands.Cog):
 
                 to_react = ['1⃣', "2⃣", '✅', '❌']
                 for reaction in to_react:
-                        await emb_msg.add_reaction(reaction)
-                def checkReaction(reaction, user):
+                    await emb_msg.add_reaction(reaction)
+                def check_react(reaction, user):
                     e = str(reaction.emoji)
-                    return e.startswith(tuple(to_react))
+                    return user == ctx.message.author and str(reaction.emoji) in to_react
 
-                res = await self.bot.wait_for_reaction(message=emb_msg, user=msg_author, check=checkReaction)
-
+                res, user = await self.bot.wait_for('reaction_add', check=check_react)
+                if user != ctx.message.author:
+                    pass
                 if to_react[0] in str(res.emoji):
                     await emb_msg.clear_reactions()
-                    json_tables, emb_msg = await process_anime(json_tables, emb_msg, msg_author, srv_anilist)
+                    json_tables, emb_msg = await process_anime(json_tables, emb_msg, srv_anilist)
                 elif to_react[1] in str(res.emoji):
                     await emb_msg.clear_reactions()
-                    json_tables, emb_msg = await process_alias(json_tables, emb_msg, msg_author)
+                    json_tables, emb_msg = await process_alias(json_tables, emb_msg)
                 elif '✅' in str(res.emoji):
                     await emb_msg.clear_reactions()
                     break
@@ -2277,6 +2278,7 @@ class ShowtimesAlias(commands.Cog):
         if server_message not in json_d:
             return
         server_data = json_d[server_message]
+        print('[@] Found server info on database.')
 
         srv_anilist = []
         for ani in server_data['anime']:
@@ -2297,7 +2299,7 @@ class ShowtimesAlias(commands.Cog):
         elif len(matches) > 1:
             matches = await self.choose_anime(ctx, matches)
             if not matches:
-                return await ctx.send('**Dibatalkan**')
+                return await ctx.send('**Dibatalkan!**')
 
         srv_anilist_alias = []
         for k, v in server_data['alias'].items():
@@ -2326,6 +2328,7 @@ class ShowtimesAlias(commands.Cog):
         if server_message not in json_d:
             return
         server_data = json_d[server_message]
+        print('[@] Found server info on database.')
 
         if str(ctx.message.author.id) not in server_data['serverowner']:
             return await ctx.send('Hanya admin yang bisa menghapus alias')
@@ -2352,7 +2355,7 @@ class ShowtimesAlias(commands.Cog):
         elif len(matches) > 1:
             matches = await self.choose_anime(ctx, matches)
             if not matches:
-                return await ctx.send('**Dibatalkan**')
+                return await ctx.send('**Dibatalkan!**')
 
         srv_anilist_alias = []
         for k, v in server_data['alias'].items():
@@ -2561,6 +2564,7 @@ class ShowtimesKolaborasi(commands.Cog):
         if server_message not in json_d:
             return
         server_data = json_d[server_message]
+        print('[@] Found server info on database.')
 
         if str(ctx.message.author.id) not in server_data['serverowner']:
             return await ctx.send('Hanya admin yang bisa memulai kolaborasi')
@@ -2596,7 +2600,7 @@ class ShowtimesKolaborasi(commands.Cog):
         elif len(matches) > 1:
             matches = await self.choose_anime(ctx, matches)
             if not matches:
-                return await ctx.send('**Dibatalkan**')
+                return await ctx.send('**Dibatalkan!**')
 
         if 'kolaborasi' in server_data['anime'][matches[0]]:
             if server_id in server_data['anime'][matches[0]]['kolaborasi']:
@@ -2607,9 +2611,14 @@ class ShowtimesKolaborasi(commands.Cog):
         cancel_toggled = False
         first_time = True
         while True:
+            try:
+                server_identd = self.bot.get_guild(int(server_id))
+                server_ident = server_identd.name
+            except:
+                server_ident = server_id
             embed=discord.Embed(title="Kolaborasi", description="Periksa data!\nReact jika ingin diubah.", color=0xe7e363)
             embed.add_field(name="Anime/Garapan", value=matches[0], inline=False)
-            embed.add_field(name='Server', value=server_id, inline=False)
+            embed.add_field(name='Server', value=server_ident, inline=False)
             embed.add_field(name="Lain-Lain", value="✅ Tambahkan!\n❌ Batalkan!", inline=False)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
             if first_time:
@@ -2619,21 +2628,24 @@ class ShowtimesKolaborasi(commands.Cog):
                 await emb_msg.edit(embed=embed)
 
             to_react = ['✅', '❌']
-            for reaction in to_react:
-                    await emb_msg.add_reaction(reaction)
-            def checkReaction(reaction, user):
+            for react in to_react:
+                await emb_msg.add_reaction(react)
+
+            def check_react(reaction, user):
                 e = str(reaction.emoji)
-                return e.startswith(tuple(to_react))
+                return user == ctx.message.author and str(reaction.emoji) in to_react
 
-            res = await self.bot.wait_for_reaction(message=emb_msg, user=msg_author, check=checkReaction)
-
-            if '✅' in str(res.emoji):
+            res, user = await self.bot.wait_for('reaction_add', check=check_react)
+            if user != ctx.message.author:
+                pass
+            elif '✅' in str(res.emoji):
                 await emb_msg.clear_reactions()
                 break
             elif '❌' in str(res.emoji):
                 print('[@] Cancelled.')
                 cancel_toggled = True
                 await emb_msg.clear_reactions()
+                await emb_msg.delete()
                 break
 
         if cancel_toggled:
@@ -2683,6 +2695,7 @@ class ShowtimesKolaborasi(commands.Cog):
         if server_message not in json_d:
             return
         server_data = json_d[server_message]
+        print('[@] Found server info on database.')
 
         if str(ctx.message.author.id) not in server_data['serverowner']:
             return await ctx.send('Hanya admin yang bisa konfirmasi kolaborasi.')
@@ -2694,22 +2707,30 @@ class ShowtimesKolaborasi(commands.Cog):
 
         klb_data = server_data['konfirmasi'][konfirm_id]
 
+        try:
+            server_identd = self.bot.get_guild(int(klb_data['server']))
+            server_ident = server_identd.name
+        except:
+            server_ident = klb_data['server']
+
         embed=discord.Embed(title="Konfirmasi Kolaborasi", color=0xe7e363)
         embed.add_field(name="Anime/Garapan", value=klb_data['anime'], inline=False)
-        embed.add_field(name='Server', value=klb_data['server'], inline=False)
+        embed.add_field(name='Server', value=server_ident, inline=False)
         embed.add_field(name="Lain-Lain", value="✅ Konfirmasi!\n❌ Batalkan!", inline=False)
         embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
         emb_msg = await ctx.send(embed=embed)
 
         to_react = ['✅', '❌']
-        for reaction in to_react:
-                await emb_msg.add_reaction(reaction)
-        def checkReaction(reaction, user):
+        for react in to_react:
+            await emb_msg.add_reaction(react)
+
+        def check_react(reaction, user):
             e = str(reaction.emoji)
-            return e.startswith(tuple(to_react))
+            return user == ctx.message.author and str(reaction.emoji) in to_react
 
-        res = await self.bot.wait_for_reaction(message=emb_msg, user=ctx.message.author, check=checkReaction)
-
+        res, user = await self.bot.wait_for('reaction_add', check=check_react)
+        if user != ctx.message.author:
+            pass
         if '✅' in str(res.emoji):
             await emb_msg.clear_reactions()
         elif '❌' in str(res.emoji):
@@ -2784,6 +2805,7 @@ class ShowtimesKolaborasi(commands.Cog):
         if server_message not in json_d:
             return
         server_data = json_d[server_message]
+        print('[@] Found server info on database.')
 
         if str(ctx.message.author.id) not in server_data['serverowner']:
             return await ctx.send('Hanya admin yang bisa membatalkan kolaborasi')
@@ -2824,12 +2846,13 @@ class ShowtimesKolaborasi(commands.Cog):
     @kolaborasi.command()
     async def putus(self, ctx, *, judul):
         server_message = str(ctx.message.guild.id)
-        print('[#] Requested !kolaborasi batalkan at: ' + server_message)
+        print('[#] Requested !kolaborasi putus at: ' + server_message)
         json_d = await fetch_json()
 
         if server_message not in json_d:
             return
         server_data = json_d[server_message]
+        print('[@] Found server info on database.')
 
         if str(ctx.message.author.id) not in server_data['serverowner']:
             return await ctx.send('Hanya admin yang bisa memputuskan kolaborasi')
@@ -2862,7 +2885,7 @@ class ShowtimesKolaborasi(commands.Cog):
         elif len(matches) > 1:
             matches = await self.choose_anime(ctx, matches)
             if not matches:
-                return await ctx.send('**Dibatalkan**')
+                return await ctx.send('**Dibatalkan!**')
 
         program_info = server_data['anime'][matches[0]]
         status_list = program_info['status']
@@ -2871,7 +2894,11 @@ class ShowtimesKolaborasi(commands.Cog):
             return await ctx.send('Tidak ada kolaborasi sama sekali pada judul ini.')
 
         for x in program_info['kolaborasi']:
-            json_d[x]['anime'][matches[0]]['kolaborasi'].remove(server_message)
+            koleb_list_othersrv = deepcopy(json_d[x]['anime'][matches[0]]['kolaborasi'])
+            koleb_list_othersrv.remove(server_message)
+
+            del json_d[x]['anime'][matches[0]]['kolaborasi']
+            json_d[x]['anime'][matches[0]]['kolaborasi'] = koleb_list_othersrv
         del json_d[server_message]['anime'][matches[0]]['kolaborasi']
         print("[@] Sending data")
 
@@ -3568,6 +3595,7 @@ class ShowtimesConfigData(commands.Cog):
         if server_message not in json_d:
             return
         server_data = json_d[server_message]
+        print('[@] Found server info on database.')
 
         srv_anilist = []
         srv_anilist_alias = []
@@ -3603,7 +3631,7 @@ class ShowtimesConfigData(commands.Cog):
         elif len(matches) > 1:
             matches = await self.choose_anime(ctx, matches)
             if not matches:
-                return await ctx.send('**Dibatalkan**')
+                return await ctx.send('**Dibatalkan!**')
 
         program_info = json_d[server_message]['anime'][matches[0]]
 
@@ -3636,7 +3664,7 @@ class ShowtimesConfigData(commands.Cog):
                 "TS": "Typesetter",
                 "QC": "Quality Checker"
             }
-            embed = discord.Embed(title="Mengubah Staff", color=0x96df6a)
+            embed = discord.Embed(title="Mengubah Staff", color=0xeb79b9)
             embed.add_field(name='{} ID'.format(better_names[role]), value="Ketik ID {} atau mention orangnya".format(better_names[role]), inline=False)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
             await emb_msg.edit(embed=embed)
@@ -3670,7 +3698,7 @@ class ShowtimesConfigData(commands.Cog):
                     usr_ = await get_user_name(v)
                     staff_list_name[k] = usr_
 
-                embed=discord.Embed(title="Mengubah Staff", description="Anime: {}".format(matches[0]), color=0x96df6a)
+                embed=discord.Embed(title="Mengubah Staff", description="Anime: {}".format(matches[0]), color=0xeba279)
                 embed.add_field(name="1⃣ TLor", value=staff_list_name['TL'], inline=False)
                 embed.add_field(name='2⃣ TLCer', value=staff_list_name['TLC'], inline=False)
                 embed.add_field(name='3⃣ Encoder', value=staff_list_name['ENC'], inline=False)
@@ -3712,7 +3740,7 @@ class ShowtimesConfigData(commands.Cog):
 
         async def ubah_role(emb_msg):
             print('[@] Memproses Role')
-            embed = discord.Embed(title="Mengubah Role", color=0x96df6a)
+            embed = discord.Embed(title="Mengubah Role", color=0xeba279)
             embed.add_field(name='Role ID', value="Ketik ID Role atau mention rolenya\nAtau ketik `auto` untuk membuatnya otomatis", inline=False)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
             await emb_msg.edit(embed=embed)
@@ -3753,7 +3781,7 @@ class ShowtimesConfigData(commands.Cog):
             max_episode = list(status_list.keys())[-1]
             _, poster_image, title, time_data, correct_episode_num = await fetch_anilist(program_info['anilist_id'], 1, max_episode, True)
 
-            embed = discord.Embed(title="Menambah Episode", description='Jumlah Episode Sekarang: {}'.format(max_episode), color=0x96df6a)
+            embed = discord.Embed(title="Menambah Episode", description='Jumlah Episode Sekarang: {}'.format(max_episode), color=0xeba279)
             embed.add_field(name='Masukan jumlah episode yang diinginkan.', value=tambahepisode_instruct, inline=False)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
             await emb_msg.edit(embed=embed)
@@ -3808,7 +3836,7 @@ class ShowtimesConfigData(commands.Cog):
             status_list = program_info['status']
             max_episode = list(status_list.keys())[-1]
 
-            embed = discord.Embed(title="Menghapus Episode", description='Jumlah Episode Sekarang: {}'.format(max_episode), color=0x96df6a)
+            embed = discord.Embed(title="Menghapus Episode", description='Jumlah Episode Sekarang: {}'.format(max_episode), color=0xeba279)
             embed.add_field(name='Masukan range episode yang ingin dihapus.', value=hapusepisode_instruct, inline=False)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
             await emb_msg.edit(embed=embed)
@@ -3819,7 +3847,7 @@ class ShowtimesConfigData(commands.Cog):
                 mentions = await_msg.role_mentions
 
                 jumlah_tambahan = await_msg.content
-                embed = discord.Embed(title="Menghapus Episode", color=0x96df6a)
+                embed = discord.Embed(title="Menghapus Episode", color=0xeba279)
                 embed.add_field(name='Apakah Yakin?', value="Range episode: **{}**".format(jumlah_tambahan), inline=False)
                 embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
                 await emb_msg.edit(embed=embed)
@@ -3842,7 +3870,7 @@ class ShowtimesConfigData(commands.Cog):
                     break
                 elif '❌' in str(res.emoji):
                     await await_msg.delete()
-                    embed = discord.Embed(title="Menghapus Episode", description='Jumlah Episode Sekarang: {}'.format(max_episode), color=0x96df6a)
+                    embed = discord.Embed(title="Menghapus Episode", description='Jumlah Episode Sekarang: {}'.format(max_episode), color=0xeba279)
                     embed.add_field(name='Masukan range episode yang ingin dihapus.', value=hapusepisode_instruct, inline=False)
                     embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
                     await emb_msg.edit(embed=embed)
@@ -3910,7 +3938,7 @@ class ShowtimesConfigData(commands.Cog):
             guild_roles = ctx.message.guild.roles
             total_episodes = len(json_d[server_message]['anime'][matches[0]]['status'])
             role_id = json_d[server_message]['anime'][matches[0]]['role_id']
-            embed=discord.Embed(title="Mengubah Data", description="Anime: {}".format(matches[0]), color=0x96df6a)
+            embed=discord.Embed(title="Mengubah Data", description="Anime: {}".format(matches[0]), color=0xe7e363)
             embed.add_field(name="1⃣ Ubah Staff", value="Ubah staff yang mengerjakan anime ini.", inline=False)
             embed.add_field(name='2⃣ Ubah Role', value="Ubah role discord yang digunakan:\nRole sekarang: {}".format(get_role_name(role_id, guild_roles)), inline=False)
             embed.add_field(name='3⃣ Tambah Episode', value="Tambah jumlah episode\nTotal Episode sekarang: {}".format(total_episodes), inline=False)
