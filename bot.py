@@ -178,13 +178,16 @@ async def on_ready():
     if not hasattr(bot, 'uptime'):
         bot.owner = (await bot.application_info()).owner
         bot.uptime = time.time()
+        print('[#] Start loading cogs...')
         for load in cogs_list:
             try:
+                print('[#] Loading ' + load + ' module.')
                 bot.load_extension(load)
-                print('[#] Loaded ' + load + ' Module')
+                print('[#] Loaded ' + load + ' module.')
             except Exception as e:
-                print('[!!] Failed Loading ' + load + ' Module')
+                print('[!!] Failed Loading ' + load + ' module.')
                 print('\t' + str(e))
+        print('[#] Cogs loaded.')
 
 async def change_bot_presence():
     await bot.wait_until_ready()
