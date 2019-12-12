@@ -384,7 +384,7 @@ class PerpusIndo(commands.Cog):
 
 
     @perpus.command(aliases=['search'])
-    async def cari(self, ctx, *, args_=''):
+    async def cari(self, ctx, *, args_='-h'):
         args = parse_args(args_, 'cari')
         if isinstance(args, str):
             return await ctx.send(parse_error(args))
@@ -515,7 +515,7 @@ class PerpusIndo(commands.Cog):
 
 
     @perpus.command(aliases=['latest'])
-    async def terbaru(self, ctx, *, args_=''):
+    async def terbaru(self, ctx, *, args_='-h'):
         args = parse_args(args_, 'terbaru', False)
         if isinstance(args, str):
             return await ctx.send(parse_error(args))
