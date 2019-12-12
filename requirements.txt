@@ -1,10 +1,14 @@
-requests
-asyncio
-discord.py
-aiohttp
-pytz
-beautifulsoup4
+requests==2.22.0
+asyncio==3.4.3
+discord.py==1.2.5
+aiohttp>=3.5.4
+ujson==1.35
+pytz==2019.1
+beautifulsoup4==4.8.0
 
-textblob
-kbbi
-pysubs2
+textblob==0.15.3
+kbbi==0.3.2
+pysubs2==0.2.4
+redis==3.3.11
+markdownify==0.4.1
+feedparser==5.2.1
