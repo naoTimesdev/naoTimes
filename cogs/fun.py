@@ -135,9 +135,9 @@ class Fun(commands.Cog):
 
         cermin_compiler = re.compile(r"cermin(?:,|) cermin di dinding(?:,|) siapa(?:kah|)(?: orang|) yang(?: paling|) (?:ter|)(?:cantik|ganteng|cakep|tampan|manis|populer|keren|amjat|bangsat|kontol|ampas|jelek|buruk|goblok|sinting|bego) dari mereka semua(?:\?|)", re.IGNORECASE)
         if re.findall(cermin_compiler, msg.clean_content):
-            randd = random.randint(0, 1)
+            randd = random.uniform(0.5, 1.5)
 
-            if not randd:
+            if randd <= 0.9:
                 ava = msg.author.avatar_url
                 user_name = '{0.name}#{0.discriminator}'.format(msg.author)
             else:
@@ -147,9 +147,8 @@ class Fun(commands.Cog):
                 ava = usr.avatar_url
                 user_name = '{0.name}#{0.discriminator}'.format(usr)
 
-            ans = discord.Embed(title="Cermin yang ada di dinding", description="Tentu saja: {}".format(user_name), timestamp=msg.created_at, color=0x3974b8)
+            ans = discord.Embed(title=msg.clean_content, description="Tentu saja: {}".format(user_name), timestamp=msg.created_at, color=0x3974b8)
             ans.set_image(url=ava)
-            ans.set_thumbnail(url="https://p.ihateani.me/WUNfxPei")
             await channeru.send(embed=ans)
 
 
@@ -343,7 +342,7 @@ class Fun(commands.Cog):
         answer_of_life = random.choice(jawaban_[pick_dataset])
 
         avatar = str(ctx.message.author.avatar_url)
-        ditanyakan = 'Ditanyakan oleh: ' + ctx.message.author
+        ditanyakan = 'Ditanyakan oleh: {0.name}#{0.discriminator}'.format(ctx.message.author)
 
         pertanyaan = input_[0].upper() + input_[1:]
 
