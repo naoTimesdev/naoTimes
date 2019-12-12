@@ -133,7 +133,7 @@ class Fun(commands.Cog):
 
         channeru = msg.channel
 
-        cermin_compiler = re.compile(r"cermin(?:,|) cermin di dinding(?:,|) siapa(?:kah|) yang(?: paling|) (?:ter|)(?:cantik|ganteng|cakep|manis|populer|keren|amjat) dari mereka semua(?:\?|)", re.IGNORECASE)
+        cermin_compiler = re.compile(r"cermin(?:,|) cermin di dinding(?:,|) siapa(?:kah|)(?: orang|) yang(?: paling|) (?:ter|)(?:cantik|ganteng|cakep|tampan|manis|populer|keren|amjat|bangsat|kontol|ampas|jelek|buruk|goblok|sinting|bego) dari mereka semua(?:\?|)", re.IGNORECASE)
         if re.findall(cermin_compiler, msg.clean_content):
             randd = random.randint(0, 1)
 
