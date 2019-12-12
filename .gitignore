@@ -1,7 +1,14 @@
 __pycache__
-*.json
 *.bat
 *.log
+.vscode
 
 # Enviroment
 discordpy
+
+# Don't commit this .json
+nao_showtimes.json
+fansubrss.json
+config.json
+prefixes.json
+vote_data.json
