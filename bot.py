@@ -64,7 +64,7 @@ def prefixes(bot, message):
 
     with open('prefixes.json') as f:
         pre = json.load(f)
-    default_ = "!!"
+    default_ = "!"
 
     pre_data = []
     pre_ = None
