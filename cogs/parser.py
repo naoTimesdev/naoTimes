@@ -685,7 +685,7 @@ class WebParser(commands.Cog):
 
         parsed_sub = pysubs2.load(filename)
         n_sub = range(len(parsed_sub))
-        await msg.edit('Memproses `{fn}`...\nTarget alihbahasa: **{t}**\nTotal baris: {ntot} baris'.format(fn=filename, t=DICT_LANG[targetlang], ntot=len(n_sub)))
+        await msg.edit(content='Memproses `{fn}`...\nTarget alihbahasa: **{t}**\nTotal baris: {ntot} baris'.format(fn=filename, t=DICT_LANG[targetlang], ntot=len(n_sub)))
 
         chunked_number = [n_sub[i:i + 30] for i in range(0, len(n_sub), 30)]
 
