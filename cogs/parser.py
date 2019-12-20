@@ -285,12 +285,15 @@ async def fix_spacing(n):
         n = re.sub(x, y, n)
     return n
 
-async def secure_tags(n, reverse=False):
+def scramble_tags(n):
     for x, y in tags_replacing.items():
-        tags_ = [x, y, n]
-        if reverse:
-            tags_ = [y, x, n]
-        n = re.sub(*tags_)
+        n = re.sub(x, y, n)
+    return n
+
+def unscramble_tags(n):
+    for x, y in tags_replacing.items():
+        n = re.sub(y, x, n)
+    return n
 
 async def fix_taggings(n):
     slashes1 = re.compile(r'(\\ )')
@@ -460,13 +463,13 @@ async def chunked_translate(sub_data, number, target_lang, untranslated, mode='.
         tags_exists = re.match(regex_tags, org_line)
         line = re.sub(regex_newline, r"\1\\LNGSX \2", org_line) # Change newline
         if tags_exists:
-            line = await secure_tags(line)
+            line = scramble_tags(line)
             line = re.sub(r'(})', r'} ', line) # Add some line for proper translating
         try:
             res = await Translator.translate(line)
             if tags_exists:
                 res = await fix_taggings(res)
-                res = await secure_tags(res, True)
+                res = unscramble_tags(line)
             res = re.sub(regex_newline_reverse, r'\1\\N\2', res)
             res = await fix_spacing(res)
             if mode == '.ass':
@@ -698,7 +701,7 @@ class WebParser(commands.Cog):
         if untrans != 0:
             subtitle += '\nSebanyak **{}/{}** baris tidak dialihbahasakan'.format(untrans, len(n_sub))
         print('[@] Sending translated subtitle')
-        await channel.send(file=output_file, content=subtitle)
+        await channel.send(file=discord.File(output_file), content=subtitle)
         print('[@] Cleanup')
         os.remove(filename) # Original subtitle
         os.remove(output_file) # Translated subtitle
