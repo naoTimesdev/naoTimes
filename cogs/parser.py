@@ -661,8 +661,8 @@ class WebParser(commands.Cog):
         if not ctx.message.attachments:
             return await ctx.send('Mohon attach file subtitle lalu jalankan dengan `!speedsub`\nSubtitle yang didukung adalah: .ass dan .srt')
         attachment = ctx.message.attachments[0]
-        uri = attachment['url']
-        filename = attachment['filename']
+        uri = attachment.url
+        filename = attachment.filename
         ext_ = filename[filename.rfind('.'):]
 
         if ext_ not in ['.ass', '.srt']:
@@ -982,6 +982,8 @@ class WebParser(commands.Cog):
         first_run = True
         dataset_total = len(dataset)
         pos = 1
+        if not dataset:
+            return await ctx.send('Terjadi kesalahan komunikasi dengan server KBBI.')
         print(dataset)
         while True:
             if first_run:
