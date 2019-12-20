@@ -673,7 +673,7 @@ class WebParser(commands.Cog):
             await ctx.message.delete()
             return await ctx.send('Mohon attach file subtitle lalu jalankan dengan `!speedsub`\nSubtitle yang didukung adalah: .ass dan .srt')
 
-        await ctx.send('Memproses `{fn}`...\nTarget alihbahasa: **{t}**'.format(fn=filename, t=DICT_LANG[targetlang]))
+        msg = await ctx.send('Memproses `{fn}`...\nTarget alihbahasa: **{t}**'.format(fn=filename, t=DICT_LANG[targetlang]))
         # Start downloading .ass/.srt file
         print('[@] Downloading file')
         async with aiohttp.ClientSession() as sesi:
@@ -685,6 +685,7 @@ class WebParser(commands.Cog):
 
         parsed_sub = pysubs2.load(filename)
         n_sub = range(len(parsed_sub))
+        await msg.edit('Memproses `{fn}`...\nTarget alihbahasa: **{t}**\nTotal baris: {ntot} baris'.format(fn=filename, t=DICT_LANG[targetlang], ntot=len(n_sub)))
 
         chunked_number = [n_sub[i:i + 30] for i in range(0, len(n_sub), 30)]
 
