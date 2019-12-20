@@ -193,7 +193,7 @@ class nHController(commands.Cog):
                             download_text_open = False
                     elif '\N{INBOX TRAY}' in str(res2.emoji): # Download
                         embed = discord.Embed(title=data2['title'], color=0x1f1f1f, url=data['url'], timestamp=datetime.fromtimestamp(data2['posted_time']))
-                        embed.description = 'Klik link dibawah ini untuk mendownload\n<https://s.ihateani.me/api/download/{}>\n\nJika gambar banyak, akan memakan waktu lebih lama ketika proses sebelum download.'.format(data['nuke_code'])
+                        embed.description = 'Klik link dibawah ini untuk mendownload\n<https://s.ihateani.me/unduh?id={}>\n\nJika gambar banyak, akan memakan waktu lebih lama ketika proses sebelum download.'.format(data['nuke_code'])
                         embed.set_footer(text='Diprakasai oleh s.ihateani.me')
                         embed.set_thumbnail(url=data['cover'])
 
@@ -360,7 +360,7 @@ class nHController(commands.Cog):
                     download_text_open = False
             elif '\N{INBOX TRAY}' in str(res2.emoji): # Download
                 embed = discord.Embed(title=data2['title'], color=0x1f1f1f, url=data2['url'], timestamp=datetime.fromtimestamp(data2['posted_time']))
-                embed.description = 'Klik link dibawah ini untuk mendownload\n<https://s.ihateani.me/api/download/{}>\n\nJika gambar banyak, akan memakan waktu lebih lama ketika proses sebelum download.'.format(kode_nuklir)
+                embed.description = 'Klik link dibawah ini untuk mendownload\n<https://s.ihateani.me/unduh?id={}>\n\nJika gambar banyak, akan memakan waktu lebih lama ketika proses sebelum download.'.format(kode_nuklir)
                 embed.set_footer(text='Diprakasai oleh s.ihateani.me')
                 embed.set_thumbnail(url=data2['cover'])
 
@@ -468,7 +468,7 @@ class nHController(commands.Cog):
         data2['url'] = 'https://nhentai.net/g/' + kode_nuklir
 
         embed = discord.Embed(title=data2['title'], color=0x1f1f1f, url=data2['url'], timestamp=datetime.fromtimestamp(data2['posted_time']))
-        embed.description = 'Klik link dibawah ini untuk mendownload\n<https://s.ihateani.me/api/download/{}>\n\nJika gambar banyak, akan memakan waktu lebih lama ketika proses sebelum download.'.format(kode_nuklir)
+        embed.description = 'Klik link dibawah ini untuk mendownload\n<https://s.ihateani.me/unduh?id={}>\n\nJika gambar banyak, akan memakan waktu lebih lama ketika proses sebelum download.'.format(kode_nuklir)
         embed.set_footer(text='Diprakasai oleh s.ihateani.me')
         embed.set_thumbnail(url=data2['cover'])
 
