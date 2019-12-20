@@ -456,10 +456,11 @@ async def chunked_translate(sub_data, number, target_lang, untranslated, mode='.
     print('[@] Processing lines number {} to {}'.format(number[0]+1, number[-1]+1))
     regex_tags = re.compile(r"[{}]+")
     regex_newline = re.compile(r"(\w)?\\N(\w)?")
-    regex_newline_reverse = re.compile(r"(\w)?\\ LNGSX (\w?)")
+    regex_newline_reverse = re.compile(r"(\w)?\\(?: |)LNGSX (\w)?")
     Translator = AsyncTranslator(target_lang)
     for n in number:
         org_line = sub_data[n].text
+        clean_line = sub_data[n].plaintext
         tags_exists = re.match(regex_tags, org_line)
         line = re.sub(regex_newline, r"\1\\LNGSX \2", org_line) # Change newline
         if tags_exists:
@@ -473,7 +474,7 @@ async def chunked_translate(sub_data, number, target_lang, untranslated, mode='.
             res = re.sub(regex_newline_reverse, r'\1\\N\2', res)
             res = await fix_spacing(res)
             if mode == '.ass':
-                sub_data[n].text = res + '{' + org_line + '}'
+                sub_data[n].text = res + '{' + clean_line + '}'
             else:
                 sub_data[n].text = re.sub(r'{.*}', r"", res) # Just to make sure
         except Exception as err:
