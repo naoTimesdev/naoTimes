@@ -88,8 +88,13 @@ class nHController(commands.Cog):
                 await msg.add_reaction(reaction)
 
             def check_react(reaction, user):
-                e = str(reaction.emoji)
-                return user == ctx.message.author and str(reaction.emoji) in reactmoji
+                if reaction.message.id != msg.id:
+                    return False
+                if user != ctx.message.author:
+                    return False
+                if str(reaction.emoji) not in reactmoji:
+                    return False
+                return True
 
             res, user = await self.bot.wait_for('reaction_add', check=check_react)
             if user != ctx.message.author:
@@ -163,8 +168,13 @@ class nHController(commands.Cog):
                         await msg.add_reaction(reaction)
 
                     def check_react2(reaction, user):
-                        e = str(reaction.emoji)
-                        return user == ctx.message.author and str(reaction.emoji) in reactmoji2
+                        if reaction.message.id != msg.id:
+                            return False
+                        if user != ctx.message.author:
+                            return False
+                        if str(reaction.emoji) not in reactmoji2:
+                            return False
+                        return True
 
                     res2, user2 = await self.bot.wait_for('reaction_add', check=check_react2)
                     if user2 != ctx.message.author:
@@ -241,8 +251,13 @@ class nHController(commands.Cog):
                                 await msg.add_reaction(reaction)
 
                             def check_react3(reaction, user):
-                                e = str(reaction.emoji)
-                                return user == ctx.message.author and str(reaction.emoji) in reactmoji3
+                                if reaction.message.id != msg.id:
+                                    return False
+                                if user != ctx.message.author:
+                                    return False
+                                if str(reaction.emoji) not in reactmoji3:
+                                    return False
+                                return True
 
                             res3, user3 = await self.bot.wait_for('reaction_add', check=check_react3)
                             if user3 != ctx.message.author:
@@ -335,8 +350,13 @@ class nHController(commands.Cog):
                 await msg.add_reaction(reaction)
 
             def check_react2(reaction, user):
-                e = str(reaction.emoji)
-                return user == ctx.message.author and str(reaction.emoji) in reactmoji2
+                if reaction.message.id != msg.id:
+                    return False
+                if user != ctx.message.author:
+                    return False
+                if str(reaction.emoji) not in reactmoji2:
+                    return False
+                return True
 
             res2, user2 = await self.bot.wait_for('reaction_add', check=check_react2)
             if user2 != ctx.message.author:
@@ -408,8 +428,13 @@ class nHController(commands.Cog):
                         await msg.add_reaction(reaction)
 
                     def check_react3(reaction, user):
-                        e = str(reaction.emoji)
-                        return user == ctx.message.author and str(reaction.emoji) in reactmoji3
+                        if reaction.message.id != msg.id:
+                            return False
+                        if user != ctx.message.author:
+                            return False
+                        if str(reaction.emoji) not in reactmoji3:
+                            return False
+                        return True
 
                     res3, user3 = await self.bot.wait_for('reaction_add', check=check_react3)
                     if user3 != ctx.message.author:
@@ -480,8 +505,13 @@ class nHController(commands.Cog):
                 await msg.add_reaction(reaction)
 
             def check_react(reaction, user):
-                e = str(reaction.emoji)
-                return user == ctx.message.author and str(reaction.emoji) in reactmoji
+                if reaction.message.id != msg.id:
+                    return False
+                if user != ctx.message.author:
+                    return False
+                if str(reaction.emoji) not in reactmoji:
+                    return False
+                return True
 
             res, user = await self.bot.wait_for('reaction_add', check=check_react)
             if user != ctx.message.author:
@@ -548,8 +578,13 @@ class nHController(commands.Cog):
                 await msg.add_reaction(reaction)
 
             def check_react3(reaction, user):
-                e = str(reaction.emoji)
-                return user == ctx.message.author and str(reaction.emoji) in reactmoji3
+                if reaction.message.id != msg.id:
+                    return False
+                if user != ctx.message.author:
+                    return False
+                if str(reaction.emoji) not in reactmoji3:
+                    return False
+                return True
 
             res3, user3 = await self.bot.wait_for('reaction_add', check=check_react3)
             if user3 != ctx.message.author:

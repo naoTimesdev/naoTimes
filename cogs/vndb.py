@@ -130,7 +130,7 @@ async def fetch_vndb(search_string: str, VNconn: Union[VNDBSocket, None] = None)
     print('[@] Starting VNDB Fetching process.')
     if not VNconn:
         vndb_login = bot_config['vndb']
-        if not vndb_login['username'] or not vndb_login['password']:
+        if not vndb_login['username'] and not vndb_login['password']:
             return 'Perintah VNDB tidak bisa digunakan karena bot tidak diberikan informasi login untuk VNDB\nCek `config.json` untuk memastikannya.'
         VNconn = VNDBSocket(vndb_login['username'], vndb_login['password'])
     if not VNconn.loggedin:
@@ -266,7 +266,7 @@ async def fetch_vndb(search_string: str, VNconn: Union[VNDBSocket, None] = None)
 
 async def random_search():
     vndb_login = bot_config['vndb']
-    if not vndb_login['username'] or not vndb_login['password']:
+    if not vndb_login['username'] and not vndb_login['password']:
         return 'Perintah VNDB tidak bisa digunakan karena bot tidak diberikan informasi login untuk VNDB\nCek `config.json` untuk memastikannya.'
     VNconn = VNDBSocket(vndb_login['username'], vndb_login['password'])
     if not VNconn.loggedin:
@@ -352,8 +352,13 @@ class VNDB(commands.Cog):
                 await msg.add_reaction(react)
 
             def check_react(reaction, user):
-                e = str(reaction.emoji)
-                return user == ctx.message.author and str(reaction.emoji) in reactmoji
+                if reaction.message.id != msg.id:
+                    return False
+                if user != ctx.message.author:
+                    return False
+                if str(reaction.emoji) not in reactmoji:
+                    return False
+                return True
 
             try:
                 res, user = await self.bot.wait_for('reaction_add', timeout=30, check=check_react)
@@ -516,8 +521,13 @@ class VNDB(commands.Cog):
                 await msg.add_reaction(react)
 
             def check_react(reaction, user):
-                e = str(reaction.emoji)
-                return user == ctx.message.author and str(reaction.emoji) in reactmoji
+                if reaction.message.id != msg.id:
+                    return False
+                if user != ctx.message.author:
+                    return False
+                if str(reaction.emoji) not in reactmoji:
+                    return False
+                return True
 
             try:
                 res, user = await self.bot.wait_for('reaction_add', timeout=30, check=check_react)

@@ -368,7 +368,13 @@ class Anilist(commands.Cog):
                 await msg.add_reaction(react)
 
             def check_react(reaction, user):
-                return user == ctx.message.author and str(reaction.emoji) in reactmoji
+                if reaction.message.id != msg.id:
+                    return False
+                if user != ctx.message.author:
+                    return False
+                if str(reaction.emoji) not in reactmoji:
+                    return False
+                return True
 
             try:
                 res, user = await self.bot.wait_for('reaction_add', timeout=30.0, check=check_react)
@@ -513,7 +519,13 @@ class Anilist(commands.Cog):
                 await msg.add_reaction(react)
 
             def check_react(reaction, user):
-                return user == ctx.message.author and str(reaction.emoji) in reactmoji
+                if reaction.message.id != msg.id:
+                    return False
+                if user != ctx.message.author:
+                    return False
+                if str(reaction.emoji) not in reactmoji:
+                    return False
+                return True
 
             try:
                 res, user = await self.bot.wait_for('reaction_add', timeout=30.0, check=check_react)

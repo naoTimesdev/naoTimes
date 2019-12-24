@@ -264,7 +264,6 @@ async def fetch_nyaa(keyword=None, category='all', trusted=False, nr=False, user
     if not NYAA_EMAIL or not NYAA_PASS:
         return 'Perintah Nyaa.si tidak bisa digunakan karena bot tidak diberikan informasi login untuk Nyaa.si\nCek `config.json` untuk memastikannya.'
 
-
     async with aiohttp.ClientSession(auth=aiohttp.BasicAuth(NYAA_EMAIL, NYAA_PASS)) as sesi:
         for query in full_queries:
             tor_id = query['id']
@@ -412,7 +411,13 @@ class NyaaTorrentsV2(commands.Cog):
             await msg.add_reaction(react)
 
         def check_react(reaction, user):
-            return user == ctx.message.author and str(reaction.emoji) in reactmoji
+            if reaction.message.id != msg.id:
+                return False
+            if user != ctx.message.author:
+                return False
+            if str(reaction.emoji) not in reactmoji:
+                return False
+            return True
 
         res, user = await self.bot.wait_for('reaction_add', check=check_react)
         if user != ctx.message.author:
@@ -469,7 +474,13 @@ class NyaaTorrentsV2(commands.Cog):
                 await msg.add_reaction(reaction)
 
             def check_react(reaction, user):
-                return user == ctx.message.author and str(reaction.emoji) in reactmoji
+                if reaction.message.id != msg.id:
+                    return False
+                if user != ctx.message.author:
+                    return False
+                if str(reaction.emoji) not in reactmoji:
+                    return False
+                return True
 
             try:
                 res, user = await self.bot.wait_for('reaction_add', timeout=20.0, check=check_react)
@@ -564,7 +575,13 @@ class NyaaTorrentsV2(commands.Cog):
                 await msg.add_reaction(reaction)
 
             def check_react(reaction, user):
-                return user == ctx.message.author and str(reaction.emoji) in reactmoji
+                if reaction.message.id != msg.id:
+                    return False
+                if user != ctx.message.author:
+                    return False
+                if str(reaction.emoji) not in reactmoji:
+                    return False
+                return True
 
             try:
                 res, user = await self.bot.wait_for('reaction_add', timeout=20.0, check=check_react)

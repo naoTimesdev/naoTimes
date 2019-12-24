@@ -470,7 +470,7 @@ async def chunked_translate(sub_data, number, target_lang, untranslated, mode='.
             res = await Translator.translate(line)
             if tags_exists:
                 res = await fix_taggings(res)
-                res = unscramble_tags(line)
+                res = unscramble_tags(res)
             res = re.sub(regex_newline_reverse, r'\1\\N\2', res)
             res = await fix_spacing(res)
             if mode == '.ass':
@@ -900,8 +900,13 @@ class WebParser(commands.Cog):
                 await msg.add_reaction(react)
 
             def check_react(reaction, user):
-                e = str(reaction.emoji)
-                return user == ctx.message.author and str(reaction.emoji) in reactmoji
+                if reaction.message.id != msg.id:
+                    return False
+                if user != ctx.message.author:
+                    return False
+                if str(reaction.emoji) not in reactmoji:
+                    return False
+                return True
 
             try:
                 res, user = await self.bot.wait_for('reaction_add', timeout=20.0, check=check_react)
@@ -995,7 +1000,7 @@ class WebParser(commands.Cog):
                 pos = 1
                 datap = dataset[pos - 1]
                 embed=discord.Embed(title="KBBI: {}".format(q_kbbi), color=0x81e28d)
-                embed.add_field(name=datap['nama'], value=datap['makna'], inline=False)
+                embed.add_field(name=datap['nama'], value="Tidak ada" if not datap['makna'] else datap['makna'], inline=False)
                 embed.add_field(name='Contoh',
                     value="Tidak ada" if not datap['contoh'] else datap['contoh'],
                     inline=False)
@@ -1021,8 +1026,13 @@ class WebParser(commands.Cog):
                 await msg.add_reaction(react)
 
             def check_react(reaction, user):
-                e = str(reaction.emoji)
-                return user == ctx.message.author and str(reaction.emoji) in to_react
+                if reaction.message.id != msg.id:
+                    return False
+                if user != ctx.message.author:
+                    return False
+                if str(reaction.emoji) not in to_react:
+                    return False
+                return True
 
             try:
                 res, user = await self.bot.wait_for('reaction_add', timeout=20.0, check=check_react)

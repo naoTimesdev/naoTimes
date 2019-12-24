@@ -932,11 +932,18 @@ class Helper(commands.Cog):
         to_react = ['✅', '❌']
         for reaction in to_react:
             await preview_msg.add_reaction(reaction)
-        def checkReaction(reaction, user):
-            return user == ctx.message.author and str(reaction.emoji) in to_react
+
+        def check_react(reaction, user):
+            if reaction.message.id != preview_msg.id:
+                return False
+            if user != ctx.message.author:
+                return False
+            if str(reaction.emoji) not in to_react:
+                return False
+            return True
 
         try:
-            res, user = await self.bot.wait_for('reaction_add', timeout=30.0, check=checkReaction)
+            res, user = await self.bot.wait_for('reaction_add', timeout=30.0, check=check_react)
         except asyncio.TimeoutError:
             await ctx.send('***Timeout!***')
             return await preview_msg.clear_reactions()

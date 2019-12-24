@@ -265,10 +265,6 @@ class FansubRSS(commands.Cog):
                 print('[@] No new update.')
         print("[@] Finish checking, now sleeping for 5 minutes")
 
-    @check_every_feed.before_loop
-    async def wait_until_ready(self):
-        await self.bot.wait_until_ready()
-
     @commands.group(aliases=['rss'])
     @commands.guild_only()
     async def fansubrss(self, ctx):
@@ -411,7 +407,13 @@ class FansubRSS(commands.Cog):
                 await emb_msg.add_reaction(reaction)
 
             def check_react(reaction, user):
-                return user == ctx.message.author and str(reaction.emoji) in to_react
+                if reaction.message.id != emb_msg.id:
+                    return False
+                if user != ctx.message.author:
+                    return False
+                if str(reaction.emoji) not in to_react:
+                    return False
+                return True
 
             res, user = await self.bot.wait_for('reaction_add', check=check_react)
             if user != ctx.message.author:
