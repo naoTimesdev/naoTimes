@@ -503,8 +503,13 @@ class Showtimes(commands.Cog):
                 await msg.add_reaction(react)
 
             def check_react(reaction, user):
-                e = str(reaction.emoji)
-                return user == ctx.message.author and str(reaction.emoji) in reactmoji
+                if reaction.message.id != msg.id:
+                    return False
+                if user != ctx.message.author:
+                    return False
+                if str(reaction.emoji) not in reactmoji:
+                    return False
+                return True
 
             try:
                 res, user = await self.bot.wait_for('reaction_add', timeout=20.0, check=check_react)
@@ -1190,11 +1195,16 @@ class Showtimes(commands.Cog):
 
             to_react = ['✅', '❌']
             for reaction in to_react:
-                    await emb_msg.add_reaction(reaction)
+                await emb_msg.add_reaction(reaction)
 
             def check_react(reaction, user):
-                e = str(reaction.emoji)
-                return user == ctx.message.author and str(reaction.emoji) in to_react
+                if reaction.message.id != emb_msg.id:
+                    return False
+                if user != ctx.message.author:
+                    return False
+                if str(reaction.emoji) not in to_react:
+                    return False
+                return True
 
             res, user = await self.bot.wait_for('reaction_add', check=check_react)
             if user != ctx.message.author:
@@ -1461,8 +1471,13 @@ class Showtimes(commands.Cog):
                     await emb_msg.add_reaction(reaction)
 
                 def check_react(reaction, user):
-                    e = str(reaction.emoji)
-                    return user == ctx.message.author and str(reaction.emoji) in to_react
+                    if reaction.message.id != emb_msg.id:
+                        return False
+                    if user != ctx.message.author:
+                        return False
+                    if str(reaction.emoji) not in to_react:
+                        return False
+                    return True
 
                 res, user = await self.bot.wait_for('reaction_add', check=check_react)
                 if user != ctx.message.author:
@@ -1532,8 +1547,13 @@ class Showtimes(commands.Cog):
                 await emb_msg.add_reaction(reaction)
 
             def check_react(reaction, user):
-                e = str(reaction.emoji)
-                return user == ctx.message.author and str(reaction.emoji) in to_react
+                if reaction.message.id != emb_msg.id:
+                    return False
+                if user != ctx.message.author:
+                    return False
+                if str(reaction.emoji) not in to_react:
+                    return False
+                return True
 
             res, user = await self.bot.wait_for('reaction_add', check=check_react)
             if user != ctx.message.author:
@@ -1921,8 +1941,13 @@ class Showtimes(commands.Cog):
             await preview_msg.add_reaction(react)
 
         def check_react(reaction, user):
-            e = str(reaction.emoji)
-            return user == ctx.message.author and str(reaction.emoji) in to_react
+            if reaction.message.id != preview_msg.id:
+                return False
+            if user != ctx.message.author:
+                return False
+            if str(reaction.emoji) not in to_react:
+                return False
+            return True
 
         try:
             res, user = await self.bot.wait_for('reaction_add', timeout=20, check=check_react)
@@ -1985,8 +2010,13 @@ class ShowtimesAlias(commands.Cog):
                 await msg.add_reaction(react)
 
             def check_react(reaction, user):
-                e = str(reaction.emoji)
-                return user == ctx.message.author and str(reaction.emoji) in reactmoji
+                if reaction.message.id != msg.id:
+                    return False
+                if user != ctx.message.author:
+                    return False
+                if str(reaction.emoji) not in reactmoji:
+                    return False
+                return True
 
             try:
                 res, user = await self.bot.wait_for('reaction_add', timeout=20.0, check=check_react)
@@ -2077,9 +2107,15 @@ class ShowtimesAlias(commands.Cog):
                 to_react = ['✅', '❌']
                 for reaction in to_react:
                     await emb_msg.add_reaction(reaction)
+
                 def check_react(reaction, user):
-                    e = str(reaction.emoji)
-                    return user == msg_author and str(reaction.emoji) in to_react
+                    if reaction.message.id != emb_msg.id:
+                        return False
+                    if user != ctx.message.author:
+                        return False
+                    if str(reaction.emoji) not in to_react:
+                        return False
+                    return True
 
                 res, user = await self.bot.wait_for('reaction_add', check=check_react)
                 if user != msg_author:
@@ -2132,9 +2168,15 @@ class ShowtimesAlias(commands.Cog):
                 to_react = ['1⃣', "2⃣", '✅', '❌']
                 for reaction in to_react:
                     await emb_msg.add_reaction(reaction)
+
                 def check_react(reaction, user):
-                    e = str(reaction.emoji)
-                    return user == ctx.message.author and str(reaction.emoji) in to_react
+                    if reaction.message.id != emb_msg.id:
+                        return False
+                    if user != ctx.message.author:
+                        return False
+                    if str(reaction.emoji) not in to_react:
+                        return False
+                    return True
 
                 res, user = await self.bot.wait_for('reaction_add', check=check_react)
                 if user != ctx.message.author:
@@ -2335,8 +2377,13 @@ class ShowtimesAlias(commands.Cog):
                 await emb_msg.add_reaction(react)
 
             def check_react(reaction, user):
-                e = str(reaction.emoji)
-                return user == ctx.message.author and str(reaction.emoji) in to_react
+                if reaction.message.id != emb_msg.id:
+                    return False
+                if user != ctx.message.author:
+                    return False
+                if str(reaction.emoji) not in to_react:
+                    return False
+                return True
 
             try:
                 res, user = await self.bot.wait_for('reaction_add', check=check_react, timeout=30.0)
@@ -2422,8 +2469,13 @@ class ShowtimesKolaborasi(commands.Cog):
                 await msg.add_reaction(react)
 
             def check_react(reaction, user):
-                e = str(reaction.emoji)
-                return user == ctx.message.author and str(reaction.emoji) in reactmoji
+                if reaction.message.id != msg.id:
+                    return False
+                if user != ctx.message.author:
+                    return False
+                if str(reaction.emoji) not in reactmoji:
+                    return False
+                return True
 
             try:
                 res, user = await self.bot.wait_for('reaction_add', timeout=20.0, check=check_react)
@@ -2539,8 +2591,13 @@ class ShowtimesKolaborasi(commands.Cog):
                 await emb_msg.add_reaction(react)
 
             def check_react(reaction, user):
-                e = str(reaction.emoji)
-                return user == ctx.message.author and str(reaction.emoji) in to_react
+                if reaction.message.id != emb_msg.id:
+                    return False
+                if user != ctx.message.author:
+                    return False
+                if str(reaction.emoji) not in to_react:
+                    return False
+                return True
 
             res, user = await self.bot.wait_for('reaction_add', check=check_react)
             if user != ctx.message.author:
@@ -2630,8 +2687,13 @@ class ShowtimesKolaborasi(commands.Cog):
             await emb_msg.add_reaction(react)
 
         def check_react(reaction, user):
-            e = str(reaction.emoji)
-            return user == ctx.message.author and str(reaction.emoji) in to_react
+            if reaction.message.id != emb_msg.id:
+                return False
+            if user != ctx.message.author:
+                return False
+            if str(reaction.emoji) not in to_react:
+                return False
+            return True
 
         res, user = await self.bot.wait_for('reaction_add', check=check_react)
         if user != ctx.message.author:
@@ -2973,8 +3035,13 @@ class ShowtimesAdmin(commands.Cog):
                 await emb_msg.add_reaction(react)
 
             def check_react(reaction, user):
-                e = str(reaction.emoji)
-                return user == ctx.message.author and str(reaction.emoji) in to_react
+                if reaction.message.id != emb_msg.id:
+                    return False
+                if user != ctx.message.author:
+                    return False
+                if str(reaction.emoji) not in to_react:
+                    return False
+                return True
 
             res, user = await self.bot.wait_for('reaction_add', check=check_react)
             if user != ctx.message.author:
@@ -3116,8 +3183,13 @@ class ShowtimesAdmin(commands.Cog):
             await preview_msg.add_reaction(react)
 
         def check_react(reaction, user):
-            e = str(reaction.emoji)
-            return user == ctx.message.author and str(reaction.emoji) in to_react
+            if reaction.message.id != preview_msg.id:
+                return False
+            if user != ctx.message.author:
+                return False
+            if str(reaction.emoji) not in to_react:
+                return False
+            return True
 
         try:
             res, user = await self.bot.wait_for('reaction_add', timeout=15, check=check_react)
@@ -3313,8 +3385,13 @@ class ShowtimesAdmin(commands.Cog):
             await preview_msg.add_reaction(react)
 
         def check_react(reaction, user):
-            e = str(reaction.emoji)
-            return user == ctx.message.author and str(reaction.emoji) in to_react
+            if reaction.message.id != preview_msg.id:
+                return False
+            if user != ctx.message.author:
+                return False
+            if str(reaction.emoji) not in to_react:
+                return False
+            return True
 
         try:
             res, user = await self.bot.wait_for('reaction_add', timeout=15, check=check_react)
@@ -3374,8 +3451,13 @@ class ShowtimesConfigData(commands.Cog):
                 await msg.add_reaction(react)
 
             def check_react(reaction, user):
-                e = str(reaction.emoji)
-                return user == ctx.message.author and str(reaction.emoji) in reactmoji
+                if reaction.message.id != msg.id:
+                    return False
+                if user != ctx.message.author:
+                    return False
+                if str(reaction.emoji) not in reactmoji:
+                    return False
+                return True
 
             try:
                 res, user = await self.bot.wait_for('reaction_add', timeout=20.0, check=check_react)
@@ -3529,8 +3611,13 @@ class ShowtimesConfigData(commands.Cog):
                     await emb_msg.add_reaction(react)
 
                 def check_react(reaction, user):
-                    e = str(reaction.emoji)
-                    return user == ctx.message.author and str(reaction.emoji) in reactmoji
+                    if reaction.message.id != emb_msg.id:
+                        return False
+                    if user != ctx.message.author:
+                        return False
+                    if str(reaction.emoji) not in reactmoji:
+                        return False
+                    return True
 
                 res, user = await self.bot.wait_for('reaction_add', check=check_react)
                 if user != ctx.message.author:
@@ -3671,8 +3758,13 @@ class ShowtimesConfigData(commands.Cog):
                     await emb_msg.add_reaction(react)
 
                 def check_react(reaction, user):
-                    e = str(reaction.emoji)
-                    return user == ctx.message.author and str(reaction.emoji) in reactmoji
+                    if reaction.message.id != emb_msg.id:
+                        return False
+                    if user != ctx.message.author:
+                        return False
+                    if str(reaction.emoji) not in reactmoji:
+                        return False
+                    return True
 
                 res, user = await self.bot.wait_for('reaction_add', check=check_react)
                 if user != ctx.message.author:
@@ -3728,8 +3820,13 @@ class ShowtimesConfigData(commands.Cog):
                     await emb_msg.add_reaction(react)
 
                 def check_react(reaction, user):
-                    e = str(reaction.emoji)
-                    return user == ctx.message.author and str(reaction.emoji) in reactmoji
+                    if reaction.message.id != emb_msg.id:
+                        return False
+                    if user != ctx.message.author:
+                        return False
+                    if str(reaction.emoji) not in reactmoji:
+                        return False
+                    return True
 
                 res, user = await self.bot.wait_for('reaction_add', check=check_react)
                 if user != ctx.message.author:
@@ -3771,8 +3868,13 @@ class ShowtimesConfigData(commands.Cog):
                 await emb_msg.add_reaction(react)
 
             def check_react(reaction, user):
-                e = str(reaction.emoji)
-                return user == ctx.message.author and str(reaction.emoji) in reactmoji
+                if reaction.message.id != emb_msg.id:
+                    return False
+                if user != ctx.message.author:
+                    return False
+                if str(reaction.emoji) not in reactmoji:
+                    return False
+                return True
 
             res, user = await self.bot.wait_for('reaction_add', check=check_react)
             if user != ctx.message.author:
