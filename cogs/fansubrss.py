@@ -95,14 +95,14 @@ def filter_data(entries) -> dict:
 
     return entries
 
-async def async_feedparse(url):
+async def async_feedparse(url, **kwargs):
     async with aiohttp.ClientSession() as session:
         try:
             async with session.get(url) as r:
                 r_data = await r.text()
         except session.ClientError:
             return None
-    return feedparser.parse(r_data)
+    return feedparser.parse(r_data, **kwargs)
 
 
 async def check_if_valid(url) -> bool:
@@ -190,20 +190,23 @@ async def parse_embed(embed_data, entry_data):
     return filtered
 
 
-async def recursive_check_feed(url, last):
-    feed = await async_feedparse(url)
+async def recursive_check_feed(url, rss_data):
+    last_title = rss_data['lastUpdate']
+    last_etag = rss_data['lastEtag']
+    last_modified = rss_data['lastModified']
+    feed = await async_feedparse(url, etag=last_etag, modified=last_modified)
     if not feed:
-        return None
+        return None, feed.etag, feed.modified
 
     entries = feed.entries
 
     filtered_entry = []
     for n, entry in enumerate(entries):
-        if entry['title'] == last:
+        if entry['title'] == last_title:
             break
         filtered_entry.append(filter_data(entries[n]))
 
-    return filtered_entry
+    return filtered_entry, feed.etag, feed.modified
 
 
 def write_rss_data(rss_d):
@@ -212,6 +215,11 @@ def write_rss_data(rss_d):
 
 
 def read_rss_data():
+    if not os.path.isfile('fansubrss.json'):
+        print('[@] FansubRSS are not initiated, initiating...')
+        with open('fansubrss.json', 'w') as fp:
+            json.dump({}, fp)
+        return {}
     with open('fansubrss.json', 'r') as fp:
         json_d_rss = json.load(fp)
     return json_d_rss
@@ -232,38 +240,41 @@ async def patch_error_handling(bot, ctx):
 class FansubRSS(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+
         self.check_every_feed.start()
 
-
     @tasks.loop(minutes=5.0)
-    async def check_every_feed(self, ctx):
+    async def check_every_feed(self):
         print('[@] Routine 5 minute checks of fansub rss')
         json_d_rss = read_rss_data()
+        if not json_d_rss:
+            print('[!!] FansbubRSS file empty.')
+        else:
+            for k in json_d_rss.keys():
+                print('[@] Checking `{}` feed'.format(k))
+                entries, etag, modified = await recursive_check_feed(json_d_rss[k]['feedUrl'], json_d_rss[k])
+                if entries:
+                    channel = self.bot.get_channel(int(json_d_rss[k]['channel']))
+                    print('Sending result to: #{}'.format(channel))
+                    for entry in entries[::-1]:
+                        if json_d_rss[k]['embed']:
+                            embed22 = discord.Embed()
+                            msg_format = await parse_message(json_d_rss[k]['message'], entry)
+                            msg_emb = await parse_embed(json_d_rss[k]['embed'], entry)
+                            embed22 = embed22.from_dict(msg_emb)
+                            await channel.send(msg_format, embed=embed22)
+                        else:
+                            msg_format = await parse_message(json_d_rss[k]['message'], entry)
+                            await channel.send(msg_format)
+                    json_d_rss[k]['lastUpdate'] = entries[0]['title']
+                    json_d_rss[k]['lastEtag'] = etag
+                    json_d_rss[k]['lastModified'] = modified
+                    write_rss_data(json_d_rss)
+                    result_patch = await patch_json_rss(json_d_rss)
+                else:
+                    print('[@] No new update.')
+            print("[@] Finish checking, now sleeping for 5 minutes")
 
-        for k in json_d_rss.keys():
-            print('[@] Checking `{}` feed'.format(k))
-            entries = await recursive_check_feed(json_d_rss[k]['feedUrl'], json_d_rss[k]['lastUpdate'])
-            if entries:
-                channel = self.bot.get_channel(int(json_d_rss[k]['channel']))
-                print('Sending result to: #{}'.format(channel))
-                for entry in entries[::-1]:
-                    if json_d_rss[k]['embed']:
-                        embed22 = discord.Embed()
-                        msg_format = await parse_message(json_d_rss[k]['message'], entry)
-                        msg_emb = await parse_embed(json_d_rss[k]['embed'], entry)
-                        embed22 = embed22.from_dict(msg_emb)
-                        await channel.send(msg_format, embed=embed22)
-                    else:
-                        msg_format = await parse_message(json_d_rss[k]['message'], entry)
-                        await channel.send(msg_format)
-                json_d_rss[k]['lastUpdate'] = entries[0]['title']
-                write_rss_data(json_d_rss)
-                result_patch = await patch_json_rss(json_d_rss)
-                if not result_patch:
-                    await patch_error_handling(self.bot, ctx)
-            else:
-                print('[@] No new update.')
-        print("[@] Finish checking, now sleeping for 5 minutes")
 
     @commands.group(aliases=['rss'])
     @commands.guild_only()
@@ -328,7 +339,7 @@ class FansubRSS(commands.Cog):
         server_data = json_d[server_message]
 
         if str(ctx.message.author.id) not in server_data['serverowner']:
-            return await ctx.send('Hanya admin yang bisa mengaktifkan rss fansub')
+            return await ctx.send('Hanya admin yang bisa mengaktifkan rss fansub.')
 
         if server_message in json_d_rss:
             return await ctx.send('RSS telah diaktifkan di server ini.')
@@ -343,7 +354,10 @@ class FansubRSS(commands.Cog):
             "channel": "",
             "feedUrl": "",
             "message": r":newspaper: | Rilisan Baru: **{title}**\n{link}",
-            "lastUpdate": ""
+            "lastUpdate": "",
+            "lastEtag": "",
+            "lastModified": "",
+            "embed": {}
         }
 
         async def process_channel(table, emb_msg, author):
@@ -365,7 +379,7 @@ class FansubRSS(commands.Cog):
             embed = discord.Embed(title="Fansub RSS", color=0x96df6a)
             embed.add_field(name='Feed URL', value="Ketik url feed xml yang valid.", inline=False)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-            emb_msg.edit(embed=embed)
+            await emb_msg.edit(embed=embed)
 
             while True:
                 await_msg = await self.bot.wait_for('message', check=lambda m: m.author == author)
@@ -374,6 +388,8 @@ class FansubRSS(commands.Cog):
                 if check_if_valid(await_msg):
                     feed = feedparser.parse(await_msg)
                     json_tables['lastUpdate'] = feed.entries[0]['title']
+                    json_tables['lastEtag'] = feed.etag
+                    json_tables['lastModified'] = feed.modified
                     break
                 else:
                     embed.set_field_at(0, name='Feed URL', value="Gagal memvalidasi URL\nSilakan masukan feed xml yang valid.", inline=False)
@@ -400,7 +416,7 @@ class FansubRSS(commands.Cog):
                 emb_msg = await ctx.send(embed=embed)
                 first_time = False
             else:
-                emb_msg.edit(embed=embed)
+                await emb_msg.edit(embed=embed)
 
             to_react = ['1⃣', "2⃣", '✅', '❌']
             for reaction in to_react:
