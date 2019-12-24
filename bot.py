@@ -39,7 +39,6 @@ async def fetch_newest_db(CONFIG_DATA):
                         with open('nao_showtimes.json', 'w') as f:
                             json.dump(js_data, f, indent=4)
                         print('\t[@] Fetched and saved.')
-                        return
                     except IndexError:
                         continue
                 print('\t[#] Fetching fansubrss.json')
@@ -50,10 +49,10 @@ async def fetch_newest_db(CONFIG_DATA):
                         with open('fansubrss.json', 'w') as f:
                             json.dump(js_data, f, indent=4)
                         print('[@] Fetched and saved.')
-                        return
                     except IndexError:
                         continue
-            except session.ClientError:
+                break
+            except aiohttp.ClientError:
                 continue
 
 def prefixes(bot, message):
@@ -106,8 +105,7 @@ async def init_bot():
         description = '''Penyuruh Fansub biar kerja cepat\nversi 2.0.0 || Dibuat oleh: N4O#8868'''
         bot = commands.Bot(command_prefix=prefixes, description=description)
         bot.remove_command('help')
-        #TODO: Enable this
-        #await fetch_newest_db(config)
+        await fetch_newest_db(config)
         print('[@!!] Success Loading Discord.py')
     except Exception as exc:
         print('[#!!] Failed to load Discord.py ###')
