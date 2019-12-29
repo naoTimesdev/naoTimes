@@ -17,6 +17,23 @@ async def nsfw_channel(ctx):
         return ctx.channel.is_nsfw()
     raise commands.NoPrivateMessage('Perintah tidak bisa dipakai di private message.')
 
+TRANSLASI_BAHASA = {
+    'English': 'Inggris',
+    'Chinese': 'Cina',
+    'Korean': 'Korea',
+    'Japanese': 'Jepang'
+}
+
+TAG_TRANSLATION = {
+    'parodies': ':nut_and_bolt: Parodi',
+    'characters': ':nut_and_bolt: Karakter',
+    'tags': ':nut_and_bolt: Label',
+    'artists': ':nut_and_bolt: Seniman',
+    'groups': ':nut_and_bolt: Circle/Grup',
+    'languages': ':nut_and_bolt: Bahasa',
+    'categories': ':nut_and_bolt: Kategori'
+}
+
 class NotNSFWChannel(Exception):
     pass
 
@@ -45,7 +62,7 @@ class nHController(commands.Cog):
     async def cari(self, ctx, *, query):
         message = await ctx.send('Memulai proses pencarian, mohon tunggu.')
         async with aiohttp.ClientSession() as sesi:
-            async with sesi.get('https://s.ihateani.me/api/search?q={}'.format(query)) as resp:
+            async with sesi.get('https://s.ihateani.me/api/v2/search?q={}'.format(query)) as resp:
                 try:
                     response = await resp.json()
                 except aiohttp.client_exceptions.ContentTypeError as cterr:
@@ -55,9 +72,17 @@ class nHController(commands.Cog):
 
         await message.edit(content='Pencarian didapatkan.')
 
+        def cek_translasi(tags):
+            lang = [i[0].capitalize() for i in tags['languages']]
+            if 'Translated' in lang:
+                lang.remove('Translated')
+                lang = [TRANSLASI_BAHASA.get(l, l) for l in lang]
+                return 'Terjemahan: ' + ', '.join(lang)
+            return 'RAW ({})'.format(TRANSLASI_BAHASA.get(lang[0], lang[0]))
+
         #print(response)
         resdata = response['results']
-        max_page = len(resdata)
+        total_data = response['total_data']
 
         first_run = True
         num = 1
@@ -65,8 +90,8 @@ class nHController(commands.Cog):
             if first_run:
                 data = resdata[num - 1]
                 embed = discord.Embed(title="Pencarian: {}".format(query), color=0x1f1f1f, url=data['url'])
-                embed.set_footer(text='Kode: {} | Diprakasai oleh s.ihateani.me'.format(data['nuke_code']))
-                embed.description = '**{}**'.format(data['title'])
+                embed.set_footer(text='Kode: {} | Diprakasai oleh s.ihateani.me'.format(data['id']))
+                embed.description = '**{}**\n{}'.format(data['title'], cek_translasi(data['tags']))
                 embed.set_image(url=data['cover'])
 
                 first_run = False
@@ -74,13 +99,13 @@ class nHController(commands.Cog):
                 await message.delete()
 
             reactmoji = []
-            if max_page == 1 and num == 1:
+            if total_data == 1 and num == 1:
                 pass
             elif num == 1:
                 reactmoji.append('⏩')
-            elif num == max_page:
+            elif num == total_data:
                 reactmoji.append('⏪')
-            elif num > 1 and num < max_page:
+            elif num > 1 and num < total_data:
                 reactmoji.extend(['⏪', '⏩'])
             reactmoji.append('\N{INFORMATION SOURCE}')
             reactmoji.append('✅')
@@ -108,8 +133,8 @@ class nHController(commands.Cog):
                 data = resdata[num - 1]
 
                 embed = discord.Embed(title="Pencarian: {}".format(query), color=0x1f1f1f, url=data['url'])
-                embed.set_footer(text='Kode: {} | Diprakasai oleh s.ihateani.me'.format(data['nuke_code']))
-                embed.description = '**{}**'.format(data['title'])
+                embed.set_footer(text='Kode: {} | Diprakasai oleh s.ihateani.me'.format(data['id']))
+                embed.description = '**{}**\n{}'.format(data['title'], cek_translasi(data['tags']))
                 embed.set_image(url=data['cover'])
 
                 await msg.clear_reactions()
@@ -119,30 +144,15 @@ class nHController(commands.Cog):
                 data = resdata[num - 1]
 
                 embed = discord.Embed(title="Pencarian: {}".format(query), color=0x1f1f1f, url=data['url'])
-                embed.set_footer(text='Kode: {} | Diprakasai oleh s.ihateani.me'.format(data['nuke_code']))
-                embed.description = '**{}**'.format(data['title'])
+                embed.set_footer(text='Kode: {} | Diprakasai oleh s.ihateani.me'.format(data['id']))
+                embed.description = '**{}**\n{}'.format(data['title'], cek_translasi(data['tags']))
                 embed.set_image(url=data['cover'])
 
                 await msg.clear_reactions()
                 await msg.edit(embed=embed)
             elif '\u2139' in str(res.emoji):
-                message = await ctx.send('Memulai proses pengumpulan informasi, mohon tunggu.')
-                async with aiohttp.ClientSession() as sesi:
-                    async with sesi.get('https://s.ihateani.me/api/info/{}'.format(data['nuke_code'])) as resp:
-                        data2 = await resp.json()
-
-                await message.delete()
                 await msg.clear_reactions()
                 first_run_2 = True
-                TAG_TRANSLATION = {
-                    'parodies': ':nut_and_bolt: Parodi',
-                    'characters': ':nut_and_bolt: Karakter',
-                    'tags': ':nut_and_bolt: Label',
-                    'artists': ':nut_and_bolt: Seniman',
-                    'groups': ':nut_and_bolt: Circle/Grup',
-                    'languages': ':nut_and_bolt: Bahasa',
-                    'categories': ':nut_and_bolt: Kategori'
-                }
                 download_text_open = False
                 while True:
                     reactmoji2 = []
@@ -152,14 +162,21 @@ class nHController(commands.Cog):
                     reactmoji2.append('✅') # Back
 
                     if first_run_2:
-                        embed = discord.Embed(title=data2['title'], color=0x1f1f1f, url=data['url'], timestamp=datetime.fromtimestamp(data2['posted_time']))
-                        for tag in data2['tags'].keys():
-                            if data2['tags'][tag]:
-                                tag_parsed = [aaa[0].capitalize() for aaa in data2['tags'][tag]]
+                        lang = [i[0].capitalize() for i in data['tags']['languages']]
+                        if 'Translated' in lang:
+                            lang.remove('translated')
+                            lang_ = 'Translasi ' + TRANSLASI_BAHASA.get(lang[0], lang[0])
+                        lang_ = 'RAW {}'.format(TRANSLASI_BAHASA.get(lang[0], lang[0]))
+                        format_title = '{} [{}]'.format(data['title'], lang_)
+                        embed = discord.Embed(title=format_title, color=0x1f1f1f, url=data['url'], timestamp=datetime.fromtimestamp(data['posted_time']))
+                        embed.description = '{}\n{}'.format(data['original_title']['japanese'], data['original_title']['other'])
+                        for tag in data['tags'].keys():
+                            if data['tags'][tag]:
+                                tag_parsed = [aaa[0].capitalize() for aaa in data['tags'][tag]]
                                 embed.add_field(name=TAG_TRANSLATION[tag], value=', '.join(tag_parsed))
-                        embed.add_field(name=':nut_and_bolt: Total Halaman', value='{} halaman'.format(data2['total_pages']))
-                        embed.set_footer(text='Favorit: {} | Diprakasai oleh s.ihateani.me'.format(data2['favorites']))
-                        embed.set_image(url=data2['cover'])
+                        embed.add_field(name=':nut_and_bolt: Total Halaman', value='{} halaman'.format(data['total_pages']))
+                        embed.set_footer(text='Favorit: {} | Diprakasai oleh s.ihateani.me'.format(data['favorites']))
+                        embed.set_image(url=data['cover'])
 
                         first_run_2 = False
                         await msg.edit(embed=embed)
@@ -183,27 +200,33 @@ class nHController(commands.Cog):
                         await msg.clear_reactions()
                         if not download_text_open:
                             embed = discord.Embed(title="Pencarian: {}".format(query), color=0x1f1f1f, url=data['url'])
-                            embed.set_footer(text='Kode: {} | Diprakasai oleh s.ihateani.me'.format(data['nuke_code']))
-                            embed.description = '**{}**'.format(data['title'])
+                            embed.set_footer(text='Kode: {} | Diprakasai oleh s.ihateani.me'.format(data['id']))
+                            embed.description = '**{}**\n{}'.format(data['title'], cek_translasi(data['tags']))
                             embed.set_image(url=data['cover'])
 
                             await msg.edit(embed=embed)
                             break
                         else:
-                            embed = discord.Embed(title=data2['title'], color=0x1f1f1f, url=data['url'], timestamp=datetime.fromtimestamp(data2['posted_time']))
-                            for tag in data2['tags'].keys():
-                                if data2['tags'][tag]:
-                                    tag_parsed = [aaa[0].capitalize() for aaa in data2['tags'][tag]]
+                            lang = [i[0].capitalize() for i in data['tags']['languages']]
+                            if 'Translated' in lang:
+                                lang.remove('translated')
+                                lang_ = 'Translasi ' + TRANSLASI_BAHASA.get(lang[0], lang[0])
+                            lang_ = 'RAW {}'.format(TRANSLASI_BAHASA.get(lang[0], lang[0]))
+                            format_title = '{} [{}]'.format(data['title'], lang_)
+                            embed = discord.Embed(title=format_title, color=0x1f1f1f, url=data['url'], timestamp=datetime.fromtimestamp(data['posted_time']))
+                            embed.description = '{}\n{}'.format(data['original_title']['japanese'], data['original_title']['other'])
+                            for tag in data['tags'].keys():
+                                if data['tags'][tag]:
+                                    tag_parsed = [aaa[0].capitalize() for aaa in data['tags'][tag]]
                                     embed.add_field(name=TAG_TRANSLATION[tag], value=', '.join(tag_parsed))
-                            embed.add_field(name=':nut_and_bolt: Total Halaman', value='{} halaman'.format(data2['total_pages']))
-                            embed.set_footer(text='Favorit: {} | Diprakasai oleh s.ihateani.me'.format(data2['favorites']))
-                            embed.set_image(url=data2['cover'])
+                            embed.add_field(name=':nut_and_bolt: Total Halaman', value='{} halaman'.format(data['total_pages']))
+                            embed.set_footer(text='Favorit: {} | Diprakasai oleh s.ihateani.me'.format(data['favorites']))
 
                             await msg.edit(embed=embed)
                             download_text_open = False
                     elif '\N{INBOX TRAY}' in str(res2.emoji): # Download
-                        embed = discord.Embed(title=data2['title'], color=0x1f1f1f, url=data['url'], timestamp=datetime.fromtimestamp(data2['posted_time']))
-                        embed.description = 'Klik link dibawah ini untuk mendownload\n<https://s.ihateani.me/unduh?id={}>\n\nJika gambar banyak, akan memakan waktu lebih lama ketika proses sebelum download.'.format(data['nuke_code'])
+                        embed = discord.Embed(title=data['title'], color=0x1f1f1f, url=data['url'], timestamp=datetime.fromtimestamp(data['posted_time']))
+                        embed.description = 'Klik link dibawah ini untuk mendownload\n<https://s.ihateani.me/unduh?id={}>\n\nJika gambar banyak, akan memakan waktu lebih lama ketika proses sebelum download.'.format(data['id'])
                         embed.set_footer(text='Diprakasai oleh s.ihateani.me')
                         embed.set_thumbnail(url=data['cover'])
 
@@ -211,18 +234,9 @@ class nHController(commands.Cog):
                         await msg.clear_reactions()
                         await msg.edit(embed=embed)
                     elif '\N{OPEN BOOK}' in str(res2.emoji): # Download
-                        page_total = data2['total_pages']
-                        time_calc = ((page_total / 5) * ((300 * 5) + 1000)) // 1000 + 5
-
-                        message = await ctx.send('Memulai proses proxy gambar, mohon tunggu.\n(Akan memakan waktu **±{}** detik jika belum pernah di cache.)'.format(time_calc))
-                        async with aiohttp.ClientSession() as sesi:
-                            async with sesi.get('https://s.ihateani.me/api/mirror/{}'.format(data['nuke_code'])) as resp:
-                                data3 = await resp.json()
-
-                        await message.delete()
                         await msg.clear_reactions()
 
-                        dataset_img = data3['proxied_images']
+                        dataset_img = data['images']
                         dataset_total = len(dataset_img)
                         first_run_3 = True
                         pospos = 1
@@ -230,7 +244,7 @@ class nHController(commands.Cog):
                             if first_run_3:
                                 img_link = dataset_img[pospos - 1]
 
-                                embed = discord.Embed(title=data2['title'], color=0x1f1f1f, url=data['url'], timestamp=datetime.fromtimestamp(data2['posted_time']))
+                                embed = discord.Embed(title=data['title'], color=0x1f1f1f, url=data['url'], timestamp=datetime.fromtimestamp(data['posted_time']))
                                 embed.description = '{}/{}\n<{}>'.format(pospos, dataset_total, img_link)
                                 embed.set_image(url=img_link)
                                 embed.set_footer(text='Diprakasai oleh s.ihateani.me')
@@ -263,14 +277,20 @@ class nHController(commands.Cog):
                             if user3 != ctx.message.author:
                                 pass
                             if '✅' in str(res3.emoji):
-                                embed = discord.Embed(title=data2['title'], color=0x1f1f1f, url=data['url'], timestamp=datetime.fromtimestamp(data2['posted_time']))
-                                for tag in data2['tags'].keys():
-                                    if data2['tags'][tag]:
-                                        tag_parsed = [aaa[0].capitalize() for aaa in data2['tags'][tag]]
+                                lang = [i[0].capitalize() for i in data['tags']['languages']]
+                                if 'Translated' in lang:
+                                    lang.remove('translated')
+                                    lang_ = 'Translasi ' + TRANSLASI_BAHASA.get(lang[0], lang[0])
+                                lang_ = 'RAW {}'.format(TRANSLASI_BAHASA.get(lang[0], lang[0]))
+                                format_title = '{} [{}]'.format(data['title'], lang_)
+                                embed = discord.Embed(title=format_title, color=0x1f1f1f, url=data['url'], timestamp=datetime.fromtimestamp(data['posted_time']))
+                                embed.description = '{}\n{}'.format(data['original_title']['japanese'], data['original_title']['other'])
+                                for tag in data['tags'].keys():
+                                    if data['tags'][tag]:
+                                        tag_parsed = [aaa[0].capitalize() for aaa in data['tags'][tag]]
                                         embed.add_field(name=TAG_TRANSLATION[tag], value=', '.join(tag_parsed))
-                                embed.add_field(name=':nut_and_bolt: Total Halaman', value='{} halaman'.format(data2['total_pages']))
-                                embed.set_footer(text='Favorit: {} | Diprakasai oleh s.ihateani.me'.format(data2['favorites']))
-                                embed.set_image(url=data2['cover'])
+                                embed.add_field(name=':nut_and_bolt: Total Halaman', value='{} halaman'.format(data['total_pages']))
+                                embed.set_footer(text='Favorit: {} | Diprakasai oleh s.ihateani.me'.format(data['favorites']))
 
                                 await msg.clear_reactions()
                                 await msg.edit(embed=embed)
@@ -279,7 +299,7 @@ class nHController(commands.Cog):
                                 pospos = pospos - 1
                                 img_link = dataset_img[pospos - 1]
 
-                                embed = discord.Embed(title=data2['title'], color=0x1f1f1f, url=data['url'], timestamp=datetime.fromtimestamp(data2['posted_time']))
+                                embed = discord.Embed(title=data['title'], color=0x1f1f1f, url=data['url'], timestamp=datetime.fromtimestamp(data['posted_time']))
                                 embed.description = '{}/{}\n<{}>'.format(pospos, dataset_total, img_link)
                                 embed.set_image(url=img_link)
                                 embed.set_footer(text='Diprakasai oleh s.ihateani.me')
@@ -289,7 +309,7 @@ class nHController(commands.Cog):
                                 pospos = pospos + 1
                                 img_link = dataset_img[pospos - 1]
 
-                                embed = discord.Embed(title=data2['title'], color=0x1f1f1f, url=data['url'], timestamp=datetime.fromtimestamp(data2['posted_time']))
+                                embed = discord.Embed(title=data['title'], color=0x1f1f1f, url=data['url'], timestamp=datetime.fromtimestamp(data['posted_time']))
                                 embed.description = '{}/{}\n<{}>'.format(pospos, dataset_total, img_link)
                                 embed.set_image(url=img_link)
                                 embed.set_footer(text='Diprakasai oleh s.ihateani.me')
@@ -305,7 +325,7 @@ class nHController(commands.Cog):
 
         message = await ctx.send('Memulai proses pengumpulan informasi, mohon tunggu.')
         async with aiohttp.ClientSession() as sesi:
-            async with sesi.get('https://s.ihateani.me/api/info/{}'.format(kode_nuklir)) as resp:
+            async with sesi.get('https://s.ihateani.me/api/v2/info/{}'.format(kode_nuklir)) as resp:
                 try:
                     data2 = await resp.json()
                 except aiohttp.client_exceptions.ContentTypeError as cterr:
@@ -315,15 +335,6 @@ class nHController(commands.Cog):
 
         await message.delete()
         first_run_2 = True
-        TAG_TRANSLATION = {
-            'parodies': ':nut_and_bolt: Parodi',
-            'characters': ':nut_and_bolt: Karakter',
-            'tags': ':nut_and_bolt: Label',
-            'artists': ':nut_and_bolt: Seniman',
-            'groups': ':nut_and_bolt: Circle/Grup',
-            'languages': ':nut_and_bolt: Bahasa',
-            'categories': ':nut_and_bolt: Kategori'
-        }
         data2['url'] = 'https://nhentai.net/g/' + kode_nuklir
         download_text_open = False
         while True:
@@ -334,14 +345,20 @@ class nHController(commands.Cog):
             reactmoji2.append('✅') # Back
 
             if first_run_2:
-                embed = discord.Embed(title=data2['title'], color=0x1f1f1f, url=data2['url'], timestamp=datetime.fromtimestamp(data2['posted_time']))
+                lang = [i[0].capitalize() for i in data2['tags']['languages']]
+                if 'Translated' in lang:
+                    lang.remove('translated')
+                    lang_ = 'Translasi ' + TRANSLASI_BAHASA.get(lang[0], lang[0])
+                lang_ = 'RAW {}'.format(TRANSLASI_BAHASA.get(lang[0], lang[0]))
+                format_title = '{} [{}]'.format(data2['title'], lang_)
+                embed = discord.Embed(title=format_title, color=0x1f1f1f, url=data2['url'], timestamp=datetime.fromtimestamp(data2['posted_time']))
+                embed.description = '{}\n{}'.format(data2['original_title']['japanese'], data2['original_title']['other'])
                 for tag in data2['tags'].keys():
                     if data2['tags'][tag]:
                         tag_parsed = [aaa[0].capitalize() for aaa in data2['tags'][tag]]
                         embed.add_field(name=TAG_TRANSLATION[tag], value=', '.join(tag_parsed))
                 embed.add_field(name=':nut_and_bolt: Total Halaman', value='{} halaman'.format(data2['total_pages']))
                 embed.set_footer(text='Favorit: {} | Diprakasai oleh s.ihateani.me'.format(data2['favorites']))
-                embed.set_image(url=data2['cover'])
 
                 first_run_2 = False
                 msg = await ctx.send(embed=embed)
@@ -388,18 +405,9 @@ class nHController(commands.Cog):
                 await msg.clear_reactions()
                 await msg.edit(embed=embed)
             elif '\N{OPEN BOOK}' in str(res2.emoji): # Download
-                page_total = data2['total_pages']
-                time_calc = ((page_total / 5) * ((300 * 5) + 1000)) // 1000 + 5
-
-                message = await ctx.send('Memulai proses proxy gambar, mohon tunggu.\n(Akan memakan waktu **±{}** detik jika belum pernah di cache.)'.format(time_calc))
-                async with aiohttp.ClientSession() as sesi:
-                    async with sesi.get('https://s.ihateani.me/api/mirror/{}'.format(kode_nuklir)) as resp:
-                        data3 = await resp.json()
-
-                await message.delete()
                 await msg.clear_reactions()
 
-                dataset_img = data3['proxied_images']
+                dataset_img = data2['images']
                 dataset_total = len(dataset_img)
                 first_run_3 = True
                 pospos = 1
@@ -481,7 +489,7 @@ class nHController(commands.Cog):
 
         message = await ctx.send('Memulai proses pengumpulan informasi, mohon tunggu.')
         async with aiohttp.ClientSession() as sesi:
-            async with sesi.get('https://s.ihateani.me/api/info/{}'.format(kode_nuklir)) as resp:
+            async with sesi.get('https://s.ihateani.me/api/v2/info/{}'.format(kode_nuklir)) as resp:
                 try:
                     data2 = await resp.json()
                 except aiohttp.client_exceptions.ContentTypeError as cterr:
@@ -529,7 +537,7 @@ class nHController(commands.Cog):
 
         message = await ctx.send('Memulai proses pengumpulan informasi, mohon tunggu.')
         async with aiohttp.ClientSession() as sesi:
-            async with sesi.get('https://s.ihateani.me/api/info/{}'.format(kode_nuklir)) as resp:
+            async with sesi.get('https://s.ihateani.me/api/v2/info/{}'.format(kode_nuklir)) as resp:
                 try:
                     data2 = await resp.json()
                 except aiohttp.client_exceptions.ContentTypeError as cterr:
@@ -539,17 +547,8 @@ class nHController(commands.Cog):
 
         await message.delete()
         data2['url'] = 'https://nhentai.net/g/' + kode_nuklir
-        page_total = data2['total_pages']
-        time_calc = ((page_total / 5) * ((300 * 5) + 1000)) // 1000 + 5
 
-        message = await ctx.send('Memulai proses proxy gambar, mohon tunggu.\n(Akan memakan waktu **±{}** detik jika belum pernah di cache.)'.format(time_calc))
-        async with aiohttp.ClientSession() as sesi:
-            async with sesi.get('https://s.ihateani.me/api/mirror/{}'.format(kode_nuklir)) as resp:
-                data3 = await resp.json()
-
-        await message.delete()
-
-        dataset_img = data3['proxied_images']
+        dataset_img = data2['images']
         dataset_total = len(dataset_img)
         first_run_3 = True
         pospos = 1
