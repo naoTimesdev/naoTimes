@@ -260,7 +260,7 @@ async def fetch_nyaa(keyword=None, category='all', trusted=False, nr=False, user
 
     torrents = []
 
-    NYAA_EMAIL, NYAA_PASS = bot_config["nyaa"]["username"], bot_config["nyaa"]["password"]
+    NYAA_EMAIL, NYAA_PASS = bot_config["nyaasi"]["username"], bot_config["nyaasi"]["password"]
     if not NYAA_EMAIL or not NYAA_PASS:
         return 'Perintah Nyaa.si tidak bisa digunakan karena bot tidak diberikan informasi login untuk Nyaa.si\nCek `config.json` untuk memastikannya.'
 
@@ -422,7 +422,7 @@ class NyaaTorrentsV2(commands.Cog):
         res, user = await self.bot.wait_for('reaction_add', check=check_react)
         if user != ctx.message.author:
             pass
-        elif '✅' in str(res.reaction.emoji):
+        elif '✅' in str(res.emoji):
             await msg.clear_reactions()
             await ctx.message.delete()
             return await msg.delete()
@@ -488,7 +488,7 @@ class NyaaTorrentsV2(commands.Cog):
                 return await msg.clear_reactions()
             if user != ctx.message.author:
                 pass
-            elif '⏪' in str(res.reaction.emoji):
+            elif '⏪' in str(res.emoji):
                 num = num - 1
                 data = resdata[num - 1]
 
@@ -507,7 +507,7 @@ class NyaaTorrentsV2(commands.Cog):
 
                 await msg.clear_reactions()
                 await msg.edit(embed=embed)
-            elif '⏩' in str(res.reaction.emoji):
+            elif '⏩' in str(res.emoji):
                 num = num + 1
                 data = resdata[num - 1]
 
@@ -589,7 +589,7 @@ class NyaaTorrentsV2(commands.Cog):
                 return await msg.clear_reactions()
             if user != ctx.message.author:
                 pass
-            elif '⏪' in str(res.reaction.emoji):
+            elif '⏪' in str(res.emoji):
                 num = num - 1
                 data = resdata[num - 1]
 
@@ -608,7 +608,7 @@ class NyaaTorrentsV2(commands.Cog):
 
                 await msg.clear_reactions()
                 await msg.edit(embed=embed)
-            elif '⏩' in str(res.reaction.emoji):
+            elif '⏩' in str(res.emoji):
                 num = num + 1
                 data = resdata[num - 1]
 
