@@ -34,6 +34,18 @@ TAG_TRANSLATION = {
     'categories': ':nut_and_bolt: Kategori'
 }
 
+def truncate(text: str, m: str) -> str:
+    mamount = {
+        'title': 256,
+        'field': 1024,
+        'desc': 2048,
+        'footer': 2048
+    }
+    max_len = mamount.get(m, 1024)
+    if len(text) > max_len:
+        text = text[0:max_len-5] + ' ...'
+    return text
+
 class NotNSFWChannel(Exception):
     pass
 
@@ -58,11 +70,21 @@ class nHController(commands.Cog):
             await ctx.send(embed=helpmain)
 
 
-    @nhi.command(aliases=['search'])
-    async def cari(self, ctx, *, query):
+    @nhi.command(aliases=['search', 'latest', 'terbaru'])
+    async def cari(self, ctx, *, query=None):
+        msg_content = ctx.message.clean_content
+        do_mode = msg_content.replace('!nh ', '').split()[0]
+        url_to_use = "https://s.ihateani.me/api/v2/latest"
+        if 'search' in do_mode or 'cari' in do_mode:
+            if query:
+                url_to_use = 'https://s.ihateani.me/api/v2/search?q={}'.format(query)
+            else:
+                query = 'Doujin terbaru'
+        else:
+            query = 'Doujin terbaru'
         message = await ctx.send('Memulai proses pencarian, mohon tunggu.')
         async with aiohttp.ClientSession() as sesi:
-            async with sesi.get('https://s.ihateani.me/api/v2/search?q={}'.format(query)) as resp:
+            async with sesi.get(url_to_use) as resp:
                 try:
                     response = await resp.json()
                 except aiohttp.client_exceptions.ContentTypeError as cterr:
@@ -107,7 +129,7 @@ class nHController(commands.Cog):
                 reactmoji.append('⏪')
             elif num > 1 and num < total_data:
                 reactmoji.extend(['⏪', '⏩'])
-            reactmoji.append('\N{INFORMATION SOURCE}')
+            reactmoji.append('📜')
             reactmoji.append('✅')
             for reaction in reactmoji:
                 await msg.add_reaction(reaction)
@@ -150,7 +172,7 @@ class nHController(commands.Cog):
 
                 await msg.clear_reactions()
                 await msg.edit(embed=embed)
-            elif '\u2139' in str(res.emoji):
+            elif '📜' in str(res.emoji):
                 await msg.clear_reactions()
                 first_run_2 = True
                 download_text_open = False
@@ -164,7 +186,7 @@ class nHController(commands.Cog):
                     if first_run_2:
                         lang = [i[0].capitalize() for i in data['tags']['languages']]
                         if 'Translated' in lang:
-                            lang.remove('translated')
+                            lang.remove('Translated')
                             lang_ = 'Translasi ' + TRANSLASI_BAHASA.get(lang[0], lang[0])
                         lang_ = 'RAW {}'.format(TRANSLASI_BAHASA.get(lang[0], lang[0]))
                         format_title = '{} [{}]'.format(data['title'], lang_)
@@ -209,7 +231,7 @@ class nHController(commands.Cog):
                         else:
                             lang = [i[0].capitalize() for i in data['tags']['languages']]
                             if 'Translated' in lang:
-                                lang.remove('translated')
+                                lang.remove('Translated')
                                 lang_ = 'Translasi ' + TRANSLASI_BAHASA.get(lang[0], lang[0])
                             lang_ = 'RAW {}'.format(TRANSLASI_BAHASA.get(lang[0], lang[0]))
                             format_title = '{} [{}]'.format(data['title'], lang_)
@@ -279,7 +301,7 @@ class nHController(commands.Cog):
                             if '✅' in str(res3.emoji):
                                 lang = [i[0].capitalize() for i in data['tags']['languages']]
                                 if 'Translated' in lang:
-                                    lang.remove('translated')
+                                    lang.remove('Translated')
                                     lang_ = 'Translasi ' + TRANSLASI_BAHASA.get(lang[0], lang[0])
                                 lang_ = 'RAW {}'.format(TRANSLASI_BAHASA.get(lang[0], lang[0]))
                                 format_title = '{} [{}]'.format(data['title'], lang_)
@@ -347,7 +369,7 @@ class nHController(commands.Cog):
             if first_run_2:
                 lang = [i[0].capitalize() for i in data2['tags']['languages']]
                 if 'Translated' in lang:
-                    lang.remove('translated')
+                    lang.remove('Translated')
                     lang_ = 'Translasi ' + TRANSLASI_BAHASA.get(lang[0], lang[0])
                 lang_ = 'RAW {}'.format(TRANSLASI_BAHASA.get(lang[0], lang[0]))
                 format_title = '{} [{}]'.format(data2['title'], lang_)
