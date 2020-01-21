@@ -28,6 +28,7 @@ query ($id: Int!) {
         }
         coverImage {
             large
+            color
         }
         format
         episodes
@@ -62,7 +63,6 @@ Contoh: `4` untuk episode 4 saja || `4-6` untuk episode 4 sampai 6"""
 with open('config.json', 'r') as fp:
     bot_config = json.load(fp)
 
-
 async def fetch_json() -> dict:
     """
     Open local database
@@ -81,10 +81,6 @@ async def patch_json(jsdata: dict) -> bool:
     """
     Send modified data back to github
     """
-    #TODO: Remove this whenever v2 is finished.
-    while True:
-        print('[@] Mock patching: yes.')
-        return True
     hh = {
         "description": "N4O Showtimes bot",
         "files": {
@@ -132,6 +128,20 @@ async def fetch_newest_db(CONFIG_DATA):
                         continue
             except session.ClientError:
                 continue
+
+
+def is_minus(x) -> bool:
+    return x < 0
+
+
+def rgbhex_to_rgbint(hex_str: str) -> int:
+    if not hex_str:
+        return 0x1eb5a6
+    hex_str = hex_str.replace("#", "").upper()
+    r = int(hex_str[0:2], 16)
+    g = int(hex_str[2:4], 16)
+    b = int(hex_str[4:6], 16)
+    return (256 * 256 * r) + (256 * g) + b
 
 
 def parse_anilist_start_date(startDate: str) -> int:
@@ -233,7 +243,7 @@ async def fetch_anilist(ani_id, current_ep, total_episode=None, return_time_data
 
         return taimu, time_until, next_episode
 
-    poster = entry['coverImage']['large']
+    poster = [entry['coverImage']['large'], rgbhex_to_rgbint(entry['coverImage']['color'])]
     start_date = entry['startDate']
     title_rom = entry['title']['romaji']
     airing_time_nodes = entry['airingSchedule']['nodes']
@@ -326,55 +336,30 @@ def check_role(needed_role, user_roles: list) -> bool:
     return False
 
 
-def get_all_month_before(dt) -> int:
-    current = int(dt.month)
-    year = dt.year
-    current_day_in_month = int(monthrange(year, dt.month)[1])
-    while current > 1:
-        current_day_in_month += int(monthrange(year, current)[1])
-        current -= 1
-    return current_day_in_month
+def get_last_updated(oldtime):
+    current_time = datetime.now()
+    oldtime = datetime.utcfromtimestamp(oldtime)
+    delta_time = current_time - oldtime
 
-
-def total_day_in_year(dt) -> int:
-    year = dt.year
-    first_month = int(monthrange(year, 1)[1])
-    for x in range(2, 13):
-        first_month += int(monthrange(year, x)[1])
-    return first_month
-
-
-def last_update_month_failsafe(deltatime, dayinmonth) -> int:
-    x = int(round(deltatime / (86400 * dayinmonth)))
-    if x == 0:
-        return 1
-    return x
-
-
-def get_last_updated(oldtime) -> str:
-    """
-    Get last updated airing anime that return to a nice format
-    """
-    current_time = int(round(time.time()))
-    oldtime = int(oldtime)
-    deltatime = current_time - oldtime
-    current_datetime = datetime.now()
-    total_day = total_day_in_year(current_datetime)
-    day_in_month = get_all_month_before(current_datetime)
-    if deltatime < 60:
+    days_passed_by = delta_time.days
+    seconds_passed = delta_time.total_seconds()
+    if seconds_passed < 60:
         text = 'Beberapa detik yang lalu'
-    elif deltatime < 180:
+    elif seconds_passed < 180:
         text = 'Beberapa menit yang lalu'
-    elif deltatime < 3600:
-        text = '{} menit yang lalu'.format(int(round(deltatime / 60)))
-    elif deltatime < 86400:
-        text = '{} jam yang lalu'.format(int(round(deltatime / 3600)))
-    elif deltatime < 32 * 86400:
-        text = '{} hari yang lalu'.format(int(round(deltatime / 86400)))
-    elif deltatime < day_in_month * 86400 and (total_day - day_in_month)+1 <= total_day:
-        text = '{} bulan yang lalu'.format(last_update_month_failsafe(deltatime, day_in_month))
+    elif seconds_passed < 3600:
+        text = '{} menit yang lalu'.format(round(seconds_passed / 60))
+    elif seconds_passed < 86400:
+        text = '{} jam yang lalu'.format(round(seconds_passed / 3600))
+    elif days_passed_by < 31:
+        text = '{} hari yang lalu'.format(days_passed_by)
+    elif days_passed_by < 365:
+        text = '{} bulan yang lalu'.format(round(days_passed_by / 30))
     else:
-        text = '{} tahun yang lalu'.format(int(round(deltatime / (total_day * 86400))))
+        calculate_year = round(days_passed_by / 365)
+        if calculate_year < 1:
+            calculate_year = 1
+        text = '{} bulan yang lalu'.format(calculate_year)
 
     return text
 
@@ -435,10 +420,6 @@ def make_numbered_alias(alias_list: list) -> str:
     return "\n".join(t)
 
 
-def is_minus(x: int) -> bool:
-    return x < 0
-
-
 def any_progress(status: dict) -> bool:
     for _, v in status.items():
         if v == 'y':
@@ -451,6 +432,29 @@ def get_role_name(role_id, roles) -> str:
         if str(r.id) == str(role_id):
             return r.name
     return 'Unknown'
+
+
+def split_until_less_than(dataset: list) -> list:
+    def split_list(alist, wanted_parts=1):
+        length = len(alist)
+        return [alist[i*length // wanted_parts: (i+1)*length // wanted_parts]
+                for i in range(wanted_parts)]
+
+    text_format = '**Mungkin**: {}'
+    start_num = 2
+    new_set = None
+    while True:
+        internal_meme = False
+        new_set = split_list(dataset, start_num)
+        for set_ in new_set:
+            if len(text_format.format(', '.join(set_))) > 1995:
+                internal_meme = True
+
+        if not internal_meme:
+            break
+        start_num += 1
+
+    return new_set
 
 
 async def patch_error_handling(bot, ctx):
@@ -560,7 +564,20 @@ class Showtimes(commands.Cog):
         if not judul:
             if len(srv_anilist) < 1:
                 return await ctx.send('**Tidak ada anime yang terdaftar di database**')
-            return await ctx.send('**Mungkin**: {}'.format(', '.join(sorted(srv_anilist))))
+            sorted_data = sorted(srv_anilist)
+            count_text = len('**Mungkin**: {}'.format(', '.join(sorted_data)))
+            if count_text > 1995:
+                sorted_data = split_until_less_than(sorted_data)
+                first_time = True
+                for data in sorted_data:
+                    if first_time:
+                        await ctx.send('**Mungkin**: {}'.format(', '.join(data)))
+                        first_time = False
+                    else:
+                        await ctx.send('{}'.format(', '.join(data)))
+                return
+            else:
+                return await ctx.send('**Mungkin**: {}'.format(', '.join(sorted_data)))
 
         matches = get_close_matches(judul, srv_anilist)
         if srv_anilist_alias:
@@ -586,7 +603,8 @@ class Showtimes(commands.Cog):
         if not current:
             return await ctx.send('**Sudah beres digarap!**')
 
-        time_data, poster_image, _ = await fetch_anilist(program_info['anilist_id'], current)
+        time_data, poster_data, _ = await fetch_anilist(program_info['anilist_id'], current)
+        poster_image, poster_color = poster_data
 
         if any_progress(status_list[current]['staff_status']):
             last_status = time_data
@@ -598,7 +616,7 @@ class Showtimes(commands.Cog):
         current_ep_status = parse_status(status_list[current]['staff_status'])
         print('[#] Sending message to user request...')
 
-        embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=0x1eb5a6)
+        embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=poster_color)
         embed.set_thumbnail(url=poster_image)
         embed.add_field(name='Status', value=current_ep_status, inline=False)
         embed.add_field(name=last_text, value=last_status, inline=False)
@@ -914,7 +932,8 @@ class Showtimes(commands.Cog):
         if not current:
             return await ctx.send('**Sudah beres digarap!**')
 
-        _, poster_image, _ = await fetch_anilist(program_info['anilist_id'], current)
+        time_data, poster_data, _ = await fetch_anilist(program_info['anilist_id'], current)
+        poster_image, poster_color = poster_data
 
         if posisi not in list_posisi:
             return await ctx.send('Tidak ada posisi itu\nYang tersedia: `tl`, `tlc`, `enc`, `ed`, `tm`, `ts`, dan `qc`')
@@ -1038,7 +1057,8 @@ class Showtimes(commands.Cog):
         if not current:
             return await ctx.send('**Sudah beres digarap!**')
 
-        _, poster_image, title = await fetch_anilist(program_info['anilist_id'], current)
+        time_data, poster_data, _ = await fetch_anilist(program_info['anilist_id'], current)
+        poster_image, poster_color = poster_data
 
         if posisi not in list_posisi:
             return await ctx.send('Tidak ada posisi itu\nYang tersedia: `tl`, `tlc`, `enc`, `ed`, `tm`, `ts`, dan `qc`')
@@ -1159,7 +1179,7 @@ class Showtimes(commands.Cog):
 
                 await await_msg.delete()
 
-            _, poster, title, time_data, correct_episode_num = await fetch_anilist(table['anilist_id'], 1, int(await_msg.content), True)
+            _, _, _, time_data, correct_episode_num = await fetch_anilist(table['anilist_id'], 1, int(await_msg.content), True)
             table['episodes'] = correct_episode_num
             table['time_data'] = time_data
 
@@ -1185,7 +1205,8 @@ class Showtimes(commands.Cog):
 
                     await await_msg.delete()
 
-            _, poster_image, title, time_data, correct_episode_num = await fetch_anilist(await_msg.content, 1, 1, True)
+            _, poster_data, title, time_data, correct_episode_num = await fetch_anilist(await_msg.content, 1, 1, True)
+            poster_image, poster_color = poster_data
 
             embed = discord.Embed(title="Menambah Utang", color=0x96df6a)
             embed.set_thumbnail(url=poster_image)
@@ -2501,7 +2522,7 @@ class ShowtimesKolaborasi(commands.Cog):
     @commands.guild_only()
     async def kolaborasi(self, ctx):
         if not ctx.invoked_subcommand:
-            helpmain = discord.Embed(title="Bantuan Perintah (!kolaborasi)", description="versi 1.5.0", color=0x00aaaa)
+            helpmain = discord.Embed(title="Bantuan Perintah (!kolaborasi)", description="versi 2.0.0", color=0x00aaaa)
             helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
             helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
             helpmain.add_field(name='!kolaborasi', value="```Memunculkan bantuan perintah```", inline=False)
@@ -2510,13 +2531,12 @@ class ShowtimesKolaborasi(commands.Cog):
             helpmain.add_field(name='!kolaborasi putus <judul>', value="```Memutuskan hubungan sinkronisasi data dengan semua fansub yang diajak kolaborasi```", inline=False)
             helpmain.add_field(name='!kolaborasi batalkan <server_id_kolaborasi> <kode>', value="```Membatalkan kode konfirmasi kolaborasi dengan fansub lain```", inline=False)
             helpmain.add_field(name='Aliases', value="!kolaborasi, !joint, !join, !koleb", inline=False)
-            helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 1.5.0")
+            helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
             await ctx.send(embed=helpmain)
 
     @kolaborasi.command()
     async def dengan(self, ctx, server_id, *, judul):
         server_message = str(ctx.message.guild.id)
-        msg_author = ctx.message.author
         print('[#] Requested !kolaborasi dengan at: ' + server_message)
         json_d = await fetch_json()
 
@@ -2850,7 +2870,6 @@ class ShowtimesKolaborasi(commands.Cog):
                 return await ctx.send('**Dibatalkan!**')
 
         program_info = server_data['anime'][matches[0]]
-        status_list = program_info['status']
 
         if 'kolaborasi' not in program_info:
             return await ctx.send('Tidak ada kolaborasi sama sekali pada judul ini.')
@@ -2889,12 +2908,12 @@ class ShowtimesAdmin(commands.Cog):
         return 'Showtimes Admin'
 
 
-    @commands.group(pass_context=True, aliases=['naotimesadmin', 'naoadmin'])
+    @commands.group(aliases=['naotimesadmin', 'naoadmin'])
     @commands.is_owner()
     @commands.guild_only()
     async def ntadmin(self, ctx):
         if ctx.invoked_subcommand is None:
-            helpmain = discord.Embed(title="Bantuan Perintah (!ntadmin)", description="versi 1.5.0", color=0x00aaaa)
+            helpmain = discord.Embed(title="Bantuan Perintah (!ntadmin)", description="versi 2.0.0", color=0x00aaaa)
             helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
             helpmain.set_author(name="naoTimesAdmin", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
             helpmain.add_field(name='!ntadmin', value="```Memunculkan bantuan perintah```", inline=False)
@@ -2905,11 +2924,11 @@ class ShowtimesAdmin(commands.Cog):
             helpmain.add_field(name='!ntadmin fetchdb', value="```Mengambil database dan menguploadnya ke discord```", inline=False)
             helpmain.add_field(name='!ntadmin patchdb', value="```Menganti database dengan attachments yang dicantumkan\nTambah attachments lalu tulis !ntadmin patchdb dan enter```", inline=False)
             helpmain.add_field(name='!ntadmin forceupdate', value="```Memaksa update database utama gist dengan database local.```", inline=False)
-            helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 1.5.0")
+            helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
             await ctx.send(embed=helpmain)
 
 
-    @ntadmin.command(pass_context=True)
+    @ntadmin.command()
     async def listserver(self, ctx):
         print('[#] Requested !ntadmin listserver by admin')
         json_d = await fetch_json()
@@ -2918,7 +2937,7 @@ class ShowtimesAdmin(commands.Cog):
 
         srv_list = []
         for i, _ in json_d.items():
-            srv_ = discord.Object(i)
+            srv_ = self.bot.get_guild(int(i))
             srv_list.append(srv_.name)
 
         srv_list.remove('supermod')
@@ -2932,7 +2951,7 @@ class ShowtimesAdmin(commands.Cog):
         await ctx.send(text)
 
     
-    @ntadmin.command(pass_context=True)
+    @ntadmin.command()
     async def initiate(self, ctx):
         """
         Initiate naoTimes on this server so it can be used on other server
@@ -3115,7 +3134,7 @@ class ShowtimesAdmin(commands.Cog):
             await ctx.send(embed=embed)
             await emb_msg.delete()
 
-    @ntadmin.command(pass_context=True)
+    @ntadmin.command()
     async def fetchdb(self, ctx):
         print('[#] Requested !ntadmin fetchdb by admin')
         json_d = await fetch_json()
@@ -3133,7 +3152,7 @@ class ShowtimesAdmin(commands.Cog):
         os.remove(save_file_name) # Cleanup
 
 
-    @ntadmin.command(pass_context=True)
+    @ntadmin.command()
     async def forcepull(self, ctx):
         print('[#] Requested !ntadmin forcepull by owner')
         json_d = await fetch_json()
@@ -3142,10 +3161,10 @@ class ShowtimesAdmin(commands.Cog):
         channel = ctx.message.channel
 
         await fetch_newest_db(bot_config)
-        await ctx.send('Newest database has been pulled and saved to local save')
+        await channel.send('Newest database has been pulled and saved to local save')
 
 
-    @ntadmin.command(pass_context=True)
+    @ntadmin.command()
     @commands.guild_only()
     async def patchdb(self, ctx):
         """
@@ -3212,7 +3231,7 @@ class ShowtimesAdmin(commands.Cog):
             await preview_msg.edit(content='**Ok, cancelled process**')
 
 
-    @ntadmin.command(pass_context=True)
+    @ntadmin.command()
     async def tambah(self, ctx, srv_id, adm_id, prog_chan=None):
         """
         Menambah server baru ke database naoTimes
@@ -3257,7 +3276,7 @@ class ShowtimesAdmin(commands.Cog):
         await ctx.send('Gagal dalam menambah server baru :(')
 
 
-    @ntadmin.command(pass_context=True)
+    @ntadmin.command()
     async def hapus(self, ctx, srv_id):
         """
         Menghapus server dari database naoTimes
@@ -3294,7 +3313,7 @@ class ShowtimesAdmin(commands.Cog):
         await ctx.send('Gagal menghapus server :(')
 
 
-    @ntadmin.command(pass_context=True)
+    @ntadmin.command()
     async def tambahadmin(self, ctx, srv_id, adm_id):
         """
         Menambah admin ke server ke database naoTimes
@@ -3332,7 +3351,7 @@ class ShowtimesAdmin(commands.Cog):
         await ctx.send('Gagal menambah admin :(')
 
 
-    @ntadmin.command(pass_context=True)
+    @ntadmin.command()
     async def hapusadmin(self, ctx, srv_id, adm_id):
         """
         Menghapus admin dari server dari database naoTimes
@@ -3370,7 +3389,7 @@ class ShowtimesAdmin(commands.Cog):
         await ctx.send('Gagal menghapus admin :(')
 
     
-    @ntadmin.command(pass_context=True)
+    @ntadmin.command()
     @commands.guild_only()
     async def forceupdate(self, ctx):
         print('[#] Requested forceupdate by admin')
@@ -3484,7 +3503,6 @@ class ShowtimesConfigData(commands.Cog):
     async def ubahdata(self, ctx, *, judul):
         server_message = str(ctx.message.guild.id)
         print('[@] Requested !ubahdata at: ' + server_message)
-        POSISI_GARAPAN = ['tl', 'tlc', 'enc', 'ed', 'tm', 'ts', 'qc']
         json_d = await fetch_json()
 
         if server_message not in json_d:
@@ -3679,7 +3697,7 @@ class ShowtimesConfigData(commands.Cog):
 
             status_list = program_info['status']
             max_episode = list(status_list.keys())[-1]
-            _, poster_image, title, time_data, correct_episode_num = await fetch_anilist(program_info['anilist_id'], 1, max_episode, True)
+            _, _, _, time_data, _ = await fetch_anilist(program_info['anilist_id'], 1, max_episode, True)
 
             embed = discord.Embed(title="Menambah Episode", description='Jumlah Episode Sekarang: {}'.format(max_episode), color=0xeba279)
             embed.add_field(name='Masukan jumlah episode yang diinginkan.', value=tambahepisode_instruct, inline=False)
@@ -3689,7 +3707,6 @@ class ShowtimesConfigData(commands.Cog):
             jumlah_tambahan = None
             while True:
                 await_msg = await self.bot.wait_for('message', check=check_if_author)
-                mentions = await_msg.role_mentions
 
                 if await_msg.content.isdigit():
                     jumlah_tambahan = int(await_msg.content)
@@ -3744,7 +3761,6 @@ class ShowtimesConfigData(commands.Cog):
             jumlah_tambahan = None
             while True:
                 await_msg = await self.bot.wait_for('message', check=check_if_author)
-                mentions = await_msg.role_mentions
 
                 jumlah_tambahan = await_msg.content
                 embed = discord.Embed(title="Menghapus Episode", color=0xeba279)
