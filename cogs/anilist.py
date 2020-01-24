@@ -940,7 +940,7 @@ class Anilist(commands.Cog):
 
         async def generate_embed(dataset, day_left):
             embed = discord.Embed(color=0x19212d)
-            embed.set_author(name='Anichart', url='https://anichart.net/', icon_url="https://anilist.co/img/icons/apple-touch-icon-152x152.png")
+            embed.set_author(name='Anichart', url='https://anichart.net/', icon_url="https://anichart.net/favicon.ico")
             val = ''
             for data in dataset:
                 val += '- {}\n{}\n'.format(data['title'], data['remain_txt'])
@@ -977,7 +977,7 @@ class Anilist(commands.Cog):
             if first_run:
                 print('\t>> Showing result')
                 embed = discord.Embed(title="Listing Jadwal Tayang - " + sisen, color=0x19212d)
-                embed.set_author(name='Anichart', url='https://anichart.net/', icon_url="https://anilist.co/img/icons/apple-touch-icon-152x152.png")
+                embed.set_author(name='Anichart', url='https://anichart.net/', icon_url="https://anichart.net/favicon.ico")
                 val = ''
                 for n, data in enumerate(resdata.keys()):
                     val += "{em} **{fmt}**\n".format(em=emote_list[n], fmt=data)
@@ -1013,7 +1013,7 @@ class Anilist(commands.Cog):
                 await msg.clear_reactions()
                 if melihat_listing:
                     embed = discord.Embed(title="Listing Jadwal Tayang - " + sisen, color=0x19212d)
-                    embed.set_author(name='Anichart', url='https://anichart.net/', icon_url="https://anilist.co/img/icons/apple-touch-icon-152x152.png")
+                    embed.set_author(name='Anichart', url='https://anichart.net/', icon_url="https://anichart.net/favicon.ico")
                     val = ''
                     for n, data in enumerate(resdata.keys()):
                         val += "{em} **{fmt}**\n".format(em=emote_list[n], fmt=data)
