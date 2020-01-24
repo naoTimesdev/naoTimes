@@ -8,10 +8,53 @@ from datetime import datetime, timedelta
 import aiohttp
 import discord
 import discord.ext.commands as commands
+from bs4 import BeautifulSoup
+from math import ceil
 
 
 def setup(bot):
     bot.add_cog(Anilist(bot))
+
+anichart_query = '''
+query ($season: MediaSeason, $year: Int, $format: MediaFormat, $excludeFormat: MediaFormat, $status: MediaStatus, $page: Int, $perPage: Int) {
+    Page (page: $page, perPage: $perPage) {
+        pageInfo {
+            hasNextPage
+            total
+            currentPage
+            perPage
+        }
+        media(season: $season, seasonYear: $year, format: $format, format_not: $excludeFormat, status: $status, type: ANIME) {
+            id
+            title {
+                romaji
+                native
+                english
+            }
+            startDate {
+                year
+                month
+                day
+            }
+            endDate {
+                year
+                month
+                day
+            }
+            status
+            season
+            format
+            episodes
+            siteUrl
+            nextAiringEpisode {
+                airingAt
+                timeUntilAiring
+                episode
+            }
+        }
+    }
+}
+'''
 
 anilist_query = '''
 query ($page: Int, $perPage: Int, $search: String) {
@@ -97,6 +140,8 @@ def html2markdown(text):
     re_list = {
         '<br>': '\n',
         '</br>': '\n',
+        '<br />': '\n',
+        '<br/>': '\n',
         '<i>': '*',
         '</i>': '*',
         '<b>': '**',
@@ -133,6 +178,80 @@ async def fetch_mal_vote(idmal):
     if not score_result:
         return 'Tidak ada'
     return score_result[0]
+
+
+async def current_season_streams():
+    current_time = datetime.today()
+    month = current_time.month
+    year = current_time.year
+
+    seasonal = {
+        '1': "winter",
+        '2': "winter",
+        '3': "winter",
+        '4': "spring",
+        '5': "spring",
+        '6': "spring",
+        '7': "summer",
+        '8': "summer",
+        '9': "summer",
+        '10': "fall",
+        '11': "fall",
+        '12': "fall"
+    }
+
+    url_fetch = "https://www.livechart.me/streams?all_regions=true&season={season}-{year}&titles=romaji"
+    url_to_fetch = url_fetch.format(season=seasonal.get(str(month), "winter"), year=year)
+
+    print('Fetching: {} {}'.format(seasonal.get(str(month), "winter"), year))
+
+    async with aiohttp.ClientSession() as sesi:
+        try:
+            async with sesi.get(url_to_fetch) as r:
+                data = await r.text()
+                if r.status != 200:
+                    if r.status == 404:
+                        return "Tidak ada hasil."
+                    elif r.status == 500:
+                        return "Internal Error :/"
+                    return "Terjadi kesalahan ketika komunikasi dengan server"
+        except aiohttp.ClientError:
+            return 'Koneksi terputus'
+
+    sup = BeautifulSoup(data, 'html.parser')
+
+    judul = sup.find('h1').text.strip().replace('Anime Streaming', '').strip()
+
+    streams_lists = sup.find_all("div", {"class": "column column-block", "data-controller": "stream-list"})
+
+    full_query_result = []
+    for streams in streams_lists:
+        dataset = {}
+        stream = streams.find('div')
+
+        stream_head = stream.find("li", {"class": "grouped-list-heading"})
+        stream_name = stream_head.find("div", class_="grouped-list-heading-title").text
+
+        # Sample: https://u.livechart.me/streaming_service/12/logo/1510d32c95cb8d6fad557c5f89888ab3.png?style=large&format=png
+        stream_icon = stream_head.find('div', class_="grouped-list-heading-icon").find('img')
+        stream_icon = stream_icon['src'].replace('style=small', 'style=large').replace('&amp;', '')
+
+        anime_list = []
+        for anime in stream.find_all("li", class_="anime-item"):
+            title_animu = anime['data-title']
+            extra = anime.find('div', {'class': 'info text-italic'})
+            if extra:
+                extra_text = extra.text.replace('※ ', '')
+                if not 'via' in extra_text:
+                    title_animu += ' ({})'.format(extra_text)
+            anime_list.append(title_animu)
+
+        dataset['name'] = stream_name
+        dataset['icon'] = stream_icon
+        dataset['anime'] = anime_list
+        full_query_result.append(dataset)
+
+    return {'result': full_query_result, 'data_total': len(full_query_result)}
 
 
 async def fetch_anilist(title, method):
@@ -303,6 +422,229 @@ async def fetch_anilist(title, method):
 
         full_query_result.append(dataset)
     return {'result': full_query_result, 'data_total': len(full_query_result)}
+
+
+async def fetch_anichart():
+    print('[@] Fetching Anichart...')
+    current_time = datetime.today()
+    month = current_time.month
+    current_year = current_time.year
+
+    seasonal = {
+        '1': "winter",
+        '2': "winter",
+        '3': "winter",
+        '4': "spring",
+        '5': "spring",
+        '6': "spring",
+        '7': "summer",
+        '8': "summer",
+        '9': "summer",
+        '10': "fall",
+        '11': "fall",
+        '12': "fall"
+    }
+
+    current_season = seasonal.get(str(month), 'winter').upper()
+
+    async def internal_fetch(season, year, page=1):
+        print('[@] Fetching page {} ({} {})'.format(page, season, year))
+        variables = {
+            'season': season,
+            'year': year,
+            'page': page,
+            'perPage': 50
+        }
+        async with aiohttp.ClientSession() as sesi:
+            try:
+                async with sesi.post('https://graphql.anilist.co', json={'query': anichart_query, 'variables': variables}) as r:
+                    try:
+                        data = await r.json()
+                    except IndexError:
+                        return 'ERROR: Terjadi kesalahan internal'
+                    if r.status != 200:
+                        if r.status == 404:
+                            return "Tidak ada hasil."
+                        elif r.status == 500:
+                            return "ERROR: Internal Error :/"
+                    try:
+                        return data['data']['Page']
+                    except IndexError:
+                        return "Tidak ada hasil."
+            except aiohttp.ClientError:
+                return 'ERROR: Koneksi terputus'
+
+    def _format_time(time_secs):
+        time_days = int(time_secs // 86400)
+        time_secs -= time_days * 86400
+        time_hours = int(time_secs // 3600)
+        time_secs -= time_hours * 3600
+        time_minutes = int(time_secs // 60)
+        time_secs -= time_minutes * 60
+
+        if time_days > 0:
+            if time_hours > 0:
+                return '{} hari, {} jam'.format(time_days, time_hours)
+            return '{} hari, {} menit'.format(time_days, time_minutes)
+
+        if time_hours > 0:
+            if time_minutes > 0:
+                return '{} jam, {} menit'.format(time_hours, time_minutes)
+            return '{} jam'.format(time_hours)
+
+        if time_minutes > 0:
+            return '{} menit'.format(time_minutes)
+
+        return '{} detik'.format(time_secs)
+
+    def is_valid_airing(status):
+        ng = {
+            "RELEASING": True,
+            "NOT_YET_RELEASED": True
+        }
+
+        return ng.get(status, False)
+
+    def is_valid_format(aniformat):
+        ng = {
+            "TV": True,
+            "TV_SHORT": True,
+            "MOVIE": True,
+            "ONA": True
+        }
+
+        return ng.get(aniformat, False)
+
+    dataset = await internal_fetch(current_season, current_year)
+    if isinstance(dataset, str):
+        return dataset
+
+    full_fetched_query = []
+
+    print('[#] Parsing results...')
+    for d in dataset['media']:
+        title = d['title']['romaji']
+        nar = d['nextAiringEpisode']
+        start_date = d['startDate']
+
+        if not is_valid_format(d['format']):
+            continue
+
+        if not is_valid_airing(d['status']):
+            continue
+
+        if nar:
+            next_ep = d['nextAiringEpisode']['episode']
+            time_secs = d['nextAiringEpisode']['timeUntilAiring']
+            title = "**{t}** - #{e}".format(t=title, e=str(next_ep).zfill(2))
+            time_until_air = _format_time(time_secs)
+        else:
+            title = "**{t}**".format(t=title)
+            time_secs = 100
+            time_until_air = str(start_date['year'])
+            if start_date['month']:
+                time_until_air = '{s}/{e}'.format(s=str(start_date['month']).zfill(2), e=time_until_air)
+            if start_date['day']:
+                time_until_air = '{s}/{e}'.format(s=str(start_date['day']).zfill(2), e=time_until_air)
+
+        discord_fill = {
+            'title': title,
+            'remain_txt': time_until_air,
+            'remain': time_secs,
+            'unknown': not nar
+        }
+
+        full_fetched_query.append(discord_fill)
+
+    next_page = dataset['pageInfo']['hasNextPage']
+    if next_page:
+        print('[#] Parsing additional results...')
+        count_total = dataset['pageInfo']['total']
+        per_page = 50
+
+        total_pages = ceil(count_total / per_page)
+
+        for page in range(2, total_pages + 1):
+            dataset = await internal_fetch(current_season, current_year, page)
+            if isinstance(dataset, str):
+                continue
+
+            print('[#] Parsing results...')
+            for d in dataset['media']:
+                title = d['title']['romaji']
+                nar = d['nextAiringEpisode']
+                start_date = d['startDate']
+
+                if not is_valid_format(d['format']):
+                    continue
+
+                if not is_valid_airing(d['status']):
+                    continue
+
+                if nar:
+                    next_ep = d['nextAiringEpisode']['episode']
+                    time_secs = d['nextAiringEpisode']['timeUntilAiring']
+                    title = "**{t}** - #{e}".format(t=title, e=str(next_ep).zfill(2))
+                    time_until_air = _format_time(time_secs)
+                else:
+                    title = "**{t}**".format(t=title)
+                    time_secs = 100
+                    time_until_air = str(start_date['year'])
+                    if start_date['month']:
+                        time_until_air = '{s}/{e}'.format(s=str(start_date['month']).zfill(2), e=time_until_air)
+                    if start_date['day']:
+                        time_until_air = '{s}/{e}'.format(s=str(start_date['day']).zfill(2), e=time_until_air)
+
+                discord_fill = {
+                    'title': title,
+                    'remain_txt': time_until_air,
+                    'remain': time_secs,
+                    'unknown': not nar
+                }
+
+                full_fetched_query.append(discord_fill)
+
+    # Sort
+    print('[#] Sorting results...')
+    filtered_full_fetched_query = {}
+    for q in full_fetched_query:
+        if q['unknown']:
+            if 'Lain-Lain' not in filtered_full_fetched_query:
+                unknown_dataset = []
+            else:
+                unknown_dataset = filtered_full_fetched_query['Lain-Lain']
+            unknown_dataset.append(q)
+            filtered_full_fetched_query['Lain-Lain'] = unknown_dataset
+        else:
+            td = timedelta(seconds=q['remain'])
+            day = str(td.days).zfill(2)
+
+            if day not in filtered_full_fetched_query:
+                day_dataset = []
+            else:
+                day_dataset = filtered_full_fetched_query[day]
+
+            day_dataset.append(q)
+            filtered_full_fetched_query[day] = day_dataset
+
+    del full_fetched_query
+
+    sorted_full_fetched_query = {}
+    for sss in sorted(list(filtered_full_fetched_query.keys())):
+        if sss.startswith('0'):
+            na = sss[1:] + ' hari lagi'
+        else:
+            na = sss
+            if sss != 'Lain-Lain':
+                na += ' hari lagi'
+        if na == "0 hari lagi":
+            na = "<24 jam lagi"
+        sorted_full_fetched_query[na] = filtered_full_fetched_query[sss]
+
+    del filtered_full_fetched_query
+
+    print('[@] Done!')
+    return {'dataset': sorted_full_fetched_query, 'season': '{} {}'.format(current_season.lower().capitalize(), current_year)}
 
 
 class Anilist(commands.Cog):
@@ -582,3 +924,214 @@ class Anilist(commands.Cog):
             elif '✅' in str(res.emoji):
                 await ctx.message.delete()
                 return await msg.delete()
+
+
+    @commands.command()
+    @commands.guild_only()
+    async def tayang(self, ctx):
+        """Mencari informasi season lewat API anilist.co"""
+        aqres = await fetch_anichart()
+        if isinstance(aqres, str):
+            return await ctx.send(aqres)
+
+        resdata = aqres['dataset']
+        sisen = aqres['season']
+        amount_final = len(resdata)
+
+        async def generate_embed(dataset, day_left):
+            embed = discord.Embed(color=0x19212d)
+            embed.set_author(name='Anichart', url='https://anichart.net/', icon_url="https://anilist.co/img/icons/apple-touch-icon-152x152.png")
+            val = ''
+            for data in dataset:
+                val += '- {}\n{}\n'.format(data['title'], data['remain_txt'])
+            embed.add_field(name=day_left, value=val, inline=False)
+            return embed
+
+        emote_list = [
+            '1️⃣',
+            '2️⃣',
+            '3️⃣',
+            '4️⃣',
+            '5️⃣',
+            '6️⃣',
+            '7️⃣',
+            '8️⃣',
+            '9️⃣',
+            '0️⃣',
+            '🇦',
+            '🇧',
+            '🇨',
+            '🇩',
+            '🇪',
+            '🇫',
+            '🇬',
+            '🇭'
+        ]
+
+        resdata_keys = list(resdata.keys())
+
+        first_run = True
+        melihat_listing = False
+        num = 1
+        while True:
+            if first_run:
+                print('\t>> Showing result')
+                embed = discord.Embed(title="Listing Jadwal Tayang - " + sisen, color=0x19212d)
+                embed.set_author(name='Anichart', url='https://anichart.net/', icon_url="https://anilist.co/img/icons/apple-touch-icon-152x152.png")
+                val = ''
+                for n, data in enumerate(resdata.keys()):
+                    val += "{em} **{fmt}**\n".format(em=emote_list[n], fmt=data)
+                embed.add_field(name="List Hari", value=val)
+
+                first_run = False
+                msg = await ctx.send(embed=embed)
+
+            if melihat_listing:
+                amount_to_use = 0
+            else:
+                amount_to_use = amount_final
+
+            emotes = emote_list[:amount_to_use]
+            emotes.extend('✅')
+
+            for react in emotes:
+                await msg.add_reaction(react)
+
+            def check_react(reaction, user):
+                if reaction.message.id != msg.id:
+                    return False
+                if user != ctx.message.author:
+                    return False
+                if str(reaction.emoji) not in emotes:
+                    return False
+                return True
+
+            res, user = await self.bot.wait_for('reaction_add', check=check_react)
+            if user != ctx.message.author:
+                pass
+            elif '✅' in str(res.emoji):
+                await msg.clear_reactions()
+                if melihat_listing:
+                    embed = discord.Embed(title="Listing Jadwal Tayang - " + sisen, color=0x19212d)
+                    embed.set_author(name='Anichart', url='https://anichart.net/', icon_url="https://anilist.co/img/icons/apple-touch-icon-152x152.png")
+                    val = ''
+                    for n, data in enumerate(resdata.keys()):
+                        val += "{em} **{fmt}**\n".format(em=emote_list[n], fmt=data)
+                    embed.add_field(name="List Hari", value=val)
+
+                    melihat_listing = False
+                    await msg.edit(embed=embed)
+                else:
+                    await msg.delete()
+                    return await ctx.message.delete()
+            elif emote_list[0] in str(res.emoji):
+                await msg.clear_reactions()
+                num = 0
+                melihat_listing = True
+                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
+                await msg.edit(embed=embed)
+            elif emote_list[1] in str(res.emoji):
+                await msg.clear_reactions()
+                num = 1
+                melihat_listing = True
+                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
+                await msg.edit(embed=embed)
+            elif emote_list[2] in str(res.emoji):
+                await msg.clear_reactions()
+                num = 2
+                melihat_listing = True
+                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
+                await msg.edit(embed=embed)
+            elif emote_list[3] in str(res.emoji):
+                await msg.clear_reactions()
+                num = 3
+                melihat_listing = True
+                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
+                await msg.edit(embed=embed)
+            elif emote_list[4] in str(res.emoji):
+                await msg.clear_reactions()
+                num = 4
+                melihat_listing = True
+                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
+                await msg.edit(embed=embed)
+            elif emote_list[5] in str(res.emoji):
+                await msg.clear_reactions()
+                num = 5
+                melihat_listing = True
+                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
+                await msg.edit(embed=embed)
+            elif emote_list[6] in str(res.emoji):
+                await msg.clear_reactions()
+                num = 6
+                melihat_listing = True
+                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
+                await msg.edit(embed=embed)
+            elif emote_list[7] in str(res.emoji):
+                await msg.clear_reactions()
+                num = 7
+                melihat_listing = True
+                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
+                await msg.edit(embed=embed)
+            elif emote_list[8] in str(res.emoji):
+                await msg.clear_reactions()
+                num = 8
+                melihat_listing = True
+                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
+                await msg.edit(embed=embed)
+            elif emote_list[9] in str(res.emoji):
+                await msg.clear_reactions()
+                num = 9
+                melihat_listing = True
+                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
+                await msg.edit(embed=embed)
+            elif emote_list[10] in str(res.emoji):
+                await msg.clear_reactions()
+                num = 10
+                melihat_listing = True
+                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
+                await msg.edit(embed=embed)
+            elif emote_list[11] in str(res.emoji):
+                await msg.clear_reactions()
+                num = 11
+                melihat_listing = True
+                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
+                await msg.edit(embed=embed)
+            elif emote_list[12] in str(res.emoji):
+                await msg.clear_reactions()
+                num = 12
+                melihat_listing = True
+                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
+                await msg.edit(embed=embed)
+            elif emote_list[13] in str(res.emoji):
+                await msg.clear_reactions()
+                num = 13
+                melihat_listing = True
+                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
+                await msg.edit(embed=embed)
+            elif emote_list[14] in str(res.emoji):
+                await msg.clear_reactions()
+                num = 14
+                melihat_listing = True
+                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
+                await msg.edit(embed=embed)
+            elif emote_list[15] in str(res.emoji):
+                await msg.clear_reactions()
+                num = 15
+                melihat_listing = True
+                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
+                await msg.edit(embed=embed)
+            elif emote_list[16] in str(res.emoji):
+                await msg.clear_reactions()
+                num = 16
+                melihat_listing = True
+                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
+                await msg.edit(embed=embed)
+            elif emote_list[17] in str(res.emoji):
+                await msg.clear_reactions()
+                num = 17
+                melihat_listing = True
+                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
+                await msg.edit(embed=embed)
+            else:
+                await msg.clear_reactions()
+
