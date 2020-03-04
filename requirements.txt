@@ -12,3 +12,4 @@ pysubs2==0.2.4
 redis==3.3.11
 markdownify==0.4.1
 feedparser==5.2.1
+python-magic
