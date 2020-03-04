@@ -9,8 +9,8 @@ def setup(bot):
     bot.add_cog(Fun(bot))
 
 def getStatus(mode):
-    if mode == 'OL':
-        status = [
+    statuses_list = {
+        "OL": [
             'Terhubung',
             'Berselancar di Internet',
             'Online',
@@ -25,10 +25,8 @@ def getStatus(mode):
             'Bersama keluarga besar (Internet)',
             'Ngobrol',
             'Nge-meme bareng'
-        ]
-        finalOne = random.choice(status)
-    elif mode == 'IDL':
-        status = [
+        ],
+        "IDL": [
             'Halo kau di sana?',
             'Ketiduran',
             'Nyawa di pertanyakan',
@@ -42,10 +40,8 @@ def getStatus(mode):
             'Lupa matiin data',
             'Lupa disconnect wifi',
             'Bengong'
-        ]
-        finalOne = random.choice(status)
-    elif mode == 'DND':
-        status = [
+        ],
+        "DND": [
             'Lagi riajuu bentar',
             'Sibuk ~~onani/masturbasi~~',
             'Pacaran (joudan desu)',
@@ -65,10 +61,8 @@ def getStatus(mode):
             'Nge-roll gacha',
             'Nonton JAV',
             'Baca Doujinshi R-18++++'
-        ]
-        finalOne = random.choice(status)
-    elif mode == 'OFF':
-        status = [
+        ],
+        "OFF": [
             'Mokad',
             'Off',
             'Tidak online',
@@ -85,9 +79,9 @@ def getStatus(mode):
             'Gak ada sinyal',
             'Kuota habis'
         ]
-        finalOne = random.choice(status)
-    finalOne = str(finalOne)
-    return finalOne
+    }
+    status = statuses_list.get(mode, ['Unknown'])
+    return random.choice(status)
 
 def translate_date(str_):
     hari = {
@@ -150,6 +144,17 @@ class Fun(commands.Cog):
             ans = discord.Embed(title=msg.clean_content, description="Tentu saja: {}".format(user_name), timestamp=msg.created_at, color=0x3974b8)
             ans.set_image(url=ava)
             await channeru.send(embed=ans)
+
+        titikduaV = re.compile(r'((:|\uFF1A|\uFE55|\uFE13)v|v(:|\uFF1A|\uFE55|\uFF13))', re.IGNORECASE)
+
+        #if re.findall(titikduaV, msg.clean_content):
+        #    subtitute_txt = re.sub(titikduaV, '***[SENSOR]***', msg.content)
+
+        #    user_name = '{0.name}#{0.discriminator}'.format(msg.author)
+
+        #    await msg.delete()
+        #    await channeru.send('`{}` berkata: {}'.format(user_name, subtitute_txt))
+
 
 
     @commands.command(aliases=['user', 'uinfo', 'userinfo'])
