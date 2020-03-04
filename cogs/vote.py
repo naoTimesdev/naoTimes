@@ -3,6 +3,7 @@ import asyncio
 import json
 import os
 import shlex
+import time
 from datetime import datetime
 
 import aiohttp
@@ -10,12 +11,9 @@ import discord
 import pytz
 from discord import Permissions
 from discord.ext import commands, tasks
-import redis
 
 with open('config.json', 'r') as fp:
     bot_config = json.load(fp)
-
-redis_srv = redis.Redis().from_url(url=bot_config["redissrv_vote"])
 
 class ArgumentParserError(Exception):
     def __init__(self, message):
@@ -59,10 +57,11 @@ def parse_error(err_str):
         )
     return err_str
 
+
 def parse_args(str_txt: str, s: str):
     '''parse an argument that passed'''
     parser = BotArgumentParser(prog="!vote" + s, usage="!vote" + s, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('data', help='Apa yang mau vote atau orang yang mau di vote')
+    parser.add_argument('yang_ingin_di_vote', help='Apa yang mau vote atau orang yang mau di vote')
 
     if s == '':
         parser.add_argument('--opsi', '-O', required=True, dest='opsi', action='append', help='Opsi (Batas 10, Min 2)')
@@ -77,36 +76,39 @@ def parse_args(str_txt: str, s: str):
     except HelpException as help_:
         return '```\n' + str(help_) + '\n```'
 
+
 async def read_tally(vote=False, kick=False, ban=False):
-    vote_data = redis_srv.get('vote_data')
-    kick_data = redis_srv.get('kick_data')
-    ban_data = redis_srv.get('ban_data')
-
-    blank_data = r"{}"
-
-    if not vote_data:
-        redis_srv.set('vote_data', blank_data)
-    if not kick_data:
-        redis_srv.set('kick_data', blank_data)
-    if not ban_data:
-        redis_srv.set('ban_data', blank_data)
-
+    with open("vote_data.json", "r") as fp:
+        data = json.load(fp)
     if vote:
-        return json.loads(vote_data)
+        return data['vote_data']
     elif kick:
-        return json.loads(kick_data)
+        return data['kick_data']
     elif ban:
-        return json.loads(ban_data)
-    return json.loads(vote_data)
+        return data['ban_data']
+    return data['vote_data']
 
 
-async def write_tally(key: str, data: dict):
-    redis_srv.set(key, json.dumps(data))
+async def write_tally(key: str, kdata: dict):
+    with open("vote_data.json", "r") as fp:
+        data = json.load(fp)
+    data[key] = kdata
+    with open("vote_data.json", 'w') as fp:
+        json.dump(data, fp, indent=2)
 
-class VotingWatcher(commands.Cog):
-    """A shitty voting tally system"""
+
+class VotingSystem(commands.Cog):
+    """A shitty voting system"""
     def __init__(self, bot):
         self.bot = bot
+        print('[$] Preparing Voting System...')
+        self.kick_data_fast = {}
+        self.ban_data_fast = {}
+        self.vote_data_fast = {}
+        self.rw_json_lock = False
+        self.rw_kick_lock = False
+        self.rw_vote_lock = False
+        self.rw_ban_lock = False
         print('[$] Starting Main Vote Watcher.')
         self.main_vote_watcher.start()
         print('[$] Starting Kick Vote Watcher.')
@@ -115,21 +117,99 @@ class VotingWatcher(commands.Cog):
         self.ban_vote_watcher.start()
 
     def __str__(self):
-        return "nT Voting Watcher/Tally Tasks"
+        return "nT Voting System"
+
+    async def acquire_lock(self, mode="vote_data"):
+        print('[nT Vote] Acquiring file lock...')
+        mode_list = {
+            "vote_data": [True, False, False],
+            "kick_data": [False, True, False],
+            "ban_data": [False, False, True]
+        }
+        acquire_mode = mode_list.get(mode, [True, False, False])
+        if not self.rw_json_lock:
+            print('[nT Vote] Lock acquired.')
+            self.rw_json_lock = True
+            return (await read_tally(*acquire_mode))
+        # Lock still not released, try every 2 seconds to acquire lock
+        print('[nT Vote] Lock not released, retrying every 1 seconds')
+        while True:
+            if not self.rw_json_lock:
+                print('[nT Vote] Lock acquired.')
+                self.rw_json_lock = True
+                return (await read_tally(*acquire_mode))
+            await asyncio.sleep(1)
+
+    async def acquire_lock_self(self, mode):
+        if mode == "vote_data":
+            if not self.rw_vote_lock:
+                print('[nT Vote: Vote] Lock acquired.')
+                self.rw_vote_lock = True
+            # Lock still not released, try every 2 seconds to acquire lock
+            print('[nT Vote: Vote] Lock not released, retrying every 1 seconds')
+            while True:
+                if not self.rw_vote_lock:
+                    print('[nT Vote: Vote] Lock acquired.')
+                    self.rw_vote_lock = True
+                    break
+                await asyncio.sleep(1)
+        elif mode == "kick_data":
+            if not self.rw_kick_lock:
+                print('[nT Vote: Kick] Lock acquired.')
+                self.rw_kick_lock = True
+            # Lock still not released, try every 2 seconds to acquire lock
+            print('[nT Vote: Kick] Lock not released, retrying every 1 seconds')
+            while True:
+                if not self.rw_kick_lock:
+                    print('[nT Vote: Kick] Lock acquired.')
+                    self.rw_kick_lock = True
+                    break
+                await asyncio.sleep(1)
+        elif mode == "ban_data":
+            if not self.rw_ban_lock:
+                print('[nT Vote: Ban] Lock acquired.')
+                self.rw_ban_lock = True
+            # Lock still not released, try every 2 seconds to acquire lock
+            print('[nT Vote: Ban] Lock not released, retrying every 1 seconds')
+            while True:
+                if not self.rw_ban_lock:
+                    print('[nT Vote: Ban] Lock acquired.')
+                    self.rw_ban_lock = True
+                    break
+                await asyncio.sleep(1)
+
+
+    async def release_lock(self):
+        print('[nT Vote] Releasing lock...')
+        self.rw_json_lock = False
+
+    async def release_lock_self(self, mode):
+        if mode == "vote_data":
+            print('[nT Vote: Vote] Lock released.')
+            self.rw_vote_lock = False
+        elif mode == "kick_data":
+            print('[nT Vote: Kick] Lock released.')
+            self.rw_kick_lock = False
+        elif mode == "ban_data":
+            print('[nT Vote: Ban] Lock released.')
+            self.rw_ban_lock = False
 
     @tasks.loop(seconds=1.0)
     async def main_vote_watcher(self):
         v_ = 'vote_data'
         reactions = ['1⃣', '2⃣', '3⃣', '4⃣', '5⃣', '6⃣', '7⃣', '8⃣', '9⃣', '🔟']
-        vote_data = await read_tally(vote=True)
-        if vote_data:
-            for k_main, v_main in dict(vote_data.items()).items():
-                server = self.bot.get_guild(int(v_main['server']))
-                channel = server.get_channel(int(v_main['channel']))
-                message = await channel.fetch_message(int(k_main))
-                embed = discord.Embed().from_dict(message.embeds[0].to_dict())
-                timer = v_main['timer']
-                if timer < 1:
+        await self.acquire_lock_self(mode=v_)
+        current_time = round(time.time())
+        if self.vote_data_fast:
+            vote_data = await self.acquire_lock(mode=v_)
+            for k_fast, v_fast in self.vote_data_fast.items():
+                v_main = vote_data[k_fast]
+                timer = current_time - v_fast['start_time']
+                if timer > v_fast['max_time']:
+                    server = self.bot.get_guild(int(v_main['server']))
+                    channel = server.get_channel(int(v_main['channel']))
+                    message = await channel.fetch_message(int(k_fast))
+                    embed = discord.Embed().from_dict(message.embeds[0].to_dict())
                     c = 0
                     winner = ''
                     n___dex = 0
@@ -140,9 +220,10 @@ class VotingWatcher(commands.Cog):
                             winner = v['name']
                             n___dex = int(k)
 
-                    embed.set_footer(text=f"Waktu Habis!")
+                    embed.set_footer(text="Waktu Habis!")
                     await message.edit(embed=embed)
-                    del vote_data[k_main]
+                    del vote_data[k_fast]
+                    del self.vote_data_fast[k_fast]
                     await write_tally(v_, vote_data)
 
                     if c == 0:
@@ -154,45 +235,45 @@ class VotingWatcher(commands.Cog):
                     for k, v in v_main['options'].items():
                         options.append(v['name'])
                     for x, option in enumerate(options):
-                        tally_ = vote_data[k_main]['options'][str(x)]['voter']
+                        tally_ = vote_data[k_fast]['options'][str(x)]['voter']
                         embed.set_field_at(x, name='{} {}'.format(reactions[x], option), value='Votes: {}'.format(len(tally_)), inline=False)
                     embed.set_footer(text="Sisa Waktu: {} menit".format(round(timer / 60)))
                     await message.edit(embed=embed)
-                    timer -= 1
-                    vote_data[k_main]['timer'] = timer
-                    await write_tally(v_, vote_data)
-
+            await self.release_lock()
+        await self.release_lock_self(v_)
 
     @tasks.loop(seconds=1.0)
     async def kick_vote_watcher(self):
         v_ = 'kick_data'
-        vote_data = await read_tally(kick=True)
-        if vote_data:
-            for k_main, v_main in dict(vote_data.items()).items():
+        await self.acquire_lock_self(mode=v_)
+        current_time = round(time.time())
+        if self.kick_data_fast:
+            for k_fast, v_fast in self.kick_data_fast.items():
+                timer = current_time - v_fast['start_time']
+                tally = v_fast['tally']
+                limit = v_fast['limit']
+
+                vote_data = await self.acquire_lock(mode=v_)
+                v_main = vote_data[k_fast]
                 server = self.bot.get_guild(int(v_main['server']))
                 channel = server.get_channel(int(v_main['channel']))
                 user_ = server.get_member(int(v_main['user_id']))
-                message = await channel.fetch_message(int(k_main))
+                message = await channel.fetch_message(int(k_fast))
                 embed = discord.Embed().from_dict(message.embeds[0].to_dict())
-                timer = v_main['timer']
-                limit = v_main['limit']
-                tally = int(v_main['tally'])
-
-                if timer < 1:
+                if timer > v_fast['max_time']:
                     if tally >= limit:
                         await channel.send('Sebanyak **{}** orang telah vote kick **{}#{}**, melaksanakan tugas!'.format(tally, user_.name, user_.discriminator))
-                        del vote_data[k_main]
-                        await write_tally(v_, vote_data)
                         await server.kick(user=user_, reason="Kick musyawarah dan mufakat oleh member server ini dengan bot naoTimes.")
                         await channel.send('User **{}#{}** telah dikick secara musyawarah dan mufakat'.format(user_.name, user_.discriminator))
                     else:
                         await channel.send('Voting selesai, user tidak akan dikick karena kurangnya orang yang react ({} <= {})'.format(tally, limit))
-                        del vote_data[k_main]
-                        await write_tally(v_, vote_data)
+                    del vote_data[k_fast]
+                    del self.kick_data_fast[k_fast]
+                    await write_tally(v_, vote_data)
                 else:
                     if tally >= limit:
                         await channel.send('Sebanyak **{}** orang telah vote kick **{}#{}**, melaksanakan tugas!'.format(tally, user_.name, user_.discriminator))
-                        del vote_data[k_main]
+                        del vote_data[k_fast]
                         await write_tally(v_, vote_data)
                         await server.kick(user=user_, reason="Kick musyawarah dan mufakat oleh member server ini dengan bot naoTimes.")
                         await channel.send('User **{}#{}** telah dikick secara musyawarah dan mufakat'.format(user_.name, user_.discriminator))
@@ -200,139 +281,116 @@ class VotingWatcher(commands.Cog):
                         embed.set_field_at(0, name='Jumlah vote (Dibutuhkan: {})'.format(limit), value=str(tally), inline=False)
                         embed.set_field_at(1, name='Sisa waktu', value=f'{timer} detik', inline=False)
                         await message.edit(embed=embed)
-                        timer -= 1
-                        vote_data[k_main]['timer'] = timer
-                        await write_tally(v_, vote_data)
-
+            await self.release_lock()
+        await self.release_lock_self(v_)
 
     @tasks.loop(seconds=1.0)
     async def ban_vote_watcher(self):
         v_ = 'ban_data'
-        vote_data = await read_tally(ban=True)
-        if vote_data:
-            for k_main, v_main in dict(vote_data.items()).items():
+        await self.acquire_lock_self(mode=v_)
+        current_time = round(time.time())
+        if self.ban_data_fast:
+            for k_fast, v_fast in self.ban_data_fast.items():
+                timer = current_time - v_fast['start_time']
+                tally = v_fast['tally']
+                limit = v_fast['limit']
+
+                vote_data = await self.acquire_lock(mode=v_)
+                v_main = vote_data[k_fast]
                 server = self.bot.get_guild(int(v_main['server']))
                 channel = server.get_channel(int(v_main['channel']))
                 user_ = server.get_member(int(v_main['user_id']))
-                message = await channel.fetch_message(int(k_main))
+                message = await channel.fetch_message(int(k_fast))
                 embed = discord.Embed().from_dict(message.embeds[0].to_dict())
-                timer = v_main['timer']
-                limit = v_main['limit']
-                tally = int(v_main['tally'])
-
-                if timer < 1:
+                if timer > v_fast['max_time']:
                     if tally >= limit:
-                        await channel.send('Sebanyak **{}** orang telah telah vote ban **{}#{}**, melaksanakan tugas!'.format(tally, user_.name, user_.discriminator))
-                        del vote_data[k_main]
-                        await write_tally(v_, vote_data)
-                        await server.ban(user=user_, reason="Ban musyawarah dan mufakat oleh member server ini dengan bot naoTimes.", delete_message_days=0)
-                        await channel.send('User **{}#{}** telah diban secara musyawarah dan mufakat'.format(user_.name, user_.discriminator))
+                        await channel.send('Sebanyak **{}** orang telah vote kick **{}#{}**, melaksanakan tugas!'.format(tally, user_.name, user_.discriminator))
+                        await server.kick(user=user_, reason="Kick musyawarah dan mufakat oleh member server ini dengan bot naoTimes.")
+                        await channel.send('User **{}#{}** telah dikick secara musyawarah dan mufakat'.format(user_.name, user_.discriminator))
                     else:
-                        await channel.send('Voting selesai, user tidak akan diban karena kurangnya orang yang react ({} <= {})'.format(tally, limit))
-                        del vote_data[k_main]
-                        await write_tally(v_, vote_data)
+                        await channel.send('Voting selesai, user tidak akan dikick karena kurangnya orang yang react ({} <= {})'.format(tally, limit))
+                    del vote_data[k_fast]
+                    del self.ban_data_fast[k_fast]
+                    await write_tally(v_, vote_data)
                 else:
                     if tally >= limit:
-                        await channel.send('Sebanyak **{}** orang telah telah vote ban **{}#{}**, melaksanakan tugas!'.format(tally, user_.name, user_.discriminator))
-                        del vote_data[k_main]
+                        await channel.send('Sebanyak **{}** orang telah vote kick **{}#{}**, melaksanakan tugas!'.format(tally, user_.name, user_.discriminator))
+                        del vote_data[k_fast]
+                        del self.ban_data_fast[k_fast]
                         await write_tally(v_, vote_data)
-                        await server.ban(user=user_, reason="Ban musyawarah dan mufakat oleh member server ini dengan bot naoTimes.", delete_message_days=0)
-                        await channel.send('User **{}#{}** telah diban secara musyawarah dan mufakat'.format(user_.name, user_.discriminator))
+                        await server.kick(user=user_, reason="Kick musyawarah dan mufakat oleh member server ini dengan bot naoTimes.")
+                        await channel.send('User **{}#{}** telah dikick secara musyawarah dan mufakat'.format(user_.name, user_.discriminator))
                     else:
                         embed.set_field_at(0, name='Jumlah vote (Dibutuhkan: {})'.format(limit), value=str(tally), inline=False)
                         embed.set_field_at(1, name='Sisa waktu', value=f'{timer} detik', inline=False)
                         await message.edit(embed=embed)
-                        timer -= 1
-                        vote_data[k_main]['timer'] = timer
-                        await write_tally(v_, vote_data)
-
-
-
-class VotingSystem(commands.Cog):
-    """A shitty voting system"""
-    def __init__(self, bot):
-        self.bot = bot
-
-    def __str__(self):
-        return "nT Voting System"
+            await self.release_lock()
+        await self.release_lock_self(v_)
 
     @commands.Cog.listener(name="on_reaction_add")
     async def vote_reaction_added(self, reaction, user):
-        vote_data_main = await read_tally(vote=True)
-        vote_data_kick = await read_tally(kick=True)
-        vote_data_ban = await read_tally(ban=True)
+        await self.acquire_lock_self("vote_data")
+        await self.acquire_lock_self("kick_data")
+        await self.acquire_lock_self("ban_data")
 
-        if str(reaction.message.id) in vote_data_kick:
-            v_ = 'kick_data'
+        if str(reaction.message.id) in self.kick_data_fast:
             if '✅' in str(reaction.emoji):
                 if user != self.bot.user:
-                    if str(user.id) != str(vote_data_kick[str(reaction.message.id)]['user_id']): # Don't add the user that will be kicked/ban
-                        print('Adding kick tally from: {}'.format(user.id))
-                        vote_data[str(reaction.message.id)]['tally'] = str(int(vote_data_kick[str(reaction.message.id)]['tally']) + 1)
-                        await write_tally(v_, vote_data_kick)
-        elif str(reaction.message.id) in vote_data_ban:
-            v_ = 'ban_data'
+                    print('Adding kick tally from: {}'.format(user.id))
+                    self.kick_data_fast[str(reaction.message.id)]['tally'] = self.kick_data_fast[str(reaction.message.id)]['tally'] + 1
+        elif str(reaction.message.id) in self.ban_data_fast:
             if '✅' in str(reaction.emoji):
                 if user != self.bot.user:
-                    if str(user.id) != str(vote_data_ban[str(reaction.message.id)]['user_id']): # Don't add the user that will be kicked/ban
-                        print('Adding ban tally from: {}'.format(user.id))
-                        vote_data[str(reaction.message.id)]['tally'] = str(int(vote_data_ban[str(reaction.message.id)]['tally']) + 1)
-                        await write_tally(v_, vote_data_ban)
-        elif str(reaction.message.id) in vote_data_main:
+                    print('Adding ban tally from: {}'.format(user.id))
+                    self.ban_data_fast[str(reaction.message.id)]['tally'] = self.ban_data_fast[str(reaction.message.id)]['tally'] + 1
+        elif str(reaction.message.id) in self.vote_data_fast:
             reactions = ['1⃣', '2⃣', '3⃣', '4⃣', '5⃣', '6⃣', '7⃣', '8⃣', '9⃣', '🔟']
-            v_ = 'vote_data'
-            vote_l = vote_data_main[str(reaction.message.id)]
             if user != self.bot.user:
                 if str(reaction.emoji) in reactions:
                     n_index = reactions.index(str(reaction.emoji))
                     voter_list = []
-                    for i in range(len(vote_data_main[str(reaction.message.id)]['options'])):
-                        voter_list.extend(vote_data_main[str(reaction.message.id)]['options'][str(i)]['voter'])
+                    for i in range(len(self.vote_data_fast[str(reaction.message.id)]['options'])):
+                        voter_list.extend(self.vote_data_fast[str(reaction.message.id)]['options'][str(i)])
                     if str(user.id) not in voter_list:
                         print('Adding vote tally from: {}'.format(user.id))
-                        vote_data_main[str(reaction.message.id)]['options'][str(n_index)]['voter'].append(str(user.id))
-                        await write_tally(v_, vote_data_main)
+                        self.vote_data_fast[str(reaction.message.id)]['options'][str(n_index)].append(str(user.id))
+        await self.release_lock_self("vote_data")
+        await self.release_lock_self("kick_data")
+        await self.release_lock_self("ban_data")
 
     @commands.Cog.listener(name="on_reaction_remove")
     async def vote_reaction_removal(self, reaction, user):
-        vote_data_main = await read_tally(vote=True)
-        vote_data_kick = await read_tally(kick=True)
-        vote_data_ban = await read_tally(ban=True)
+        await self.acquire_lock_self("vote_data")
+        await self.acquire_lock_self("kick_data")
+        await self.acquire_lock_self("ban_data")
 
-        if str(reaction.message.id) in vote_data_kick:
-            v_ = 'kick_data'
+        if str(reaction.message.id) in self.kick_data_fast:
             if '✅' in str(reaction.emoji):
                 if user != self.bot.user:
-                    if str(user.id) != str(vote_data_kick[str(reaction.message.id)]['user_id']): # Don't add the user that will be kicked/ban
-                        print('Remove kick tally from: {}'.format(user.id))
-                        vote_data[str(reaction.message.id)]['tally'] = str(int(vote_data_kick[str(reaction.message.id)]['tally']) - 1)
-                        await write_tally(v_, vote_data_kick)
-        elif str(reaction.message.id) in vote_data_ban:
-            v_ = 'ban_data'
+                    print('Adding kick tally from: {}'.format(user.id))
+                    self.kick_data_fast[str(reaction.message.id)]['tally'] = self.kick_data_fast[str(reaction.message.id)]['tally'] - 1
+        elif str(reaction.message.id) in self.ban_data_fast:
             if '✅' in str(reaction.emoji):
                 if user != self.bot.user:
-                    if str(user.id) != str(vote_data_ban[str(reaction.message.id)]['user_id']): # Don't add the user that will be kicked/ban
-                        print('Remove ban tally from: {}'.format(user.id))
-                        vote_data[str(reaction.message.id)]['tally'] = str(int(vote_data_ban[str(reaction.message.id)]['tally']) - 1)
-                        await write_tally(v_, vote_data_ban)
-        elif str(reaction.message.id) in vote_data_main:
+                    print('Adding ban tally from: {}'.format(user.id))
+                    self.ban_data_fast[str(reaction.message.id)]['tally'] = self.ban_data_fast[str(reaction.message.id)]['tally'] - 1
+        elif str(reaction.message.id) in self.vote_data_fast:
             reactions = ['1⃣', '2⃣', '3⃣', '4⃣', '5⃣', '6⃣', '7⃣', '8⃣', '9⃣', '🔟']
-            v_ = 'vote_data'
-            vote_l = vote_data_main[str(reaction.message.id)]
             if user != self.bot.user:
                 if str(reaction.emoji) in reactions:
                     n_index = reactions.index(str(reaction.emoji))
-                    voter_list = vote_data_main[str(reaction.message.id)]['options'][str(n_index)]['voter']
+                    voter_list = self.vote_data_fast[str(reaction.message.id)]['options'][str(n_index)]
                     if str(user.id) in voter_list:
                         print('Remove vote tally from: {}'.format(user.id))
-                        vote_data_main[str(reaction.message.id)]['options'][str(n_index)]['voter'].remove(str(user.id))
-                        await write_tally(v_, vote_data_main)
+                        self.vote_data_fast[str(reaction.message.id)]['options'][str(n_index)].remove(str(user.id))
+        await self.release_lock_self("vote_data")
+        await self.release_lock_self("kick_data")
+        await self.release_lock_self("ban_data")
 
 
     @commands.command(pass_context=True)
     @commands.has_permissions(kick_members=True)
     async def votekick(self, ctx, *, args_=''):
-        vote_data = await read_tally(kick=True)
         v_ = 'kick_data'
         srv = ctx.message.guild
 
@@ -350,7 +408,8 @@ class VotingSystem(commands.Cog):
             return await ctx.send('Timer tidak boleh kurang dari 30 detik')
 
         js_ = dict()
-        js_['tally'] = '0'
+        js_extra = dict()
+        js_extra['tally'] = 0
 
         mentions = msg.mentions
 
@@ -369,8 +428,9 @@ class VotingSystem(commands.Cog):
 
         js_['server'] = str(ctx.message.guild.id)
         js_['channel'] = str(ctx.message.channel.id)
-        js_['timer'] = timer
-        js_['limit'] = limit
+        js_extra['max_time'] = timer
+        js_extra['start_time'] = round(time.time())
+        js_extra['limit'] = limit
 
         if user_.guild_permissions.administrator:
             return await ctx.send('Tidak dapat mengkick admin.')
@@ -380,12 +440,18 @@ class VotingSystem(commands.Cog):
 
         embed = discord.Embed(title="Vote Kick - {0.name}#{0.discriminator}".format(user_), description='React jika ingin user ini dikick.', color=0x3f0a16)
         embed.add_field(name='Jumlah vote (Dibutuhkan: {})'.format(limit), value='0', inline=False)
-        embed.add_field(name='Sisa waktu'.format(limit), value=f'{timer} detik', inline=False)
+        embed.add_field(name='Sisa waktu', value=f'{timer} detik', inline=False)
         emb_msg = await ctx.send(embed=embed)
-        vote_data[str(emb_msg.id)] = js_
-
         await emb_msg.add_reaction('✅')
+
+        vote_data = await self.acquire_lock(v_)
+        await self.acquire_lock_self(v_)
+        vote_data[str(emb_msg.id)] = js_
+        self.kick_data_fast[str(emb_msg.id)] = js_extra
+
         await write_tally(v_, vote_data)
+        await self.release_lock()
+        await self.release_lock_self(v_)
 
 
     @commands.command(pass_context=True)
@@ -408,7 +474,8 @@ class VotingSystem(commands.Cog):
             return await ctx.send('Timer tidak boleh kurang dari 30 detik')
 
         js_ = dict()
-        js_['tally'] = '0'
+        js_extra = dict()
+        js_extra['tally'] = 0
 
         mentions = msg.mentions
 
@@ -420,30 +487,37 @@ class VotingSystem(commands.Cog):
                 except:
                     return await ctx.send('Mention orang/ketik ID yang valid')
             else:
-                return await ctx.send('Mention orang/ketik ID yang ingin di ban')
+                return await ctx.send('Mention orang/ketik ID yang ingin di kick')
         else:
             js_['user_id'] = str(mentions[0].id)
             user_ = mentions[0]
 
+        js_['server'] = str(ctx.message.guild.id)
+        js_['channel'] = str(ctx.message.channel.id)
+        js_extra['max_time'] = timer
+        js_extra['start_time'] = round(time.time())
+        js_extra['limit'] = limit
+
         if user_.guild_permissions.administrator:
-            return await ctx.send('Tidak dapat memban admin.')
+            return await ctx.send('Tidak dapat nge-ban admin.')
         hirarki_bot = srv.get_member(self.bot.user.id).top_role.position
         if user_.top_role.position >= hirarki_bot:
             return await ctx.send('Hirarki orang tersebut lebih tinggi.')
 
-        js_['server'] = str(ctx.message.guild.id)
-        js_['channel'] = str(ctx.message.channel.id)
-        js_['timer'] = timer
-        js_['limit'] = limit
-
         embed = discord.Embed(title="Vote Ban - {0.name}#{0.discriminator}".format(user_), description='React jika ingin user ini diban.', color=0x3f0a16)
         embed.add_field(name='Jumlah vote (Dibutuhkan: {})'.format(limit), value='0', inline=False)
-        embed.add_field(name='Sisa waktu'.format(limit), value=f'{timer} detik', inline=False)
+        embed.add_field(name='Sisa waktu', value=f'{timer} detik', inline=False)
         emb_msg = await ctx.send(embed=embed)
-        vote_data[str(emb_msg.id)] = js_
-
         await emb_msg.add_reaction('✅')
+
+        vote_data = await self.acquire_lock(v_)
+        await self.acquire_lock_self(v_)
+        vote_data[str(emb_msg.id)] = js_
+        self.ban_data_fast[str(emb_msg.id)] = js_extra
+
         await write_tally(v_, vote_data)
+        await self.release_lock()
+        await self.release_lock_self(v_)
 
 
     @commands.command(pass_context=True)
@@ -464,7 +538,6 @@ class VotingSystem(commands.Cog):
             return await ctx.send('Timer tidak boleh kurang dari 3 menit')
         timer = timer * 60
 
-        vote_data = await read_tally(vote=True)
         usr_ava = ctx.message.author.avatar_url
         if not usr_ava:
             usr_ava = ctx.message.author.default_avatar_url
@@ -477,27 +550,38 @@ class VotingSystem(commands.Cog):
         reactions = ['1⃣', '2⃣', '3⃣', '4⃣', '5⃣', '6⃣', '7⃣', '8⃣', '9⃣', '🔟']
 
         vote_d = dict()
+        vote_q = dict()
         vote_list = dict()
+        vote_list_e = dict()
         for x, option in enumerate(options):
             embed.add_field(name='{} {}'.format(reactions[x], option), value='Votes: 0', inline=False)
             ll = dict()
             ll['name'] = option
             ll['voter'] = []
             vote_list[str(x)] = ll
+            vote_list_e[str(x)] = []
 
         vote_d['q'] = message
         vote_d['server'] = str(ctx.message.guild.id)
         vote_d['channel'] = str(ctx.message.channel.id)
-        vote_d['timer'] = timer
         vote_d['options'] = vote_list
 
+        vote_q['max_time'] = timer
+        vote_q['start_time'] = round(time.time())
+        vote_q['options'] = vote_list_e
+
         emb_msg = await ctx.send(embed=embed)
+        vote_data = await self.acquire_lock(v_)
+        await self.acquire_lock_self(v_)
         vote_data[str(emb_msg.id)] = vote_d
+        self.vote_data_fast[str(emb_msg.id)] = vote_q
+
+        await write_tally(v_, vote_data)
+        await self.release_lock()
+        await self.release_lock_self(v_)
 
         for x, _ in enumerate(options):
             await emb_msg.add_reaction(reactions[x])
-
-        await write_tally(v_, vote_data)
 
     @voteban.error
     async def voteban_err(self, ctx, error):
@@ -521,7 +605,7 @@ class VotingSystem(commands.Cog):
             await ctx.send(error)
         await ctx.send(error)
 
-VoteCogs = [VotingSystem, VotingWatcher]
+VoteCogs = []
 
 def setup(bot):
     for VoteC in VoteCogs:
