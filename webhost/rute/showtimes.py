@@ -45,6 +45,7 @@ def utang_api(path):
                 break
         if ep:
             ss['episode'] = ep
+            ss['airing_time'] = statues[ep]['airing_time']
             ss['status'] = statuses[ep]['staff_status']
             final_set.append(ss)
     
