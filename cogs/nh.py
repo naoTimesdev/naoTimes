@@ -7,6 +7,7 @@ import os
 import aiohttp
 import discord
 import discord.ext.commands as commands
+from urllib.parse import quote_plus
 from datetime import datetime
 
 def setup(bot):
@@ -73,11 +74,11 @@ class nHController(commands.Cog):
     @nhi.command(aliases=['search', 'latest', 'terbaru'])
     async def cari(self, ctx, *, query=None):
         msg_content = ctx.message.clean_content
-        do_mode = msg_content.replace('!nh ', '').split()[0]
+        do_mode = msg_content.split()[1]
         url_to_use = "https://s.ihateani.me/api/v2/latest"
         if 'search' in do_mode or 'cari' in do_mode:
             if query:
-                url_to_use = 'https://s.ihateani.me/api/v2/search?q={}'.format(query)
+                url_to_use = 'https://s.ihateani.me/api/v2/search?q={}'.format(quote_plus(query))
             else:
                 query = 'Doujin terbaru'
         else:
