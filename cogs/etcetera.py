@@ -192,15 +192,38 @@ def get_current_time() -> str:
 
     return '{} {} {}'.format(d, m, rest)
 
+async def dm_only(ctx):
+    return ctx.guild is None
+
+new_help_msg = r"""Dokumentasi telah dipindah ke website baru!
+Silakan kunjungi untuk melihat bantuan
+https://naotimes.n4o.xyz/
+
+Untuk melihat bantuan lama, ketik `!oldhelp` di DM Bot
+"""
+
+class UsePrivateMessages(commands.CheckFailure):
+    pass
+
+def reverse_guild_only():
+    async def predicate(ctx):
+        if ctx.guild is not None:
+            raise UsePrivateMessages('Gunakan DM!')
+        return True
+    return commands.check(predicate)
 
 class Helper(commands.Cog):
     """Helper module or etcetera module to show help and useless stuff"""
     def __init__(self, bot):
         self.bot = bot
 
-
-    @commands.group(aliases=['bantuan'])
+    @commands.command(aliases=["bantuan"])
     async def help(self, ctx):
+        await ctx.send(new_help_msg)
+
+    @commands.group(aliases=['bantuanlama'])
+    @reverse_guild_only()
+    async def oldhelp(self, ctx):
         if ctx.invoked_subcommand is None:
             helpmain = discord.Embed(title="Bantuan Perintah", description="versi 2.0.0", color=0x00aaaa)
             helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -221,7 +244,12 @@ class Helper(commands.Cog):
             helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
             await ctx.send(embed=helpmain)
 
-    @help.command()
+    @oldhelp.error
+    async def oldhelp_error(self, ctx, error):
+        if isinstance(error, UsePrivateMessages):
+            await ctx.send('Mohon gunakan perintah ini di Private Message/DM')
+
+    @oldhelp.command()
     @commands.is_owner()
     async def admin(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (Admin)", description="versi 2.0.0", color=0x00aaaa)
@@ -235,7 +263,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command()
+    @oldhelp.command()
     async def fun(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (Fun)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -250,7 +278,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command(aliases=['user', 'uinfo', 'userinfo'])
+    @oldhelp.command(aliases=['user', 'uinfo', 'userinfo'])
     async def ui(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!ui)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -262,7 +290,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command(aliases=['pp', 'profile', 'bigprofile', 'ava'])
+    @oldhelp.command(aliases=['pp', 'profile', 'bigprofile', 'ava'])
     async def avatar(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!avatar)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -274,7 +302,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command()
+    @oldhelp.command()
     async def f(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!f)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -286,7 +314,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command(aliases=['kerangajaib'])
+    @oldhelp.command(aliases=['kerangajaib'])
     async def kerang(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!kerang)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -298,7 +326,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command()
+    @oldhelp.command()
     async def pilih(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!kerang)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -310,7 +338,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command(name="8ball")
+    @oldhelp.command(name="8ball")
     async def _8ball(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!8ball)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -322,7 +350,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command()
+    @oldhelp.command()
     @commands.is_owner()
     async def bundir(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!bundir)", description="versi 2.0.0", color=0x00aaaa)
@@ -333,7 +361,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command()
+    @oldhelp.command()
     @commands.is_owner()
     async def reinkarnasi(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!reinkarnasi)", description="versi 2.0.0", color=0x00aaaa)
@@ -344,7 +372,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command()
+    @oldhelp.command()
     @commands.is_owner()
     async def reload(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!reload)", description="versi 2.0.0", color=0x00aaaa)
@@ -355,7 +383,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command()
+    @oldhelp.command()
     async def showtimes(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (Showtimes)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -374,7 +402,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
  
-    @help.command()
+    @oldhelp.command()
     async def parser(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (Web Parsing)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -389,7 +417,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command()
+    @oldhelp.command()
     async def kbbi(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!kbbi)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -402,7 +430,7 @@ class Helper(commands.Cog):
         await ctx.send(embed=helpmain)
 
 
-    @help.command(aliases=['persamaankata', 'persamaan'])
+    @oldhelp.command(aliases=['persamaankata', 'persamaan'])
     async def sinonim(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!sinonim)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -414,7 +442,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command(aliases=['lawankata'])
+    @oldhelp.command(aliases=['lawankata'])
     async def antonim(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!antonim)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -426,7 +454,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command(aliases=['kanji'])
+    @oldhelp.command(aliases=['kanji'])
     async def jisho(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!jisho)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -438,7 +466,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command(aliases=['konversiuang', 'currency'])
+    @oldhelp.command(aliases=['konversiuang', 'currency'])
     async def kurs(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!kurs)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -450,7 +478,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command(aliases=['fastsub', 'gtlsub'])
+    @oldhelp.command(aliases=['fastsub', 'gtlsub'])
     async def speedsub(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!speedsub)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -462,7 +490,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command()
+    @oldhelp.command()
     async def anilist(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (Anilist)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -473,7 +501,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command(aliases=['animu', 'kartun'])
+    @oldhelp.command(aliases=['animu', 'kartun'])
     async def anime(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!anime)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -486,7 +514,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command(aliases=['mango', 'komik'])
+    @oldhelp.command(aliases=['mango', 'komik'])
     async def manga(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!manga)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -499,7 +527,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command(aliases=['vndb', 'visualnovel', 'eroge'])
+    @oldhelp.command(aliases=['vndb', 'visualnovel', 'eroge'])
     async def vn(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!vn)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -512,7 +540,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command(aliases=['randomvisualnovel', 'randomeroge', 'vnrandom'])
+    @oldhelp.command(aliases=['randomvisualnovel', 'randomeroge', 'vnrandom'])
     async def randomvn(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!vn)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -525,7 +553,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command()
+    @oldhelp.command()
     async def anibin(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!anibin)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -538,7 +566,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command(aliases=['blame', 'mana'])
+    @oldhelp.command(aliases=['blame', 'mana'])
     async def tagih(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!tagih)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -550,7 +578,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command(aliases=['airing'])
+    @oldhelp.command(aliases=['airing'])
     async def jadwal(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!jadwal)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -561,7 +589,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command(aliases=['tukangdelay', 'pendelay'])
+    @oldhelp.command(aliases=['tukangdelay', 'pendelay'])
     async def staff(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!staff)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -573,7 +601,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command(aliases=['done'])
+    @oldhelp.command(aliases=['done'])
     async def beres(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!beres)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -585,7 +613,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command(aliases=['undone', 'cancel'])
+    @oldhelp.command(aliases=['undone', 'cancel'])
     async def gakjadi(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!gakjadi)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -597,7 +625,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command(aliases=['release'])
+    @oldhelp.command(aliases=['release'])
     async def rilis(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!rilis)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -612,7 +640,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command()
+    @oldhelp.command()
     async def alias(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!alias)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -627,7 +655,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command()
+    @oldhelp.command()
     async def ubahdata(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!ubahdata)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -640,7 +668,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command(aliases=['mark'])
+    @oldhelp.command(aliases=['mark'])
     async def tandakan(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!tandakan)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -652,7 +680,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command(aliases=['add', 'tambah'])
+    @oldhelp.command(aliases=['add', 'tambah'])
     async def tambahutang(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!tambahutang)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -664,7 +692,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command()
+    @oldhelp.command()
     async def vote(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!vote)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -675,7 +703,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command()
+    @oldhelp.command()
     async def votekick(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!votekick)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -686,7 +714,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command()
+    @oldhelp.command()
     async def voteban(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!voteban)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -697,7 +725,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.group(name='nyaa')
+    @oldhelp.group(name='nyaa')
     async def nyaahelp(self, ctx):
         if not ctx.invoked_subcommand:
             helpmain = discord.Embed(title="Bantuan Perintah (!nyaa)", description="versi 2.0.0", color=0x00aaaa)
@@ -747,7 +775,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.group(name='perpus', aliases=['pi', 'perpusindo'])
+    @oldhelp.group(name='perpus', aliases=['pi', 'perpusindo'])
     async def perpushelp(self, ctx):
         if not ctx.invoked_subcommand:
             helpmain = discord.Embed(title="Bantuan Perintah (!perpus)", description="versi 2.0.0", color=0x00aaaa)
@@ -797,7 +825,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.group(name='nh')
+    @oldhelp.group(name='nh')
     async def nh_help(self, ctx):
         if not ctx.invoked_subcommand:
             helpmain = discord.Embed(title="Bantuan Perintah (!nh)", description="versi 2.0.0", color=0x00aaaa)
@@ -860,7 +888,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command()
+    @oldhelp.command()
     async def info(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!info)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -870,7 +898,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command()
+    @oldhelp.command()
     async def prefix(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!prefix)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -883,7 +911,7 @@ class Helper(commands.Cog):
         helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
         await ctx.send(embed=helpmain)
 
-    @help.command()
+    @oldhelp.command()
     async def ping(self, ctx):
         helpmain = discord.Embed(title="Bantuan Perintah (!ping)", description="versi 2.0.0", color=0x00aaaa)
         helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
