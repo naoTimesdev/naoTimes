@@ -13,3 +13,8 @@ config.json
 prefixes.json
 vote_data.json
 streaming_lists.json
+
+# webhost
+webhost/rute/modul/*.jpg
+webhost/rute/modul/*.png
+webhost/rute/modul/*.json
