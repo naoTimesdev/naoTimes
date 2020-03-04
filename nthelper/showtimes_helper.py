@@ -11,7 +11,7 @@ class naoTimesDB:
         self.db = self.client[dbname]
         self.srv_re = {"name": {"$regex": r"^srv"}}
 
-    async def _precheck(self, namae):
+    async def _precheck_server_name(self, namae):
         if not isinstance(namae, str):
             namae = str(namae)
         if not namae.startswith("srv_"):
@@ -88,7 +88,7 @@ class naoTimesDB:
         return srv_list
 
     async def get_server(self, server):
-        server = await self._precheck(server)
+        server = await self._precheck_server_name(server)
         print('[ntDB] INFO: Fetching server set: {}'.format(server))
         srv_list = await self.db.list_collection_names(filter=self.srv_re)
         if server not in srv_list:
@@ -106,7 +106,7 @@ class naoTimesDB:
         dataset = {
             "$set": dataset
         }
-        server = await self._precheck(server)
+        server = await self._precheck_server_name(server)
         print('[ntDB] INFO: Updating data for server: {}'.format(server))
         srv_list = await self.db.list_collection_names(filter=self.srv_re)
         if server not in srv_list:
@@ -122,7 +122,7 @@ class naoTimesDB:
         return False, 'Gagal mengupdate server data.'
 
     async def add_admin(self, server, adm_id):
-        server = await self._precheck(server)
+        server = await self._precheck_server_name(server)
         adm_id = str(adm_id)
         print('[ntDB] INFO: Adding new admin `{}` to server: {}'.format(adm_id, server))
         srv_data = await self.get_server(server)
@@ -136,7 +136,7 @@ class naoTimesDB:
         return res, msg
 
     async def remove_admin(self, server, adm_id):
-        server = await self._precheck(server)
+        server = await self._precheck_server_name(server)
         adm_id = str(adm_id)
         print('[ntDB] INFO: Removing admin `{}` from server: {}'.format(adm_id, server))
         srv_data = await self.get_server(server)
@@ -150,7 +150,7 @@ class naoTimesDB:
         return res, msg
 
     async def new_server(self, server, dataset):
-        server = await self._precheck(server)
+        server = await self._precheck_server_name(server)
         print('[ntDB] INFO: Adding data for a new server: {}'.format(server))
         srv_list = await self.db.list_collection_names(filter=self.srv_re)
         if server in srv_list:
@@ -166,7 +166,7 @@ class naoTimesDB:
         return False, 'Gagal mengupdate server data.'
 
     async def remove_server(self, server):
-        server = await self._precheck(server)
+        server = await self._precheck_server_name(server)
         print('[ntDB] INFO: Expunging data for a server: {}'.format(server))
         srv_list = await self.db.list_collection_names(filter=self.srv_re)
         if server not in srv_list:
