@@ -107,11 +107,11 @@ class naoTimesDB:
             "$set": dataset
         }
         server = await self._precheck(server)
+        print('[ntDB] INFO: Updating data for server: {}'.format(server))
         srv_list = await self.db.list_collection_names(filter=self.srv_re)
         if server not in srv_list:
             print('[ntDB] WARN: cannot found server in database.')
             return False, 'Server tidak terdaftar di database, gunakan metode `new_server`'
-        print('[ntDB] INFO: Updating data for server: {}'.format(server))
 
         srv = self.db[server]
         res = await srv.update_one({}, dataset)
@@ -121,13 +121,41 @@ class naoTimesDB:
         print('[ntDB] ERROR: Failed to update server data.')
         return False, 'Gagal mengupdate server data.'
 
+    async def add_admin(self, server, adm_id):
+        server = await self._precheck(server)
+        adm_id = str(adm_id)
+        print('[ntDB] INFO: Adding new admin `{}` to server: {}'.format(adm_id, server))
+        srv_data = await self.get_server(server)
+        if not srv_data:
+            return False, 'Server tidak terdaftar di naoTimes.'
+
+        if adm_id not in srv_data['serverowner']:
+            srv_data['serverowner'].append(adm_id)
+
+        res, msg = await self.update_data(server, srv_data)
+        return res, msg
+
+    async def remove_admin(self, server, adm_id):
+        server = await self._precheck(server)
+        adm_id = str(adm_id)
+        print('[ntDB] INFO: Removing admin `{}` from server: {}'.format(adm_id, server))
+        srv_data = await self.get_server(server)
+        if not srv_data:
+            return False, 'Server tidak terdaftar di naoTimes.'
+
+        if adm_id in srv_data['serverowner']:
+            srv_data['serverowner'].remove(adm_id)
+
+        res, msg = await self.update_data(server, srv_data)
+        return res, msg
+
     async def new_server(self, server, dataset):
         server = await self._precheck(server)
+        print('[ntDB] INFO: Adding data for a new server: {}'.format(server))
         srv_list = await self.db.list_collection_names(filter=self.srv_re)
         if server in srv_list:
             print('[ntDB] WARN: found server in database, please use `update_data` method')
             return False, 'Server terdaftar di database, gunakan metode `update_data`'
-        print('[ntDB] INFO: Adding data for a new server: {}'.format(server))
 
         srv = self.db[server]
         res = await srv.insert_one(dataset, check_keys=False)
@@ -136,6 +164,21 @@ class naoTimesDB:
             return True, 'Updated'
         print('[ntDB] ERROR: Failed to update server data.')
         return False, 'Gagal mengupdate server data.'
+
+    async def remove_server(self, server):
+        server = await self._precheck(server)
+        print('[ntDB] INFO: Expunging data for a server: {}'.format(server))
+        srv_list = await self.db.list_collection_names(filter=self.srv_re)
+        if server not in srv_list:
+            print('[ntDB] WARN: Cannot find server in database, ignoring...')
+            return True
+
+        res = await self.db.drop_collection(server)
+        if res:
+            print('[ntDB] INFO: Success deleting server from database')
+            return True
+        print('[ntDB] WARN: Server doesn\'t exist on database when dropping, ignoring...')
+        return True
 
 
 if __name__ == "__main__":
