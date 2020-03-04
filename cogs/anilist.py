@@ -1,15 +1,19 @@
 # -*- coding: utf-8 -*-
 #!/usr/bin/env python3
 import asyncio
+import difflib
+import json
+import os
 import re
 import time
 from datetime import datetime, timedelta
+from heapq import nlargest
+from math import ceil
 
 import aiohttp
 import discord
 import discord.ext.commands as commands
 from bs4 import BeautifulSoup
-from math import ceil
 
 
 def setup(bot):
@@ -254,6 +258,58 @@ async def current_season_streams():
     return {'result': full_query_result, 'data_total': len(full_query_result)}
 
 
+async def fetch_streams(ani_id):
+    variables = {
+        'api_key': '4VeGC7dR6g7Y9Qcm4VeGC7dR6g7Y9Qcm',
+        'id': str(ani_id)
+    }
+    async with aiohttp.ClientSession() as sesi:
+        try:
+            async with sesi.post("https://s.ihateani.me/api/v2/legalstreams", data=variables) as r:
+                try:
+                    data = await r.json()
+                except IndexError:
+                    return []
+                if r.status != 200:
+                    if r.status == 404:
+                        return []
+                    elif r.status == 500:
+                        return []
+                try:
+                    query = data['results']
+                except IndexError:
+                    return []
+        except aiohttp.ClientError:
+            return []
+
+    return query['streams']
+
+
+class LegalStreaming:
+    def __init__(self):
+        if os.path.isfile('streaming_list.json'):
+            with open('streaming_lists.json', 'r') as fp:
+                self.json_data = json.load(fp)['data']
+        else:
+            self.json_data = {}
+
+    async def find_by_id(self, id_):
+        if not self.json_data:
+            return []
+        ids_ani = []
+        for k in self.json_data:
+            if 'anilist' in k['related']:
+                ids_ani.append(k['related']['anilist'])
+            else:
+                ids_ani.append('')
+        try:
+            index_data = self.json_data[ids_ani.index(str(id_))]
+        except IndexError:
+            return []
+
+        return index_data['streams']
+
+
 async def fetch_anilist(title, method):
     variables = {
         'search': title,
@@ -312,6 +368,9 @@ async def fetch_anilist(title, method):
     if not query:
         return "Tidak ada hasil."
 
+    current_time = datetime.today()
+    current_year = current_time.year
+    legal22222s = LegalStreaming()
     full_query_result = []
     for entry in query:
         start_y = entry['startDate']['year']
@@ -404,6 +463,10 @@ async def fetch_anilist(title, method):
             ch_vol = ch_vol.replace('XXV', '')
             dataset['ch_vol'] = ch_vol
         if method == 'anime':
+            print('Fetching stream for: {}'.format(title))
+            streams_list = await legal22222s.find_by_id(ani_id)
+            if streams_list:
+                dataset['streams'] = streams_list
             dataset['episodes'] = entry["episodes"]
             if status in ['releasing', 'not_yet_released']:
                 ne_data = entry['nextAiringEpisode']
@@ -421,6 +484,7 @@ async def fetch_anilist(title, method):
                 dataset[k] = 'Tidak ada'
 
         full_query_result.append(dataset)
+    #del LegalStreams
     return {'result': full_query_result, 'data_total': len(full_query_result)}
 
 
@@ -643,8 +707,17 @@ async def fetch_anichart():
 
     del filtered_full_fetched_query
 
+    sorted_time_full_fetched_query = {}
+    for sss in list(sorted_full_fetched_query.keys()):
+        dk = sorted_full_fetched_query[sss]
+        if sss != 'Lain-Lain':
+            dk.sort(key=lambda x: x['remain'])
+        sorted_time_full_fetched_query[sss] = dk
+
+    del sorted_full_fetched_query
+
     print('[@] Done!')
-    return {'dataset': sorted_full_fetched_query, 'season': '{} {}'.format(current_season.lower().capitalize(), current_year)}
+    return {'dataset': sorted_time_full_fetched_query, 'season': '{} {}'.format(current_season.lower().capitalize(), current_year)}
 
 
 class Anilist(commands.Cog):
@@ -667,6 +740,7 @@ class Anilist(commands.Cog):
 
         first_run = True
         time_table = False
+        stream_list = False
         num = 1
         while True:
             if first_run:
@@ -692,7 +766,7 @@ class Anilist(commands.Cog):
                 msg = await ctx.send(embed=embed)
 
             reactmoji = []
-            if time_table:
+            if time_table or stream_list:
                 reactmoji.append('👍')
             elif max_page == 1 and num == 1:
                 pass
@@ -702,8 +776,10 @@ class Anilist(commands.Cog):
                 reactmoji.append('⏪')
             elif num > 1 and num < max_page:
                 reactmoji.extend(['⏪', '⏩'])
-            if 'next_episode' in data and not time_table:
+            if 'next_episode' in data and not time_table and not stream_list:
                 reactmoji.append('⏳')
+            if 'streams' in data and not time_table and not stream_list:
+                reactmoji.append('📺')
             reactmoji.append('✅')
 
             for react in reactmoji:
@@ -788,7 +864,10 @@ class Anilist(commands.Cog):
                 embed.add_field(name="Adaptasi", value=data['source_fmt'], inline=True)
                 embed.add_field(name="Sinopsis", value=data['synopsis'], inline=False)
 
-                time_table = False
+                if time_table:
+                    time_table = False
+                if stream_list:
+                    stream_list = False
                 await msg.clear_reactions()
                 await msg.edit(embed=embed)
             elif '⏳' in str(res.emoji):
@@ -801,6 +880,35 @@ class Anilist(commands.Cog):
                 embed.add_field(name=ep_txt, value=data['time_remain'], inline=False)
 
                 time_table = True
+                await msg.clear_reactions()
+                await msg.edit(embed=embed)
+            elif '📺' in str(res.emoji):
+                print('\t>> Showing streams list')
+                text_data = "**Legal Streams**:\n"
+                for k, v in data['streams'].items():
+                    if not isinstance(v, str):
+                        temp = []
+                        for k2, v2 in v.items():
+                            if v2:
+                                temp.append('[{s}]({l})'.format(s=k2, l=v2))
+                            else:
+                                temp.append('*{s}*'.format(s=k2))
+                        text_data += "- **{s}**\n".format(s=k)
+                        text_data += "  " + " \| ".join(temp) + '\n'
+                    else:
+                        if v:
+                            text_data += "- [{s}]({l})\n".format(s=k, l=v)
+                        else:
+                            text_data += "- **{s}**\n".format(s=k)
+
+                embed = discord.Embed(color=0x19212d)
+
+                embed.set_thumbnail(url=data['poster_img'])
+                embed.set_author(name=data['title'], url=data['link'], icon_url="https://anilist.co/img/icons/apple-touch-icon-152x152.png")
+                embed.description = text_data
+                embed.set_footer(text=data['footer'])
+
+                stream_list = True
                 await msg.clear_reactions()
                 await msg.edit(embed=embed)
             elif '✅' in str(res.emoji):
@@ -1134,4 +1242,3 @@ class Anilist(commands.Cog):
                 await msg.edit(embed=embed)
             else:
                 await msg.clear_reactions()
-
