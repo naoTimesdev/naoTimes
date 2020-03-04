@@ -191,7 +191,7 @@ async def parse_embed(embed_data, entry_data):
 
 
 async def recursive_check_feed(url, rss_data):
-    last_title = rss_data['lastUpdate']
+    last_url = rss_data['lastUpdate']
     last_etag = rss_data['lastEtag']
     last_modified = rss_data['lastModified']
     feed = await async_feedparse(url, etag=last_etag, modified=last_modified)
@@ -202,7 +202,7 @@ async def recursive_check_feed(url, rss_data):
 
     filtered_entry = []
     for n, entry in enumerate(entries):
-        if entry['title'] == last_title:
+        if entry['link'] == last_url:
             break
         filtered_entry.append(filter_data(entries[n]))
 
@@ -240,7 +240,6 @@ async def patch_error_handling(bot, ctx):
 class FansubRSS(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-
         self.check_every_feed.start()
 
     @tasks.loop(minutes=5.0)
@@ -266,11 +265,11 @@ class FansubRSS(commands.Cog):
                         else:
                             msg_format = await parse_message(json_d_rss[k]['message'], entry)
                             await channel.send(msg_format)
-                    json_d_rss[k]['lastUpdate'] = entries[0]['title']
+                    json_d_rss[k]['lastUpdate'] = entries[0]['link']
                     json_d_rss[k]['lastEtag'] = etag
                     json_d_rss[k]['lastModified'] = modified
                     write_rss_data(json_d_rss)
-                    result_patch = await patch_json_rss(json_d_rss)
+                    await patch_json_rss(json_d_rss)
                 else:
                     print('[@] No new update.')
             print("[@] Finish checking, now sleeping for 5 minutes")
@@ -385,9 +384,9 @@ class FansubRSS(commands.Cog):
                 await_msg = await self.bot.wait_for('message', check=lambda m: m.author == author)
                 embed.set_field_at(0, name='Feed URL', value="Memvalidasi URL", inline=False)
                 await emb_msg.edit(embed=embed)
-                if check_if_valid(await_msg):
+                if (await check_if_valid(await_msg)):
                     feed = feedparser.parse(await_msg)
-                    json_tables['lastUpdate'] = feed.entries[0]['title']
+                    json_tables['lastUpdate'] = feed.entries[0]['link']
                     json_tables['lastEtag'] = feed.etag
                     json_tables['lastModified'] = feed.modified
                     break
@@ -598,13 +597,17 @@ class FansubRSS(commands.Cog):
                 r'(?::\d+)?' # optional port
                 r'(?:/?|[/?]\S+)$', re.IGNORECASE)
 
-        text = 'Ubah format embed yang akan dikirim\n\nContoh data dari RSS (`{DATA}`: ISI):\n'
+        sample_data = ""
         for k, v in entries_data.items():
             if isinstance(v, str) and re.match(regex_uri, v):
                 v = '<{}>'.format(v)
-            text += '`{k}`: {v}\n'.format(k=k, v=v)
+            sample_data += '- **`{k}`**: {v}\n'.format(k=k, v=v)
 
-        msg_ = await ctx.send(text)
+        embed_info = discord.Embed(title="Data Embed",
+                                   description="Contoh salah satu data dari RSS",
+                                   color=0x19212d)
+        embed_info.add_field(name="Contoh Data", value="{}".format(sample_data), inline=False)
+        msg_ = await ctx.send(embed=embed_info)
         msg2_ = await ctx.send('Ketik data embed yang dinginkan, lalu ketik `{DATA}` yang diinginkan')
 
         def check(m):
@@ -686,7 +689,7 @@ class FansubRSS(commands.Cog):
         formatted_dict = ''
         for k, v in embed.items():
             formatted_dict += '\n`{}`: {}'.format(k, v)
-        fin = await ctx.send('Mengubah format embed ke:{}'.format(formatted_dict))
+        await ctx.send('Mengubah format embed ke:{}'.format(formatted_dict))
 
         json_d_rss[server_message]['embed'] = embed
 
@@ -694,7 +697,7 @@ class FansubRSS(commands.Cog):
 
         #await fin.delete()
         #await user_input.delete()
-        await ctx.send('Berhasil mengubah format embed!'.format(formatted_dict))
+        await ctx.send('Berhasil mengubah format embed!')
         result_patch = await patch_json_rss(json_d_rss)
         if not result_patch:
             await patch_error_handling(self.bot, ctx)
