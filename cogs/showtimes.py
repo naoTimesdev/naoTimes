@@ -842,7 +842,6 @@ class Showtimes(commands.Cog):
                     if 'announce_channel' in json_d[other_srv]:
                         print('[@] Sending progress info to everyone at {}'.format(other_srv))
                         announce_chan = json_d[other_srv]['announce_channel']
-                        # TODO: check this this
                         target_chan = self.bot.get_channel(int(announce_chan))
                         embed = discord.Embed(title="{}".format(matches[0]), color=0x1eb5a6)
                         embed.add_field(name='Rilis!', value=embed_text_data, inline=False)
@@ -850,7 +849,6 @@ class Showtimes(commands.Cog):
                         await target_chan.send(embed=embed)
             if 'announce_channel' in server_data:
                 announce_chan = server_data['announce_channel']
-                # TODO: check this this
                 target_chan = self.bot.get_channel(int(announce_chan))
                 embed = discord.Embed(title="{}".format(matches[0]), color=0x1eb5a6)
                 embed.add_field(name='Rilis!', value=embed_text_data, inline=False)
@@ -981,6 +979,124 @@ class Showtimes(commands.Cog):
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
             embed.set_thumbnail(url=poster_image)
             return await ctx.send(embed=embed)
+        await patch_error_handling(self.bot, ctx)
+
+
+    @commands.command(aliases=['gakjadirilis', 'revert'])
+    @commands.guild_only()
+    async def batalrilis(self, ctx, *, judul=None):
+        server_message = str(ctx.message.guild.id)
+        print('[@] Requested !batalrilis at: ' + server_message)
+        json_d = await fetch_json()
+
+        if server_message not in json_d:
+            return
+        server_data = json_d[server_message]
+        print('[@] Found server info on database.')
+
+        srv_anilist = []
+        srv_anilist_alias = []
+        for ani in server_data['anime']:
+            if ani == 'alias': # Don't use alias
+                continue
+            srv_anilist.append(ani)
+        for k, _ in server_data['alias'].items():
+            srv_anilist_alias.append(k)
+
+        if not judul:
+            if len(srv_anilist) < 1:
+                return await ctx.send('**Tidak ada anime yang terdaftar di database**')
+            sorted_data = sorted(srv_anilist)
+            count_text = len('**Mungkin**: {}'.format(', '.join(sorted_data)))
+            if count_text > 1995:
+                sorted_data = split_until_less_than(sorted_data)
+                first_time = True
+                for data in sorted_data:
+                    if first_time:
+                        await ctx.send('**Mungkin**: {}'.format(', '.join(data)))
+                        first_time = False
+                    else:
+                        await ctx.send('{}'.format(', '.join(data)))
+                return
+            else:
+                return await ctx.send('**Mungkin**: {}'.format(', '.join(sorted_data)))
+
+        matches = get_close_matches(judul, srv_anilist)
+        if srv_anilist_alias:
+            temp_anilias = get_close_matches(judul, srv_anilist_alias)
+            for i in temp_anilias:
+                res = find_alias_anime(i, server_data['alias'])
+                if res not in matches: # To not duplicate result
+                    matches.append(res)
+        print('[!] Matches: {}'.format(", ".join(matches)))
+
+        if not matches:
+            return await ctx.send('Tidak dapat menemukan judul tersebut di database')
+        elif len(matches) > 1:
+            matches = await self.choose_anime(ctx, matches)
+            if not matches:
+                return await ctx.send('**Dibatalkan!**')
+
+        program_info = server_data['anime'][matches[0]]
+        status_list = program_info['status']
+
+        if str(ctx.message.author.id) != program_info['staff_assignment']['QC']:
+            if str(ctx.message.author.id) not in srv_owner:
+                return await ctx.send('**Tidak secepat itu ferguso, yang bisa membatalkan rilisan cuma admin atau QCer**')
+
+        current = get_current_ep(status_list)
+        if not current:
+            current = int(list(status_list.keys())[-1])
+        else:
+            current = int(current) - 1
+
+        if current < 1:
+            return await ctx.send('Tidak ada episode yang dirilis untuk judul ini.')
+
+        current = str(current)
+
+        koleb_list = []
+        if 'kolaborasi' in program_info:
+            koleb_data = program_info['kolaborasi']
+            if koleb_data:
+                for ko_data in koleb_data:
+                    if server_message == ko_data:
+                        continue
+                    koleb_list.append(ko_data)
+
+        if koleb_list:
+            for other_srv in koleb_list:
+                json_d[other_srv]['anime'][matches[0]]['status'][current]['status'] = 'not_released'
+                json_d[other_srv]['anime'][matches[0]]['last_update'] = str(int(round(time.time())))
+        json_d[server_message]['anime'][matches[0]]['status'][current]['status'] = 'not_released'
+        json_d[server_message]['anime'][matches[0]]['last_update'] = str(int(round(time.time())))
+
+        with open('nao_showtimes.json', 'w') as f: # Local save before commiting
+            json.dump(json_d, f, indent=4)
+        print('[@] Sending progress info to staff')
+        await ctx.send('Berhasil membatalkan rilisan **{}** episode {}'.format(matches[0], current))
+
+        success = await patch_json(json_d)
+
+        if success:
+            if koleb_list:
+                for other_srv in koleb_list:
+                    if 'announce_channel' in json_d[other_srv]:
+                        print('[@] Sending progress info to everyone at {}'.format(other_srv))
+                        announce_chan = json_d[other_srv]['announce_channel']
+                        target_chan = self.bot.get_channel(int(announce_chan))
+                        embed = discord.Embed(title="{}".format(matches[0]), color=0xb51e1e)
+                        embed.add_field(name='Batal rilis...', value="Rilisan **episode #{}** dibatalkan dan sedang dikerjakan kembali".format(current), inline=False)
+                        embed.set_footer(text="Pada: {}".format(get_current_time()))
+                        await target_chan.send(embed=embed)
+            if 'announce_channel' in server_data:
+                announce_chan = server_data['announce_channel']
+                target_chan = self.bot.get_channel(int(announce_chan))
+                embed = discord.Embed(title="{}".format(matches[0]), color=0xb51e1e)
+                embed.add_field(name='Batal rilis...', value="Rilisan **episode #{}** dibatalkan dan sedang dikerjakan kembali".format(current), inline=False)
+                embed.set_footer(text="Pada: {}".format(get_current_time()))
+                await target_chan.send(embed=embed)
+            return
         await patch_error_handling(self.bot, ctx)
 
 
