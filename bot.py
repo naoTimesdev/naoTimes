@@ -15,6 +15,7 @@ import aiohttp
 import discord
 import requests
 from discord.ext import commands
+from .nthelper import naoTimesDB
 
 cogs_list = ['cogs.' + x.replace('.py', '') for x in os.listdir('cogs') if x.endswith('.py')]
 
@@ -161,7 +162,6 @@ presence_status = [
 async def on_ready():
     """Bot loaded here"""
     print('[$] Connected to discord.')
-    presence = 'Mengamati rilisan fansub | !help'
     activity = discord.Game(name=presence_status[0], type=3)
     await bot.change_presence(activity=activity)
     print('---------------------------------------------------------------')
@@ -173,10 +173,17 @@ async def on_ready():
     print('Bot name: {}'.format(bot.user.name))
     print('With Client ID: {}'.format(bot.user.id))
     print('---------------------------------------------------------------')
+    if not hasattr(bot, "ntdb"):
+        mongos = bot_config['mongodb']
+        bot.ntdb = naoTimesDB(mongos['ip_hostname'], mongos['port'], mongos['dbname'])
+        print('Connected to naoTimes Database:')
+        print('IP:Port: {}:{}'.format(mongos['ip_hostname'], mongos['port']))
+        print('Database: {}'.format(mongos['dbname']))
+        print('---------------------------------------------------------------')
     if not hasattr(bot, 'uptime'):
         bot.owner = (await bot.application_info()).owner
         bot.uptime = time.time()
-        print('[#] Start loading cogs...')
+        print('[#][@][!] Start loading cogs...')
         for load in cogs_list:
             try:
                 print('[#] Loading ' + load + ' module.')
@@ -185,7 +192,8 @@ async def on_ready():
             except Exception as e:
                 print('[!!] Failed Loading ' + load + ' module.')
                 print('\t' + str(e))
-        print('[#] Cogs loaded.')
+        print('[#][@][!] All cogs/extensions loaded.')
+        print('---------------------------------------------------------------')
 
 async def change_bot_presence():
     await bot.wait_until_ready()
@@ -199,6 +207,7 @@ async def change_bot_presence():
         await bot.change_presence(activity=activity)
 
 async def send_hastebin(info):
+    print(info)
     async with aiohttp.ClientSession() as session:
         async with session.post("https://hastebin.com/documents", data = str(info)) as resp:
             if resp.status is 200:
@@ -213,7 +222,7 @@ async def on_command_error(ctx, error):
     if hasattr(ctx.command, 'on_error'):
         return
 
-    ignored = (commands.CommandNotFound, commands.UserInputError)
+    ignored = (commands.CommandNotFound, commands.UserInputError, commands.NotOwner)
     error = getattr(error, 'original', error)
 
     if isinstance(error, ignored):
@@ -346,6 +355,50 @@ def get_server():
     fmt_plat = "```py\nOS: {0.system} {0.release} v{0.version}\nCPU: {0.processor} ({1} threads)\nPID: {2}\n```".format(uname, os.cpu_count(), os.getpid())
     return fmt_plat
 
+def fetch_bot_count_data():
+    server_list = bot.guilds
+    total_server = len(server_list)
+
+    users_list = []
+    total_channels = 0
+
+    for srv in server_list:
+        total_channels += len(srv.channels)
+
+        for user in srv.members:
+            if not user.bot:
+                if user.id not in users_list:
+                    users_list.append(user.id)
+
+    total_valid_users = len(users_list)
+
+    # Showtimes
+    if not os.path.isfile('nao_showtimes.json'):
+        print('[@] naoTimes are not initiated, skipping.')
+        json_data = {}
+    with open('nao_showtimes.json', 'r') as fp:
+        json_data = json.load(fp)
+
+    text_fmt = "Jumlah server: {}\nJumlah channels: {}\nJumlah pengguna: {}".format(total_server, total_channels, total_valid_users)
+
+    if not json_data:
+        text_fmt += "\n\nJumlah server Showtimes: {}\nJumlah anime Showtimes: {}".format(0, 0)
+    else:
+        ntimes_srv = []
+        total_animemes = 0
+        for k in json_data:
+            if k == "supermod":
+                continue
+            ntimes_srv.append(k)
+
+        total_ntimes_srv = len(ntimes_srv)
+        for srv in ntimes_srv:
+            anime_keys = list(json_data[srv]["anime"].keys())
+            total_animemes += len(anime_keys)
+        text_fmt += "\n\nJumlah server Showtimes: {}\nJumlah anime Showtimes: {}".format(total_ntimes_srv, total_animemes)
+
+    return "```" + text_fmt + "```"
+
 @bot.command()
 async def info(ctx):
     """
@@ -355,6 +408,7 @@ async def info(ctx):
     infog.set_author(name="naoTimes", icon_url="https://slwordpress.rutgers.edu/wp-content/uploads/sites/98/2015/12/Info-I-Logo.png")
     infog.set_thumbnail(url="https://puu.sh/D3x1l/7f97e14c74.png")
     infog.add_field(name="Server Info", value=get_server(), inline=False)
+    infog.add_field(name="Statistik", value=fetch_bot_count_data(), inline=False)
     infog.add_field(name="Dibuat", value="Gak tau, tiba-tiba jadi.", inline=False)
     infog.add_field(name="Pembuat", value="{}".format(bot.owner.mention), inline=False)
     infog.add_field(name="Bahasa", value=get_version(), inline=False)
