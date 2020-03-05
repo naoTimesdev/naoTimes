@@ -1,5 +1,8 @@
-import pymongo
+from copy import deepcopy
+
 import motor.motor_asyncio
+import pymongo
+
 
 class naoTimesDB:
     """
@@ -34,6 +37,49 @@ class naoTimesDB:
             json_data[collection[4:]] = srv
         print('[ntDB] INFO: Dumping data...')
         return json_data
+
+    async def patch_all_from_json(self, dataset: dict):
+        print('[ntDB] INFO: Patching database with current local save.')
+        kunci = list(dataset.keys())
+        kunci.remove('supermod')
+
+        server_collection = await self.db.list_collection_names(filter=self.srv_re)
+        for ksrv in kunci:
+            print('[ntDB] Redoing collection: {}'.format(ksrv))
+            ksrv = await self._precheck_server_name(ksrv)
+            if ksrv in server_collection:
+                upd_data = {
+                    "$set": dataset[ksrv[4:]]
+                }
+                while True:
+                    print('\t[ntDB] Updating collection: {}'.format(ksrv))
+                    srv = self.db[ksrv]
+                    res = await srv.update_one({}, upd_data)
+                    if res:
+                        print('\t[ntDB] INFO: Updated.')
+                        break
+            else:
+                while True:
+                    srv = self.db[ksrv]
+                    print('\t[ntDB] INFO: Adding new data: {}'.format(ksrv))
+                    res = await srv.insert_one(dataset[ksrv[4:]], check_keys=False)
+                    if res.acknowledged:
+                        break
+
+        upd_adm = {
+            "$set": {
+                "server_admin": dataset['supermod']
+            }
+        }
+        print('[ntDB] INFO: Updating top admin...')
+        while True:
+            admin = self.db['server_admin']
+            res = await admin.update_one({}, upd_adm)
+            if res.acknowledged:
+                print('[ntDB] INFO: Updated.')
+                break
+        print('[ntDB] IFNO: Succes patching database')
+        return True
 
     async def get_top_admin(self):
         print('[ntDB] INFO: Fetching top admin/server admin.')
@@ -179,6 +225,92 @@ class naoTimesDB:
             return True
         print('[ntDB] WARN: Server doesn\'t exist on database when dropping, ignoring...')
         return True
+
+    """
+    Kolaborasi command
+    """
+    async def kolaborasi_dengan(self, target_server, confirm_id, target_data):
+        print('[ntDB] INFO: Collaborating with: {}'.format(target_server))
+        target_server = await self._precheck_server_name(target_server)
+        srv_data = await self.get_server(target_server)
+        if not srv_data:
+            return False, 'Server tidak terdaftar di naoTimes.'
+        srv_data['konfirmasi'][confirm_id] = target_data
+
+        res, msg = await self.update_data(target_server, srv_data)
+        return res, msg
+
+    async def kolaborasi_konfirmasi(self, source_server, target_server, srv1_data, srv2_data):
+        print(
+            '[ntDB] INFO: Confirming collaborating between {} and {}'.format(
+            source_server, target_server)
+        )
+        target_server = await self._precheck_server_name(target_server)
+        source_server = await self._precheck_server_name(source_server)
+        target_srv_data = await self.get_server(target_server)
+        source_srv_data = await self.get_server(source_server)
+        if not target_srv_data:
+            return False, 'Server target tidak terdaftar di naoTimes.'
+        if not source_srv_data:
+            return False, 'Server awal tidak terdaftar di naoTimes.'
+
+        res, msg = await self.update_data(source_server, srv1_data)
+        print('[ntDB] INFO: Acknowledged? {}'.format(res))
+        print('[ntDB] Message: {}'.format(msg))
+        res, msg = await self.update_data(target_server, srv2_data)
+        print('[ntDB] INFO: Acknowledged? {}'.format(res))
+        print('[ntDB] Message: {}'.format(msg))
+        return res, msg
+
+    async def kolaborasi_batalkan(self, server, confirm_id):
+        print('[ntDB] INFO: Cancelling collaboration with: {}'.format(server))
+        server = await self._precheck_server_name(server)
+        srv_data = await self.get_server(server)
+        if not srv_data:
+            return False, 'Server tidak terdaftar di naoTimes.'
+
+        if confirm_id in srv_data['kolaborasi']:
+            del srv_data['kolaborasi'][confirm_id]
+        res, msg = await self.update_data(server, srv_data)
+        return res, msg
+
+    async def kolaborasi_putuskan(self, server, anime):
+        print('[ntDB] INFO: Aborting collaboration from server: {}'.format(server))
+        server = await self._precheck_server_name(server)
+        srv_data = await self.get_server(server)
+        if not srv_data:
+            return False, 'Server tidak terdaftar di naoTimes.'
+
+        if anime not in srv_data['anime']:
+            return False, 'Anime tidak dapat ditemukan.'
+
+        if 'kolaborasi' not in srv_data['anime'][anime]:
+            return False, 'Tidak ada kolaborasi yang terdaftar'
+
+        for osrv in srv_data['anime'][anime]['kolaborasi']:
+            print('[ntDB] Removing {} from: {}'.format(server, osrv))
+            osrv = await self._precheck_server_name(osrv)
+            osrvd = await self.get_server(osrv)
+            klosrv = deepcopy(osrvd['anime'][anime]['kolaborasi'])
+            klosrv.remove(server[4:])
+
+            remove_all = False
+            if len(klosrv) == 1:
+                if klosrv[0] == osrv[4:]:
+                    remove_all = True
+
+            if remove_all:
+                del osrvd['anime'][anime]['kolaborasi']
+            else:
+                osrvd['anime'][anime]['kolaborasi'] = klosrv
+            res, msg = await self.update_data(osrv, osrvd)
+            print('[ntDB] INFO: Acknowledged? {}'.format(res))
+            print('[ntDB] Message: {}'.format(msg))
+
+        del srv_data['anime'][anime]['kolaborasi']
+
+        res, msg = await self.update_data(server, srv_data)
+        return res, msg
 
 
 if __name__ == "__main__":
