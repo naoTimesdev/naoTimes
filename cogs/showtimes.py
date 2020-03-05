@@ -1039,6 +1039,7 @@ class Showtimes(commands.Cog):
 
         program_info = server_data['anime'][matches[0]]
         status_list = program_info['status']
+        srv_owner = server_data['serverowner']
 
         if str(ctx.message.author.id) != program_info['staff_assignment']['QC']:
             if str(ctx.message.author.id) not in srv_owner:
@@ -2994,8 +2995,16 @@ class ShowtimesKolaborasi(commands.Cog):
             koleb_list_othersrv = deepcopy(json_d[x]['anime'][matches[0]]['kolaborasi'])
             koleb_list_othersrv.remove(server_message)
 
-            del json_d[x]['anime'][matches[0]]['kolaborasi']
-            json_d[x]['anime'][matches[0]]['kolaborasi'] = koleb_list_othersrv
+            remove_all = False
+            if len(koleb_list_othersrv) == 1:
+                if koleb_list_othersrv[0] == x:
+                    remove_all = True
+
+            if remove_all:
+                del json_d[x]['anime'][matches[0]]['kolaborasi']
+            else:
+                json_d[x]['anime'][matches[0]]['kolaborasi'] = koleb_list_othersrv
+
         del json_d[server_message]['anime'][matches[0]]['kolaborasi']
         print("[@] Sending data")
 
