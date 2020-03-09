@@ -15,7 +15,7 @@ import aiohttp
 import discord
 import requests
 from discord.ext import commands
-from .nthelper import naoTimesDB
+from nthelper.showtimes_helper import naoTimesDB
 
 cogs_list = ['cogs.' + x.replace('.py', '') for x in os.listdir('cogs') if x.endswith('.py')]
 
@@ -106,7 +106,7 @@ async def init_bot():
         description = '''Penyuruh Fansub biar kerja cepat\nversi 2.0.0 || Dibuat oleh: N4O#8868'''
         bot = commands.Bot(command_prefix=prefixes, description=description)
         bot.remove_command('help')
-        await fetch_newest_db(config)
+        #await fetch_newest_db(config)
         print('[@!!] Success Loading Discord.py')
     except Exception as exc:
         print('[#!!] Failed to load Discord.py ###')
@@ -173,12 +173,20 @@ async def on_ready():
     print('Bot name: {}'.format(bot.user.name))
     print('With Client ID: {}'.format(bot.user.id))
     print('---------------------------------------------------------------')
+    if not hasattr(bot, "showtimes_resync"):
+        bot.showtimes_resync = []
     if not hasattr(bot, "ntdb"):
         mongos = bot_config['mongodb']
         bot.ntdb = naoTimesDB(mongos['ip_hostname'], mongos['port'], mongos['dbname'])
         print('Connected to naoTimes Database:')
         print('IP:Port: {}:{}'.format(mongos['ip_hostname'], mongos['port']))
         print('Database: {}'.format(mongos['dbname']))
+        print('---------------------------------------------------------------')
+        print('Fetching nao_showtimes from server db to local json')
+        js_data = await bot.ntdb.fetch_all_as_json()
+        with open('nao_showtimes.json', 'w') as f:
+            json.dump(js_data, f, indent=4)
+        print('File fetched and saved to local json')
         print('---------------------------------------------------------------')
     if not hasattr(bot, 'uptime'):
         bot.owner = (await bot.application_info()).owner
