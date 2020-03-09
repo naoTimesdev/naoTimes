@@ -12,6 +12,9 @@ class naoTimesDB:
     def __init__(self, ip_hostname, port, dbname="naotimesdb"):
         self.client = motor.motor_asyncio.AsyncIOMotorClient("mongodb://{}:{}".format(ip_hostname, port))
         self.db = self.client[dbname]
+
+        self.clientsync = pymongo.MongoClient("mongodb://{}:{}".format(ip_hostname, port))
+        self.dbsync = self.clientsync[dbname]
         self.srv_re = {"name": {"$regex": r"^srv"}}
 
     async def _precheck_server_name(self, namae):
@@ -60,10 +63,10 @@ class naoTimesDB:
                         break
             else:
                 while True:
-                    srv = self.db[ksrv]
+                    srv = self.dbsync[ksrv]
                     print('\t[ntDB] INFO: Adding new data: {}'.format(ksrv))
-                    res = await srv.insert_one(dataset[ksrv[4:]], check_keys=False)
-                    if res.acknowledged:
+                    res = srv.insert(dataset[ksrv[4:]], check_keys=False)
+                    if res:
                         break
 
         upd_adm = {
@@ -203,9 +206,9 @@ class naoTimesDB:
             print('[ntDB] WARN: found server in database, please use `update_data` method')
             return False, 'Server terdaftar di database, gunakan metode `update_data`'
 
-        srv = self.db[server]
-        res = await srv.insert_one(dataset, check_keys=False)
-        if res.acknowledged:
+        srv = self.dbsync[server]
+        res = srv.insert(dataset, check_keys=False)
+        if res:
             print('[ntDB] INFO: Server data updated.')
             return True, 'Updated'
         print('[ntDB] ERROR: Failed to update server data.')
