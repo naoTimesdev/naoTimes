@@ -15,7 +15,7 @@ from string import ascii_lowercase, digits
 
 import aiohttp
 import discord
-import discord.ext.commands as commands
+from discord.ext import commands, tasks
 import pytz
 
 anifetch_query = '''
@@ -227,7 +227,7 @@ async def fetch_anilist(ani_id, current_ep, total_episode=None, return_time_data
                     entry = data['data']['Media']
                 except IndexError:
                     return "ERROR: Tidak ada hasil."
-        except session.ClientError:
+        except aiohttp.ClientError:
             return "ERROR: Koneksi terputus"
 
     if jadwal_only:
@@ -472,9 +472,26 @@ async def patch_error_handling(bot, ctx):
 class Showtimes(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.resync_failed_server.start()
 
     def __str__(self):
         return 'Showtimes Main'
+
+    @tasks.loop(minutes=1.0)
+    async def resync_failed_server(self):
+        print('[$] Resynchronizing failed server update to main server.')
+        if not self.bot.showtimes_resync:
+            return print('[!] No resynchronizing required.')
+        json_d = await fetch_json()
+        for srv in self.bot.showtimes_resync:
+            print('[#] Updating: {}'.format(srv))
+            res, msg = await self.bot.ntdb.update_data(srv, json_d[srv])
+            if not res:
+                print('\tFailed to update, reason: {}'.format(msg))
+                continue
+            print('\tUpdated!')
+            self.bot.showtimes_resync.remove(srv)
+        print('[@] Finished resync, leftover server amount are {}'.format(len(self.bot.showtimes_resync)))
 
     async def choose_anime(self, ctx, matches):
         print('[!] Asking user for input.')
@@ -543,6 +560,9 @@ class Showtimes(commands.Cog):
         ---
         judul: Judul anime yang terdaftar
         """
+        # FIXME: Disable if finished migrating.
+        if True:
+            return await ctx.send('Showtimes sedang dalam mode maintenance dalam masa migrasi\nCommand lain masih bisa dipakai selain segala command Showtimes.\n\n**Estimasi**: 8-15 Jam\n**Waktu Mulai**: 9 Maret 2020 - 08:00 WIB')
         server_message = str(ctx.message.guild.id)
         print('[@] Requested !tagih at: ' + server_message)
         json_d = await fetch_json()
@@ -627,6 +647,9 @@ class Showtimes(commands.Cog):
     @commands.command(aliases=['release'])
     @commands.guild_only()
     async def rilis(self, ctx, *, data):
+        # FIXME: Disable if finished migrating.
+        if True:
+            return await ctx.send('Showtimes sedang dalam mode maintenance dalam masa migrasi\nCommand lain masih bisa dipakai selain segala command Showtimes.\n\n**Estimasi**: 8-15 Jam\n**Waktu Mulai**: 9 Maret 2020 - 08:00 WIB')
         data = data.split()
 
         server_message = str(ctx.message.guild.id)
@@ -653,6 +676,8 @@ class Showtimes(commands.Cog):
 
         if not data or data == []:
             return await ctx.send('**Mungkin**: {}'.format(', '.join(srv_anilist)))
+
+        koleb_list = []
 
         if data[0] not in ['batch', 'semua']:
             """
@@ -686,7 +711,6 @@ class Showtimes(commands.Cog):
             program_info = server_data['anime'][matches[0]]
             status_list = program_info['status']
 
-            koleb_list = []
             if 'kolaborasi' in program_info:
                 koleb_data = program_info['kolaborasi']
                 if koleb_data:
@@ -705,6 +729,8 @@ class Showtimes(commands.Cog):
 
             if koleb_list:
                 for other_srv in koleb_list:
+                    if other_srv not in json_d:
+                        continue
                     json_d[other_srv]['anime'][matches[0]]['status'][current]['status'] = 'released'
                     json_d[other_srv]['anime'][matches[0]]['last_update'] = str(int(round(time.time())))
             json_d[server_message]['anime'][matches[0]]['status'][current]['status'] = 'released'
@@ -743,7 +769,6 @@ class Showtimes(commands.Cog):
             program_info = server_data['anime'][matches[0]]
             status_list = program_info['status']
 
-            koleb_list = []
             if 'kolaborasi' in program_info:
                 koleb_data = program_info['kolaborasi']
                 if koleb_data:
@@ -762,6 +787,8 @@ class Showtimes(commands.Cog):
 
             if koleb_list:
                 for other_srv in koleb_list:
+                    if other_srv not in json_d:
+                        continue
                     for x in range(int(current), int(current)+int(jumlah)): # range(int(c), int(c)+int(x))
                         json_d[other_srv]['anime'][matches[0]]['status'][str(x)]['status'] = 'released'
                     json_d[other_srv]['anime'][matches[0]]['last_update'] = str(int(round(time.time())))
@@ -799,7 +826,6 @@ class Showtimes(commands.Cog):
             program_info = server_data['anime'][matches[0]]
             status_list = program_info['status']
 
-            koleb_list = []
             if 'kolaborasi' in program_info:
                 koleb_data = program_info['kolaborasi']
                 if koleb_data:
@@ -818,6 +844,8 @@ class Showtimes(commands.Cog):
 
             if koleb_list:
                 for other_srv in koleb_list:
+                    if other_srv not in json_d:
+                        continue
                     for x in all_status:
                         json_d[other_srv]['anime'][matches[0]]['status'][x]['status'] = 'released'
                     json_d[other_srv]['anime'][matches[0]]['last_update'] = str(int(round(time.time())))
@@ -834,15 +862,26 @@ class Showtimes(commands.Cog):
         print('[@] Sending message...')
         await ctx.send(text_data)
 
-        success = await patch_json(json_d)
+        success, msg = await self.bot.ntdb.update_data(server_message, json_d[server_message])
+        for osrv in koleb_list:
+            res2, msg2 = await self.bot.ntdb.update_data(osrv, json_d[osrv])
+            if not res2:
+                if osrv not in self.bot.showtimes_resync:
+                    self.bot.showtimes_resync.append(osrv)
+                print('[%] Failed updating collaboration server: {}\n\tReason: {}'.format(osrv, msg2))
 
         if success:
             if koleb_list:
                 for other_srv in koleb_list:
+                    if other_srv not in json_d:
+                        continue
                     if 'announce_channel' in json_d[other_srv]:
                         print('[@] Sending progress info to everyone at {}'.format(other_srv))
                         announce_chan = json_d[other_srv]['announce_channel']
                         target_chan = self.bot.get_channel(int(announce_chan))
+                        if not target_chan:
+                            print('[$] Unknown server: {}'.format(announce_chan))
+                            continue
                         embed = discord.Embed(title="{}".format(matches[0]), color=0x1eb5a6)
                         embed.add_field(name='Rilis!', value=embed_text_data, inline=False)
                         embed.set_footer(text="Pada: {}".format(get_current_time()))
@@ -853,8 +892,10 @@ class Showtimes(commands.Cog):
                 embed = discord.Embed(title="{}".format(matches[0]), color=0x1eb5a6)
                 embed.add_field(name='Rilis!', value=embed_text_data, inline=False)
                 embed.set_footer(text="Pada: {}".format(get_current_time()))
-                await target_chan.send(embed=embed)
+                if target_chan:
+                    await target_chan.send(embed=embed)
             return
+        print('[%] Failed updating main server for release: {}'.format(msg))
         await patch_error_handling(self.bot, ctx)
 
 
@@ -866,6 +907,9 @@ class Showtimes(commands.Cog):
         posisi: tl, tlc, enc, ed, ts, atau qc
         judul: Judul anime yang terdaftar
         """
+        # FIXME: Disable if finished migrating.
+        if True:
+            return await ctx.send('Showtimes sedang dalam mode maintenance dalam masa migrasi\nCommand lain masih bisa dipakai selain segala command Showtimes.\n\n**Estimasi**: 8-15 Jam\n**Waktu Mulai**: 9 Maret 2020 - 08:00 WIB')
         server_message = str(ctx.message.guild.id)
         print('[@] Requested !beres at: ' + server_message)
         posisi = posisi.lower()
@@ -942,6 +986,8 @@ class Showtimes(commands.Cog):
 
         if koleb_list:
             for other_srv in koleb_list:
+                if other_srv not in json_d:
+                    continue
                 json_d[other_srv]['anime'][matches[0]]['status'][current]['staff_status'][posisi.upper()] = 'y'
                 json_d[other_srv]['anime'][matches[0]]['last_update'] = str(int(round(time.time())))
         json_d[server_message]['anime'][matches[0]]['status'][current]['staff_status'][posisi.upper()] = 'y'
@@ -954,15 +1000,26 @@ class Showtimes(commands.Cog):
         print('[@] Sending progress info to staff')
         await ctx.send('Berhasil mengubah status garapan {} - #{}'.format(matches[0], current))
 
-        success = await patch_json(json_d)
+        success, msg = await self.bot.ntdb.update_data(server_message, json_d[server_message])
+        for osrv in koleb_list:
+            res2, msg2 = await self.bot.ntdb.update_data(osrv, json_d[osrv])
+            if not res2:
+                if osrv not in self.bot.showtimes_resync:
+                    self.bot.showtimes_resync.append(osrv)
+                print('[%] Failed updating collaboration server: {}\n\tReason: {}'.format(osrv, msg2))
 
         if success:
             if koleb_list:
                 for other_srv in koleb_list:
+                    if other_srv not in json_d:
+                        continue
                     if 'announce_channel' in json_d[other_srv]:
                         print('[@] Sending progress info to everyone at {}'.format(other_srv))
                         announce_chan = json_d[other_srv]['announce_channel']
                         target_chan = self.bot.get_channel(int(announce_chan))
+                        if not target_chan:
+                            print('[$] Unknown server: {}'.format(announce_chan))
+                            continue
                         embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=0x1eb5a6)
                         embed.add_field(name='Status', value=parse_status(current_ep_status), inline=False)
                         embed.set_footer(text="Pada: {}".format(get_current_time()))
@@ -974,17 +1031,22 @@ class Showtimes(commands.Cog):
                 target_chan = self.bot.get_channel(int(announce_chan))
                 embed.set_footer(text="Pada: {}".format(get_current_time()))
                 print('[@] Sending progress info to everyone')
-                await target_chan.send(embed=embed)
+                if target_chan:
+                    await target_chan.send(embed=embed)
             embed.add_field(name='Update Terakhir', value='Baru saja', inline=False)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
             embed.set_thumbnail(url=poster_image)
             return await ctx.send(embed=embed)
+        print('[%] Failed updating main server data: {}'.format(msg))
         await patch_error_handling(self.bot, ctx)
 
 
     @commands.command(aliases=['gakjadirilis', 'revert'])
     @commands.guild_only()
     async def batalrilis(self, ctx, *, judul=None):
+        # FIXME: Disable if finished migrating
+        if True:
+            return await ctx.send('Showtimes sedang dalam mode maintenance dalam masa migrasi\nCommand lain masih bisa dipakai selain segala command Showtimes.\n\n**Estimasi**: 8-15 Jam\n**Waktu Mulai**: 9 Maret 2020 - 08:00 WIB')
         server_message = str(ctx.message.guild.id)
         print('[@] Requested !batalrilis at: ' + server_message)
         json_d = await fetch_json()
@@ -1067,6 +1129,8 @@ class Showtimes(commands.Cog):
 
         if koleb_list:
             for other_srv in koleb_list:
+                if other_srv not in json_d:
+                    continue
                 json_d[other_srv]['anime'][matches[0]]['status'][current]['status'] = 'not_released'
                 json_d[other_srv]['anime'][matches[0]]['last_update'] = str(int(round(time.time())))
         json_d[server_message]['anime'][matches[0]]['status'][current]['status'] = 'not_released'
@@ -1077,15 +1141,26 @@ class Showtimes(commands.Cog):
         print('[@] Sending progress info to staff')
         await ctx.send('Berhasil membatalkan rilisan **{}** episode {}'.format(matches[0], current))
 
-        success = await patch_json(json_d)
+        success, msg = await self.bot.ntdb.update_data(server_message, json_d[server_message])
+        for osrv in koleb_list:
+            res2, msg2 = await self.bot.ntdb.update_data(osrv, json_d[osrv])
+            if not res2:
+                if osrv not in self.bot.showtimes_resync:
+                    self.bot.showtimes_resync.append(osrv)
+                print('[%] Failed updating collaboration server: {}\n\tReason: {}'.format(osrv, msg2))
 
         if success:
             if koleb_list:
                 for other_srv in koleb_list:
+                    if other_srv not in json_d:
+                        continue
                     if 'announce_channel' in json_d[other_srv]:
                         print('[@] Sending progress info to everyone at {}'.format(other_srv))
                         announce_chan = json_d[other_srv]['announce_channel']
                         target_chan = self.bot.get_channel(int(announce_chan))
+                        if not target_chan:
+                            print('[$] Unknown server: {}'.format(announce_chan))
+                            continue
                         embed = discord.Embed(title="{}".format(matches[0]), color=0xb51e1e)
                         embed.add_field(name='Batal rilis...', value="Rilisan **episode #{}** dibatalkan dan sedang dikerjakan kembali".format(current), inline=False)
                         embed.set_footer(text="Pada: {}".format(get_current_time()))
@@ -1096,7 +1171,8 @@ class Showtimes(commands.Cog):
                 embed = discord.Embed(title="{}".format(matches[0]), color=0xb51e1e)
                 embed.add_field(name='Batal rilis...', value="Rilisan **episode #{}** dibatalkan dan sedang dikerjakan kembali".format(current), inline=False)
                 embed.set_footer(text="Pada: {}".format(get_current_time()))
-                await target_chan.send(embed=embed)
+                if target_chan:
+                    await target_chan.send(embed=embed)
             return
         await patch_error_handling(self.bot, ctx)
 
@@ -1110,6 +1186,9 @@ class Showtimes(commands.Cog):
         posisi: tl, tlc, enc, ed, ts, atau qc
         judul: Judul anime yang terdaftar
         """
+        # FIXME: Disable if finished migrating
+        if True:
+            return await ctx.send('Showtimes sedang dalam mode maintenance dalam masa migrasi\nCommand lain masih bisa dipakai selain segala command Showtimes.\n\n**Estimasi**: 8-15 Jam\n**Waktu Mulai**: 9 Maret 2020 - 08:00 WIB')
         server_message = str(ctx.message.guild.id)
         print('[@] Requested !gakjadi at: ' + server_message)
         posisi = posisi.lower()
@@ -1186,6 +1265,8 @@ class Showtimes(commands.Cog):
 
         if koleb_list:
             for other_srv in koleb_list:
+                if other_srv not in json_d:
+                    continue
                 json_d[other_srv]['anime'][matches[0]]['status'][current]['staff_status'][posisi.upper()] = 'x'
                 json_d[other_srv]['anime'][matches[0]]['last_update'] = str(int(round(time.time())))
         json_d[server_message]['anime'][matches[0]]['status'][current]['staff_status'][posisi.upper()] = 'x'
@@ -1198,15 +1279,26 @@ class Showtimes(commands.Cog):
         print('[@] Sending progress info to staff')
         await ctx.send('Berhasil mengubah status garapan {} - #{}'.format(matches[0], current))
 
-        success = await patch_json(json_d)
+        success, msg = await self.bot.ntdb.update_data(server_message, json_d[server_message])
+        for osrv in koleb_list:
+            res2, msg2 = await self.bot.ntdb.update_data(osrv, json_d[osrv])
+            if not res2:
+                if osrv not in self.bot.showtimes_resync:
+                    self.bot.showtimes_resync.append(osrv)
+                print('[%] Failed updating collaboration server: {}\n\tReason: {}'.format(osrv, msg2))
 
         if success:
             if koleb_list:
                 for other_srv in koleb_list:
+                    if other_srv not in json_d:
+                        continue
                     if 'announce_channel' in json_d[other_srv]:
                         print('[@] Sending progress info to everyone at {}'.format(other_srv))
                         announce_chan = json_d[other_srv]['announce_channel']
                         target_chan = self.bot.get_channel(int(announce_chan))
+                        if not target_chan:
+                            print('[$] Unknown server: {}'.format(announce_chan))
+                            continue
                         embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=0xb51e1e)
                         embed.add_field(name='Status', value=parse_status(current_ep_status), inline=False)
                         embed.set_footer(text="Pada: {}".format(get_current_time()))
@@ -1218,7 +1310,8 @@ class Showtimes(commands.Cog):
                 target_chan = self.bot.get_channel(int(announce_chan))
                 embed.set_footer(text="Pada: {}".format(get_current_time()))
                 print('[@] Sending progress info to everyone')
-                await target_chan.send(embed=embed)
+                if target_chan:
+                    await target_chan.send(embed=embed)
             embed.add_field(name='Update Terakhir', value='Baru saja', inline=False)
             embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
             embed.set_thumbnail(url=poster_image)
@@ -1235,6 +1328,9 @@ class Showtimes(commands.Cog):
         Menggunakan embed agar terlihat lebih enak dibanding sebelumnya
         Merupakan versi 2
         """
+        # FIXME: Disable if finished migrating
+        if True:
+            return await ctx.send('Showtimes sedang dalam mode maintenance dalam masa migrasi\nCommand lain masih bisa dipakai selain segala command Showtimes.\n\n**Estimasi**: 8-15 Jam\n**Waktu Mulai**: 9 Maret 2020 - 08:00 WIB')
         server_message = str(ctx.message.guild.id)
         print('[#] Requested !tambahutang at: ' + server_message)
         json_d = await fetch_json()
@@ -1801,7 +1897,7 @@ class Showtimes(commands.Cog):
         embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
         await ctx.send(embed=embed)
 
-        success = await patch_json(json_d)
+        success, msg = await self.bot.ntdb.update_data(server_message, json_d[server_message])
         await emb_msg.delete()
 
         if success:
@@ -1817,6 +1913,9 @@ class Showtimes(commands.Cog):
         """
         Melihat jadwal anime musiman yang di ambil.
         """
+        # FIXME: Disable if finished migrating
+        if True:
+            return await ctx.send('Showtimes sedang dalam mode maintenance dalam masa migrasi\nCommand lain masih bisa dipakai selain segala command Showtimes.\n\n**Estimasi**: 8-15 Jam\n**Waktu Mulai**: 9 Maret 2020 - 08:00 WIB')
         server_message = str(ctx.message.guild.id)
         print('[#] Requested !jadwal at: ' + server_message)
         json_d = await fetch_json()
@@ -1863,6 +1962,9 @@ class Showtimes(commands.Cog):
         ---
         judul: Judul anime yang terdaftar
         """
+        # FIXME: Disable if finished migrating
+        if True:
+            return await ctx.send('Showtimes sedang dalam mode maintenance dalam masa migrasi\nCommand lain masih bisa dipakai selain segala command Showtimes.\n\n**Estimasi**: 8-15 Jam\n**Waktu Mulai**: 9 Maret 2020 - 08:00 WIB')
         server_message = str(ctx.message.guild.id)
         print('[#] Requested !staff at: ' + server_message)
         json_d = await fetch_json()
@@ -1931,6 +2033,9 @@ class Showtimes(commands.Cog):
                 if server_message == other_srv:
                     continue
                 server_data = self.bot.get_guild(int(other_srv))
+                if not server_data:
+                    print('[$] Unknown server: {}'.format(other_srv))
+                    continue
                 k_list.append(server_data.name)
             if k_list:
                 rtext += '\n**Kolaborasi dengan**: {}'.format(', '.join(k_list))
@@ -1956,6 +2061,9 @@ class Showtimes(commands.Cog):
         """
         Mark something as done or undone for other episode without announcing it
         """
+        # FIXME: Disable if finished migrating
+        if True:
+            return await ctx.send('Showtimes sedang dalam mode maintenance dalam masa migrasi\nCommand lain masih bisa dipakai selain segala command Showtimes.\n\n**Estimasi**: 8-15 Jam\n**Waktu Mulai**: 9 Maret 2020 - 08:00 WIB')
         server_message = str(ctx.message.guild.id)
         print('[#] Requested !tandakan at: ' + server_message)
         json_d = await fetch_json()
@@ -2026,6 +2134,8 @@ class Showtimes(commands.Cog):
 
         if koleb_list:
             for other_srv in koleb_list:
+                if other_srv not in json_d:
+                    continue
                 if pos_status[posisi] == 'x':
                     json_d[other_srv]["anime"][matches[0]]['status'][str(episode_n)]['staff_status'][posisi] = 'y'
                 elif pos_status[posisi] == 'y':
@@ -2043,7 +2153,14 @@ class Showtimes(commands.Cog):
         print('[@] Berhasil menandakan ke database local')
         await ctx.send(txt_msg.format(st=posisi, an=matches[0], ep=episode_n))
 
-        success = await patch_json(json_d)
+        success, msg = await self.bot.ntdb.update_data(server_message, json_d[server_message])
+        for osrv in koleb_list:
+            res2, msg2 = await self.bot.ntdb.update_data(osrv, json_d[osrv])
+            if not res2:
+                if osrv not in self.bot.showtimes_resync:
+                    self.bot.showtimes_resync.append(osrv)
+                print('[%] Failed updating collaboration server: {}\n\tReason: {}'.format(osrv, msg2))
+
         if not success:
             await patch_error_handling(self.bot, ctx)
 
@@ -2056,7 +2173,9 @@ class Showtimes(commands.Cog):
         Global showtimes patcher, dangerous to use.
         You can change this to batch modify the database
         """
-
+        # FIXME: Disable if finished migrating
+        if True:
+            return await ctx.send('Showtimes sedang dalam mode maintenance dalam masa migrasi\nCommand lain masih bisa dipakai selain segala command Showtimes.\n\n**Estimasi**: 8-15 Jam\n**Waktu Mulai**: 9 Maret 2020 - 08:00 WIB')
         print('[#] Requested !globalpatcher by admin')
         json_d = await fetch_json()
 
@@ -2182,6 +2301,9 @@ class ShowtimesAlias(commands.Cog):
         """
         Initiate alias creation for certain anime
         """
+        # FIXME: Disable if finished migrating
+        if True:
+            return await ctx.send('Showtimes sedang dalam mode maintenance dalam masa migrasi\nCommand lain masih bisa dipakai selain segala command Showtimes.\n\n**Estimasi**: 8-15 Jam\n**Waktu Mulai**: 9 Maret 2020 - 08:00 WIB')
         if not ctx.invoked_subcommand:
             server_message = str(ctx.message.guild.id)
             print('[#] Requested !alias at: ' + server_message)
@@ -2376,7 +2498,7 @@ class ShowtimesAlias(commands.Cog):
             await ctx.send(embed=embed)
             await emb_msg.delete()
 
-            success = await patch_json(json_d)
+            success, msg = await self.bot.ntdb.update_data(server_message, json_d[server_message])
 
             if success:
                 print('[@] Sending message...')
@@ -2560,7 +2682,7 @@ class ShowtimesAlias(commands.Cog):
 
                 await ctx.send('Alias **{} ({})** telah dihapus dari database'.format(n_del, matches[0]))
                 
-                success = await patch_json(json_d)
+                success, msg = await self.bot.ntdb.update_data(server_message, json_d[server_message])
 
                 if success:
                     return await emb_msg.delete()
@@ -2638,6 +2760,9 @@ class ShowtimesKolaborasi(commands.Cog):
     @commands.group(aliases=['joint', 'join', 'koleb'])
     @commands.guild_only()
     async def kolaborasi(self, ctx):
+        # FIXME: Disable if finished migrating
+        if True:
+            return await ctx.send('Showtimes sedang dalam mode maintenance dalam masa migrasi\nCommand lain masih bisa dipakai selain segala command Showtimes.\n\n**Estimasi**: 8-15 Jam\n**Waktu Mulai**: 9 Maret 2020 - 08:00 WIB')
         if not ctx.invoked_subcommand:
             helpmain = discord.Embed(title="Bantuan Perintah (!kolaborasi)", description="versi 2.0.0", color=0x00aaaa)
             helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -2776,7 +2901,7 @@ class ShowtimesKolaborasi(commands.Cog):
         await emb_msg.delete()
         await ctx.send(embed=embed)
 
-        success = await patch_json(json_d)
+        success, msg = await self.bot.ntdb.kolaborasi_dengan(server_id, randomize_confirm, table_data)
 
         if success:
             print('[@] Sending message...')
@@ -2889,7 +3014,10 @@ class ShowtimesKolaborasi(commands.Cog):
         await emb_msg.delete()
         await ctx.send(embed=embed)
 
-        success = await patch_json(json_d)
+        success, msg = await self.bot.ntdb.kolaborasi_konfirmasi(
+            klb_data['server'], server_message,
+            json_d[klb_data['server']], json_d[server_message]
+        )
 
         if success:
             print('[@] Sending message...')
@@ -2934,7 +3062,7 @@ class ShowtimesKolaborasi(commands.Cog):
         embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
         await ctx.send(embed=embed)
 
-        success = await patch_json(json_d)
+        success, msg = await self.bot.ntdb.kolaborasi_batalkan(server_id, konfirm_id)
 
         if success:
             print('[@] Sending message...')
@@ -2995,15 +3123,19 @@ class ShowtimesKolaborasi(commands.Cog):
             koleb_list_othersrv = deepcopy(json_d[x]['anime'][matches[0]]['kolaborasi'])
             koleb_list_othersrv.remove(server_message)
 
+        for osrv in program_info['kolaborasi']:
+            klosrv = deepcopy(json_d[osrv]['anime'][matches[0]]['kolaborasi'])
+            klosrv.remove(server_message)
+
             remove_all = False
-            if len(koleb_list_othersrv) == 1:
-                if koleb_list_othersrv[0] == x:
+            if len(klosrv) == 1:
+                if klosrv[0] == osrv:
                     remove_all = True
 
             if remove_all:
-                del json_d[x]['anime'][matches[0]]['kolaborasi']
+                del json_d[osrv]['anime'][matches[0]]['kolaborasi']
             else:
-                json_d[x]['anime'][matches[0]]['kolaborasi'] = koleb_list_othersrv
+                json_d[osrv]['anime'][matches[0]]['kolaborasi'] = klosrv
 
         del json_d[server_message]['anime'][matches[0]]['kolaborasi']
         print("[@] Sending data")
@@ -3016,7 +3148,7 @@ class ShowtimesKolaborasi(commands.Cog):
         embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
         await ctx.send(embed=embed)
 
-        success = await patch_json(json_d)
+        success, msg = await self.bot.ntdb.kolaborasi_putuskan(server_message, matches[0])
 
         if success:
             print('[@] Sending message...')
@@ -3037,6 +3169,9 @@ class ShowtimesAdmin(commands.Cog):
     @commands.is_owner()
     @commands.guild_only()
     async def ntadmin(self, ctx):
+        # FIXME: Disable if finished migrating
+        if True:
+            return await ctx.send('Showtimes sedang dalam mode maintenance dalam masa migrasi\nCommand lain masih bisa dipakai selain segala command Showtimes.\n\n**Estimasi**: 8-15 Jam\n**Waktu Mulai**: 9 Maret 2020 - 08:00 WIB')
         if ctx.invoked_subcommand is None:
             helpmain = discord.Embed(title="Bantuan Perintah (!ntadmin)", description="versi 2.0.0", color=0x00aaaa)
             helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -3063,6 +3198,9 @@ class ShowtimesAdmin(commands.Cog):
         srv_list = []
         for i, _ in json_d.items():
             srv_ = self.bot.get_guild(int(i))
+            if not srv_:
+                print('[$] Unknown server: {}'.format(i))
+                continue
             srv_list.append(srv_.name)
 
         srv_list.remove('supermod')
@@ -3296,6 +3434,9 @@ class ShowtimesAdmin(commands.Cog):
         !! Warning !!
         This will patch entire database
         """
+        # FIXME: Disable if finished migrating
+        if True:
+            return await ctx.send('Showtimes sedang dalam mode maintenance dalam masa migrasi\nCommand lain masih bisa dipakai selain segala command Showtimes.\n\n**Estimasi**: 8-15 Jam\n**Waktu Mulai**: 9 Maret 2020 - 08:00 WIB')
         print('[#] Requested !ntadmin patchdb by admin')
 
         if ctx.message.attachments == []:
@@ -3626,6 +3767,9 @@ class ShowtimesConfigData(commands.Cog):
     @commands.command()
     @commands.guild_only()
     async def ubahdata(self, ctx, *, judul):
+        # FIXME: Disable if finished migrating
+        if True:
+            return await ctx.send('Showtimes sedang dalam mode maintenance dalam masa migrasi\nCommand lain masih bisa dipakai selain segala command Showtimes.\n\n**Estimasi**: 8-15 Jam\n**Waktu Mulai**: 9 Maret 2020 - 08:00 WIB')
         server_message = str(ctx.message.guild.id)
         print('[@] Requested !ubahdata at: ' + server_message)
         json_d = await fetch_json()
@@ -3776,6 +3920,8 @@ class ShowtimesConfigData(commands.Cog):
             json_d[server_message]['anime'][matches[0]]['staff_assignment'] = staff_list
             if koleb_list:
                 for other_srv in koleb_list:
+                    if other_srv not in json_d:
+                        continue
                     json_d[other_srv]['anime'][matches[0]]['staff_assignment'] = staff_list
 
             return emb_msg
@@ -3858,11 +4004,15 @@ class ShowtimesConfigData(commands.Cog):
                 st_data["staff_status"] = staff_status
                 if koleb_list:
                     for other_srv in koleb_list:
+                        if other_srv not in json_d:
+                            continue
                         json_d[other_srv]['anime'][matches[0]]['status'][str(x)] = st_data
                 json_d[server_message]['anime'][matches[0]]['status'][str(x)] = st_data
 
             if koleb_list:
                 for other_srv in koleb_list:
+                    if other_srv not in json_d:
+                        continue
                     json_d[other_srv]['anime'][matches[0]]['last_update'] = str(int(round(time.time())))
             json_d[server_message]['anime'][matches[0]]['last_update'] = str(int(round(time.time())))
 
@@ -3933,6 +4083,8 @@ class ShowtimesConfigData(commands.Cog):
 
             if koleb_list:
                 for other_srv in koleb_list:
+                    if other_srv not in json_d:
+                        continue
                     for x in range(current, total+1): # range(int(c), int(c)+int(x))
                         del json_d[other_srv]['anime'][matches[0]]['status'][str(x)]
                     json_d[other_srv]['anime'][matches[0]]['last_update'] = str(int(round(time.time())))
@@ -4065,26 +4217,36 @@ class ShowtimesConfigData(commands.Cog):
                 announce_it = True
 
             del json_d[server_message]['anime'][matches[0]]
+            for osrv in koleb_list:
+                if "kolaborasi" in json_d[osrv]['anime'][matches[0]]:
+                    if server_message in json_d[osrv]['anime'][matches[0]]['kolaborasi']:
+                        klosrv = deepcopy(json_d[osrv]['anime'][matches[0]]['kolaborasi'])
+                        klosrv.remove(server_message)
+
+                        remove_all = False
+                        if len(klosrv) == 1:
+                            if klosrv[0] == osrv:
+                                remove_all = True
+
+                        if remove_all:
+                            del json_d[osrv]['anime'][matches[0]]['kolaborasi']
+                        else:
+                            json_d[osrv]['anime'][matches[0]]['kolaborasi'] = klosrv
 
             with open('nao_showtimes.json', 'w') as f: # Local save before commiting
                 json.dump(json_d, f, indent=4)
             print('[@] Sending message to staff...')
             await ctx.send('Berhasil menghapus **{}** dari daftar utang'.format(matches[0]))
 
-            success = await patch_json(json_d)
+            success, msg = await self.bot.ntdb.update_data(server_message, json_d[server_message])
+            for osrv in koleb_list:
+                res2, msg2 = await self.bot.ntdb.update_data(osrv, json_d[osrv])
+                if not res2:
+                    if osrv not in self.bot.showtimes_resync:
+                        self.bot.showtimes_resync.append(osrv)
+                    print('[%] Failed updating collaboration server: {}\n\tReason: {}'.format(osrv, msg2))
+
             if success:
-                if koleb_list:
-                    for other_srv in koleb_list:
-                        if 'announce_channel' in json_d[other_srv]:
-                            print('[@] Sending progress info to everyone at {}'.format(other_srv))
-                            announce_chan = json_d[other_srv]['announce_channel']
-                            target_chan = self.bot.get_channel(int(announce_chan))
-                            embed = discord.Embed(title="{}".format(matches[0]), color=0xb51e1e)
-                            embed.add_field(name='Dropped...', value="{} telah di drop dari fansub ini :(".format(matches[0]), inline=False)
-                            embed.set_footer(text="Pada: {}".format(get_current_time()))
-                            if announce_it:
-                                print('[@] Sending message to user...')
-                                await target_chan.send(embed=embed)
                 if 'announce_channel' in server_data:
                     announce_chan = server_data['announce_channel']
                     target_chan = self.bot.get_channel(int(announce_chan))
@@ -4093,13 +4255,22 @@ class ShowtimesConfigData(commands.Cog):
                     embed.set_footer(text="Pada: {}".format(get_current_time()))
                     if announce_it:
                         print('[@] Sending message to user...')
-                        await target_chan.send(embed=embed)
-                    return
+                        if target_chan:
+                            await target_chan.send(embed=embed)
+                return
             await patch_error_handling(self.bot, ctx)
 
         print('[!] Menyimpan data baru untuk garapan: ' +  matches[0])
         with open('nao_showtimes.json', 'w') as f: # Local save before commiting
             json.dump(json_d, f, indent=4)
+
+        success, msg = await self.bot.ntdb.update_data(server_message, json_d[server_message])
+        for osrv in koleb_list:
+            res2, msg2 = await self.bot.ntdb.update_data(osrv, json_d[osrv])
+            if not res2:
+                if osrv not in self.bot.showtimes_resync:
+                    self.bot.showtimes_resync.append(osrv)
+                print('[%] Failed updating collaboration server: {}\n\tReason: {}'.format(osrv, msg2))
 
         await ctx.send('Berhasil menyimpan data baru untuk garapan **{}**'.format(matches[0]))
 
