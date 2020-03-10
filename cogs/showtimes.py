@@ -5,9 +5,7 @@ import asyncio
 import json
 import os
 import re
-import sys
 import time
-from calendar import monthrange
 from copy import deepcopy
 from datetime import datetime, timedelta
 from random import choice
@@ -16,6 +14,7 @@ from string import ascii_lowercase, digits
 import aiohttp
 import discord
 from discord.ext import commands, tasks
+from typing import Union
 import pytz
 
 anifetch_query = '''
@@ -71,70 +70,28 @@ async def fetch_json() -> dict:
     if not os.path.isfile('nao_showtimes.json'):
         print('[@] naoTimes are not initiated, skipping.')
         return {}
-    with open('nao_showtimes.json', 'r') as fp:
+    with open('nao_showtimes.json', 'r', encoding="utf-8") as fp:
         json_data = json.load(fp)
-    
+
     return json_data
 
 
-async def patch_json(jsdata: dict) -> bool:
+async def dump_json(dataset: dict):
     """
-    Send modified data back to github
+    Dump database into a json file
     """
-    hh = {
-        "description": "N4O Showtimes bot",
-        "files": {
-            "nao_showtimes.json": {
-                "filename": "nao_showtimes.json",
-                "content": json.dumps(jsdata, indent=4)
-            }
-        }
-    }
-
-    print('[@] Patching showtimes gists')
-    headers = {'User-Agent': 'naoTimes v2.0'}
-    async with aiohttp.ClientSession(auth=aiohttp.BasicAuth(bot_config['github_info']['username'], bot_config['github_info']['personal_access_token']), headers=headers) as sesi2:
-        async with sesi2.patch('https://api.github.com/gists/{}'.format(bot_config['gist_id']), json=hh) as resp:
-            r = await resp.json()
-    try:
-        m = r['message']
-        print('[!!] Can\'t patch showtimes: {}'.format(m))
-        return False
-    except KeyError:
-        print('[@] Done patching showtimes')
-        return True
+    print('[@] Dumping dictionary to json file')
+    with open('nao_showtimes.json', 'w', encoding="utf-8") as fp:
+        json.dump(dataset, fp, indent=2)
 
 
-async def fetch_newest_db(CONFIG_DATA):
-    """
-    Fetch the newest naoTimes database from github
-    """
-    print('[@] Fetching newest database')
-    if CONFIG_DATA['gist_id'] == "":
-        return print('[@!] naoTimes are not setted up, skipping...')
-    url = 'https://gist.githubusercontent.com/{u}/{g}/raw/nao_showtimes.json'
-    async with aiohttp.ClientSession() as session:
-        while True:
-            try:
-                async with session.get(url.format(u=CONFIG_DATA['github_info']['username'], g=CONFIG_DATA['gist_id'])) as r:
-                    try:
-                        r_data = await r.text()
-                        js_data = json.loads(r_data)
-                        with open('nao_showtimes.json', 'w') as f:
-                            json.dump(js_data, f, indent=4)
-                        print('[@] Fetched and saved.')
-                        return
-                    except IndexError:
-                        continue
-            except session.ClientError:
-                continue
-
-
-def is_minus(x) -> bool:
+def is_minus(x: Union[int, float]) -> bool:
+    """Essentials for quick testing"""
     return x < 0
 
 
 def rgbhex_to_rgbint(hex_str: str) -> int:
+    """Used for anilist color to convert to discord.py friendly color"""
     if not hex_str:
         return 0x1eb5a6
     hex_str = hex_str.replace("#", "").upper()
@@ -145,12 +102,14 @@ def rgbhex_to_rgbint(hex_str: str) -> int:
 
 
 def parse_anilist_start_date(startDate: str) -> int:
+    """parse start data of anilist data to Unix Epoch"""
     airing_start = datetime.strptime(startDate, '%Y%m%d')
     epoch_start = datetime(1970, 1, 1, 0, 0, 0)
     return int((airing_start - epoch_start).total_seconds())
 
 
 def get_episode_airing(nodes: dict, episode: str) -> tuple:
+    """Get total episode of airing anime (using anilist data)"""
     if not nodes:
         return None, '1' # No data
     for i in nodes:
@@ -162,12 +121,14 @@ def get_episode_airing(nodes: dict, episode: str) -> tuple:
 
 
 def get_original_time(x: int, total: int) -> int:
+    """what the fuck does this thing even do"""
     for _ in range(total):
         x -= 24 * 3600 * 7
     return x
 
 
 def parse_ani_time(x: int) -> str:
+    """parse anilist time to time-left format"""
     sec = timedelta(seconds=abs(x))
     d = datetime(1, 1, 1) + sec
     print('Anilist Time: {} year {} month {} day {} hour {} minutes {} seconds'.format(d.year, d.month, d.day, d.hour, d.minute, d.second))
@@ -337,6 +298,10 @@ def check_role(needed_role, user_roles: list) -> bool:
 
 
 def get_last_updated(oldtime):
+    """
+    Get last updated time from naoTimes database
+    and convert it to "passed time"
+    """
     current_time = datetime.now()
     oldtime = datetime.utcfromtimestamp(oldtime)
     delta_time = current_time - oldtime
@@ -421,6 +386,9 @@ def make_numbered_alias(alias_list: list) -> str:
 
 
 def any_progress(status: dict) -> bool:
+    """
+    Check if there's any progress to the project
+    """
     for _, v in status.items():
         if v == 'y':
             return False
@@ -428,6 +396,9 @@ def any_progress(status: dict) -> bool:
 
 
 def get_role_name(role_id, roles) -> str:
+    """
+    Get role name by comparing the role id
+    """
     for r in roles:
         if str(r.id) == str(role_id):
             return r.name
@@ -435,6 +406,9 @@ def get_role_name(role_id, roles) -> str:
 
 
 def split_until_less_than(dataset: list) -> list:
+    """
+    Split the !tagih shit into chunked text because discord max 2000 characters limit
+    """
     def split_list(alist, wanted_parts=1):
         length = len(alist)
         return [alist[i*length // wanted_parts: (i+1)*length // wanted_parts]
@@ -562,9 +536,6 @@ class Showtimes(commands.Cog):
         ---
         judul: Judul anime yang terdaftar
         """
-        # FIXME: Disable if finished migrating.
-        if True:
-            return await ctx.send('Showtimes sedang dalam mode maintenance dalam masa migrasi\nCommand lain masih bisa dipakai selain segala command Showtimes.\n\n**Estimasi**: 8-15 Jam\n**Waktu Mulai**: 9 Maret 2020 - 08:00 WIB')
         server_message = str(ctx.message.guild.id)
         print('[@] Requested !tagih at: ' + server_message)
         json_d = await fetch_json()
@@ -649,9 +620,6 @@ class Showtimes(commands.Cog):
     @commands.command(aliases=['release'])
     @commands.guild_only()
     async def rilis(self, ctx, *, data):
-        # FIXME: Disable if finished migrating.
-        if True:
-            return await ctx.send('Showtimes sedang dalam mode maintenance dalam masa migrasi\nCommand lain masih bisa dipakai selain segala command Showtimes.\n\n**Estimasi**: 8-15 Jam\n**Waktu Mulai**: 9 Maret 2020 - 08:00 WIB')
         data = data.split()
 
         server_message = str(ctx.message.guild.id)
@@ -916,9 +884,6 @@ class Showtimes(commands.Cog):
         posisi: tl, tlc, enc, ed, ts, atau qc
         judul: Judul anime yang terdaftar
         """
-        # FIXME: Disable if finished migrating.
-        if True:
-            return await ctx.send('Showtimes sedang dalam mode maintenance dalam masa migrasi\nCommand lain masih bisa dipakai selain segala command Showtimes.\n\n**Estimasi**: 8-15 Jam\n**Waktu Mulai**: 9 Maret 2020 - 08:00 WIB')
         server_message = str(ctx.message.guild.id)
         print('[@] Requested !beres at: ' + server_message)
         posisi = posisi.lower()
@@ -1061,9 +1026,6 @@ class Showtimes(commands.Cog):
     @commands.command(aliases=['gakjadirilis', 'revert'])
     @commands.guild_only()
     async def batalrilis(self, ctx, *, judul=None):
-        # FIXME: Disable if finished migrating
-        if True:
-            return await ctx.send('Showtimes sedang dalam mode maintenance dalam masa migrasi\nCommand lain masih bisa dipakai selain segala command Showtimes.\n\n**Estimasi**: 8-15 Jam\n**Waktu Mulai**: 9 Maret 2020 - 08:00 WIB')
         server_message = str(ctx.message.guild.id)
         print('[@] Requested !batalrilis at: ' + server_message)
         json_d = await fetch_json()
@@ -1211,9 +1173,6 @@ class Showtimes(commands.Cog):
         posisi: tl, tlc, enc, ed, ts, atau qc
         judul: Judul anime yang terdaftar
         """
-        # FIXME: Disable if finished migrating
-        if True:
-            return await ctx.send('Showtimes sedang dalam mode maintenance dalam masa migrasi\nCommand lain masih bisa dipakai selain segala command Showtimes.\n\n**Estimasi**: 8-15 Jam\n**Waktu Mulai**: 9 Maret 2020 - 08:00 WIB')
         server_message = str(ctx.message.guild.id)
         print('[@] Requested !gakjadi at: ' + server_message)
         posisi = posisi.lower()
@@ -1362,9 +1321,6 @@ class Showtimes(commands.Cog):
         Menggunakan embed agar terlihat lebih enak dibanding sebelumnya
         Merupakan versi 2
         """
-        # FIXME: Disable if finished migrating
-        if True:
-            return await ctx.send('Showtimes sedang dalam mode maintenance dalam masa migrasi\nCommand lain masih bisa dipakai selain segala command Showtimes.\n\n**Estimasi**: 8-15 Jam\n**Waktu Mulai**: 9 Maret 2020 - 08:00 WIB')
         server_message = str(ctx.message.guild.id)
         print('[#] Requested !tambahutang at: ' + server_message)
         json_d = await fetch_json()
@@ -1951,9 +1907,6 @@ class Showtimes(commands.Cog):
         """
         Melihat jadwal anime musiman yang di ambil.
         """
-        # FIXME: Disable if finished migrating
-        if True:
-            return await ctx.send('Showtimes sedang dalam mode maintenance dalam masa migrasi\nCommand lain masih bisa dipakai selain segala command Showtimes.\n\n**Estimasi**: 8-15 Jam\n**Waktu Mulai**: 9 Maret 2020 - 08:00 WIB')
         server_message = str(ctx.message.guild.id)
         print('[#] Requested !jadwal at: ' + server_message)
         json_d = await fetch_json()
@@ -2000,9 +1953,6 @@ class Showtimes(commands.Cog):
         ---
         judul: Judul anime yang terdaftar
         """
-        # FIXME: Disable if finished migrating
-        if True:
-            return await ctx.send('Showtimes sedang dalam mode maintenance dalam masa migrasi\nCommand lain masih bisa dipakai selain segala command Showtimes.\n\n**Estimasi**: 8-15 Jam\n**Waktu Mulai**: 9 Maret 2020 - 08:00 WIB')
         server_message = str(ctx.message.guild.id)
         print('[#] Requested !staff at: ' + server_message)
         json_d = await fetch_json()
@@ -2099,9 +2049,6 @@ class Showtimes(commands.Cog):
         """
         Mark something as done or undone for other episode without announcing it
         """
-        # FIXME: Disable if finished migrating
-        if True:
-            return await ctx.send('Showtimes sedang dalam mode maintenance dalam masa migrasi\nCommand lain masih bisa dipakai selain segala command Showtimes.\n\n**Estimasi**: 8-15 Jam\n**Waktu Mulai**: 9 Maret 2020 - 08:00 WIB')
         server_message = str(ctx.message.guild.id)
         print('[#] Requested !tandakan at: ' + server_message)
         json_d = await fetch_json()
@@ -2211,69 +2158,6 @@ class Showtimes(commands.Cog):
             #await patch_error_handling(self.bot, ctx)
 
 
-    @commands.command()
-    @commands.guild_only()
-    @commands.is_owner()
-    async def globalpatcher(self, ctx):
-        """
-        Global showtimes patcher, dangerous to use.
-        You can change this to batch modify the database
-        """
-        # FIXME: Disable if finished migrating
-        if True:
-            return await ctx.send('Showtimes sedang dalam mode maintenance dalam masa migrasi\nCommand lain masih bisa dipakai selain segala command Showtimes.\n\n**Estimasi**: 8-15 Jam\n**Waktu Mulai**: 9 Maret 2020 - 08:00 WIB')
-        print('[#] Requested !globalpatcher by admin')
-        json_d = await fetch_json()
-
-        srv_list = []
-        for k in json_d:
-            srv_list.append(k)
-
-        srv_list.remove('supermod')
-
-        print('[@] Start doing stuff')
-        for srv in srv_list:
-            print('[@] Processing server: ' + srv)
-            json_d[srv]['alias'] = json_d[srv]['anime']['alias']
-            del json_d[srv]['anime']['alias']
-            print('\n')
-
-        preview_msg = await ctx.send('**This will patch and modify and move alias position**\nDo you want to continue?')
-        to_react = ['✅', '❌']
-        for react in to_react:
-            await preview_msg.add_reaction(react)
-
-        def check_react(reaction, user):
-            if reaction.message.id != preview_msg.id:
-                return False
-            if user != ctx.message.author:
-                return False
-            if str(reaction.emoji) not in to_react:
-                return False
-            return True
-
-        try:
-            res, user = await self.bot.wait_for('reaction_add', timeout=20, check=check_react)
-        except asyncio.TimeoutError:
-            await ctx.send('***Timeout!***')
-            return await preview_msg.clear_reactions()
-        if user != ctx.message.author:
-            pass
-        elif '✅' in str(res.emoji):
-            # Process
-            with open('nao_showtimes.json', 'w') as f: # Local save before commiting
-                json.dump(json_d, f, indent=4)
-            success = await patch_json(json_d)
-            await preview_msg.clear_reactions()
-            if success:
-                return await ctx.send('**Berhasil merubah database, harap dilihat sebelum mengaktifkannya kembali**')
-            await ctx.send('**Terjadi kesalahan ketika ingin patching database**')
-        elif '❌' in str(res.emoji):
-            print('[@] Cancelled')
-            await preview_msg.clear_reactions()
-            await preview_msg.edit(content='**Cancelled, trigger this command later!**')
-
-
 class ShowtimesAlias(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -2347,9 +2231,6 @@ class ShowtimesAlias(commands.Cog):
         """
         Initiate alias creation for certain anime
         """
-        # FIXME: Disable if finished migrating
-        if True:
-            return await ctx.send('Showtimes sedang dalam mode maintenance dalam masa migrasi\nCommand lain masih bisa dipakai selain segala command Showtimes.\n\n**Estimasi**: 8-15 Jam\n**Waktu Mulai**: 9 Maret 2020 - 08:00 WIB')
         if not ctx.invoked_subcommand:
             server_message = str(ctx.message.guild.id)
             print('[#] Requested !alias at: ' + server_message)
@@ -2815,9 +2696,6 @@ class ShowtimesKolaborasi(commands.Cog):
     @commands.group(aliases=['joint', 'join', 'koleb'])
     @commands.guild_only()
     async def kolaborasi(self, ctx):
-        # FIXME: Disable if finished migrating
-        if True:
-            return await ctx.send('Showtimes sedang dalam mode maintenance dalam masa migrasi\nCommand lain masih bisa dipakai selain segala command Showtimes.\n\n**Estimasi**: 8-15 Jam\n**Waktu Mulai**: 9 Maret 2020 - 08:00 WIB')
         if not ctx.invoked_subcommand:
             helpmain = discord.Embed(title="Bantuan Perintah (!kolaborasi)", description="versi 2.0.0", color=0x00aaaa)
             helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -3241,9 +3119,6 @@ class ShowtimesAdmin(commands.Cog):
     @commands.is_owner()
     @commands.guild_only()
     async def ntadmin(self, ctx):
-        # FIXME: Disable if finished migrating
-        if True:
-            return await ctx.send('Showtimes sedang dalam mode maintenance dalam masa migrasi\nCommand lain masih bisa dipakai selain segala command Showtimes.\n\n**Estimasi**: 8-15 Jam\n**Waktu Mulai**: 9 Maret 2020 - 08:00 WIB')
         if ctx.invoked_subcommand is None:
             helpmain = discord.Embed(title="Bantuan Perintah (!ntadmin)", description="versi 2.0.0", color=0x00aaaa)
             helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
@@ -3285,6 +3160,26 @@ class ShowtimesAdmin(commands.Cog):
         
         await ctx.send(text)
 
+
+    @ntadmin.command()
+    async def migratedb(self, ctx):
+        await ctx.send("Mulai migrasi database!")
+        url = 'https://gist.githubusercontent.com/{u}/{g}/raw/nao_showtimes.json'
+        async with aiohttp.ClientSession() as session:
+            while True:
+                headers = {'User-Agent': 'naoTimes v2.0'}
+                print('\t[#] Fetching nao_showtimes.json')
+                async with session.get(url.format(u=bot_config['github_info']['username'], g=bot_config['gist_id']), headers=headers) as r:
+                    try:
+                        r_data = await r.text()
+                        js_data = json.loads(r_data)
+                        print('\t[@] Fetched and saved.')
+                        break
+                    except IndexError:
+                        pass
+        await ctx.send("Berhasil mendapatkan database dari github, mulai migrasi ke MongoDB")
+        await self.bot.ntdb.patch_all_from_json(js_data)
+        await ctx.send("Selesai migrasi database, silakan di coba cuk.")
     
     @ntadmin.command()
     async def initiate(self, ctx):
@@ -3437,37 +3332,19 @@ class ShowtimesAdmin(commands.Cog):
 
         main_data[str(ctx.message.guild.id)] = server_data
         print('[@] Sending data')
+        await dump_json(main_data)
+        _ = await self.bot.ntdb.patch_all_from_json(main_data)
 
-        hh = {
-            "description": "N4O Showtimes bot",
-            "files": {
-                "nao_showtimes.json": {
-                    "filename": "nao_showtimes.json",
-                    "content": json.dumps(main_data, indent=4)
-                }
-            }
-        }
-
-        print('[@] Patching gists')
-        headers = {'User-Agent': 'naoTimes v2.0'}
-        async with aiohttp.ClientSession(auth=aiohttp.BasicAuth(bot_config['github_info']['username'], bot_config['github_info']['personal_access_token']), headers=headers) as sesi2:
-            async with sesi2.patch('https://api.github.com/gists/{}'.format(json_tables['gist_id']), json=hh) as resp:
-                r = await resp.json()
-        try:
-            m = r['message']
-            print('[@] Failed to patch: {}'.format(m))
-            return await ctx.send('[@] Gagal memproses silakan cek bot log, membatalkan...')
-        except KeyError:
-            print('[@] Reconfiguring config files')
-            bot_config['gist_id'] = json_tables['gist_id']
-            with open('config.json', 'w') as fp:
-                json.dump(bot_config, fp, indent=4)
-            print('[@] Reconfigured. Every configuration are done, please restart.')
-            embed=discord.Embed(title="naoTimes", color=0x56acf3)
-            embed.add_field(name="Sukses!", value='Sukses membuat database di github\nSilakan restart bot agar naoTimes dapat diaktifkan.\n\nLaporkan isu di: [GitHub Issue](https://github.com/noaione/naoTimes/issues)', inline=True)
-            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-            await ctx.send(embed=embed)
-            await emb_msg.delete()
+        print('[@] Reconfiguring config files')
+        bot_config['gist_id'] = json_tables['gist_id']
+        with open('config.json', 'w') as fp:
+            json.dump(bot_config, fp, indent=4)
+        print('[@] Reconfigured. Every configuration are done, please restart.')
+        embed=discord.Embed(title="naoTimes", color=0x56acf3)
+        embed.add_field(name="Sukses!", value='Sukses membuat database di github\nSilakan restart bot agar naoTimes dapat diaktifkan.\n\nLaporkan isu di: [GitHub Issue](https://github.com/noaione/naoTimes/issues)', inline=True)
+        embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+        await ctx.send(embed=embed)
+        await emb_msg.delete()
 
     @ntadmin.command()
     async def fetchdb(self, ctx):
@@ -3495,7 +3372,9 @@ class ShowtimesAdmin(commands.Cog):
             return
         channel = ctx.message.channel
 
-        await fetch_newest_db(bot_config)
+        json_d = await self.bot.ntdb.fetch_all_as_json()
+        with open('nao_showtimes.json', 'w', encoding="utf-8") as fp:
+            json.dump(json_d, fp, indent=2)
         await channel.send('Newest database has been pulled and saved to local save')
 
 
@@ -3506,9 +3385,6 @@ class ShowtimesAdmin(commands.Cog):
         !! Warning !!
         This will patch entire database
         """
-        # FIXME: Disable if finished migrating
-        if True:
-            return await ctx.send('Showtimes sedang dalam mode maintenance dalam masa migrasi\nCommand lain masih bisa dipakai selain segala command Showtimes.\n\n**Estimasi**: 8-15 Jam\n**Waktu Mulai**: 9 Maret 2020 - 08:00 WIB')
         print('[#] Requested !ntadmin patchdb by admin')
 
         if ctx.message.attachments == []:
@@ -3558,7 +3434,7 @@ class ShowtimesAdmin(commands.Cog):
         elif '✅' in str(res.emoji):
             with open('nao_showtimes.json', 'w') as fp:
                 json.dump(json_to_patch, fp, indent=4)
-            success = await patch_json(json_to_patch)
+            success = await self.bot.ntdb.patch_all_from_json(json_to_patch)
             await preview_msg.clear_reactions()
             if success:
                 return await preview_msg.edit(content='**Patching success!, try it with !tagih**')
@@ -3608,10 +3484,15 @@ class ShowtimesAdmin(commands.Cog):
         with open('nao_showtimes.json', 'w') as f: # Local save before commiting
             json.dump(json_d, f, indent=4)
 
-        success = await patch_json(json_d)
-        if success:
-            return await ctx.send('Sukses menambah server dengan info berikut:\n```Server ID: {s}\nAdmin: {a}\nMemakai #progress Channel: {p}```'.format(s=srv_id, a=adm_id, p=bool(prog_chan)))
-        await ctx.send('Gagal dalam menambah server baru :(')
+        if not prog_chan:
+            prog_chan = None
+
+        success, msg = await self.bot.ntdb.new_server(str(srv_id), str(adm_id), prog_chan)
+        if not success:
+            print('[%] Failed to update, reason: {}'.format(msg))
+            if str(srv_id) not in self.bot.showtimes_resync:
+                self.bot.showtimes_resync.append(str(srv_id))
+        await ctx.send('Sukses menambah server dengan info berikut:\n```Server ID: {s}\nAdmin: {a}\nMemakai #progress Channel: {p}```'.format(s=srv_id, a=adm_id, p=bool(prog_chan)))
 
 
     @ntadmin.command()
@@ -3621,7 +3502,6 @@ class ShowtimesAdmin(commands.Cog):
         
         :srv_id: server id
         """
-
         print('[#] Requested !ntadmin hapus by admin')
         json_d = await fetch_json()
         if not json_d:
@@ -3645,10 +3525,10 @@ class ShowtimesAdmin(commands.Cog):
         with open('nao_showtimes.json', 'w') as f: # Local save before commiting
             json.dump(json_d, f, indent=4)
 
-        success = await patch_json(json_d)
-        if success:
-            return await ctx.send('Sukses menghapus server `{s}` dari naoTimes'.format(s=srv_id))
-        await ctx.send('Gagal menghapus server :(')
+        success, msg = await self.bot.ntdb.remove_server(srv_id, adm_id)
+        if not success:
+            await ctx.send("Terdapat kegagalan ketika ingin menghapus server\nalasan: {}".format(msg))
+        await ctx.send('Sukses menghapus server `{s}` dari naoTimes'.format(s=srv_id))
 
 
     @ntadmin.command()
@@ -3670,8 +3550,9 @@ class ShowtimesAdmin(commands.Cog):
         if adm_id is None:
             return await ctx.send('Tidak ada input admin dari user')
 
+        srv_id = str(srv_id)
         try:
-            srv = json_d[str(srv_id)]
+            srv = json_d[srv_id]
             print('Server found, adding admin...')
             if adm_id in srv['serverowner']:
                 return await ctx.send('Admin `{}` telah terdaftar di server tersebut.'.format(adm_id))
@@ -3683,10 +3564,13 @@ class ShowtimesAdmin(commands.Cog):
         with open('nao_showtimes.json', 'w') as f: # Local save before commiting
             json.dump(json_d, f, indent=4)
 
-        success = await patch_json(json_d)
-        if success:
-            return await ctx.send('Sukses menambah admin `{a}` di server `{s}`'.format(s=srv_id, a=adm_id))
-        await ctx.send('Gagal menambah admin :(')
+        success, msg = await self.bot.ntdb.update_data(srv_id, json_d[srv_id])
+        if not success:
+            print('[%] Failed to update main database data')
+            print('\tReason: {}'.format(msg))
+            if srv_id not in self.bot.showtimes_resync:
+                self.bot.showtimes_resync.append(srv_id)
+        await ctx.send('Sukses menambah admin `{a}` di server `{s}`'.format(s=srv_id, a=adm_id))
 
 
     @ntadmin.command()
@@ -3707,12 +3591,14 @@ class ShowtimesAdmin(commands.Cog):
         if adm_id is None:
             return await ctx.send('Tidak ada input admin dari user')
 
+        srv_id = str(srv_id)
+        adm_id = str(adm_id)
         try:
-            srv = json_d[str(srv_id)]
+            srv = json_d[srv_id]
             print('Server found, finding admin...')
             admlist = srv['serverowner']
-            if str(adm_id) in admlist:
-                srv['serverowner'].remove(str(adm_id))
+            if adm_id in admlist:
+                srv['serverowner'].remove(adm_id)
             else:
                 return await ctx.send('Tidak dapat menemukan admin tersebut di server: `{}`'.format(srv_id))
         except KeyError:
@@ -3721,10 +3607,19 @@ class ShowtimesAdmin(commands.Cog):
         with open('nao_showtimes.json', 'w') as f: # Local save before commiting
             json.dump(json_d, f, indent=4)
 
-        success = await patch_json(json_d)
-        if success:
-            return await ctx.send('Sukses menghapus admin `{a}` dari server `{s}`'.format(s=srv_id, a=adm_id))
-        await ctx.send('Gagal menghapus admin :(')
+        
+        print('[%] Removing admin from main database')
+        success, msg = await self.bot.ntdb.update_data(srv_id, json_d[srv_id])
+        if not success:
+            print('[%] Failed to update main database data')
+            print('\tReason: {}'.format(msg))
+            if srv_id not in self.bot.showtimes_resync:
+                self.bot.showtimes_resync.append(srv_id)
+        await ctx.send('Sukses menghapus admin `{a}` dari server `{s}`'.format(s=srv_id, a=adm_id))
+        if adm_id in admlist:
+            success, msg = await self.bot.ntdb.remove_top_admin(adm_id)
+            if not success:
+                await ctx.send("Tetapi gagal menghapus admin dari top_admin.")
 
     
     @ntadmin.command()
@@ -3758,7 +3653,7 @@ class ShowtimesAdmin(commands.Cog):
         if user != ctx.message.author:
             pass
         elif '✅' in str(res.emoji):
-            success = await patch_json(json_d)
+            success = await self.bot.ntdb.patch_all_from_json(json_d)
             await preview_msg.clear_reactions()
             if success:
                 return await preview_msg.edit(content='**Patching success!, try it with !tagih**')
@@ -3839,9 +3734,6 @@ class ShowtimesConfigData(commands.Cog):
     @commands.command()
     @commands.guild_only()
     async def ubahdata(self, ctx, *, judul):
-        # FIXME: Disable if finished migrating
-        if True:
-            return await ctx.send('Showtimes sedang dalam mode maintenance dalam masa migrasi\nCommand lain masih bisa dipakai selain segala command Showtimes.\n\n**Estimasi**: 8-15 Jam\n**Waktu Mulai**: 9 Maret 2020 - 08:00 WIB')
         server_message = str(ctx.message.guild.id)
         print('[@] Requested !ubahdata at: ' + server_message)
         json_d = await fetch_json()
