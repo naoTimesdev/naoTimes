@@ -5,9 +5,7 @@ import asyncio
 import json
 import os
 import re
-import sys
 import time
-from calendar import monthrange
 from copy import deepcopy
 from datetime import datetime, timedelta
 from random import choice
@@ -15,7 +13,8 @@ from string import ascii_lowercase, digits
 
 import aiohttp
 import discord
-import discord.ext.commands as commands
+from discord.ext import commands, tasks
+from typing import Union
 import pytz
 
 anifetch_query = '''
@@ -71,70 +70,28 @@ async def fetch_json() -> dict:
     if not os.path.isfile('nao_showtimes.json'):
         print('[@] naoTimes are not initiated, skipping.')
         return {}
-    with open('nao_showtimes.json', 'r') as fp:
+    with open('nao_showtimes.json', 'r', encoding="utf-8") as fp:
         json_data = json.load(fp)
-    
+
     return json_data
 
 
-async def patch_json(jsdata: dict) -> bool:
+async def dump_json(dataset: dict):
     """
-    Send modified data back to github
+    Dump database into a json file
     """
-    hh = {
-        "description": "N4O Showtimes bot",
-        "files": {
-            "nao_showtimes.json": {
-                "filename": "nao_showtimes.json",
-                "content": json.dumps(jsdata, indent=4)
-            }
-        }
-    }
-
-    print('[@] Patching showtimes gists')
-    headers = {'User-Agent': 'naoTimes v2.0'}
-    async with aiohttp.ClientSession(auth=aiohttp.BasicAuth(bot_config['github_info']['username'], bot_config['github_info']['personal_access_token']), headers=headers) as sesi2:
-        async with sesi2.patch('https://api.github.com/gists/{}'.format(bot_config['gist_id']), json=hh) as resp:
-            r = await resp.json()
-    try:
-        m = r['message']
-        print('[!!] Can\'t patch showtimes: {}'.format(m))
-        return False
-    except KeyError:
-        print('[@] Done patching showtimes')
-        return True
+    print('[@] Dumping dictionary to json file')
+    with open('nao_showtimes.json', 'w', encoding="utf-8") as fp:
+        json.dump(dataset, fp, indent=2)
 
 
-async def fetch_newest_db(CONFIG_DATA):
-    """
-    Fetch the newest naoTimes database from github
-    """
-    print('[@] Fetching newest database')
-    if CONFIG_DATA['gist_id'] == "":
-        return print('[@!] naoTimes are not setted up, skipping...')
-    url = 'https://gist.githubusercontent.com/{u}/{g}/raw/nao_showtimes.json'
-    async with aiohttp.ClientSession() as session:
-        while True:
-            try:
-                async with session.get(url.format(u=CONFIG_DATA['github_info']['username'], g=CONFIG_DATA['gist_id'])) as r:
-                    try:
-                        r_data = await r.text()
-                        js_data = json.loads(r_data)
-                        with open('nao_showtimes.json', 'w') as f:
-                            json.dump(js_data, f, indent=4)
-                        print('[@] Fetched and saved.')
-                        return
-                    except IndexError:
-                        continue
-            except session.ClientError:
-                continue
-
-
-def is_minus(x) -> bool:
+def is_minus(x: Union[int, float]) -> bool:
+    """Essentials for quick testing"""
     return x < 0
 
 
 def rgbhex_to_rgbint(hex_str: str) -> int:
+    """Used for anilist color to convert to discord.py friendly color"""
     if not hex_str:
         return 0x1eb5a6
     hex_str = hex_str.replace("#", "").upper()
@@ -145,12 +102,14 @@ def rgbhex_to_rgbint(hex_str: str) -> int:
 
 
 def parse_anilist_start_date(startDate: str) -> int:
+    """parse start data of anilist data to Unix Epoch"""
     airing_start = datetime.strptime(startDate, '%Y%m%d')
     epoch_start = datetime(1970, 1, 1, 0, 0, 0)
     return int((airing_start - epoch_start).total_seconds())
 
 
 def get_episode_airing(nodes: dict, episode: str) -> tuple:
+    """Get total episode of airing anime (using anilist data)"""
     if not nodes:
         return None, '1' # No data
     for i in nodes:
@@ -162,12 +121,14 @@ def get_episode_airing(nodes: dict, episode: str) -> tuple:
 
 
 def get_original_time(x: int, total: int) -> int:
+    """what the fuck does this thing even do"""
     for _ in range(total):
         x -= 24 * 3600 * 7
     return x
 
 
 def parse_ani_time(x: int) -> str:
+    """parse anilist time to time-left format"""
     sec = timedelta(seconds=abs(x))
     d = datetime(1, 1, 1) + sec
     print('Anilist Time: {} year {} month {} day {} hour {} minutes {} seconds'.format(d.year, d.month, d.day, d.hour, d.minute, d.second))
@@ -227,7 +188,7 @@ async def fetch_anilist(ani_id, current_ep, total_episode=None, return_time_data
                     entry = data['data']['Media']
                 except IndexError:
                     return "ERROR: Tidak ada hasil."
-        except session.ClientError:
+        except aiohttp.ClientError:
             return "ERROR: Koneksi terputus"
 
     if jadwal_only:
@@ -337,6 +298,10 @@ def check_role(needed_role, user_roles: list) -> bool:
 
 
 def get_last_updated(oldtime):
+    """
+    Get last updated time from naoTimes database
+    and convert it to "passed time"
+    """
     current_time = datetime.now()
     oldtime = datetime.utcfromtimestamp(oldtime)
     delta_time = current_time - oldtime
@@ -421,6 +386,9 @@ def make_numbered_alias(alias_list: list) -> str:
 
 
 def any_progress(status: dict) -> bool:
+    """
+    Check if there's any progress to the project
+    """
     for _, v in status.items():
         if v == 'y':
             return False
@@ -428,6 +396,9 @@ def any_progress(status: dict) -> bool:
 
 
 def get_role_name(role_id, roles) -> str:
+    """
+    Get role name by comparing the role id
+    """
     for r in roles:
         if str(r.id) == str(role_id):
             return r.name
@@ -435,6 +406,9 @@ def get_role_name(role_id, roles) -> str:
 
 
 def split_until_less_than(dataset: list) -> list:
+    """
+    Split the !tagih shit into chunked text because discord max 2000 characters limit
+    """
     def split_list(alist, wanted_parts=1):
         length = len(alist)
         return [alist[i*length // wanted_parts: (i+1)*length // wanted_parts]
@@ -472,9 +446,28 @@ async def patch_error_handling(bot, ctx):
 class Showtimes(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        # pylint: disable=E1101
+        self.resync_failed_server.start()
+        # pylint: enable=E1101
 
     def __str__(self):
         return 'Showtimes Main'
+
+    @tasks.loop(minutes=1.0)
+    async def resync_failed_server(self):
+        print('[$] Resynchronizing failed server update to main database.')
+        if not self.bot.showtimes_resync:
+            return print('[!] No resynchronizing required.')
+        json_d = await fetch_json()
+        for srv in self.bot.showtimes_resync:
+            print('[#] Updating: {}'.format(srv))
+            res, msg = await self.bot.ntdb.update_data(srv, json_d[srv])
+            if not res:
+                print('\tFailed to update, reason: {}'.format(msg))
+                continue
+            print('\tUpdated!')
+            self.bot.showtimes_resync.remove(srv)
+        print('[@] Finished resync, leftover server amount are {}'.format(len(self.bot.showtimes_resync)))
 
     async def choose_anime(self, ctx, matches):
         print('[!] Asking user for input.')
@@ -654,6 +647,8 @@ class Showtimes(commands.Cog):
         if not data or data == []:
             return await ctx.send('**Mungkin**: {}'.format(', '.join(srv_anilist)))
 
+        koleb_list = []
+
         if data[0] not in ['batch', 'semua']:
             """
             Merilis rilisan, hanya bisa dipakai sama role tertentu
@@ -686,7 +681,6 @@ class Showtimes(commands.Cog):
             program_info = server_data['anime'][matches[0]]
             status_list = program_info['status']
 
-            koleb_list = []
             if 'kolaborasi' in program_info:
                 koleb_data = program_info['kolaborasi']
                 if koleb_data:
@@ -705,6 +699,8 @@ class Showtimes(commands.Cog):
 
             if koleb_list:
                 for other_srv in koleb_list:
+                    if other_srv not in json_d:
+                        continue
                     json_d[other_srv]['anime'][matches[0]]['status'][current]['status'] = 'released'
                     json_d[other_srv]['anime'][matches[0]]['last_update'] = str(int(round(time.time())))
             json_d[server_message]['anime'][matches[0]]['status'][current]['status'] = 'released'
@@ -743,7 +739,6 @@ class Showtimes(commands.Cog):
             program_info = server_data['anime'][matches[0]]
             status_list = program_info['status']
 
-            koleb_list = []
             if 'kolaborasi' in program_info:
                 koleb_data = program_info['kolaborasi']
                 if koleb_data:
@@ -762,6 +757,8 @@ class Showtimes(commands.Cog):
 
             if koleb_list:
                 for other_srv in koleb_list:
+                    if other_srv not in json_d:
+                        continue
                     for x in range(int(current), int(current)+int(jumlah)): # range(int(c), int(c)+int(x))
                         json_d[other_srv]['anime'][matches[0]]['status'][str(x)]['status'] = 'released'
                     json_d[other_srv]['anime'][matches[0]]['last_update'] = str(int(round(time.time())))
@@ -799,7 +796,6 @@ class Showtimes(commands.Cog):
             program_info = server_data['anime'][matches[0]]
             status_list = program_info['status']
 
-            koleb_list = []
             if 'kolaborasi' in program_info:
                 koleb_data = program_info['kolaborasi']
                 if koleb_data:
@@ -818,6 +814,8 @@ class Showtimes(commands.Cog):
 
             if koleb_list:
                 for other_srv in koleb_list:
+                    if other_srv not in json_d:
+                        continue
                     for x in all_status:
                         json_d[other_srv]['anime'][matches[0]]['status'][x]['status'] = 'released'
                     json_d[other_srv]['anime'][matches[0]]['last_update'] = str(int(round(time.time())))
@@ -834,28 +832,50 @@ class Showtimes(commands.Cog):
         print('[@] Sending message...')
         await ctx.send(text_data)
 
-        success = await patch_json(json_d)
+        print("[%] Updating main database data...")
+        success, msg = await self.bot.ntdb.update_data(server_message, json_d[server_message])
+        for osrv in koleb_list:
+            if osrv == server_message:
+                continue
+            if osrv not in json_d: # Skip if the server doesn't exist :pepega:
+                continue
+            print("[%] Updating collaboration server: {}".format(osrv))
+            res2, msg2 = await self.bot.ntdb.update_data(osrv, json_d[osrv])
+            if not res2:
+                if osrv not in self.bot.showtimes_resync:
+                    self.bot.showtimes_resync.append(osrv)
+                print('[%] Failed updating collaboration server: {}\n\tReason: {}'.format(osrv, msg2))
 
-        if success:
-            if koleb_list:
-                for other_srv in koleb_list:
-                    if 'announce_channel' in json_d[other_srv]:
-                        print('[@] Sending progress info to everyone at {}'.format(other_srv))
-                        announce_chan = json_d[other_srv]['announce_channel']
-                        target_chan = self.bot.get_channel(int(announce_chan))
-                        embed = discord.Embed(title="{}".format(matches[0]), color=0x1eb5a6)
-                        embed.add_field(name='Rilis!', value=embed_text_data, inline=False)
-                        embed.set_footer(text="Pada: {}".format(get_current_time()))
-                        await target_chan.send(embed=embed)
-            if 'announce_channel' in server_data:
-                announce_chan = server_data['announce_channel']
-                target_chan = self.bot.get_channel(int(announce_chan))
-                embed = discord.Embed(title="{}".format(matches[0]), color=0x1eb5a6)
-                embed.add_field(name='Rilis!', value=embed_text_data, inline=False)
-                embed.set_footer(text="Pada: {}".format(get_current_time()))
+        if not success:
+            print('[%] Failed to update main database data')
+            print('\tReason: {}'.format(msg))
+            if server_message not in self.bot.showtimes_resync:
+                self.bot.showtimes_resync.append(server_message)
+            #await patch_error_handling(self.bot, ctx)
+
+        if koleb_list:
+            for other_srv in koleb_list:
+                if other_srv not in json_d:
+                    continue
+                if 'announce_channel' in json_d[other_srv]:
+                    print('[@] Sending progress info to everyone at {}'.format(other_srv))
+                    announce_chan = json_d[other_srv]['announce_channel']
+                    target_chan = self.bot.get_channel(int(announce_chan))
+                    if not target_chan:
+                        print('[$] Unknown server: {}'.format(announce_chan))
+                        continue
+                    embed = discord.Embed(title="{}".format(matches[0]), color=0x1eb5a6)
+                    embed.add_field(name='Rilis!', value=embed_text_data, inline=False)
+                    embed.set_footer(text="Pada: {}".format(get_current_time()))
+                    await target_chan.send(embed=embed)
+        if 'announce_channel' in server_data:
+            announce_chan = server_data['announce_channel']
+            target_chan = self.bot.get_channel(int(announce_chan))
+            embed = discord.Embed(title="{}".format(matches[0]), color=0x1eb5a6)
+            embed.add_field(name='Rilis!', value=embed_text_data, inline=False)
+            embed.set_footer(text="Pada: {}".format(get_current_time()))
+            if target_chan:
                 await target_chan.send(embed=embed)
-            return
-        await patch_error_handling(self.bot, ctx)
 
 
     @commands.command(aliases=['done'])
@@ -930,8 +950,8 @@ class Showtimes(commands.Cog):
         if not current:
             return await ctx.send('**Sudah beres digarap!**')
 
-        time_data, poster_data, _ = await fetch_anilist(program_info['anilist_id'], current)
-        poster_image, poster_color = poster_data
+        _, poster_data, _ = await fetch_anilist(program_info['anilist_id'], current)
+        poster_image, _ = poster_data
 
         if posisi not in list_posisi:
             return await ctx.send('Tidak ada posisi itu\nYang tersedia: `tl`, `tlc`, `enc`, `ed`, `tm`, `ts`, dan `qc`')
@@ -942,6 +962,8 @@ class Showtimes(commands.Cog):
 
         if koleb_list:
             for other_srv in koleb_list:
+                if other_srv not in json_d:
+                    continue
                 json_d[other_srv]['anime'][matches[0]]['status'][current]['staff_status'][posisi.upper()] = 'y'
                 json_d[other_srv]['anime'][matches[0]]['last_update'] = str(int(round(time.time())))
         json_d[server_message]['anime'][matches[0]]['status'][current]['staff_status'][posisi.upper()] = 'y'
@@ -954,32 +976,55 @@ class Showtimes(commands.Cog):
         print('[@] Sending progress info to staff')
         await ctx.send('Berhasil mengubah status garapan {} - #{}'.format(matches[0], current))
 
-        success = await patch_json(json_d)
+        print("[%] Updating main database data...")
+        success, msg = await self.bot.ntdb.update_data(server_message, json_d[server_message])
+        for osrv in koleb_list:
+            if osrv == server_message:
+                continue
+            if osrv not in json_d: # Skip if the server doesn't exist :pepega:
+                continue
+            print("[%] Updating collaboration server: {}".format(osrv))
+            res2, msg2 = await self.bot.ntdb.update_data(osrv, json_d[osrv])
+            if not res2:
+                if osrv not in self.bot.showtimes_resync:
+                    self.bot.showtimes_resync.append(osrv)
+                print('[%] Failed updating collaboration server: {}\n\tReason: {}'.format(osrv, msg2))
 
-        if success:
-            if koleb_list:
-                for other_srv in koleb_list:
-                    if 'announce_channel' in json_d[other_srv]:
-                        print('[@] Sending progress info to everyone at {}'.format(other_srv))
-                        announce_chan = json_d[other_srv]['announce_channel']
-                        target_chan = self.bot.get_channel(int(announce_chan))
-                        embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=0x1eb5a6)
-                        embed.add_field(name='Status', value=parse_status(current_ep_status), inline=False)
-                        embed.set_footer(text="Pada: {}".format(get_current_time()))
-                        await target_chan.send(embed=embed)
-            embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=0x1eb5a6)
-            embed.add_field(name='Status', value=parse_status(current_ep_status), inline=False)
-            if 'announce_channel' in server_data:
-                announce_chan = server_data['announce_channel']
-                target_chan = self.bot.get_channel(int(announce_chan))
-                embed.set_footer(text="Pada: {}".format(get_current_time()))
-                print('[@] Sending progress info to everyone')
+        if not success:
+            print('[%] Failed to update main database data')
+            print('\tReason: {}'.format(msg))
+            if server_message not in self.bot.showtimes_resync:
+                self.bot.showtimes_resync.append(server_message)
+            #await patch_error_handling(self.bot, ctx)
+
+        if koleb_list:
+            for other_srv in koleb_list:
+                if other_srv not in json_d:
+                    continue
+                if 'announce_channel' in json_d[other_srv]:
+                    print('[@] Sending progress info to everyone at {}'.format(other_srv))
+                    announce_chan = json_d[other_srv]['announce_channel']
+                    target_chan = self.bot.get_channel(int(announce_chan))
+                    if not target_chan:
+                        print('[$] Unknown server: {}'.format(announce_chan))
+                        continue
+                    embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=0x1eb5a6)
+                    embed.add_field(name='Status', value=parse_status(current_ep_status), inline=False)
+                    embed.set_footer(text="Pada: {}".format(get_current_time()))
+                    await target_chan.send(embed=embed)
+        embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=0x1eb5a6)
+        embed.add_field(name='Status', value=parse_status(current_ep_status), inline=False)
+        if 'announce_channel' in server_data:
+            announce_chan = server_data['announce_channel']
+            target_chan = self.bot.get_channel(int(announce_chan))
+            embed.set_footer(text="Pada: {}".format(get_current_time()))
+            print('[@] Sending progress info to everyone')
+            if target_chan:
                 await target_chan.send(embed=embed)
-            embed.add_field(name='Update Terakhir', value='Baru saja', inline=False)
-            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-            embed.set_thumbnail(url=poster_image)
-            return await ctx.send(embed=embed)
-        await patch_error_handling(self.bot, ctx)
+        embed.add_field(name='Update Terakhir', value='Baru saja', inline=False)
+        embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+        embed.set_thumbnail(url=poster_image)
+        return await ctx.send(embed=embed)
 
 
     @commands.command(aliases=['gakjadirilis', 'revert'])
@@ -1067,6 +1112,8 @@ class Showtimes(commands.Cog):
 
         if koleb_list:
             for other_srv in koleb_list:
+                if other_srv not in json_d:
+                    continue
                 json_d[other_srv]['anime'][matches[0]]['status'][current]['status'] = 'not_released'
                 json_d[other_srv]['anime'][matches[0]]['last_update'] = str(int(round(time.time())))
         json_d[server_message]['anime'][matches[0]]['status'][current]['status'] = 'not_released'
@@ -1077,28 +1124,50 @@ class Showtimes(commands.Cog):
         print('[@] Sending progress info to staff')
         await ctx.send('Berhasil membatalkan rilisan **{}** episode {}'.format(matches[0], current))
 
-        success = await patch_json(json_d)
+        print("[%] Updating main database data...")
+        success, msg = await self.bot.ntdb.update_data(server_message, json_d[server_message])
+        for osrv in koleb_list:
+            if osrv == server_message:
+                continue
+            if osrv not in json_d: # Skip if the server doesn't exist :pepega:
+                continue
+            print("[%] Updating collaboration server: {}".format(osrv))
+            res2, msg2 = await self.bot.ntdb.update_data(osrv, json_d[osrv])
+            if not res2:
+                if osrv not in self.bot.showtimes_resync:
+                    self.bot.showtimes_resync.append(osrv)
+                print('[%] Failed updating collaboration server: {}\n\tReason: {}'.format(osrv, msg2))
 
-        if success:
-            if koleb_list:
-                for other_srv in koleb_list:
-                    if 'announce_channel' in json_d[other_srv]:
-                        print('[@] Sending progress info to everyone at {}'.format(other_srv))
-                        announce_chan = json_d[other_srv]['announce_channel']
-                        target_chan = self.bot.get_channel(int(announce_chan))
-                        embed = discord.Embed(title="{}".format(matches[0]), color=0xb51e1e)
-                        embed.add_field(name='Batal rilis...', value="Rilisan **episode #{}** dibatalkan dan sedang dikerjakan kembali".format(current), inline=False)
-                        embed.set_footer(text="Pada: {}".format(get_current_time()))
-                        await target_chan.send(embed=embed)
-            if 'announce_channel' in server_data:
-                announce_chan = server_data['announce_channel']
-                target_chan = self.bot.get_channel(int(announce_chan))
-                embed = discord.Embed(title="{}".format(matches[0]), color=0xb51e1e)
-                embed.add_field(name='Batal rilis...', value="Rilisan **episode #{}** dibatalkan dan sedang dikerjakan kembali".format(current), inline=False)
-                embed.set_footer(text="Pada: {}".format(get_current_time()))
+        if not success:
+            print('[%] Failed to update main database data')
+            print('\tReason: {}'.format(msg))
+            if server_message not in self.bot.showtimes_resync:
+                self.bot.showtimes_resync.append(server_message)
+            #await patch_error_handling(self.bot, ctx)
+
+        if koleb_list:
+            for other_srv in koleb_list:
+                if other_srv not in json_d:
+                    continue
+                if 'announce_channel' in json_d[other_srv]:
+                    print('[@] Sending progress info to everyone at {}'.format(other_srv))
+                    announce_chan = json_d[other_srv]['announce_channel']
+                    target_chan = self.bot.get_channel(int(announce_chan))
+                    if not target_chan:
+                        print('[$] Unknown server: {}'.format(announce_chan))
+                        continue
+                    embed = discord.Embed(title="{}".format(matches[0]), color=0xb51e1e)
+                    embed.add_field(name='Batal rilis...', value="Rilisan **episode #{}** dibatalkan dan sedang dikerjakan kembali".format(current), inline=False)
+                    embed.set_footer(text="Pada: {}".format(get_current_time()))
+                    await target_chan.send(embed=embed)
+        if 'announce_channel' in server_data:
+            announce_chan = server_data['announce_channel']
+            target_chan = self.bot.get_channel(int(announce_chan))
+            embed = discord.Embed(title="{}".format(matches[0]), color=0xb51e1e)
+            embed.add_field(name='Batal rilis...', value="Rilisan **episode #{}** dibatalkan dan sedang dikerjakan kembali".format(current), inline=False)
+            embed.set_footer(text="Pada: {}".format(get_current_time()))
+            if target_chan:
                 await target_chan.send(embed=embed)
-            return
-        await patch_error_handling(self.bot, ctx)
 
 
     @commands.command(aliases=['undone', 'cancel'])
@@ -1174,8 +1243,8 @@ class Showtimes(commands.Cog):
         if not current:
             return await ctx.send('**Sudah beres digarap!**')
 
-        time_data, poster_data, _ = await fetch_anilist(program_info['anilist_id'], current)
-        poster_image, poster_color = poster_data
+        _, poster_data, _ = await fetch_anilist(program_info['anilist_id'], current)
+        poster_image, _ = poster_data
 
         if posisi not in list_posisi:
             return await ctx.send('Tidak ada posisi itu\nYang tersedia: `tl`, `tlc`, `enc`, `ed`, `tm`, `ts`, dan `qc`')
@@ -1186,6 +1255,8 @@ class Showtimes(commands.Cog):
 
         if koleb_list:
             for other_srv in koleb_list:
+                if other_srv not in json_d:
+                    continue
                 json_d[other_srv]['anime'][matches[0]]['status'][current]['staff_status'][posisi.upper()] = 'x'
                 json_d[other_srv]['anime'][matches[0]]['last_update'] = str(int(round(time.time())))
         json_d[server_message]['anime'][matches[0]]['status'][current]['staff_status'][posisi.upper()] = 'x'
@@ -1198,32 +1269,55 @@ class Showtimes(commands.Cog):
         print('[@] Sending progress info to staff')
         await ctx.send('Berhasil mengubah status garapan {} - #{}'.format(matches[0], current))
 
-        success = await patch_json(json_d)
+        print("[%] Updating main database data...")
+        success, msg = await self.bot.ntdb.update_data(server_message, json_d[server_message])
+        for osrv in koleb_list:
+            if osrv == server_message:
+                continue
+            if osrv not in json_d: # Skip if the server doesn't exist :pepega:
+                continue
+            print("[%] Updating collaboration server: {}".format(osrv))
+            res2, msg2 = await self.bot.ntdb.update_data(osrv, json_d[osrv])
+            if not res2:
+                if osrv not in self.bot.showtimes_resync:
+                    self.bot.showtimes_resync.append(osrv)
+                print('[%] Failed updating collaboration server: {}\n\tReason: {}'.format(osrv, msg2))
 
-        if success:
-            if koleb_list:
-                for other_srv in koleb_list:
-                    if 'announce_channel' in json_d[other_srv]:
-                        print('[@] Sending progress info to everyone at {}'.format(other_srv))
-                        announce_chan = json_d[other_srv]['announce_channel']
-                        target_chan = self.bot.get_channel(int(announce_chan))
-                        embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=0xb51e1e)
-                        embed.add_field(name='Status', value=parse_status(current_ep_status), inline=False)
-                        embed.set_footer(text="Pada: {}".format(get_current_time()))
-                        await target_chan.send(embed=embed)
-            embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=0xb51e1e)
-            embed.add_field(name='Status', value=parse_status(current_ep_status), inline=False)
-            if 'announce_channel' in server_data:
-                announce_chan = server_data['announce_channel']
-                target_chan = self.bot.get_channel(int(announce_chan))
-                embed.set_footer(text="Pada: {}".format(get_current_time()))
-                print('[@] Sending progress info to everyone')
+        if not success:
+            print('[%] Failed to update main database data')
+            print('\tReason: {}'.format(msg))
+            if server_message not in self.bot.showtimes_resync:
+                self.bot.showtimes_resync.append(server_message)
+            #await patch_error_handling(self.bot, ctx)
+
+        if koleb_list:
+            for other_srv in koleb_list:
+                if other_srv not in json_d:
+                    continue
+                if 'announce_channel' in json_d[other_srv]:
+                    print('[@] Sending progress info to everyone at {}'.format(other_srv))
+                    announce_chan = json_d[other_srv]['announce_channel']
+                    target_chan = self.bot.get_channel(int(announce_chan))
+                    if not target_chan:
+                        print('[$] Unknown server: {}'.format(announce_chan))
+                        continue
+                    embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=0xb51e1e)
+                    embed.add_field(name='Status', value=parse_status(current_ep_status), inline=False)
+                    embed.set_footer(text="Pada: {}".format(get_current_time()))
+                    await target_chan.send(embed=embed)
+        embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=0xb51e1e)
+        embed.add_field(name='Status', value=parse_status(current_ep_status), inline=False)
+        if 'announce_channel' in server_data:
+            announce_chan = server_data['announce_channel']
+            target_chan = self.bot.get_channel(int(announce_chan))
+            embed.set_footer(text="Pada: {}".format(get_current_time()))
+            print('[@] Sending progress info to everyone')
+            if target_chan:
                 await target_chan.send(embed=embed)
-            embed.add_field(name='Update Terakhir', value='Baru saja', inline=False)
-            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-            embed.set_thumbnail(url=poster_image)
-            return await ctx.send(embed=embed)
-        await patch_error_handling(self.bot, ctx)
+        embed.add_field(name='Update Terakhir', value='Baru saja', inline=False)
+        embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+        embed.set_thumbnail(url=poster_image)
+        await ctx.send(embed=embed)
 
 
     @commands.command(aliases=['add', 'tambah'])
@@ -1323,7 +1417,7 @@ class Showtimes(commands.Cog):
                     await await_msg.delete()
 
             _, poster_data, title, time_data, correct_episode_num = await fetch_anilist(await_msg.content, 1, 1, True)
-            poster_image, poster_color = poster_data
+            poster_image, _ = poster_data
 
             embed = discord.Embed(title="Menambah Utang", color=0x96df6a)
             embed.set_thumbnail(url=poster_image)
@@ -1801,14 +1895,18 @@ class Showtimes(commands.Cog):
         embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
         await ctx.send(embed=embed)
 
-        success = await patch_json(json_d)
+        print("[%] Updating main database data")
+        success, msg = await self.bot.ntdb.update_data(server_message, json_d[server_message])
         await emb_msg.delete()
 
-        if success:
-            print('[@] Sending message...')
-            return await ctx.send("Berhasil menambahkan **{}** ke dalam database utama naoTimes".format(json_tables['ani_title']))
-        await ctx.send('Gagal menambahkan ke database utama, owner telah diberikan pesan untuk membenarkan masalahnya')
-        await patch_error_handling(self.bot, ctx)
+        if not success:
+            print('[%] Failed to update main database data')
+            print('\tReason: {}'.format(msg))
+            if server_message not in self.bot.showtimes_resync:
+                self.bot.showtimes_resync.append(server_message)
+            #await patch_error_handling(self.bot, ctx)
+
+        await ctx.send("Berhasil menambahkan **{}** ke dalam database utama naoTimes".format(json_tables['ani_title']))
 
 
     @commands.command(aliases=['airing'])
@@ -1931,6 +2029,9 @@ class Showtimes(commands.Cog):
                 if server_message == other_srv:
                     continue
                 server_data = self.bot.get_guild(int(other_srv))
+                if not server_data:
+                    print('[$] Unknown server: {}'.format(other_srv))
+                    continue
                 k_list.append(server_data.name)
             if k_list:
                 rtext += '\n**Kolaborasi dengan**: {}'.format(', '.join(k_list))
@@ -2026,6 +2127,8 @@ class Showtimes(commands.Cog):
 
         if koleb_list:
             for other_srv in koleb_list:
+                if other_srv not in json_d:
+                    continue
                 if pos_status[posisi] == 'x':
                     json_d[other_srv]["anime"][matches[0]]['status'][str(episode_n)]['staff_status'][posisi] = 'y'
                 elif pos_status[posisi] == 'y':
@@ -2043,70 +2146,26 @@ class Showtimes(commands.Cog):
         print('[@] Berhasil menandakan ke database local')
         await ctx.send(txt_msg.format(st=posisi, an=matches[0], ep=episode_n))
 
-        success = await patch_json(json_d)
+        print("[%] Updating main database data...")
+        success, msg = await self.bot.ntdb.update_data(server_message, json_d[server_message])
+        for osrv in koleb_list:
+            if osrv == server_message:
+                continue
+            if osrv not in json_d: # Skip if the server doesn't exist :pepega:
+                continue
+            print("[%] Updating collaboration server: {}".format(osrv))
+            res2, msg2 = await self.bot.ntdb.update_data(osrv, json_d[osrv])
+            if not res2:
+                if osrv not in self.bot.showtimes_resync:
+                    self.bot.showtimes_resync.append(osrv)
+                print('[%] Failed updating collaboration server: {}\n\tReason: {}'.format(osrv, msg2))
+
         if not success:
-            await patch_error_handling(self.bot, ctx)
-
-
-    @commands.command()
-    @commands.guild_only()
-    @commands.is_owner()
-    async def globalpatcher(self, ctx):
-        """
-        Global showtimes patcher, dangerous to use.
-        You can change this to batch modify the database
-        """
-
-        print('[#] Requested !globalpatcher by admin')
-        json_d = await fetch_json()
-
-        srv_list = []
-        for k in json_d:
-            srv_list.append(k)
-
-        srv_list.remove('supermod')
-
-        print('[@] Start doing stuff')
-        for srv in srv_list:
-            print('[@] Processing server: ' + srv)
-            json_d[srv]['alias'] = json_d[srv]['anime']['alias']
-            del json_d[srv]['anime']['alias']
-            print('\n')
-
-        preview_msg = await ctx.send('**This will patch and modify and move alias position**\nDo you want to continue?')
-        to_react = ['✅', '❌']
-        for react in to_react:
-            await preview_msg.add_reaction(react)
-
-        def check_react(reaction, user):
-            if reaction.message.id != preview_msg.id:
-                return False
-            if user != ctx.message.author:
-                return False
-            if str(reaction.emoji) not in to_react:
-                return False
-            return True
-
-        try:
-            res, user = await self.bot.wait_for('reaction_add', timeout=20, check=check_react)
-        except asyncio.TimeoutError:
-            await ctx.send('***Timeout!***')
-            return await preview_msg.clear_reactions()
-        if user != ctx.message.author:
-            pass
-        elif '✅' in str(res.emoji):
-            # Process
-            with open('nao_showtimes.json', 'w') as f: # Local save before commiting
-                json.dump(json_d, f, indent=4)
-            success = await patch_json(json_d)
-            await preview_msg.clear_reactions()
-            if success:
-                return await ctx.send('**Berhasil merubah database, harap dilihat sebelum mengaktifkannya kembali**')
-            await ctx.send('**Terjadi kesalahan ketika ingin patching database**')
-        elif '❌' in str(res.emoji):
-            print('[@] Cancelled')
-            await preview_msg.clear_reactions()
-            await preview_msg.edit(content='**Cancelled, trigger this command later!**')
+            print('[%] Failed to update main database data')
+            print('\tReason: {}'.format(msg))
+            if server_message not in self.bot.showtimes_resync:
+                self.bot.showtimes_resync.append(server_message)
+            #await patch_error_handling(self.bot, ctx)
 
 
 class ShowtimesAlias(commands.Cog):
@@ -2376,13 +2435,17 @@ class ShowtimesAlias(commands.Cog):
             await ctx.send(embed=embed)
             await emb_msg.delete()
 
-            success = await patch_json(json_d)
+            print("[%] Updating main database data")
+            success, msg = await self.bot.ntdb.update_data(server_message, json_d[server_message])
 
-            if success:
-                print('[@] Sending message...')
-                return await ctx.send("Berhasil menambahkan alias **{} ({})** ke dalam database utama naoTimes".format(json_tables['alias_anime'], json_tables['target_anime']))
-            await ctx.send('Gagal menambahkan ke database utama, owner telah diberikan pesan untuk membenarkan masalahnya')
-            await patch_error_handling(self.bot, ctx)
+            if not success:
+                print('[%] Failed to update main database data')
+                print('\tReason: {}'.format(msg))
+                if server_message not in self.bot.showtimes_resync:
+                    self.bot.showtimes_resync.append(server_message)
+                #await patch_error_handling(self.bot, ctx)
+
+            await ctx.send("Berhasil menambahkan alias **{} ({})** ke dalam database utama naoTimes".format(json_tables['alias_anime'], json_tables['target_anime']))
 
 
     @alias.command(name="list")
@@ -2560,12 +2623,17 @@ class ShowtimesAlias(commands.Cog):
 
                 await ctx.send('Alias **{} ({})** telah dihapus dari database'.format(n_del, matches[0]))
                 
-                success = await patch_json(json_d)
+                print("[%] Updating main database data")
+                success, msg = await self.bot.ntdb.update_data(server_message, json_d[server_message])
 
-                if success:
-                    return await emb_msg.delete()
-                await ctx.send('Gagal menambahkan ke database utama, owner telah diberikan pesan untuk membenarkan masalahnya')
-                await patch_error_handling(self.bot, ctx)
+                if not success:
+                    print('[%] Failed to update main database data')
+                    print('\tReason: {}'.format(msg))
+                    if server_message not in self.bot.showtimes_resync:
+                        self.bot.showtimes_resync.append(server_message)
+                    #await patch_error_handling(self.bot, ctx)
+
+                await emb_msg.delete()
 
 
 class ShowtimesKolaborasi(commands.Cog):
@@ -2776,13 +2844,17 @@ class ShowtimesKolaborasi(commands.Cog):
         await emb_msg.delete()
         await ctx.send(embed=embed)
 
-        success = await patch_json(json_d)
+        print("[%] Updating main database data")
+        success, msg = await self.bot.ntdb.kolaborasi_dengan(server_id, randomize_confirm, table_data)
 
-        if success:
-            print('[@] Sending message...')
-            return await ctx.send("Berikan kode berikut `{rand}` kepada fansub/server lain.\nKonfirmasi di server lain dengan `!kolaborasi konfirmasi {rand}`".format(rand=randomize_confirm))
-        await ctx.send('Gagal menambahkan ke database utama, owner telah diberikan pesan untuk membenarkan masalahnya')
-        await patch_error_handling(self.bot, ctx)
+        if not success:
+            print('[%] Failed to update main database data')
+            print('\tReason: {}'.format(msg))
+            if server_message not in self.bot.showtimes_resync:
+                self.bot.showtimes_resync.append(server_message)
+            #await patch_error_handling(self.bot, ctx)
+
+        await ctx.send("Berikan kode berikut `{rand}` kepada fansub/server lain.\nKonfirmasi di server lain dengan `!kolaborasi konfirmasi {rand}`".format(rand=randomize_confirm))
 
 
     @kolaborasi.command()
@@ -2889,13 +2961,20 @@ class ShowtimesKolaborasi(commands.Cog):
         await emb_msg.delete()
         await ctx.send(embed=embed)
 
-        success = await patch_json(json_d)
+        print('[%] Updating main database data')
+        success, msg = await self.bot.ntdb.kolaborasi_konfirmasi(
+            klb_data['server'], server_message,
+            json_d[klb_data['server']], json_d[server_message]
+        )
 
-        if success:
-            print('[@] Sending message...')
-            return await ctx.send("Berhasil menambahkan kolaborasi dengan **{}** ke dalam database utama naoTimes\nBerikan role berikut agar bisa menggunakan perintah staff <@&{}>".format(klb_data['server'], ani_srv_role))
-        await ctx.send('Gagal menambahkan ke database utama, owner telah diberikan pesan untuk membenarkan masalahnya')
-        await patch_error_handling(self.bot, ctx)
+        if not success:
+            print('[%] Failed to update main database data')
+            print('\tReason: {}'.format(msg))
+            if server_message not in self.bot.showtimes_resync:
+                self.bot.showtimes_resync.append(server_message)
+            #await patch_error_handling(self.bot, ctx)
+
+        await ctx.send("Berhasil menambahkan kolaborasi dengan **{}** ke dalam database utama naoTimes\nBerikan role berikut agar bisa menggunakan perintah staff <@&{}>".format(klb_data['server'], ani_srv_role))
 
 
     @kolaborasi.command()
@@ -2934,13 +3013,18 @@ class ShowtimesKolaborasi(commands.Cog):
         embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
         await ctx.send(embed=embed)
 
-        success = await patch_json(json_d)
+        print("[%] Updating main database data")
+        success, msg = await self.bot.ntdb.kolaborasi_batalkan(server_id, konfirm_id)
 
-        if success:
-            print('[@] Sending message...')
-            return await ctx.send("Berhasil membatalkan kode konfirmasi **{}** dari database utama naoTimes".format(konfirm_id))
-        await ctx.send('Gagal menambahkan ke database utama, owner telah diberikan pesan untuk membenarkan masalahnya')
-        await patch_error_handling(self.bot, ctx)
+        if not success:
+            print('[%] Failed to update main database data')
+            print('\tReason: {}'.format(msg))
+            if server_message not in self.bot.showtimes_resync:
+                self.bot.showtimes_resync.append(server_message)
+            #await patch_error_handling(self.bot, ctx)
+
+        await ctx.send("Berhasil membatalkan kode konfirmasi **{}** dari database utama naoTimes".format(konfirm_id))
+
 
     @kolaborasi.command()
     async def putus(self, ctx, *, judul):
@@ -2995,15 +3079,19 @@ class ShowtimesKolaborasi(commands.Cog):
             koleb_list_othersrv = deepcopy(json_d[x]['anime'][matches[0]]['kolaborasi'])
             koleb_list_othersrv.remove(server_message)
 
+        for osrv in program_info['kolaborasi']:
+            klosrv = deepcopy(json_d[osrv]['anime'][matches[0]]['kolaborasi'])
+            klosrv.remove(server_message)
+
             remove_all = False
-            if len(koleb_list_othersrv) == 1:
-                if koleb_list_othersrv[0] == x:
+            if len(klosrv) == 1:
+                if klosrv[0] == osrv:
                     remove_all = True
 
             if remove_all:
-                del json_d[x]['anime'][matches[0]]['kolaborasi']
+                del json_d[osrv]['anime'][matches[0]]['kolaborasi']
             else:
-                json_d[x]['anime'][matches[0]]['kolaborasi'] = koleb_list_othersrv
+                json_d[osrv]['anime'][matches[0]]['kolaborasi'] = klosrv
 
         del json_d[server_message]['anime'][matches[0]]['kolaborasi']
         print("[@] Sending data")
@@ -3016,13 +3104,17 @@ class ShowtimesKolaborasi(commands.Cog):
         embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
         await ctx.send(embed=embed)
 
-        success = await patch_json(json_d)
+        print("[%] Updating main database data")
+        success, msg = await self.bot.ntdb.kolaborasi_putuskan(server_message, matches[0])
 
-        if success:
-            print('[@] Sending message...')
-            return await ctx.send("Berhasil memputuskan kolaborasi **{}** dari database utama naoTimes".format(matches[0]))
-        await ctx.send('Gagal menambahkan ke database utama, owner telah diberikan pesan untuk membenarkan masalahnya')
-        await patch_error_handling(self.bot, ctx)
+        if not success:
+            print('[%] Failed to update main database data')
+            print('\tReason: {}'.format(msg))
+            if server_message not in self.bot.showtimes_resync:
+                self.bot.showtimes_resync.append(server_message)
+            #await patch_error_handling(self.bot, ctx)
+
+        await ctx.send("Berhasil memputuskan kolaborasi **{}** dari database utama naoTimes".format(matches[0]))
 
 
 class ShowtimesAdmin(commands.Cog):
@@ -3062,19 +3154,55 @@ class ShowtimesAdmin(commands.Cog):
 
         srv_list = []
         for i, _ in json_d.items():
+            if i == "supermod":
+                continue
             srv_ = self.bot.get_guild(int(i))
-            srv_list.append(srv_.name)
+            if not srv_:
+                print('[$] Unknown server: {}'.format(i))
+                continue
+            srv_list.append("{} ({})".format(srv_.name, i))
 
-        srv_list.remove('supermod')
 
         text = '**List server ({} servers):**\n'.format(len(srv_list))
         for x in srv_list:
             text += x + '\n'
 
         text = text.rstrip('\n')
-        
+
         await ctx.send(text)
 
+
+    @ntadmin.command()
+    async def listresync(self, ctx):
+        resynclist = self.bot.showtimes_resync
+        if not resynclist:
+            return await ctx.send("**Server that still need to be resynced**: None")
+        resynclist = ["- {}\n".format(x) for x in resynclist]
+        main_text = "**Server that still need to be resynced**:\n"
+        main_text += "".join(resynclist)
+        main_text = main_text.rstrip('\n')
+        await ctx.send(main_text)
+
+
+    @ntadmin.command()
+    async def migratedb(self, ctx):
+        await ctx.send("Mulai migrasi database!")
+        url = 'https://gist.githubusercontent.com/{u}/{g}/raw/nao_showtimes.json'
+        async with aiohttp.ClientSession() as session:
+            while True:
+                headers = {'User-Agent': 'naoTimes v2.0'}
+                print('\t[#] Fetching nao_showtimes.json')
+                async with session.get(url.format(u=bot_config['github_info']['username'], g=bot_config['gist_id']), headers=headers) as r:
+                    try:
+                        r_data = await r.text()
+                        js_data = json.loads(r_data)
+                        print('\t[@] Fetched and saved.')
+                        break
+                    except IndexError:
+                        pass
+        await ctx.send("Berhasil mendapatkan database dari github, mulai migrasi ke MongoDB")
+        await self.bot.ntdb.patch_all_from_json(js_data)
+        await ctx.send("Selesai migrasi database, silakan di coba cuk.")
     
     @ntadmin.command()
     async def initiate(self, ctx):
@@ -3227,37 +3355,19 @@ class ShowtimesAdmin(commands.Cog):
 
         main_data[str(ctx.message.guild.id)] = server_data
         print('[@] Sending data')
+        await dump_json(main_data)
+        _ = await self.bot.ntdb.patch_all_from_json(main_data)
 
-        hh = {
-            "description": "N4O Showtimes bot",
-            "files": {
-                "nao_showtimes.json": {
-                    "filename": "nao_showtimes.json",
-                    "content": json.dumps(main_data, indent=4)
-                }
-            }
-        }
-
-        print('[@] Patching gists')
-        headers = {'User-Agent': 'naoTimes v2.0'}
-        async with aiohttp.ClientSession(auth=aiohttp.BasicAuth(bot_config['github_info']['username'], bot_config['github_info']['personal_access_token']), headers=headers) as sesi2:
-            async with sesi2.patch('https://api.github.com/gists/{}'.format(json_tables['gist_id']), json=hh) as resp:
-                r = await resp.json()
-        try:
-            m = r['message']
-            print('[@] Failed to patch: {}'.format(m))
-            return await ctx.send('[@] Gagal memproses silakan cek bot log, membatalkan...')
-        except KeyError:
-            print('[@] Reconfiguring config files')
-            bot_config['gist_id'] = json_tables['gist_id']
-            with open('config.json', 'w') as fp:
-                json.dump(bot_config, fp, indent=4)
-            print('[@] Reconfigured. Every configuration are done, please restart.')
-            embed=discord.Embed(title="naoTimes", color=0x56acf3)
-            embed.add_field(name="Sukses!", value='Sukses membuat database di github\nSilakan restart bot agar naoTimes dapat diaktifkan.\n\nLaporkan isu di: [GitHub Issue](https://github.com/noaione/naoTimes/issues)', inline=True)
-            embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
-            await ctx.send(embed=embed)
-            await emb_msg.delete()
+        print('[@] Reconfiguring config files')
+        bot_config['gist_id'] = json_tables['gist_id']
+        with open('config.json', 'w') as fp:
+            json.dump(bot_config, fp, indent=4)
+        print('[@] Reconfigured. Every configuration are done, please restart.')
+        embed=discord.Embed(title="naoTimes", color=0x56acf3)
+        embed.add_field(name="Sukses!", value='Sukses membuat database di github\nSilakan restart bot agar naoTimes dapat diaktifkan.\n\nLaporkan isu di: [GitHub Issue](https://github.com/noaione/naoTimes/issues)', inline=True)
+        embed.set_footer(text="Dibawakan oleh naoTimes™®", icon_url='https://p.n4o.xyz/i/nao250px.png')
+        await ctx.send(embed=embed)
+        await emb_msg.delete()
 
     @ntadmin.command()
     async def fetchdb(self, ctx):
@@ -3285,7 +3395,9 @@ class ShowtimesAdmin(commands.Cog):
             return
         channel = ctx.message.channel
 
-        await fetch_newest_db(bot_config)
+        json_d = await self.bot.ntdb.fetch_all_as_json()
+        with open('nao_showtimes.json', 'w', encoding="utf-8") as fp:
+            json.dump(json_d, fp, indent=2)
         await channel.send('Newest database has been pulled and saved to local save')
 
 
@@ -3345,7 +3457,7 @@ class ShowtimesAdmin(commands.Cog):
         elif '✅' in str(res.emoji):
             with open('nao_showtimes.json', 'w') as fp:
                 json.dump(json_to_patch, fp, indent=4)
-            success = await patch_json(json_to_patch)
+            success = await self.bot.ntdb.patch_all_from_json(json_to_patch)
             await preview_msg.clear_reactions()
             if success:
                 return await preview_msg.edit(content='**Patching success!, try it with !tagih**')
@@ -3395,10 +3507,15 @@ class ShowtimesAdmin(commands.Cog):
         with open('nao_showtimes.json', 'w') as f: # Local save before commiting
             json.dump(json_d, f, indent=4)
 
-        success = await patch_json(json_d)
-        if success:
-            return await ctx.send('Sukses menambah server dengan info berikut:\n```Server ID: {s}\nAdmin: {a}\nMemakai #progress Channel: {p}```'.format(s=srv_id, a=adm_id, p=bool(prog_chan)))
-        await ctx.send('Gagal dalam menambah server baru :(')
+        if not prog_chan:
+            prog_chan = None
+
+        success, msg = await self.bot.ntdb.new_server(str(srv_id), str(adm_id), prog_chan)
+        if not success:
+            print('[%] Failed to update, reason: {}'.format(msg))
+            if str(srv_id) not in self.bot.showtimes_resync:
+                self.bot.showtimes_resync.append(str(srv_id))
+        await ctx.send('Sukses menambah server dengan info berikut:\n```Server ID: {s}\nAdmin: {a}\nMemakai #progress Channel: {p}```'.format(s=srv_id, a=adm_id, p=bool(prog_chan)))
 
 
     @ntadmin.command()
@@ -3408,7 +3525,6 @@ class ShowtimesAdmin(commands.Cog):
         
         :srv_id: server id
         """
-
         print('[#] Requested !ntadmin hapus by admin')
         json_d = await fetch_json()
         if not json_d:
@@ -3432,10 +3548,10 @@ class ShowtimesAdmin(commands.Cog):
         with open('nao_showtimes.json', 'w') as f: # Local save before commiting
             json.dump(json_d, f, indent=4)
 
-        success = await patch_json(json_d)
-        if success:
-            return await ctx.send('Sukses menghapus server `{s}` dari naoTimes'.format(s=srv_id))
-        await ctx.send('Gagal menghapus server :(')
+        success, msg = await self.bot.ntdb.remove_server(srv_id, adm_id)
+        if not success:
+            await ctx.send("Terdapat kegagalan ketika ingin menghapus server\nalasan: {}".format(msg))
+        await ctx.send('Sukses menghapus server `{s}` dari naoTimes'.format(s=srv_id))
 
 
     @ntadmin.command()
@@ -3457,8 +3573,9 @@ class ShowtimesAdmin(commands.Cog):
         if adm_id is None:
             return await ctx.send('Tidak ada input admin dari user')
 
+        srv_id = str(srv_id)
         try:
-            srv = json_d[str(srv_id)]
+            srv = json_d[srv_id]
             print('Server found, adding admin...')
             if adm_id in srv['serverowner']:
                 return await ctx.send('Admin `{}` telah terdaftar di server tersebut.'.format(adm_id))
@@ -3470,10 +3587,13 @@ class ShowtimesAdmin(commands.Cog):
         with open('nao_showtimes.json', 'w') as f: # Local save before commiting
             json.dump(json_d, f, indent=4)
 
-        success = await patch_json(json_d)
-        if success:
-            return await ctx.send('Sukses menambah admin `{a}` di server `{s}`'.format(s=srv_id, a=adm_id))
-        await ctx.send('Gagal menambah admin :(')
+        success, msg = await self.bot.ntdb.update_data(srv_id, json_d[srv_id])
+        if not success:
+            print('[%] Failed to update main database data')
+            print('\tReason: {}'.format(msg))
+            if srv_id not in self.bot.showtimes_resync:
+                self.bot.showtimes_resync.append(srv_id)
+        await ctx.send('Sukses menambah admin `{a}` di server `{s}`'.format(s=srv_id, a=adm_id))
 
 
     @ntadmin.command()
@@ -3494,12 +3614,14 @@ class ShowtimesAdmin(commands.Cog):
         if adm_id is None:
             return await ctx.send('Tidak ada input admin dari user')
 
+        srv_id = str(srv_id)
+        adm_id = str(adm_id)
         try:
-            srv = json_d[str(srv_id)]
+            srv = json_d[srv_id]
             print('Server found, finding admin...')
             admlist = srv['serverowner']
-            if str(adm_id) in admlist:
-                srv['serverowner'].remove(str(adm_id))
+            if adm_id in admlist:
+                srv['serverowner'].remove(adm_id)
             else:
                 return await ctx.send('Tidak dapat menemukan admin tersebut di server: `{}`'.format(srv_id))
         except KeyError:
@@ -3508,10 +3630,19 @@ class ShowtimesAdmin(commands.Cog):
         with open('nao_showtimes.json', 'w') as f: # Local save before commiting
             json.dump(json_d, f, indent=4)
 
-        success = await patch_json(json_d)
-        if success:
-            return await ctx.send('Sukses menghapus admin `{a}` dari server `{s}`'.format(s=srv_id, a=adm_id))
-        await ctx.send('Gagal menghapus admin :(')
+
+        print('[%] Removing admin from main database')
+        success, msg = await self.bot.ntdb.update_data(srv_id, json_d[srv_id])
+        if not success:
+            print('[%] Failed to update main database data')
+            print('\tReason: {}'.format(msg))
+            if srv_id not in self.bot.showtimes_resync:
+                self.bot.showtimes_resync.append(srv_id)
+        await ctx.send('Sukses menghapus admin `{a}` dari server `{s}`'.format(s=srv_id, a=adm_id))
+        if adm_id in admlist:
+            success, msg = await self.bot.ntdb.remove_top_admin(adm_id)
+            if not success:
+                await ctx.send("Tetapi gagal menghapus admin dari top_admin.")
 
     
     @ntadmin.command()
@@ -3545,7 +3676,7 @@ class ShowtimesAdmin(commands.Cog):
         if user != ctx.message.author:
             pass
         elif '✅' in str(res.emoji):
-            success = await patch_json(json_d)
+            success = await self.bot.ntdb.patch_all_from_json(json_d)
             await preview_msg.clear_reactions()
             if success:
                 return await preview_msg.edit(content='**Patching success!, try it with !tagih**')
@@ -3776,6 +3907,8 @@ class ShowtimesConfigData(commands.Cog):
             json_d[server_message]['anime'][matches[0]]['staff_assignment'] = staff_list
             if koleb_list:
                 for other_srv in koleb_list:
+                    if other_srv not in json_d:
+                        continue
                     json_d[other_srv]['anime'][matches[0]]['staff_assignment'] = staff_list
 
             return emb_msg
@@ -3858,11 +3991,15 @@ class ShowtimesConfigData(commands.Cog):
                 st_data["staff_status"] = staff_status
                 if koleb_list:
                     for other_srv in koleb_list:
+                        if other_srv not in json_d:
+                            continue
                         json_d[other_srv]['anime'][matches[0]]['status'][str(x)] = st_data
                 json_d[server_message]['anime'][matches[0]]['status'][str(x)] = st_data
 
             if koleb_list:
                 for other_srv in koleb_list:
+                    if other_srv not in json_d:
+                        continue
                     json_d[other_srv]['anime'][matches[0]]['last_update'] = str(int(round(time.time())))
             json_d[server_message]['anime'][matches[0]]['last_update'] = str(int(round(time.time())))
 
@@ -3933,6 +4070,8 @@ class ShowtimesConfigData(commands.Cog):
 
             if koleb_list:
                 for other_srv in koleb_list:
+                    if other_srv not in json_d:
+                        continue
                     for x in range(current, total+1): # range(int(c), int(c)+int(x))
                         del json_d[other_srv]['anime'][matches[0]]['status'][str(x)]
                     json_d[other_srv]['anime'][matches[0]]['last_update'] = str(int(round(time.time())))
@@ -4065,41 +4204,83 @@ class ShowtimesConfigData(commands.Cog):
                 announce_it = True
 
             del json_d[server_message]['anime'][matches[0]]
+            for osrv in koleb_list:
+                if "kolaborasi" in json_d[osrv]['anime'][matches[0]]:
+                    if server_message in json_d[osrv]['anime'][matches[0]]['kolaborasi']:
+                        klosrv = deepcopy(json_d[osrv]['anime'][matches[0]]['kolaborasi'])
+                        klosrv.remove(server_message)
+
+                        remove_all = False
+                        if len(klosrv) == 1:
+                            if klosrv[0] == osrv:
+                                remove_all = True
+
+                        if remove_all:
+                            del json_d[osrv]['anime'][matches[0]]['kolaborasi']
+                        else:
+                            json_d[osrv]['anime'][matches[0]]['kolaborasi'] = klosrv
 
             with open('nao_showtimes.json', 'w') as f: # Local save before commiting
                 json.dump(json_d, f, indent=4)
             print('[@] Sending message to staff...')
             await ctx.send('Berhasil menghapus **{}** dari daftar utang'.format(matches[0]))
 
-            success = await patch_json(json_d)
-            if success:
-                if koleb_list:
-                    for other_srv in koleb_list:
-                        if 'announce_channel' in json_d[other_srv]:
-                            print('[@] Sending progress info to everyone at {}'.format(other_srv))
-                            announce_chan = json_d[other_srv]['announce_channel']
-                            target_chan = self.bot.get_channel(int(announce_chan))
-                            embed = discord.Embed(title="{}".format(matches[0]), color=0xb51e1e)
-                            embed.add_field(name='Dropped...', value="{} telah di drop dari fansub ini :(".format(matches[0]), inline=False)
-                            embed.set_footer(text="Pada: {}".format(get_current_time()))
-                            if announce_it:
-                                print('[@] Sending message to user...')
-                                await target_chan.send(embed=embed)
-                if 'announce_channel' in server_data:
-                    announce_chan = server_data['announce_channel']
-                    target_chan = self.bot.get_channel(int(announce_chan))
-                    embed = discord.Embed(title="{}".format(matches[0]), color=0xb51e1e)
-                    embed.add_field(name='Dropped...', value="{} telah di drop dari fansub ini :(".format(matches[0]), inline=False)
-                    embed.set_footer(text="Pada: {}".format(get_current_time()))
-                    if announce_it:
-                        print('[@] Sending message to user...')
+            print("[%] Updating main database data...")
+            success, msg = await self.bot.ntdb.update_data(server_message, json_d[server_message])
+            for osrv in koleb_list:
+                if osrv == server_message:
+                    continue
+                if osrv not in json_d: # Skip if the server doesn't exist :pepega:
+                    continue
+                print("[%] Updating collaboration server: {}".format(osrv))
+                res2, msg2 = await self.bot.ntdb.update_data(osrv, json_d[osrv])
+                if not res2:
+                    if osrv not in self.bot.showtimes_resync:
+                        self.bot.showtimes_resync.append(osrv)
+                    print('[%] Failed updating collaboration server: {}\n\tReason: {}'.format(osrv, msg2))
+
+            if not success:
+                print('[%] Failed to update main database data')
+                print('\tReason: {}'.format(msg))
+                if server_message not in self.bot.showtimes_resync:
+                    self.bot.showtimes_resync.append(server_message)
+                #await patch_error_handling(self.bot, ctx)
+
+            if 'announce_channel' in server_data:
+                announce_chan = server_data['announce_channel']
+                target_chan = self.bot.get_channel(int(announce_chan))
+                embed = discord.Embed(title="{}".format(matches[0]), color=0xb51e1e)
+                embed.add_field(name='Dropped...', value="{} telah di drop dari fansub ini :(".format(matches[0]), inline=False)
+                embed.set_footer(text="Pada: {}".format(get_current_time()))
+                if announce_it:
+                    print('[@] Sending message to user...')
+                    if target_chan:
                         await target_chan.send(embed=embed)
-                    return
-            await patch_error_handling(self.bot, ctx)
+            return
 
         print('[!] Menyimpan data baru untuk garapan: ' +  matches[0])
         with open('nao_showtimes.json', 'w') as f: # Local save before commiting
             json.dump(json_d, f, indent=4)
+
+        print("[%] Updating main database data...")
+        success, msg = await self.bot.ntdb.update_data(server_message, json_d[server_message])
+        for osrv in koleb_list:
+            if osrv == server_message:
+                continue
+            if osrv not in json_d: # Skip if the server doesn't exist :pepega:
+                continue
+            print("[%] Updating collaboration server: {}".format(osrv))
+            res2, msg2 = await self.bot.ntdb.update_data(osrv, json_d[osrv])
+            if not res2:
+                if osrv not in self.bot.showtimes_resync:
+                    self.bot.showtimes_resync.append(osrv)
+                print('[%] Failed updating collaboration server: {}\n\tReason: {}'.format(osrv, msg2))
+
+        if not success:
+            print('[%] Failed to update, reason: {}'.format(msg))
+            print('\tAdding to retry list')
+            if server_message not in self.bot.showtimes_resync:
+                self.bot.showtimes_resync.append(server_message)
 
         await ctx.send('Berhasil menyimpan data baru untuk garapan **{}**'.format(matches[0]))
 

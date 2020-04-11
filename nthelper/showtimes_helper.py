@@ -12,6 +12,9 @@ class naoTimesDB:
     def __init__(self, ip_hostname, port, dbname="naotimesdb"):
         self.client = motor.motor_asyncio.AsyncIOMotorClient("mongodb://{}:{}".format(ip_hostname, port))
         self.db = self.client[dbname]
+
+        self.clientsync = pymongo.MongoClient("mongodb://{}:{}".format(ip_hostname, port))
+        self.dbsync = self.clientsync[dbname]
         self.srv_re = {"name": {"$regex": r"^srv"}}
 
     async def _precheck_server_name(self, namae):
@@ -20,6 +23,16 @@ class naoTimesDB:
         if not namae.startswith("srv_"):
             namae = "srv_" + namae
         return namae
+
+    async def ping_server(self):
+        try:
+            res = await self.db.command({'ping': 1})
+            if "ok" in res:
+                if int(res['ok']) == 1:
+                    return True
+            return False
+        except Exception:
+            return True
 
     async def fetch_all_as_json(self):
         print('[ntDB] INFO: Fetching all collection as json...')
@@ -60,10 +73,10 @@ class naoTimesDB:
                         break
             else:
                 while True:
-                    srv = self.db[ksrv]
+                    srv = self.dbsync[ksrv]
                     print('\t[ntDB] INFO: Adding new data: {}'.format(ksrv))
-                    res = await srv.insert_one(dataset[ksrv[4:]], check_keys=False)
-                    if res.acknowledged:
+                    res = srv.insert(dataset[ksrv[4:]], check_keys=False)
+                    if res:
                         break
 
         upd_adm = {
@@ -93,8 +106,8 @@ class naoTimesDB:
         print('[ntDB] INFO: Adding new top admin/server admin.')
         adm_list = await self.get_top_admin()
         adm_id = str(adm_id)
-        if adm_id not in adm_list:
-            adm_list.append(str(adm_id))
+        if adm_id in adm_list:
+            return True, "Sudah ada"
         upd = {
             "$set": {
                 "server_admin": adm_list
@@ -195,7 +208,7 @@ class naoTimesDB:
         res, msg = await self.update_data(server, srv_data)
         return res, msg
 
-    async def new_server(self, server, dataset):
+    async def new_server(self, server, admin_id, announce_channel = None):
         server = await self._precheck_server_name(server)
         print('[ntDB] INFO: Adding data for a new server: {}'.format(server))
         srv_list = await self.db.list_collection_names(filter=self.srv_re)
@@ -203,15 +216,27 @@ class naoTimesDB:
             print('[ntDB] WARN: found server in database, please use `update_data` method')
             return False, 'Server terdaftar di database, gunakan metode `update_data`'
 
-        srv = self.db[server]
-        res = await srv.insert_one(dataset, check_keys=False)
-        if res.acknowledged:
+        dataset = {
+            "serverowner": [str(admin_id)],
+            "announce_channel": "",
+            "anime": {},
+            "alias": {},
+            "konfirmasi": {}
+        }
+
+        if announce_channel:
+            dataset['announce_channel'] = announce_channel
+
+        srv = self.dbsync[server]
+        res = srv.insert(dataset, check_keys=False)
+        if res:
+            res, msg = await self.add_top_admin(str(admin_id))
             print('[ntDB] INFO: Server data updated.')
-            return True, 'Updated'
-        print('[ntDB] ERROR: Failed to update server data.')
+            return res, msg if not res else "Updated."
+        print('[ntDB] ERROR: Failed to add new server data.')
         return False, 'Gagal mengupdate server data.'
 
-    async def remove_server(self, server):
+    async def remove_server(self, server, admin_id):
         server = await self._precheck_server_name(server)
         print('[ntDB] INFO: Expunging data for a server: {}'.format(server))
         srv_list = await self.db.list_collection_names(filter=self.srv_re)
@@ -221,10 +246,11 @@ class naoTimesDB:
 
         res = await self.db.drop_collection(server)
         if res:
+            res, msg = await self.remove_top_admin(admin_id)
             print('[ntDB] INFO: Success deleting server from database')
-            return True
+            return res, msg if not res else "Success."
         print('[ntDB] WARN: Server doesn\'t exist on database when dropping, ignoring...')
-        return True
+        return True, 'Success anyway'
 
     """
     Kolaborasi command
