@@ -3,9 +3,9 @@
 import asyncio
 import difflib
 import json
-import os
 import re
 import time
+from copy import deepcopy
 from datetime import datetime, timedelta
 from heapq import nlargest
 from math import ceil
@@ -287,15 +287,10 @@ async def fetch_streams(ani_id):
 
 class LegalStreaming:
     def __init__(self):
-        if os.path.isfile('streaming_list.json'):
-            with open('streaming_lists.json', 'r') as fp:
-                self.json_data = json.load(fp)['data']
-        else:
-            self.json_data = {}
+        with open('streaming_lists.json', 'r') as fp:
+            self.json_data = json.load(fp)['data']
 
     async def find_by_id(self, id_):
-        if not self.json_data:
-            return []
         ids_ani = []
         for k in self.json_data:
             if 'anilist' in k['related']:
@@ -303,6 +298,8 @@ class LegalStreaming:
             else:
                 ids_ani.append('')
         try:
+            if str(id_) not in ids_ani:
+                return []
             index_data = self.json_data[ids_ani.index(str(id_))]
         except IndexError:
             return []
@@ -1043,6 +1040,17 @@ class Anilist(commands.Cog):
             return await ctx.send(aqres)
 
         resdata = aqres['dataset']
+        if len(resdata) >= 18:
+            keysss = list(resdata.keys())
+            merge_keys = keysss[18:]
+            last_data = deepcopy(resdata[keysss[18]])
+            del resdata[keysss[18]]
+            for ki in merge_keys:
+                last_data.extend(resdata[ki])
+                del resdata[ki]
+            new_name = ">" + keysss[18]
+            resdata[new_name] = last_data
+
         sisen = aqres['season']
         amount_final = len(resdata)
 
