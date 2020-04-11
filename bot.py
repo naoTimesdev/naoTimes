@@ -15,7 +15,7 @@ import aiohttp
 import discord
 import requests
 from discord.ext import commands
-from .nthelper import naoTimesDB
+from nthelper.showtimes_helper import naoTimesDB
 
 cogs_list = ['cogs.' + x.replace('.py', '') for x in os.listdir('cogs') if x.endswith('.py')]
 
@@ -106,7 +106,7 @@ async def init_bot():
         description = '''Penyuruh Fansub biar kerja cepat\nversi 2.0.0 || Dibuat oleh: N4O#8868'''
         bot = commands.Bot(command_prefix=prefixes, description=description)
         bot.remove_command('help')
-        await fetch_newest_db(config)
+        #await fetch_newest_db(config)
         print('[@!!] Success Loading Discord.py')
     except Exception as exc:
         print('[#!!] Failed to load Discord.py ###')
@@ -173,12 +173,20 @@ async def on_ready():
     print('Bot name: {}'.format(bot.user.name))
     print('With Client ID: {}'.format(bot.user.id))
     print('---------------------------------------------------------------')
+    if not hasattr(bot, "showtimes_resync"):
+        bot.showtimes_resync = []
     if not hasattr(bot, "ntdb"):
         mongos = bot_config['mongodb']
         bot.ntdb = naoTimesDB(mongos['ip_hostname'], mongos['port'], mongos['dbname'])
         print('Connected to naoTimes Database:')
         print('IP:Port: {}:{}'.format(mongos['ip_hostname'], mongos['port']))
         print('Database: {}'.format(mongos['dbname']))
+        print('---------------------------------------------------------------')
+        print('Fetching nao_showtimes from server db to local json')
+        js_data = await bot.ntdb.fetch_all_as_json()
+        with open('nao_showtimes.json', 'w') as f:
+            json.dump(js_data, f, indent=4)
+        print('File fetched and saved to local json')
         print('---------------------------------------------------------------')
     if not hasattr(bot, 'uptime'):
         bot.owner = (await bot.application_info()).owner
@@ -260,24 +268,17 @@ async def on_command_error(ctx, error):
     await ctx.send('**Error**: Insiden internal ini telah dilaporkan ke N4O#8868, mohon tunggu jawabannya kembali.')
     logger.error("".join(tb))
 
-async def other_ping_test():
+async def other_ping_test(roboto):
     """Github and anilist ping test"""
     async with aiohttp.ClientSession() as session:
-        print('Menjalankan tes ping github')
+        print('Menjalankan tes ping database')
         t1_git = time.time()
-        while True:
-            try:
-                async with session.get('https://api.github.com') as r:
-                    try:
-                        await r.json()
-                        break
-                    except IndexError:
-                        continue
-            except session.ClientError:
-                continue
+        res = await roboto.ntdb.ping_server()
         t2_git = time.time()
         print('Selesai')
         git_time = round((t2_git-t1_git)*1000)
+        if not res:
+            git_time = "Unknown"
         print('Menjalankan tes ping anilist')
         t1_ani = time.time()
         while True:
@@ -288,13 +289,31 @@ async def other_ping_test():
                         break
                     except IndexError:
                         continue
-            except session.ClientError:
+            except aiohttp.ClientError:
                 continue
         t2_ani = time.time()
         print('Selesai')
         ani_time = round((t2_ani-t1_ani)*1000)
+        print('Menjalankan tes ping naotimes api')
+        t1_ntapi = time.time()
+        while True:
+            try:
+                async with session.get('https://s.ihateani.me/api/v2') as r:
+                    try:
+                        await r.json()
+                        t2_ntapi = time.time()
+                        print('Selesai')
+                        ntapi_time = round((t2_ntapi-t1_ntapi)*1000)
+                        break
+                    except IndexError:
+                        ntapi_time = "ERROR"
+                        break
+            except aiohttp.ClientError:
+                ntapi_time = "ERROR"
+                break
 
-    return {'github': git_time, 'anilist': ani_time}
+
+    return {'database': git_time, 'anilist': ani_time, 'naotimes': ntapi_time}
 
 def create_uptime():
     current_time = time.time()
@@ -325,7 +344,7 @@ async def ping(ctx):
     channel = ctx.message.channel
     print('Melakukan tes ping keseluruhan')
 
-    other_test = await other_ping_test()
+    other_test = await other_ping_test(bot)
 
     print('Menjalankan tes ping discord')
     t1 = time.time()
@@ -339,7 +358,8 @@ async def ping(ctx):
         pingbed = discord.Embed(title="Ping Test", color=0xffffff)
         pingbed.set_thumbnail(url="https://emojipedia-us.s3.dualstack.us-west-1.amazonaws.com/thumbs/240/twitter/180/satellite-antenna_1f4e1.png")
         pingbed.add_field(name='Discord', value='{}ms'.format(dis_test), inline=False)
-        pingbed.add_field(name='GitHub', value='{}ms'.format(other_test['github']), inline=False)
+        pingbed.add_field(name='Database', value='{}ms'.format(other_test['database']), inline=False)
+        pingbed.add_field(name='naoTimes API', value='{}ms'.format(other_test['naotimes']), inline=False)
         pingbed.add_field(name='Anilist.co', value='{}ms'.format(other_test['anilist']), inline=False)
         pingbed.set_footer(text="Tested using \"sophisticated\" ping method ")
         await channel.send(embed=pingbed)
