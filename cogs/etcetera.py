@@ -1004,7 +1004,7 @@ class Helper(commands.Cog):
 
     @commands.command()
     @commands.guild_only()
-    @commands.has_permissions(manage_server=True)
+    @commands.has_permissions(manage_guild=True)
     async def prefix(self, ctx, *, msg=None):
         server_message = str(ctx.message.guild.id)
         print('Requested !prefix at: ' + server_message)
