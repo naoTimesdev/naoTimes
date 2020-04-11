@@ -3171,7 +3171,6 @@ class ShowtimesAdmin(commands.Cog):
 
         await ctx.send(text)
 
-
     @ntadmin.command()
     async def listresync(self, ctx):
         resynclist = self.bot.showtimes_resync
@@ -3182,7 +3181,6 @@ class ShowtimesAdmin(commands.Cog):
         main_text += "".join(resynclist)
         main_text = main_text.rstrip('\n')
         await ctx.send(main_text)
-
 
     @ntadmin.command()
     async def migratedb(self, ctx):
@@ -3629,7 +3627,6 @@ class ShowtimesAdmin(commands.Cog):
 
         with open('nao_showtimes.json', 'w') as f: # Local save before commiting
             json.dump(json_d, f, indent=4)
-
 
         print('[%] Removing admin from main database')
         success, msg = await self.bot.ntdb.update_data(srv_id, json_d[srv_id])
