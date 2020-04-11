@@ -8,6 +8,12 @@ from discord.ext import commands
 import magic
 
 
+def truncate(x: str, n: int):
+    if len(x) < n:
+        return x
+    return x[0:n-4] + '...'
+
+
 def setup(bot):
     bot.add_cog(SausTomat(bot))
 
@@ -58,8 +64,28 @@ class SausTomat(commands.Cog):
                         msggg += "\nResponse API: `{}`".format(r_data['message'])
                     return await ctx.send(content=msggg)
                 if not r_data['results']:
-                    await temp_msg.edit(content="Gagal memproses gambar...")
-                    return await ctx.send("Tidak dapat menemukan hasil yang cukup yakin untuk gambar anda.")
+                    await temp_msg.edit(content="Gagal memproses gambar (1/2)...\nMengontak API IQDB.")
+                    async with session.post("https://s.ihateani.me/api/v2/saus", data={"url": url, "parser": "iqdb"}) as r2:
+                        try:
+                            r_data = await r2.json()
+                        except aiohttp.client_exceptions.ContentTypeError as cterr:
+                            await temp_msg.edit(content="Gagal memproses gambar...")
+                            return await ctx.send('Tidak dapat menghubungi endpoint API naoTimes.')
+                        if r2.status != 200:
+                            await temp_msg.edit(content="Gagal memproses gambar...")
+                            msggg = "Terjadi kesalahan dengan request ke API."
+                            if "message" in r_data:
+                                msggg += "\nResponse API: `{}`".format(r_data['message'])
+                            return await ctx.send(content=msggg)
+                        if 'results' not in r_data:
+                            await temp_msg.edit(content="Gagal memproses gambar...")
+                            msggg = "Terjadi kesalahan dengan request ke API."
+                            if "message" in r_data:
+                                msggg += "\nResponse API: `{}`".format(r_data['message'])
+                            return await ctx.send(content=msggg)
+                        if not r_data['results']:
+                            await temp_msg.edit(content="Gagal memproses gambar (2/2)...")
+                            return await ctx.send("Tidak dapat menemukan hasil yang cukup yakin untuk gambar anda.")
 
         resdata = r_data['results']
         max_page = len(resdata)
@@ -71,7 +97,7 @@ class SausTomat(commands.Cog):
             if first_run:
                 print('\t>> Showing result')
                 data = resdata[num - 1]
-                embed = discord.Embed(title=data["title"], color=0x19212d)
+                embed = discord.Embed(title=truncate(data["title"], 256), color=0x19212d)
                 desc = ''
                 if data['extra_info']:
                     for k, v in data['extra_info'].items():
@@ -122,7 +148,7 @@ class SausTomat(commands.Cog):
                 print('<< Going backward')
                 num = num - 1
                 data = resdata[num - 1]
-                embed = discord.Embed(title=data["title"], color=0x19212d)
+                embed = discord.Embed(title=truncate(data["title"], 256), color=0x19212d)
                 desc = ''
                 if data['extra_info']:
                     for k, v in data['extra_info'].items():
@@ -142,7 +168,7 @@ class SausTomat(commands.Cog):
                 print('\t>> Going forward')
                 num = num + 1
                 data = resdata[num - 1]
-                embed = discord.Embed(title=data["title"], color=0x19212d)
+                embed = discord.Embed(title=truncate(data["title"], 256), color=0x19212d)
                 desc = ''
                 if data['extra_info']:
                     for k, v in data['extra_info'].items():
@@ -215,8 +241,28 @@ class SausTomat(commands.Cog):
                         msggg += "\nResponse API: `{}`".format(r_data['message'])
                     return await ctx.send(content=msggg)
                 if not r_data['results']:
-                    await temp_msg.edit(content="Gagal memproses gambar...")
-                    return await ctx.send("Tidak dapat menemukan hasil yang cukup yakin untuk gambar anda.")
+                    await temp_msg.edit(content="Gagal memproses gambar (1/2)...\nMengontak API IQDB.")
+                    async with session.post("https://s.ihateani.me/api/v2/saus", data={"url": final_img_url, "parser": "iqdb"}) as r2:
+                        try:
+                            r_data = await r2.json()
+                        except aiohttp.client_exceptions.ContentTypeError as cterr:
+                            await temp_msg.edit(content="Gagal memproses gambar...")
+                            return await ctx.send('Tidak dapat menghubungi endpoint API naoTimes.')
+                        if r2.status != 200:
+                            await temp_msg.edit(content="Gagal memproses gambar...")
+                            msggg = "Terjadi kesalahan dengan request ke API."
+                            if "message" in r_data:
+                                msggg += "\nResponse API: `{}`".format(r_data['message'])
+                            return await ctx.send(content=msggg)
+                        if 'results' not in r_data:
+                            await temp_msg.edit(content="Gagal memproses gambar...")
+                            msggg = "Terjadi kesalahan dengan request ke API."
+                            if "message" in r_data:
+                                msggg += "\nResponse API: `{}`".format(r_data['message'])
+                            return await ctx.send(content=msggg)
+                        if not r_data['results']:
+                            await temp_msg.edit(content="Gagal memproses gambar (2/2)...")
+                            return await ctx.send("Tidak dapat menemukan hasil yang cukup yakin untuk gambar anda.")
 
         resdata = r_data['results']
         max_page = len(resdata)
@@ -228,7 +274,7 @@ class SausTomat(commands.Cog):
             if first_run:
                 print('\t>> Showing result')
                 data = resdata[num - 1]
-                embed = discord.Embed(title=data["title"], color=0x19212d)
+                embed = discord.Embed(title=truncate(data["title"], 256), color=0x19212d)
                 desc = ''
                 if data['extra_info']:
                     for k, v in data['extra_info'].items():
@@ -279,7 +325,7 @@ class SausTomat(commands.Cog):
                 print('<< Going backward')
                 num = num - 1
                 data = resdata[num - 1]
-                embed = discord.Embed(title=data["title"], color=0x19212d)
+                embed = discord.Embed(title=truncate(data["title"], 256), color=0x19212d)
                 desc = ''
                 if data['extra_info']:
                     for k, v in data['extra_info'].items():
@@ -299,7 +345,7 @@ class SausTomat(commands.Cog):
                 print('\t>> Going forward')
                 num = num + 1
                 data = resdata[num - 1]
-                embed = discord.Embed(title=data["title"], color=0x19212d)
+                embed = discord.Embed(title=truncate(data["title"], 256), color=0x19212d)
                 desc = ''
                 if data['extra_info']:
                     for k, v in data['extra_info'].items():
