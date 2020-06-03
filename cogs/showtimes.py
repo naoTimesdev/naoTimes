@@ -461,7 +461,7 @@ class Showtimes(commands.Cog):
         json_d = await fetch_json()
         for srv in self.bot.showtimes_resync:
             print('[#] Updating: {}'.format(srv))
-            res, msg = await self.bot.ntdb.update_data(srv, json_d[srv])
+            res, msg = await self.bot.ntdb.update_data_server(srv, json_d[srv])
             if not res:
                 print('\tFailed to update, reason: {}'.format(msg))
                 continue
@@ -833,14 +833,14 @@ class Showtimes(commands.Cog):
         await ctx.send(text_data)
 
         print("[%] Updating main database data...")
-        success, msg = await self.bot.ntdb.update_data(server_message, json_d[server_message])
+        success, msg = await self.bot.ntdb.update_data_server(server_message, json_d[server_message])
         for osrv in koleb_list:
             if osrv == server_message:
                 continue
             if osrv not in json_d: # Skip if the server doesn't exist :pepega:
                 continue
             print("[%] Updating collaboration server: {}".format(osrv))
-            res2, msg2 = await self.bot.ntdb.update_data(osrv, json_d[osrv])
+            res2, msg2 = await self.bot.ntdb.update_data_server(osrv, json_d[osrv])
             if not res2:
                 if osrv not in self.bot.showtimes_resync:
                     self.bot.showtimes_resync.append(osrv)
@@ -977,14 +977,14 @@ class Showtimes(commands.Cog):
         await ctx.send('Berhasil mengubah status garapan {} - #{}'.format(matches[0], current))
 
         print("[%] Updating main database data...")
-        success, msg = await self.bot.ntdb.update_data(server_message, json_d[server_message])
+        success, msg = await self.bot.ntdb.update_data_server(server_message, json_d[server_message])
         for osrv in koleb_list:
             if osrv == server_message:
                 continue
             if osrv not in json_d: # Skip if the server doesn't exist :pepega:
                 continue
             print("[%] Updating collaboration server: {}".format(osrv))
-            res2, msg2 = await self.bot.ntdb.update_data(osrv, json_d[osrv])
+            res2, msg2 = await self.bot.ntdb.update_data_server(osrv, json_d[osrv])
             if not res2:
                 if osrv not in self.bot.showtimes_resync:
                     self.bot.showtimes_resync.append(osrv)
@@ -1125,14 +1125,14 @@ class Showtimes(commands.Cog):
         await ctx.send('Berhasil membatalkan rilisan **{}** episode {}'.format(matches[0], current))
 
         print("[%] Updating main database data...")
-        success, msg = await self.bot.ntdb.update_data(server_message, json_d[server_message])
+        success, msg = await self.bot.ntdb.update_data_server(server_message, json_d[server_message])
         for osrv in koleb_list:
             if osrv == server_message:
                 continue
             if osrv not in json_d: # Skip if the server doesn't exist :pepega:
                 continue
             print("[%] Updating collaboration server: {}".format(osrv))
-            res2, msg2 = await self.bot.ntdb.update_data(osrv, json_d[osrv])
+            res2, msg2 = await self.bot.ntdb.update_data_server(osrv, json_d[osrv])
             if not res2:
                 if osrv not in self.bot.showtimes_resync:
                     self.bot.showtimes_resync.append(osrv)
@@ -1270,14 +1270,14 @@ class Showtimes(commands.Cog):
         await ctx.send('Berhasil mengubah status garapan {} - #{}'.format(matches[0], current))
 
         print("[%] Updating main database data...")
-        success, msg = await self.bot.ntdb.update_data(server_message, json_d[server_message])
+        success, msg = await self.bot.ntdb.update_data_server(server_message, json_d[server_message])
         for osrv in koleb_list:
             if osrv == server_message:
                 continue
             if osrv not in json_d: # Skip if the server doesn't exist :pepega:
                 continue
             print("[%] Updating collaboration server: {}".format(osrv))
-            res2, msg2 = await self.bot.ntdb.update_data(osrv, json_d[osrv])
+            res2, msg2 = await self.bot.ntdb.update_data_server(osrv, json_d[osrv])
             if not res2:
                 if osrv not in self.bot.showtimes_resync:
                     self.bot.showtimes_resync.append(osrv)
@@ -1896,7 +1896,7 @@ class Showtimes(commands.Cog):
         await ctx.send(embed=embed)
 
         print("[%] Updating main database data")
-        success, msg = await self.bot.ntdb.update_data(server_message, json_d[server_message])
+        success, msg = await self.bot.ntdb.update_data_server(server_message, json_d[server_message])
         await emb_msg.delete()
 
         if not success:
@@ -2012,7 +2012,7 @@ class Showtimes(commands.Cog):
                 user_data = self.bot.get_user(int(user_id))
                 return '{}#{}'.format(user_data.name, user_data.discriminator)
             except:
-                return 'ERROR'
+                return '[Rahasia]'
 
         new_srv_owner = []
         for adm in srv_owner:
@@ -2147,14 +2147,14 @@ class Showtimes(commands.Cog):
         await ctx.send(txt_msg.format(st=posisi, an=matches[0], ep=episode_n))
 
         print("[%] Updating main database data...")
-        success, msg = await self.bot.ntdb.update_data(server_message, json_d[server_message])
+        success, msg = await self.bot.ntdb.update_data_server(server_message, json_d[server_message])
         for osrv in koleb_list:
             if osrv == server_message:
                 continue
             if osrv not in json_d: # Skip if the server doesn't exist :pepega:
                 continue
             print("[%] Updating collaboration server: {}".format(osrv))
-            res2, msg2 = await self.bot.ntdb.update_data(osrv, json_d[osrv])
+            res2, msg2 = await self.bot.ntdb.update_data_server(osrv, json_d[osrv])
             if not res2:
                 if osrv not in self.bot.showtimes_resync:
                     self.bot.showtimes_resync.append(osrv)
@@ -2436,7 +2436,7 @@ class ShowtimesAlias(commands.Cog):
             await emb_msg.delete()
 
             print("[%] Updating main database data")
-            success, msg = await self.bot.ntdb.update_data(server_message, json_d[server_message])
+            success, msg = await self.bot.ntdb.update_data_server(server_message, json_d[server_message])
 
             if not success:
                 print('[%] Failed to update main database data')
@@ -2624,7 +2624,7 @@ class ShowtimesAlias(commands.Cog):
                 await ctx.send('Alias **{} ({})** telah dihapus dari database'.format(n_del, matches[0]))
                 
                 print("[%] Updating main database data")
-                success, msg = await self.bot.ntdb.update_data(server_message, json_d[server_message])
+                success, msg = await self.bot.ntdb.update_data_server(server_message, json_d[server_message])
 
                 if not success:
                     print('[%] Failed to update main database data')
@@ -3171,6 +3171,7 @@ class ShowtimesAdmin(commands.Cog):
 
         await ctx.send(text)
 
+
     @ntadmin.command()
     async def listresync(self, ctx):
         resynclist = self.bot.showtimes_resync
@@ -3181,6 +3182,7 @@ class ShowtimesAdmin(commands.Cog):
         main_text += "".join(resynclist)
         main_text = main_text.rstrip('\n')
         await ctx.send(main_text)
+
 
     @ntadmin.command()
     async def migratedb(self, ctx):
@@ -3585,7 +3587,7 @@ class ShowtimesAdmin(commands.Cog):
         with open('nao_showtimes.json', 'w') as f: # Local save before commiting
             json.dump(json_d, f, indent=4)
 
-        success, msg = await self.bot.ntdb.update_data(srv_id, json_d[srv_id])
+        success, msg = await self.bot.ntdb.update_data_server(srv_id, json_d[srv_id])
         if not success:
             print('[%] Failed to update main database data')
             print('\tReason: {}'.format(msg))
@@ -3629,7 +3631,7 @@ class ShowtimesAdmin(commands.Cog):
             json.dump(json_d, f, indent=4)
 
         print('[%] Removing admin from main database')
-        success, msg = await self.bot.ntdb.update_data(srv_id, json_d[srv_id])
+        success, msg = await self.bot.ntdb.update_data_server(srv_id, json_d[srv_id])
         if not success:
             print('[%] Failed to update main database data')
             print('\tReason: {}'.format(msg))
@@ -4223,14 +4225,14 @@ class ShowtimesConfigData(commands.Cog):
             await ctx.send('Berhasil menghapus **{}** dari daftar utang'.format(matches[0]))
 
             print("[%] Updating main database data...")
-            success, msg = await self.bot.ntdb.update_data(server_message, json_d[server_message])
+            success, msg = await self.bot.ntdb.update_data_server(server_message, json_d[server_message])
             for osrv in koleb_list:
                 if osrv == server_message:
                     continue
                 if osrv not in json_d: # Skip if the server doesn't exist :pepega:
                     continue
                 print("[%] Updating collaboration server: {}".format(osrv))
-                res2, msg2 = await self.bot.ntdb.update_data(osrv, json_d[osrv])
+                res2, msg2 = await self.bot.ntdb.update_data_server(osrv, json_d[osrv])
                 if not res2:
                     if osrv not in self.bot.showtimes_resync:
                         self.bot.showtimes_resync.append(osrv)
@@ -4260,14 +4262,14 @@ class ShowtimesConfigData(commands.Cog):
             json.dump(json_d, f, indent=4)
 
         print("[%] Updating main database data...")
-        success, msg = await self.bot.ntdb.update_data(server_message, json_d[server_message])
+        success, msg = await self.bot.ntdb.update_data_server(server_message, json_d[server_message])
         for osrv in koleb_list:
             if osrv == server_message:
                 continue
             if osrv not in json_d: # Skip if the server doesn't exist :pepega:
                 continue
             print("[%] Updating collaboration server: {}".format(osrv))
-            res2, msg2 = await self.bot.ntdb.update_data(osrv, json_d[osrv])
+            res2, msg2 = await self.bot.ntdb.update_data_server(osrv, json_d[osrv])
             if not res2:
                 if osrv not in self.bot.showtimes_resync:
                     self.bot.showtimes_resync.append(osrv)
