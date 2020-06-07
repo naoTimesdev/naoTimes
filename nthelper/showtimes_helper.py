@@ -208,7 +208,6 @@ class naoTimesDB:
     async def get_server_list(self):
         print('[ntDB] INFO: Fetching server list')
         srv_list = await self.db.list_collection_names(filter=self.srv_re)
-        srv_list = [s[s.find('_')+1:] for s in srv_list]
         return srv_list
 
     async def get_server(self, server):
