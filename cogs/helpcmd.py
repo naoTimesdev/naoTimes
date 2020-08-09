@@ -216,65 +216,46 @@ class Helper(commands.Cog):
         loaded_cogs = list(dict(self.bot.extensions).keys())
         if ctx.invoked_subcommand is None:
             if not self.is_msg_empty(msg, 2):
-                return await ctx.send(
-                    "Tidak dapat menemukan bantuan perintah tersebut."
-                )
+                return await ctx.send("Tidak dapat menemukan bantuan perintah tersebut.")
             is_owner = await self.bot.is_owner(ctx.author)
             helpcmd = HelpGenerator(self.bot, desc=f"Versi {self._ver}")
-            await helpcmd.generate_field(
-                "help", desc="Memunculkan bantuan perintah"
-            )
+            await helpcmd.generate_field("help", desc="Memunculkan bantuan perintah")
             if "cogs.showtimes" in loaded_cogs:
                 await helpcmd.generate_field(
-                    "help showtimes",
-                    desc="Memunculkan bantuan perintah showtimes",
+                    "help showtimes", desc="Memunculkan bantuan perintah showtimes",
                 )
             if "cogs.anilist" in loaded_cogs:
                 await helpcmd.generate_field(
-                    "help weebs",
-                    desc="Memunculkan bantuan perintah anilist/vndb",
+                    "help weebs", desc="Memunculkan bantuan perintah anilist/vndb",
                 )
             if "cogs.peninjau" in loaded_cogs:
                 await helpcmd.generate_field(
-                    "help peninjau",
-                    desc="Memunculkan bantuan perintah yang "
-                    "mengambil data dari website",
+                    "help peninjau", desc="Memunculkan bantuan perintah yang " "mengambil data dari website",
                 )
             if "cogs.fun" in loaded_cogs:
                 await helpcmd.generate_field(
-                    "help fun",
-                    desc='Melihat bantuan perintah yang "menyenangkan"',
+                    "help fun", desc='Melihat bantuan perintah yang "menyenangkan"',
                 )
             if "cogs.gamesapi" in loaded_cogs:
                 await helpcmd.generate_field(
                     "help games", desc="Melihat bantuan perintah games",
                 )
             if is_owner:
-                await helpcmd.generate_field(
-                    "help admin", desc="Memunculkan bantuan perintah admin"
-                )
+                await helpcmd.generate_field("help admin", desc="Memunculkan bantuan perintah admin")
             if "cogs.vote" in loaded_cogs:
                 await helpcmd.generate_field(
-                    "help vote/votekick/voteban",
-                    desc="Melihat Informasi vote system",
+                    "help vote/votekick/voteban", desc="Melihat Informasi vote system",
                 )
             if "cogs.saus" in loaded_cogs:
                 await helpcmd.generate_field(
-                    "help vote/votekick/voteban",
-                    desc="Melihat Informasi vote system",
+                    "help vote/votekick/voteban", desc="Melihat Informasi vote system",
                 )
             if "cogs.nyaa" in loaded_cogs:
-                await helpcmd.generate_field(
-                    "help nyaa", desc="Melihat Informasi command nyaa.si"
-                )
+                await helpcmd.generate_field("help nyaa", desc="Melihat Informasi command nyaa.si")
             if "cogs.perpus" in loaded_cogs:
-                await helpcmd.generate_field(
-                    "help perpus", desc="Melihat Informasi command perpusindo"
-                )
+                await helpcmd.generate_field("help perpus", desc="Melihat Informasi command perpusindo")
             if "cogs.nh" in loaded_cogs and is_nsfw:
-                await helpcmd.generate_field(
-                    "help nh", desc="Melihat Informasi command nhentai"
-                )
+                await helpcmd.generate_field("help nh", desc="Melihat Informasi command nhentai")
             await helpcmd.generate_field("help ping", desc="Pong!")
             await helpcmd.generate_aliases()
             await ctx.send(embed=helpcmd.get())
@@ -287,28 +268,18 @@ class Helper(commands.Cog):
     @oldhelp.command()
     @commands.is_owner()
     async def admin(self, ctx):
-        helpcmd = HelpGenerator(
-            self.bot, "Admin[*]", desc=f"Versi {self._ver}"
+        helpcmd = HelpGenerator(self.bot, "Admin[*]", desc=f"Versi {self._ver}")
+        await helpcmd.generate_field(
+            "supermotd", desc="Mengirimkan pesan berantai ke tiap " "admin fansub yang terdaftar di naoTimes",
         )
         await helpcmd.generate_field(
-            "supermotd",
-            desc="Mengirimkan pesan berantai ke tiap "
-            "admin fansub yang terdaftar di naoTimes",
+            "reload", [{"name": "module", "type": "r"}], desc="Mereload module tertentu",
         )
         await helpcmd.generate_field(
-            "reload",
-            [{"name": "module", "type": "r"}],
-            desc="Mereload module tertentu",
+            "load", [{"name": "module", "type": "r"}], desc="Load module tertentu",
         )
         await helpcmd.generate_field(
-            "load",
-            [{"name": "module", "type": "r"}],
-            desc="Load module tertentu",
-        )
-        await helpcmd.generate_field(
-            "unload",
-            [{"name": "module", "type": "r"}],
-            desc="Unload module tertentu",
+            "unload", [{"name": "module", "type": "r"}], desc="Unload module tertentu",
         )
         await helpcmd.generate_aliases()
         await ctx.send(embed=helpcmd.get())
@@ -321,38 +292,26 @@ class Helper(commands.Cog):
             is_nsfw = channel.is_nsfw()
         helpcmd = HelpGenerator(self.bot, "Fun[*]", desc=f"Versi {self._ver}")
         await helpcmd.generate_field(
-            "ui",
-            [{"name": "user", "type": "o"}],
-            desc="Melihat informasi user",
+            "ui", [{"name": "user", "type": "o"}], desc="Melihat informasi user",
         )
         await helpcmd.generate_field(
-            "avatar",
-            [{"name": "user", "type": "o"}],
-            desc="Melihat avatar user",
+            "avatar", [{"name": "user", "type": "o"}], desc="Melihat avatar user",
         )
         await helpcmd.generate_field(
-            "f",
-            [{"name": "pesan", "type": "o"}],
-            desc="Berikan F saudara-saudara.",
+            "f", [{"name": "pesan", "type": "o"}], desc="Berikan F saudara-saudara.",
         )
         await helpcmd.generate_field(
-            "kerang",
-            [{"name": "pertanyaan", "type": "r"}],
-            desc="Bertanya kepada kerang ajaib.",
+            "kerang", [{"name": "pertanyaan", "type": "r"}], desc="Bertanya kepada kerang ajaib.",
         )
         await helpcmd.generate_field(
-            "pilih",
-            [{"name": "...", "type": "r"}],
-            desc="Berikan bot pilihan untuk dipilih.",
+            "pilih", [{"name": "...", "type": "r"}], desc="Berikan bot pilihan untuk dipilih.",
         )
         if is_nsfw:
             await helpcmd.generate_field(
                 "kontol", desc="Periksa panjang kntl anda",
             )
         await helpcmd.generate_field(
-            "8ball",
-            [{"name": "pertanyaan", "type": "r"}],
-            desc="Bertanya ke bola ajaib.",
+            "8ball", [{"name": "pertanyaan", "type": "r"}], desc="Bertanya ke bola ajaib.",
         )
         await helpcmd.generate_aliases()
         await ctx.send(embed=helpcmd.get())
@@ -366,8 +325,7 @@ class Helper(commands.Cog):
                 {
                     "name": "user",
                     "type": "o",
-                    "desc": "**[user]** merupakan ID/Username/"
-                    "Mention user orang lain",
+                    "desc": "**[user]** merupakan ID/Username/" "Mention user orang lain",
                 }
             ],
             examples=["", "N4O", "@N4O", "466469077444067372"],
@@ -377,17 +335,14 @@ class Helper(commands.Cog):
 
     @oldhelp.command(aliases=["pp", "profile", "bigprofile", "ava"])
     async def avatar(self, ctx):
-        helpcmd = HelpGenerator(
-            self.bot, "avatar", "Melihat profile picture user"
-        )
+        helpcmd = HelpGenerator(self.bot, "avatar", "Melihat profile picture user")
         await helpcmd.generate_field(
             "avatar",
             [
                 {
                     "name": "user",
                     "type": "o",
-                    "desc": "**[user]** merupakan ID/Username/"
-                    "Mention user orang lain",
+                    "desc": "**[user]** merupakan ID/Username/" "Mention user orang lain",
                 }
             ],
             examples=["", "N4O", "@N4O", "466469077444067372"],
@@ -397,18 +352,10 @@ class Helper(commands.Cog):
 
     @oldhelp.command()
     async def f(self, ctx):
-        helpcmd = HelpGenerator(
-            self.bot, "f", "Pencet F untuk memberikan respek"
-        )
+        helpcmd = HelpGenerator(self.bot, "f", "Pencet F untuk memberikan respek")
         await helpcmd.generate_field(
             "f",
-            [
-                {
-                    "name": "pesan",
-                    "type": "o",
-                    "desc": "`[pesan]` bebas mau diisi apa aja.",
-                }
-            ],
+            [{"name": "pesan", "type": "o", "desc": "`[pesan]` bebas mau diisi apa aja.",}],
             examples=["", "ketauan buka r18"],
         )
         await helpcmd.generate_aliases()
@@ -416,18 +363,10 @@ class Helper(commands.Cog):
 
     @oldhelp.command(aliases=["kerangajaib"])
     async def kerang(self, ctx):
-        helpcmd = HelpGenerator(
-            self.bot, "kerang", "Bertanya kepada kerang ajaib."
-        )
+        helpcmd = HelpGenerator(self.bot, "kerang", "Bertanya kepada kerang ajaib.")
         await helpcmd.generate_field(
             "kerang",
-            [
-                {
-                    "name": "pertanyaan",
-                    "type": "r",
-                    "desc": "`<pertanyaan>` akan dijawab oleh kerang ajaib.",
-                }
-            ],
+            [{"name": "pertanyaan", "type": "r", "desc": "`<pertanyaan>` akan dijawab oleh kerang ajaib.",}],
             examples=["apakah utang saya akan selesai?"],
         )
         await helpcmd.generate_aliases()
@@ -435,9 +374,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command()
     async def pilih(self, ctx):
-        helpcmd = HelpGenerator(
-            self.bot, "pilih", "Berikan bot pilihan untuk dipilih."
-        )
+        helpcmd = HelpGenerator(self.bot, "pilih", "Berikan bot pilihan untuk dipilih.")
         await helpcmd.generate_field(
             "pilih",
             [
@@ -456,9 +393,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command(aliases=["penis", "dick", "kntl"])
     async def kontol(self, ctx):
-        helpcmd = HelpGenerator(
-            self.bot, "kontol", "Periksa panjang kntl anda."
-        )
+        helpcmd = HelpGenerator(self.bot, "kontol", "Periksa panjang kntl anda.")
         await helpcmd.generate_field(
             "kontol",
             desc="Bot akan memberikan panjang kntl situ\n"
@@ -471,18 +406,10 @@ class Helper(commands.Cog):
 
     @oldhelp.command(name="8ball")
     async def _8ball(self, ctx):
-        helpcmd = HelpGenerator(
-            self.bot, "8ball", "Bertanya kepada bola delapan ajaib."
-        )
+        helpcmd = HelpGenerator(self.bot, "8ball", "Bertanya kepada bola delapan ajaib.")
         await helpcmd.generate_field(
             "8ball",
-            [
-                {
-                    "name": "pertanyaan",
-                    "type": "r",
-                    "desc": "`<pertanyaan>` akan dijawab oleh bola delapan.",
-                }
-            ],
+            [{"name": "pertanyaan", "type": "r", "desc": "`<pertanyaan>` akan dijawab oleh bola delapan.",}],
             examples=["apakah utang saya akan selesai?"],
         )
         await helpcmd.generate_aliases()
@@ -491,18 +418,10 @@ class Helper(commands.Cog):
     @oldhelp.command()
     @commands.is_owner()
     async def reload(self, ctx):
-        helpcmd = HelpGenerator(
-            self.bot, "reload", "Mereload salah satu module bot."
-        )
+        helpcmd = HelpGenerator(self.bot, "reload", "Mereload salah satu module bot.")
         await helpcmd.generate_field(
             "reload",
-            [
-                {
-                    "name": "module",
-                    "type": "r",
-                    "desc": "`<module>` yang akan direload.",
-                }
-            ],
+            [{"name": "module", "type": "r", "desc": "`<module>` yang akan direload.",}],
             examples=["anilist", "cogs.anilist"],
         )
         await helpcmd.generate_aliases(add_note=False)
@@ -511,18 +430,10 @@ class Helper(commands.Cog):
     @oldhelp.command()
     @commands.is_owner()
     async def load(self, ctx):
-        helpcmd = HelpGenerator(
-            self.bot, "load", "Load salah satu module bot."
-        )
+        helpcmd = HelpGenerator(self.bot, "load", "Load salah satu module bot.")
         await helpcmd.generate_field(
             "load",
-            [
-                {
-                    "name": "module",
-                    "type": "r",
-                    "desc": "`<module>` yang akan diload.",
-                }
-            ],
+            [{"name": "module", "type": "r", "desc": "`<module>` yang akan diload.",}],
             examples=["anilist", "cogs.anilist"],
         )
         await helpcmd.generate_aliases(add_note=False)
@@ -531,18 +442,10 @@ class Helper(commands.Cog):
     @oldhelp.command()
     @commands.is_owner()
     async def unload(self, ctx):
-        helpcmd = HelpGenerator(
-            self.bot, "unload", "Unload salah satu module bot."
-        )
+        helpcmd = HelpGenerator(self.bot, "unload", "Unload salah satu module bot.")
         await helpcmd.generate_field(
             "unload",
-            [
-                {
-                    "name": "module",
-                    "type": "r",
-                    "desc": "`<module>` yang akan unload.",
-                }
-            ],
+            [{"name": "module", "type": "r", "desc": "`<module>` yang akan unload.",}],
             examples=["anilist", "cogs.anilist"],
         )
         await helpcmd.generate_aliases(add_note=False)
@@ -551,9 +454,7 @@ class Helper(commands.Cog):
     @oldhelp.command(name="peninjau")
     async def peninjau_help(self, ctx):
         helpcmd = HelpGenerator(
-            self.bot,
-            "Peninjau[*]",
-            desc=f"Bantuan untuk perintah yang mengambil data dari website",
+            self.bot, "Peninjau[*]", desc=f"Bantuan untuk perintah yang mengambil data dari website",
         )
         await helpcmd.generate_field(
             "anibin",
@@ -561,9 +462,7 @@ class Helper(commands.Cog):
             opts=[{"name": "judul", "type": "r"}],
         )
         await helpcmd.generate_field(
-            "speedsub",
-            desc="Speedsub file bokong dengan GTL.",
-            opts=[{"name": "target_lang", "type": "r"}],
+            "speedsub", desc="Speedsub file bokong dengan GTL.", opts=[{"name": "target_lang", "type": "r"}],
         )
         await helpcmd.generate_field(
             "kurs",
@@ -575,42 +474,26 @@ class Helper(commands.Cog):
             ],
         )
         await helpcmd.generate_field(
-            "kbbi",
-            desc="Mencari kata di KBBI Daring.",
-            opts=[{"name": "kata", "type": "r"}],
+            "kbbi", desc="Mencari kata di KBBI Daring.", opts=[{"name": "kata", "type": "r"}],
         )
         await helpcmd.generate_field(
-            "sinonim",
-            desc="Mencari sinonim sebuah kata.",
-            opts=[{"name": "kata", "type": "r"}],
+            "sinonim", desc="Mencari sinonim sebuah kata.", opts=[{"name": "kata", "type": "r"}],
         )
         await helpcmd.generate_field(
-            "antonim",
-            desc="Mencari antonim sebuah kata.",
-            opts=[{"name": "kata", "type": "r"}],
+            "antonim", desc="Mencari antonim sebuah kata.", opts=[{"name": "kata", "type": "r"}],
         )
         await helpcmd.generate_field(
-            "jisho",
-            desc="Mencari kata di Jisho.",
-            opts=[{"name": "kata", "type": "r"}],
+            "jisho", desc="Mencari kata di Jisho.", opts=[{"name": "kata", "type": "r"}],
         )
         await helpcmd.generate_aliases()
         await ctx.send(embed=helpcmd.get())
 
     @oldhelp.command()
     async def anibin(self, ctx):
-        helpcmd = HelpGenerator(
-            self.bot, "anibin", "Mencari resolusi asli anime melalui anibin."
-        )
+        helpcmd = HelpGenerator(self.bot, "anibin", "Mencari resolusi asli anime melalui anibin.")
         await helpcmd.generate_field(
             "anibin",
-            [
-                {
-                    "name": "judul",
-                    "type": "r",
-                    "desc": "`<judul>` merupakan kueri yang akan dicari nanti",
-                }
-            ],
+            [{"name": "judul", "type": "r", "desc": "`<judul>` merupakan kueri yang akan dicari nanti",}],
             examples=["私に天使が舞い降りた"],
         )
         await helpcmd.generate_aliases()
@@ -618,18 +501,10 @@ class Helper(commands.Cog):
 
     @oldhelp.command()
     async def kbbi(self, ctx):
-        helpcmd = HelpGenerator(
-            self.bot, "kbbi", "Mencari kata di KBBI Daring."
-        )
+        helpcmd = HelpGenerator(self.bot, "kbbi", "Mencari kata di KBBI Daring.")
         await helpcmd.generate_field(
             "kbbi",
-            [
-                {
-                    "name": "kata",
-                    "type": "r",
-                    "desc": "`<kata>` merupakan kueri yang akan dicari nanti",
-                }
-            ],
+            [{"name": "kata", "type": "r", "desc": "`<kata>` merupakan kueri yang akan dicari nanti",}],
             examples=["tes", "contoh", "peladen"],
         )
         await helpcmd.generate_aliases()
@@ -637,18 +512,10 @@ class Helper(commands.Cog):
 
     @oldhelp.command(aliases=["persamaankata", "persamaan"])
     async def sinonim(self, ctx):
-        helpcmd = HelpGenerator(
-            self.bot, "sinonim", "Mencari sinonim sebuah kata."
-        )
+        helpcmd = HelpGenerator(self.bot, "sinonim", "Mencari sinonim sebuah kata.")
         await helpcmd.generate_field(
             "sinonim",
-            [
-                {
-                    "name": "kata",
-                    "type": "r",
-                    "desc": "`<kata>` merupakan kueri yang akan dicari nanti",
-                }
-            ],
+            [{"name": "kata", "type": "r", "desc": "`<kata>` merupakan kueri yang akan dicari nanti",}],
             examples=["duduk", "makan"],
         )
         await helpcmd.generate_aliases(["persamaankata", "persamaan"])
@@ -656,18 +523,10 @@ class Helper(commands.Cog):
 
     @oldhelp.command(aliases=["lawankata"])
     async def antonim(self, ctx):
-        helpcmd = HelpGenerator(
-            self.bot, "antonim", "Mencari antonim sebuah kata."
-        )
+        helpcmd = HelpGenerator(self.bot, "antonim", "Mencari antonim sebuah kata.")
         await helpcmd.generate_field(
             "antonim",
-            [
-                {
-                    "name": "kata",
-                    "type": "r",
-                    "desc": "`<kata>` merupakan kueri yang akan dicari nanti",
-                }
-            ],
+            [{"name": "kata", "type": "r", "desc": "`<kata>` merupakan kueri yang akan dicari nanti",}],
             examples=["berdiri", "hidup"],
         )
         await helpcmd.generate_aliases(["lawankata"])
@@ -678,13 +537,7 @@ class Helper(commands.Cog):
         helpcmd = HelpGenerator(self.bot, "jisho", "Mencari kata di Jisho.")
         await helpcmd.generate_field(
             "jisho",
-            [
-                {
-                    "name": "kata",
-                    "type": "r",
-                    "desc": "`<kata>` merupakan kueri yang akan dicari nanti",
-                }
-            ],
+            [{"name": "kata", "type": "r", "desc": "`<kata>` merupakan kueri yang akan dicari nanti",}],
             examples=["duduk", "makan"],
         )
         await helpcmd.generate_aliases(["kanji"])
@@ -692,9 +545,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command(aliases=["konversiuang", "currency"])
     async def kurs(self, ctx):
-        helpcmd = HelpGenerator(
-            self.bot, "kurs", "Konversi nilai mata uang maupun cryptocurrency."
-        )
+        helpcmd = HelpGenerator(self.bot, "kurs", "Konversi nilai mata uang maupun cryptocurrency.")
         await helpcmd.generate_field(
             "kurs",
             [
@@ -725,9 +576,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command(aliases=["fastsub", "gtlsub"])
     async def speedsub(self, ctx):
-        helpcmd = HelpGenerator(
-            self.bot, "kurs", "Speedsub file bokong dengan GTL."
-        )
+        helpcmd = HelpGenerator(self.bot, "kurs", "Speedsub file bokong dengan GTL.")
         extra_txt = "Tautkan/Tambahkan Attachments file .ass atau .srt "
         extra_txt += f"dan isi pesannya dengan `{self._pre}speedsub`\n\n"
         extra_txt += "`<kode_bahasa>` merupakan kode bahasa 2 huruf, silakan cari di google dengan query `ISO 639-1`"  # noqa: E501
@@ -741,26 +590,18 @@ class Helper(commands.Cog):
 
     @oldhelp.command(name="weebs")
     async def weebs_help(self, ctx):
-        helpcmd = HelpGenerator(
-            self.bot, "Weebs[*]", "Bantuan untuk perintah Anilist dan VNDB."
+        helpcmd = HelpGenerator(self.bot, "Weebs[*]", "Bantuan untuk perintah Anilist dan VNDB.")
+        await helpcmd.generate_field(
+            "anime", [{"name": "judul", "type": "r"}], desc="Cari informasi sebuah anime melalui Anilist.co",
         )
         await helpcmd.generate_field(
-            "anime",
-            [{"name": "judul", "type": "r"}],
-            desc="Cari informasi sebuah anime melalui Anilist.co",
-        )
-        await helpcmd.generate_field(
-            "manga",
-            [{"name": "judul", "type": "r"}],
-            desc="Cari informasi sebuah manga melalui Anilist.co",
+            "manga", [{"name": "judul", "type": "r"}], desc="Cari informasi sebuah manga melalui Anilist.co",
         )
         await helpcmd.generate_field(
             "tayang", desc="Melihat jadwal tayang anime musim sekarang.",
         )
         await helpcmd.generate_field(
-            "vn",
-            [{"name": "judul", "type": "r"}],
-            desc="Melihat informasi sebuah VN melalui VNDB.",
+            "vn", [{"name": "judul", "type": "r"}], desc="Melihat informasi sebuah VN melalui VNDB.",
         )
         await helpcmd.generate_field(
             "randomvn", desc="Melihat informasi VN random (dipilih oleh bot).",
@@ -770,15 +611,9 @@ class Helper(commands.Cog):
 
     @oldhelp.command(aliases=["animu", "kartun"])
     async def anime(self, ctx):
-        helpcmd = HelpGenerator(
-            self.bot,
-            "anime",
-            "Cari informasi sebuah anime melalui Anilist.co.",
-        )
+        helpcmd = HelpGenerator(self.bot, "anime", "Cari informasi sebuah anime melalui Anilist.co.",)
         await helpcmd.generate_field(
-            "anime",
-            [{"name": "judul", "type": "r", "desc": animangavn_textdata}],
-            examples=["hitoribocchi"],
+            "anime", [{"name": "judul", "type": "r", "desc": animangavn_textdata}], examples=["hitoribocchi"],
         )
         helpcmd.embed.add_field(
             name="*Tambahan*",
@@ -793,11 +628,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command(aliases=["mango", "komik"])
     async def manga(self, ctx):
-        helpcmd = HelpGenerator(
-            self.bot,
-            "manga",
-            "Cari informasi sebuah manga melalui Anilist.co.",
-        )
+        helpcmd = HelpGenerator(self.bot, "manga", "Cari informasi sebuah manga melalui Anilist.co.",)
         await helpcmd.generate_field(
             "manga",
             [{"name": "judul", "type": "r", "desc": animangavn_textdata}],
@@ -805,8 +636,7 @@ class Helper(commands.Cog):
         )
         helpcmd.embed.add_field(
             name="*Tambahan*",
-            value="⏪ **(Selanjutnya)** ⏩ **(Sebelumnya)** "
-            "✅ **(Selesai melihat)**",
+            value="⏪ **(Selanjutnya)** ⏩ **(Sebelumnya)** " "✅ **(Selesai melihat)**",
             inline=False,
         )
         await helpcmd.generate_aliases(["mango", "komik"])
@@ -814,18 +644,14 @@ class Helper(commands.Cog):
 
     @oldhelp.command()
     async def tayang(self, ctx):
-        helpcmd = HelpGenerator(
-            self.bot, "tayang", "Melihat jadwal tayang anime musim sekarang.",
-        )
+        helpcmd = HelpGenerator(self.bot, "tayang", "Melihat jadwal tayang anime musim sekarang.",)
         await helpcmd.generate_field(
             "tayang",
-            desc="Melihat jadwal tayang dengan listing per sisa hari"
-            " menuju episode selanjutnya.",
+            desc="Melihat jadwal tayang dengan listing per sisa hari" " menuju episode selanjutnya.",
         )
         helpcmd.embed.add_field(
             name="*Tambahan*",
-            value="0️⃣ - 🇭 **(Melihat listing per sisa hari)**\n"
-            "✅ **(Selesai melihat)**",
+            value="0️⃣ - 🇭 **(Melihat listing per sisa hari)**\n" "✅ **(Selesai melihat)**",
             inline=False,
         )
         await helpcmd.generate_aliases()
@@ -833,9 +659,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command(name="vn", aliases=["vndb", "visualnovel", "eroge"])
     async def vn_help(self, ctx):
-        helpcmd = HelpGenerator(
-            self.bot, "vn", "Melihat informasi sebuah VN melalui VNDB."
-        )
+        helpcmd = HelpGenerator(self.bot, "vn", "Melihat informasi sebuah VN melalui VNDB.")
         await helpcmd.generate_field(
             "vn",
             [{"name": "judul", "type": "r", "desc": animangavn_textdata}],
@@ -852,22 +676,14 @@ class Helper(commands.Cog):
 
     @oldhelp.command(aliases=["randomvisualnovel", "randomeroge", "vnrandom"])
     async def randomvn(self, ctx):
-        helpcmd = HelpGenerator(
-            self.bot, "vn", "Melihat informasi sebuah VN random."
-        )
+        helpcmd = HelpGenerator(self.bot, "vn", "Melihat informasi sebuah VN random.")
         await helpcmd.generate_field(
-            "randomvn",
-            desc="VN akan dicari dipilih secara "
-            "random oleh bot menggunakan RNG.",
+            "randomvn", desc="VN akan dicari dipilih secara " "random oleh bot menggunakan RNG.",
         )
         helpcmd.embed.add_field(
-            name="*Tambahan*",
-            value="📸 **(Melihat screenshot)** ✅ **(Melihat Info kembali)**",
-            inline=False,
+            name="*Tambahan*", value="📸 **(Melihat screenshot)** ✅ **(Melihat Info kembali)**", inline=False,
         )
-        await helpcmd.generate_aliases(
-            ["randomvisualnovel", "randomeroge", "vnrandom"]
-        )
+        await helpcmd.generate_aliases(["randomvisualnovel", "randomeroge", "vnrandom"])
         await ctx.send(embed=helpcmd.get())
 
     @oldhelp.group()
@@ -875,38 +691,27 @@ class Helper(commands.Cog):
         msg = ctx.message.content
         if not ctx.invoked_subcommand:
             if not self.is_msg_empty(msg):
-                return await ctx.send(
-                    "Tidak dapat menemukan bantuan perintah tersebut."
-                )
-            helpcmd = HelpGenerator(
-                self.bot, "Showtimes[*]", desc=f"Versi {self._ver}"
+                return await ctx.send("Tidak dapat menemukan bantuan perintah tersebut.")
+            helpcmd = HelpGenerator(self.bot, "Showtimes[*]", desc=f"Versi {self._ver}")
+            await helpcmd.generate_field(
+                "help showtimes user", desc="Memunculkan bantuan perintah showtimes untuk user biasa",
             )
             await helpcmd.generate_field(
-                "help showtimes user",
-                desc="Memunculkan bantuan perintah showtimes untuk user biasa",
+                "help showtimes staff", desc="Memunculkan bantuan perintah showtimes untuk staff",
             )
             await helpcmd.generate_field(
-                "help showtimes staff",
-                desc="Memunculkan bantuan perintah showtimes untuk staff",
+                "help showtimes admin", desc="Memunculkan bantuan perintah showtimes untuk admin",
             )
             await helpcmd.generate_field(
-                "help showtimes admin",
-                desc="Memunculkan bantuan perintah showtimes untuk admin",
+                "help showtimes alias", desc="Memunculkan bantuan perintah showtimes alias",
             )
             await helpcmd.generate_field(
-                "help showtimes alias",
-                desc="Memunculkan bantuan perintah showtimes alias",
-            )
-            await helpcmd.generate_field(
-                "help showtimes kolaborasi",
-                desc="Memunculkan bantuan perintah showtimes kolaborasi",
+                "help showtimes kolaborasi", desc="Memunculkan bantuan perintah showtimes kolaborasi",
             )
             is_owner = await self.bot.is_owner(ctx.author)
             if is_owner:
                 await helpcmd.generate_field(
-                    "help showtimes owner",
-                    desc="Memunculkan bantuan perintah showtimes"
-                    " untuk owner bot",
+                    "help showtimes owner", desc="Memunculkan bantuan perintah showtimes" " untuk owner bot",
                 )
             await helpcmd.generate_aliases()
             await ctx.send(embed=helpcmd.get())
@@ -937,39 +742,28 @@ class Helper(commands.Cog):
     @showtimes.command(name="user", aliases=["pengguna"])
     async def showtimes_user(self, ctx):
         helpcmd = HelpGenerator(
-            self.bot,
-            "Showtimes User[*]",
-            desc="Perintah-perintah yang dapat digunakan oleh semua user.",
+            self.bot, "Showtimes User[*]", desc="Perintah-perintah yang dapat digunakan oleh semua user.",
         )
         await helpcmd.generate_field(
-            "tagih",
-            desc="Melihat progress garapan sebuah anime.",
-            opts=[{"name": "judul", "type": "r"}],
+            "tagih", desc="Melihat progress garapan sebuah anime.", opts=[{"name": "judul", "type": "r"}],
         )
         await helpcmd.generate_field(
-            "jadwal",
-            desc="Melihat jadwal episode selanjutnya untuk garapan fansub.",
+            "jadwal", desc="Melihat jadwal episode selanjutnya untuk garapan fansub.",
         )
         await helpcmd.generate_field(
-            "staff",
-            desc="Melihat staff garapan sebuah anime.",
-            opts=[{"name": "judul", "type": "r"}],
+            "staff", desc="Melihat staff garapan sebuah anime.", opts=[{"name": "judul", "type": "r"}],
         )
         await helpcmd.generate_aliases(["pengguna"])
         await ctx.send(embed=helpcmd.get())
 
     @oldhelp.command(aliases=["blame", "mana"])
     async def tagih(self, ctx):
-        helpcmd = HelpGenerator(
-            self.bot, "tagih", "Melihat progress garapan sebuah anime."
-        )
+        helpcmd = HelpGenerator(self.bot, "tagih", "Melihat progress garapan sebuah anime.")
         extra_info = self.get_text("judul") + "\n"
         extra_info += "Jika judul tidak diberikan, akan diberikan list"
         extra_info += " seluruh garapan fansub yang terdaftar."
         await helpcmd.generate_field(
-            "tagih",
-            [{"name": "judul", "type": "r", "desc": extra_info}],
-            examples=["hitoribocchi", ""],
+            "tagih", [{"name": "judul", "type": "r", "desc": extra_info}], examples=["hitoribocchi", ""],
         )
         await helpcmd.generate_aliases(["blame", "mana"])
         await ctx.send(embed=helpcmd.get())
@@ -977,52 +771,36 @@ class Helper(commands.Cog):
     @oldhelp.command(aliases=["airing"])
     async def jadwal(self, ctx):
         helpcmd = HelpGenerator(
-            self.bot,
-            "jadwal",
-            "Melihat jadwal episode selanjutnya untuk garapan fansub.",
+            self.bot, "jadwal", "Melihat jadwal episode selanjutnya untuk garapan fansub.",
         )
         await helpcmd.generate_field(
-            "jadwal",
-            desc="Memberikan list jadwal episode selanjutnya "
-            "untuk garapan fansub musim ini.",
+            "jadwal", desc="Memberikan list jadwal episode selanjutnya " "untuk garapan fansub musim ini.",
         )
         await helpcmd.generate_aliases(["airing"])
         await ctx.send(embed=helpcmd.get())
 
     @oldhelp.command(aliases=["tukangdelay", "pendelay"])
     async def staff(self, ctx):
-        helpcmd = HelpGenerator(
-            self.bot, "staff", "Melihat staff garapan sebuah anime."
-        )
+        helpcmd = HelpGenerator(self.bot, "staff", "Melihat staff garapan sebuah anime.")
         extra_info = "`<judul>` yang terdaftar di database naoTimes."
-        await helpcmd.generate_field(
-            "staff", [{"name": "judul", "type": "r", "desc": extra_info}]
-        )
+        await helpcmd.generate_field("staff", [{"name": "judul", "type": "r", "desc": extra_info}])
         await helpcmd.generate_aliases(["tukangdelay", "pendelay"])
         await ctx.send(embed=helpcmd.get())
 
     @showtimes.command(name="staff")
     async def showtimes_staff(self, ctx):
         helpcmd = HelpGenerator(
-            self.bot,
-            "Showtimes Staff[*]",
-            desc=f"Perintah yang dapat digunakan oleh staff fansub.",
+            self.bot, "Showtimes Staff[*]", desc=f"Perintah yang dapat digunakan oleh staff fansub.",
         )
         await helpcmd.generate_field(
             "beres",
             desc="Menandakan posisi garapan episode menjadi beres.",
-            opts=[
-                {"name": "posisi", "type": "r"},
-                {"name": "judul", "type": "r"},
-            ],
+            opts=[{"name": "posisi", "type": "r"}, {"name": "judul", "type": "r"},],
         )
         await helpcmd.generate_field(
             "gakjadi",
             desc="Menandakan posisi garapan episode menjadi belum beres.",
-            opts=[
-                {"name": "posisi", "type": "r"},
-                {"name": "judul", "type": "r"},
-            ],
+            opts=[{"name": "posisi", "type": "r"}, {"name": "judul", "type": "r"},],
         )
         await helpcmd.generate_field(
             "tandakan",
@@ -1036,14 +814,12 @@ class Helper(commands.Cog):
         )
         await helpcmd.generate_field(
             "rilis",
-            desc="Merilis garapan!\n"
-            "*Hanya bisa dipakai oleh Admin atau tukang QC*",
+            desc="Merilis garapan!\n" "*Hanya bisa dipakai oleh Admin atau tukang QC*",
             opts=[{"name": "...", "type": "r"}],
         )
         await helpcmd.generate_field(
             "batalrilis",
-            desc="Membatalkan rilisan garapan!\n"
-            "*Hanya bisa dipakai oleh Admin atau tukang QC*",
+            desc="Membatalkan rilisan garapan!\n" "*Hanya bisa dipakai oleh Admin atau tukang QC*",
             opts=[{"name": "judul", "type": "r"}],
         )
         await helpcmd.generate_aliases()
@@ -1051,19 +827,11 @@ class Helper(commands.Cog):
 
     @oldhelp.command(aliases=["done"])
     async def beres(self, ctx):
-        helpcmd = HelpGenerator(
-            self.bot,
-            "beres",
-            "Menandakan posisi garapan episode menjadi beres.",
-        )
+        helpcmd = HelpGenerator(self.bot, "beres", "Menandakan posisi garapan episode menjadi beres.",)
         await helpcmd.generate_field(
             "beres",
             [
-                {
-                    "name": "posisi",
-                    "type": "r",
-                    "desc": self.get_text("posisi"),
-                },
+                {"name": "posisi", "type": "r", "desc": self.get_text("posisi"),},
                 {"name": "judul", "type": "r", "desc": self.get_text("judul")},
             ],
             examples=["enc hitoribocchi", "ts hitoribocchi"],
@@ -1074,18 +842,12 @@ class Helper(commands.Cog):
     @oldhelp.command(aliases=["undone", "cancel"])
     async def gakjadi(self, ctx):
         helpcmd = HelpGenerator(
-            self.bot,
-            "gakjadi",
-            "Menandakan posisi garapan episode menjadi belum beres.",
+            self.bot, "gakjadi", "Menandakan posisi garapan episode menjadi belum beres.",
         )
         await helpcmd.generate_field(
             "gakjadi",
             [
-                {
-                    "name": "posisi",
-                    "type": "r",
-                    "desc": self.get_text("posisi"),
-                },
+                {"name": "posisi", "type": "r", "desc": self.get_text("posisi"),},
                 {"name": "judul", "type": "r", "desc": self.get_text("judul")},
             ],
             examples=["enc hitoribocchi", "ts hitoribocchi"],
@@ -1096,10 +858,7 @@ class Helper(commands.Cog):
     @oldhelp.command(aliases=["release"])
     async def rilis(self, ctx):
         helpcmd = HelpGenerator(
-            self.bot,
-            "rilis",
-            "Merilis garapan!\n"
-            "*Hanya bisa dipakai oleh Admin atau tukang QC*",
+            self.bot, "rilis", "Merilis garapan!\n" "*Hanya bisa dipakai oleh Admin atau tukang QC*",
         )
         await helpcmd.generate_field(
             "rilis",
@@ -1110,11 +869,7 @@ class Helper(commands.Cog):
         await helpcmd.generate_field(
             "rilis batch",
             [
-                {
-                    "name": "jumlah",
-                    "type": "r",
-                    "desc": self.get_text("jumlah"),
-                },
+                {"name": "jumlah", "type": "r", "desc": self.get_text("jumlah"),},
                 {"name": "judul", "type": "r", "desc": self.get_text("judul")},
             ],
             desc="Merilis beberapa episode sekaligus.",
@@ -1139,9 +894,7 @@ class Helper(commands.Cog):
         )
         await helpcmd.generate_field(
             "batalrilis",
-            [
-                {"name": "judul", "type": "r", "desc": self.get_text("judul")},
-            ],
+            [{"name": "judul", "type": "r", "desc": self.get_text("judul")},],
             examples=["hitoribocchi"],
         )
         await helpcmd.generate_aliases(["gakjadirilis", "revert"])
@@ -1158,16 +911,8 @@ class Helper(commands.Cog):
         await helpcmd.generate_field(
             "tandakan",
             [
-                {
-                    "name": "posisi",
-                    "type": "r",
-                    "desc": self.get_text("posisi"),
-                },
-                {
-                    "name": "episode",
-                    "type": "r",
-                    "desc": "Episode yang ingin ditandakan."
-                },
+                {"name": "posisi", "type": "r", "desc": self.get_text("posisi"),},
+                {"name": "episode", "type": "r", "desc": "Episode yang ingin ditandakan."},
                 {"name": "judul", "type": "r", "desc": self.get_text("judul")},
             ],
             examples=["ts 4 tate", "enc 4 tate", "enc 5 tate"],
@@ -1178,22 +923,16 @@ class Helper(commands.Cog):
     @showtimes.command(name="alias")
     async def showtimes_alias(self, ctx):
         helpcmd = HelpGenerator(
-            self.bot,
-            "Showtimes Alias[*]",
-            desc=f"Perintah yang dapat digunakan oleh admin/owner fansub.",
+            self.bot, "Showtimes Alias[*]", desc=f"Perintah yang dapat digunakan oleh admin/owner fansub.",
         )
         await helpcmd.generate_field(
             "alias", desc="Menambah alias baru untuk sebuah judul.",
         )
         await helpcmd.generate_field(
-            "alias list",
-            desc="Melihat alias untuk sebuah judul.",
-            opts=[{"name": "judul", "type": "r"}],
+            "alias list", desc="Melihat alias untuk sebuah judul.", opts=[{"name": "judul", "type": "r"}],
         )
         await helpcmd.generate_field(
-            "alias hapus",
-            desc="Menghapus alias untuk sebuah judul.",
-            opts=[{"name": "judul", "type": "r"}],
+            "alias hapus", desc="Menghapus alias untuk sebuah judul.", opts=[{"name": "judul", "type": "r"}],
         )
         await helpcmd.generate_aliases()
         await ctx.send(embed=helpcmd.get())
@@ -1203,14 +942,8 @@ class Helper(commands.Cog):
         msg = ctx.message.content
         if ctx.invoked_subcommand is None:
             if not self.is_msg_empty(msg):
-                return await ctx.send(
-                    "Tidak dapat menemukan bantuan perintah tersebut."
-                )
-            helpcmd = HelpGenerator(
-                self.bot,
-                "alias",
-                desc=f"Versi {self._ver}",
-            )
+                return await ctx.send("Tidak dapat menemukan bantuan perintah tersebut.")
+            helpcmd = HelpGenerator(self.bot, "alias", desc=f"Versi {self._ver}",)
             txt_help = "Menambah alias baru untuk sebuah judul.\n"
             txt_help += f"Command ini bersifat interaktif, cukup ketik {self._pre}alias"
             txt_help += " untuk memulai proses menambahkan alias baru"
@@ -1220,28 +953,18 @@ class Helper(commands.Cog):
 
     @alias.command(name="list")
     async def alias_list_help(self, ctx):
-        helpcmd = HelpGenerator(
-            self.bot,
-            "alias list",
-            desc="Melihat alias untuk sebuah judul.",
-        )
+        helpcmd = HelpGenerator(self.bot, "alias list", desc="Melihat alias untuk sebuah judul.",)
         await helpcmd.generate_field(
-            "alias list",
-            opts=[{"name": "judul", "type": "r", "desc": self.get_text("judul")}],
+            "alias list", opts=[{"name": "judul", "type": "r", "desc": self.get_text("judul")}],
         )
         await helpcmd.generate_aliases()
         await ctx.send(embed=helpcmd.get())
 
     @alias.command(name="hapus")
     async def alias_hapus_help(self, ctx):
-        helpcmd = HelpGenerator(
-            self.bot,
-            "alias hapus",
-            desc="Menghapus alias untuk sebuah judul.",
-        )
+        helpcmd = HelpGenerator(self.bot, "alias hapus", desc="Menghapus alias untuk sebuah judul.",)
         await helpcmd.generate_field(
-            "alias hapus",
-            opts=[{"name": "judul", "type": "r", "desc": self.get_text("judul")}],
+            "alias hapus", opts=[{"name": "judul", "type": "r", "desc": self.get_text("judul")}],
         )
         await helpcmd.generate_aliases()
         await ctx.send(embed=helpcmd.get())
@@ -1256,10 +979,7 @@ class Helper(commands.Cog):
         await helpcmd.generate_field(
             "kolaborasi dengan",
             desc="Memulai proses kolaborasi garapan dengan fansub lain.",
-            opts=[
-                {"name": "server id kolaborasi", "type": "r"},
-                {"name": "judul", "type": "r"},
-            ],
+            opts=[{"name": "server id kolaborasi", "type": "r"}, {"name": "judul", "type": "r"},],
         )
         await helpcmd.generate_field(
             "kolaborasi konfirmasi",
@@ -1274,10 +994,7 @@ class Helper(commands.Cog):
         await helpcmd.generate_field(
             "kolaborasi batalkan",
             desc="Membatalkan proses kolaborasi.",
-            opts=[
-                {"name": "server id kolaborasi", "type": "r"},
-                {"name": "kode unik", "type": "r"},
-            ],
+            opts=[{"name": "server id kolaborasi", "type": "r"}, {"name": "kode unik", "type": "r"},],
         )
         await helpcmd.generate_aliases(["joint", "join", "koleb"])
         await ctx.send(embed=helpcmd.get())
@@ -1285,17 +1002,13 @@ class Helper(commands.Cog):
     @showtimes.command(name="admin")
     async def showtimes_admin(self, ctx):
         helpcmd = HelpGenerator(
-            self.bot,
-            "Showtimes Admin[*]",
-            desc=f"Perintah yang dapat digunakan oleh admin/owner fansub.",
+            self.bot, "Showtimes Admin[*]", desc=f"Perintah yang dapat digunakan oleh admin/owner fansub.",
         )
         await helpcmd.generate_field(
             "tambahutang", desc="Menambah garapan baru ke database.",
         )
         await helpcmd.generate_field(
-            "ubahdata",
-            desc="Mengubah data internal suatu garapan.",
-            opts=[{"name": "judul", "type": "r"}],
+            "ubahdata", desc="Mengubah data internal suatu garapan.", opts=[{"name": "judul", "type": "r"}],
         )
         await helpcmd.generate_aliases()
         await ctx.send(embed=helpcmd.get())
@@ -1305,14 +1018,11 @@ class Helper(commands.Cog):
         helpcmd = HelpGenerator(
             self.bot,
             "ubahdata",
-            "Mengubah data internal suatu garapan.\n"
-            "*Hanya bisa dipakai oleh Admin.*",
+            "Mengubah data internal suatu garapan.\n" "*Hanya bisa dipakai oleh Admin.*",
         )
         await helpcmd.generate_field(
             "ubahdata",
-            [
-                {"name": "judul", "type": "r", "desc": self.get_text("judul")},
-            ],
+            [{"name": "judul", "type": "r", "desc": self.get_text("judul")},],
             examples=["hitoribocchi"],
         )
         await helpcmd.generate_aliases()
@@ -1321,18 +1031,12 @@ class Helper(commands.Cog):
     @oldhelp.command(aliases=["addnew"])
     async def tambahutang(self, ctx):
         helpcmd = HelpGenerator(
-            self.bot,
-            "tambahutang",
-            f"Versi {self._ver}\n"
-            "*Hanya bisa dipakai oleh Admin.*",
+            self.bot, "tambahutang", f"Versi {self._ver}\n" "*Hanya bisa dipakai oleh Admin.*",
         )
         txt_help = "Menambah garapan baru ke database.\n"
         txt_help += f"Command ini bersifat interaktif, cukup ketik {self._pre}tambahutang"
         txt_help += " untuk memulai proses menambahkan utang/garapan baru"
-        await helpcmd.generate_field(
-            "tambahutang",
-            desc=txt_help
-        )
+        await helpcmd.generate_field("tambahutang", desc=txt_help)
         await helpcmd.generate_aliases(["addnew"])
         await ctx.send(embed=helpcmd.get())
 
@@ -1340,9 +1044,7 @@ class Helper(commands.Cog):
     @commands.is_owner()
     async def showtimes_owner(self, ctx):
         helpcmd = HelpGenerator(
-            self.bot,
-            "Showtimes Owner[*]",
-            desc=f"Perintah yang dapat digunakan oleh owner bot.",
+            self.bot, "Showtimes Owner[*]", desc=f"Perintah yang dapat digunakan oleh owner bot.",
         )
         await helpcmd.generate_field(
             "ntadmin initiate", desc="Menginisiasi showtimes.",
@@ -1364,35 +1066,24 @@ class Helper(commands.Cog):
         await helpcmd.generate_field(
             "ntadmin tambahadmin",
             desc="Menambah admin ke server baru yang terdaftar di database.",
-            opts=[
-                {"name": "server id", "type": "r"},
-                {"name": "admin id", "type": "r"},
-            ],
+            opts=[{"name": "server id", "type": "r"}, {"name": "admin id", "type": "r"},],
         )
         await helpcmd.generate_field(
             "ntadmin hapusadmin",
-            desc="Menghapus admin dari server baru yang"
-            " terdaftar di database.",
-            opts=[
-                {"name": "server id", "type": "r"},
-                {"name": "admin id", "type": "r"},
-            ],
+            desc="Menghapus admin dari server baru yang" " terdaftar di database.",
+            opts=[{"name": "server id", "type": "r"}, {"name": "admin id", "type": "r"},],
         )
         await helpcmd.generate_field(
-            "ntadmin fetchdb",
-            desc="Mengambil database lokal dan kirim ke Discord.",
+            "ntadmin fetchdb", desc="Mengambil database lokal dan kirim ke Discord.",
         )
         await helpcmd.generate_field(
-            "ntadmin patchdb",
-            desc="Update database dengan file yang dikirim user.",
+            "ntadmin patchdb", desc="Update database dengan file yang dikirim user.",
         )
         await helpcmd.generate_field(
-            "ntadmin forcepull",
-            desc="Update paksa database lokal dengan database utama.",
+            "ntadmin forcepull", desc="Update paksa database lokal dengan database utama.",
         )
         await helpcmd.generate_field(
-            "ntadmin forceupdate",
-            desc="Update paksa database utama dengan database lokal.",
+            "ntadmin forceupdate", desc="Update paksa database utama dengan database lokal.",
         )
         await helpcmd.generate_aliases(["naotimesadmin", "naoadmin"])
         await ctx.send(embed=helpcmd.get())
@@ -1400,16 +1091,10 @@ class Helper(commands.Cog):
     @oldhelp.command()
     async def vote(self, ctx):
         helpmain = discord.Embed(
-            title="Bantuan Perintah (!vote)",
-            description=f"versi {self._ver}",
-            color=0x00AAAA,
+            title="Bantuan Perintah (!vote)", description=f"versi {self._ver}", color=0x00AAAA,
         )
-        helpmain.set_thumbnail(
-            url="https://image.ibb.co/darSzH/question_mark_1750942_640.png"
-        )
-        helpmain.set_author(
-            name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png"
-        )
+        helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(
             name="!vote <judul> <timer> <opsi>",
             value="```<judul>: Judul voting (Gunakan kutip dua)\n"
@@ -1421,35 +1106,24 @@ class Helper(commands.Cog):
         )
         helpmain.add_field(
             name="Contoh",
-            value='!vote "Mi Instan Terbaik" 5 "Indomie" '
-            '"Mie Sedap" "Sarimi" "Lain-Lain"',
+            value='!vote "Mi Instan Terbaik" 5 "Indomie" ' '"Mie Sedap" "Sarimi" "Lain-Lain"',
             inline=False,
         )
         helpmain.add_field(
             name="*Catatan*",
-            value="Semua command bisa dilihat infonya "
-            "dengan !help <nama command>",
+            value="Semua command bisa dilihat infonya " "dengan !help <nama command>",
             inline=False,
         )
-        helpmain.set_footer(
-            text="Dibawakan oleh naoTimes "
-            f"|| Dibuat oleh N4O#8868 versi {self._ver}"
-        )
+        helpmain.set_footer(text="Dibawakan oleh naoTimes " f"|| Dibuat oleh N4O#8868 versi {self._ver}")
         await ctx.send(embed=helpmain)
 
     @oldhelp.command()
     async def votekick(self, ctx):
         helpmain = discord.Embed(
-            title="Bantuan Perintah (!votekick)",
-            description=f"versi {self._ver}",
-            color=0x00AAAA,
+            title="Bantuan Perintah (!votekick)", description=f"versi {self._ver}", color=0x00AAAA,
         )
-        helpmain.set_thumbnail(
-            url="https://image.ibb.co/darSzH/question_mark_1750942_640.png"
-        )
-        helpmain.set_author(
-            name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png"
-        )
+        helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(
             name="!votekick <user> <limit> <timer>",
             value="```Melakukan votekick\n<user>: mention atau ketik IDnya"
@@ -1459,35 +1133,23 @@ class Helper(commands.Cog):
             inline=False,
         )
         helpmain.add_field(
-            name="Contoh",
-            value="!votekick @N4O\n!votekick 466469077444067372",
-            inline=False,
+            name="Contoh", value="!votekick @N4O\n!votekick 466469077444067372", inline=False,
         )
         helpmain.add_field(
             name="*Catatan*",
-            value="Semua command bisa dilihat infonya "
-            "dengan !help <nama command>",
+            value="Semua command bisa dilihat infonya " "dengan !help <nama command>",
             inline=False,
         )
-        helpmain.set_footer(
-            text="Dibawakan oleh naoTimes "
-            f"|| Dibuat oleh N4O#8868 versi {self._ver}"
-        )
+        helpmain.set_footer(text="Dibawakan oleh naoTimes " f"|| Dibuat oleh N4O#8868 versi {self._ver}")
         await ctx.send(embed=helpmain)
 
     @oldhelp.command()
     async def voteban(self, ctx):
         helpmain = discord.Embed(
-            title="Bantuan Perintah (!voteban)",
-            description=f"versi {self._ver}",
-            color=0x00AAAA,
+            title="Bantuan Perintah (!voteban)", description=f"versi {self._ver}", color=0x00AAAA,
         )
-        helpmain.set_thumbnail(
-            url="https://image.ibb.co/darSzH/question_mark_1750942_640.png"
-        )
-        helpmain.set_author(
-            name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png"
-        )
+        helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(
             name="!voteban <user> <limit> <timer>",
             value="```Melakukan voteban\n<user>: mention atau ketik IDnya"
@@ -1497,52 +1159,37 @@ class Helper(commands.Cog):
             inline=False,
         )
         helpmain.add_field(
-            name="Contoh",
-            value="!voteban @N4O\n!voteban 466469077444067372",
-            inline=False,
+            name="Contoh", value="!voteban @N4O\n!voteban 466469077444067372", inline=False,
         )
         helpmain.add_field(
             name="*Catatan*",
-            value="Semua command bisa dilihat infonya "
-            "dengan !help <nama command>",
+            value="Semua command bisa dilihat infonya " "dengan !help <nama command>",
             inline=False,
         )
-        helpmain.set_footer(
-            text="Dibawakan oleh naoTimes "
-            f"|| Dibuat oleh N4O#8868 versi {self._ver}"
-        )
+        helpmain.set_footer(text="Dibawakan oleh naoTimes " f"|| Dibuat oleh N4O#8868 versi {self._ver}")
         await ctx.send(embed=helpmain)
 
     @oldhelp.group(name="nyaa")
     async def nyaahelp(self, ctx):
         if not ctx.invoked_subcommand:
             helpmain = discord.Embed(
-                title="Bantuan Perintah (!nyaa)",
-                description=f"versi {self._ver}",
-                color=0x00AAAA,
+                title="Bantuan Perintah (!nyaa)", description=f"versi {self._ver}", color=0x00AAAA,
             )
-            helpmain.set_thumbnail(
-                url="https://image.ibb.co/darSzH/question_mark_1750942_640.png"
-            )
+            helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
             helpmain.set_author(
-                name="naoTimes",
-                icon_url="https://p.n4o.xyz/i/naotimes_ava.png",
+                name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png",
             )
             helpmain.add_field(
-                name="!nyaa",
-                value="```Memunculkan bantuan perintah```",
-                inline=False,
+                name="!nyaa", value="```Memunculkan bantuan perintah```", inline=False,
             )
             helpmain.add_field(
                 name="!nyaa cari <argumen>",
-                value="```Mencari torrent di nyaa.si "
-                "(gunakan argumen -h untuk melihat bantuan)```",
+                value="```Mencari torrent di nyaa.si " "(gunakan argumen -h untuk melihat bantuan)```",
                 inline=False,
             )
             helpmain.add_field(
                 name="!nyaa terbaru <argumen>",
-                value="```Melihat 10 torrents terbaru "
-                "(gunakan argumen -h untuk melihat bantuan)```",
+                value="```Melihat 10 torrents terbaru " "(gunakan argumen -h untuk melihat bantuan)```",
                 inline=False,
             )
             helpmain.add_field(
@@ -1552,65 +1199,42 @@ class Helper(commands.Cog):
                 inline=False,
             )
             helpmain.add_field(name="Aliases", value="Tidak ada", inline=False)
-            helpmain.set_footer(
-                text="Dibawakan oleh naoTimes "
-                f"|| Dibuat oleh N4O#8868 versi {self._ver}"
-            )
+            helpmain.set_footer(text="Dibawakan oleh naoTimes " f"|| Dibuat oleh N4O#8868 versi {self._ver}")
             await ctx.send(embed=helpmain)
 
     @nyaahelp.command(aliases=["search"])
     async def cari(self, ctx):
         helpmain = discord.Embed(
-            title="Bantuan Perintah (!nyaa cari)",
-            description=f"versi {self._ver}",
-            color=0x00AAAA,
+            title="Bantuan Perintah (!nyaa cari)", description=f"versi {self._ver}", color=0x00AAAA,
         )
-        helpmain.set_thumbnail(
-            url="https://image.ibb.co/darSzH/question_mark_1750942_640.png"
-        )
-        helpmain.set_author(
-            name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png"
-        )
+        helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(
             name="!nyaa cari <opsi> <pencarian>",
-            value="```Mencari sesuatu dari nyaa, opsi "
-            "dapat dilihat dengan:\n!nyaa cari -h```",
+            value="```Mencari sesuatu dari nyaa, opsi " "dapat dilihat dengan:\n!nyaa cari -h```",
             inline=False,
         )
         helpmain.add_field(
             name="Contoh",
-            value="!nyaa cari -C anime --trusted -u "
-            'HorribleSubs "Hitoribocchi"',
+            value="!nyaa cari -C anime --trusted -u " 'HorribleSubs "Hitoribocchi"',
             inline=False,
         )
-        helpmain.add_field(
-            name="Aliases", value="!nyaa cari, !nyaa search", inline=False
-        )
+        helpmain.add_field(name="Aliases", value="!nyaa cari, !nyaa search", inline=False)
         helpmain.add_field(
             name="*Catatan*",
-            value="Semua command bisa dilihat infonya "
-            "dengan !help <nama command>",
+            value="Semua command bisa dilihat infonya " "dengan !help <nama command>",
             inline=False,
         )
-        helpmain.set_footer(
-            text="Dibawakan oleh naoTimes "
-            f"|| Dibuat oleh N4O#8868 versi {self._ver}"
-        )
+        helpmain.set_footer(text="Dibawakan oleh naoTimes " f"|| Dibuat oleh N4O#8868 versi {self._ver}")
         await ctx.send(embed=helpmain)
 
     @nyaahelp.command(aliases=["latest"])
     async def terbaru(self, ctx):
         helpmain = discord.Embed(
-            title="Bantuan Perintah (!nyaa terbaru)",
-            description=f"versi {self._ver}",
-            color=0x00AAAA,
+            title="Bantuan Perintah (!nyaa terbaru)", description=f"versi {self._ver}", color=0x00AAAA,
         )
-        helpmain.set_thumbnail(
-            url="https://image.ibb.co/darSzH/question_mark_1750942_640.png"
-        )
-        helpmain.set_author(
-            name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png"
-        )
+        helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(
             name="!nyaa terbaru <opsi>",
             value="```Melihat 10 torrent terbaru dari nyaa, opsi dapat "
@@ -1618,96 +1242,64 @@ class Helper(commands.Cog):
             inline=False,
         )
         helpmain.add_field(
-            name="Contoh",
-            value="!nyaa terbaru -C anime --trusted -u HorribleSubs",
-            inline=False,
+            name="Contoh", value="!nyaa terbaru -C anime --trusted -u HorribleSubs", inline=False,
         )
-        helpmain.add_field(
-            name="Aliases", value="!nyaa terbaru, !nyaa latest", inline=False
-        )
+        helpmain.add_field(name="Aliases", value="!nyaa terbaru, !nyaa latest", inline=False)
         helpmain.add_field(
             name="*Catatan*",
-            value="Semua command bisa dilihat infonya "
-            "dengan !help <nama command>",
+            value="Semua command bisa dilihat infonya " "dengan !help <nama command>",
             inline=False,
         )
-        helpmain.set_footer(
-            text="Dibawakan oleh naoTimes "
-            f"|| Dibuat oleh N4O#8868 versi {self._ver}"
-        )
+        helpmain.set_footer(text="Dibawakan oleh naoTimes " f"|| Dibuat oleh N4O#8868 versi {self._ver}")
         await ctx.send(embed=helpmain)
 
     @nyaahelp.command(aliases=["category"])
     async def kategori(self, ctx):
         helpmain = discord.Embed(
-            title="Bantuan Perintah (!nyaa cari)",
-            description=f"versi {self._ver}",
-            color=0x00AAAA,
+            title="Bantuan Perintah (!nyaa cari)", description=f"versi {self._ver}", color=0x00AAAA,
         )
-        helpmain.set_thumbnail(
-            url="https://image.ibb.co/darSzH/question_mark_1750942_640.png"
-        )
-        helpmain.set_author(
-            name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png"
-        )
+        helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(
             name="!nyaa katergori <tipe>",
-            value="```Melihat kategori\n<tipe> ada 2 yaitu:"
-            "\n- normal\n- sukebei```",
+            value="```Melihat kategori\n<tipe> ada 2 yaitu:" "\n- normal\n- sukebei```",
             inline=False,
         )
         helpmain.add_field(
-            name="Contoh",
-            value="!nyaa kategori normal\n!nyaa kategori sukebei",
-            inline=False,
+            name="Contoh", value="!nyaa kategori normal\n!nyaa kategori sukebei", inline=False,
         )
         helpmain.add_field(
-            name="Aliases",
-            value="!nyaa kategori, !nyaa category",
-            inline=False,
+            name="Aliases", value="!nyaa kategori, !nyaa category", inline=False,
         )
         helpmain.add_field(
             name="*Catatan*",
-            value="Semua command bisa dilihat infonya "
-            "dengan !help <nama command>",
+            value="Semua command bisa dilihat infonya " "dengan !help <nama command>",
             inline=False,
         )
-        helpmain.set_footer(
-            text="Dibawakan oleh naoTimes "
-            f"|| Dibuat oleh N4O#8868 versi {self._ver}"
-        )
+        helpmain.set_footer(text="Dibawakan oleh naoTimes " f"|| Dibuat oleh N4O#8868 versi {self._ver}")
         await ctx.send(embed=helpmain)
 
     @oldhelp.group(name="perpus", aliases=["pi", "perpusindo"])
     async def perpushelp(self, ctx):
         if not ctx.invoked_subcommand:
             helpmain = discord.Embed(
-                title="Bantuan Perintah (!perpus)",
-                description=f"versi {self._ver}",
-                color=0x00AAAA,
+                title="Bantuan Perintah (!perpus)", description=f"versi {self._ver}", color=0x00AAAA,
             )
-            helpmain.set_thumbnail(
-                url="https://image.ibb.co/darSzH/question_mark_1750942_640.png"
-            )
+            helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
             helpmain.set_author(
-                name="naoTimes",
-                icon_url="https://p.n4o.xyz/i/naotimes_ava.png",
+                name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png",
             )
             helpmain.add_field(
-                name="!perpus",
-                value="```Memunculkan bantuan perintah```",
-                inline=False,
+                name="!perpus", value="```Memunculkan bantuan perintah```", inline=False,
             )
             helpmain.add_field(
                 name="!perpus cari <argumen>",
-                value="```Mencari berkas di perpusindo.info "
-                "(gunakan argumen -h untuk melihat bantuan)```",
+                value="```Mencari berkas di perpusindo.info " "(gunakan argumen -h untuk melihat bantuan)```",
                 inline=False,
             )
             helpmain.add_field(
                 name="!perpus terbaru <argumen>",
-                value="```Melihat 10 berkas terbaru "
-                "(gunakan argumen -h untuk melihat bantuan)```",
+                value="```Melihat 10 berkas terbaru " "(gunakan argumen -h untuk melihat bantuan)```",
                 inline=False,
             )
             helpmain.add_field(
@@ -1715,67 +1307,41 @@ class Helper(commands.Cog):
                 value="```Melihat kategori apa aja yang bisa dipakai```",
                 inline=False,
             )
-            helpmain.add_field(
-                name="Aliases", value="!perpus, !perpusindo, !pi", inline=False
-            )
-            helpmain.set_footer(
-                text="Dibawakan oleh naoTimes "
-                f"|| Dibuat oleh N4O#8868 versi {self._ver}"
-            )
+            helpmain.add_field(name="Aliases", value="!perpus, !perpusindo, !pi", inline=False)
+            helpmain.set_footer(text="Dibawakan oleh naoTimes " f"|| Dibuat oleh N4O#8868 versi {self._ver}")
             await ctx.send(embed=helpmain)
 
     @perpushelp.command(name="cari", aliases=["search"])
     async def perpus_cari(self, ctx):
         helpmain = discord.Embed(
-            title="Bantuan Perintah (!perpus cari)",
-            description=f"versi {self._ver}",
-            color=0x00AAAA,
+            title="Bantuan Perintah (!perpus cari)", description=f"versi {self._ver}", color=0x00AAAA,
         )
-        helpmain.set_thumbnail(
-            url="https://image.ibb.co/darSzH/question_mark_1750942_640.png"
-        )
-        helpmain.set_author(
-            name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png"
-        )
+        helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(
             name="!perpus cari <opsi> <pencarian>",
-            value="```Mencari sesuatu dari PerpusIndo, opsi dapat dilihat "
-            "dengan:\n!perpus cari -h```",
+            value="```Mencari sesuatu dari PerpusIndo, opsi dapat dilihat " "dengan:\n!perpus cari -h```",
             inline=False,
         )
         helpmain.add_field(
-            name="Contoh",
-            value='!perpus cari -C audio --trusted -u N4O "FLAC"',
-            inline=False,
+            name="Contoh", value='!perpus cari -C audio --trusted -u N4O "FLAC"', inline=False,
         )
-        helpmain.add_field(
-            name="Aliases", value="!perpus cari, !perpus search", inline=False
-        )
+        helpmain.add_field(name="Aliases", value="!perpus cari, !perpus search", inline=False)
         helpmain.add_field(
             name="*Catatan*",
-            value="Semua command bisa dilihat infonya "
-            "dengan !help <nama command>",
+            value="Semua command bisa dilihat infonya " "dengan !help <nama command>",
             inline=False,
         )
-        helpmain.set_footer(
-            text="Dibawakan oleh naoTimes "
-            f"|| Dibuat oleh N4O#8868 versi {self._ver}"
-        )
+        helpmain.set_footer(text="Dibawakan oleh naoTimes " f"|| Dibuat oleh N4O#8868 versi {self._ver}")
         await ctx.send(embed=helpmain)
 
     @perpushelp.command(name="terbaru", aliases=["latest"])
     async def perpus_terbaru(self, ctx):
         helpmain = discord.Embed(
-            title="Bantuan Perintah (!perpus terbaru)",
-            description=f"versi {self._ver}",
-            color=0x00AAAA,
+            title="Bantuan Perintah (!perpus terbaru)", description=f"versi {self._ver}", color=0x00AAAA,
         )
-        helpmain.set_thumbnail(
-            url="https://image.ibb.co/darSzH/question_mark_1750942_640.png"
-        )
-        helpmain.set_author(
-            name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png"
-        )
+        helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(
             name="!perpus terbaru <opsi>",
             value="```Melihat 10 berkas terbaru dari PerpusIndo, "
@@ -1783,99 +1349,62 @@ class Helper(commands.Cog):
             inline=False,
         )
         helpmain.add_field(
-            name="Contoh",
-            value="!perpus terbaru -C audio --trusted -u N4O",
-            inline=False,
+            name="Contoh", value="!perpus terbaru -C audio --trusted -u N4O", inline=False,
         )
         helpmain.add_field(
-            name="Aliases",
-            value="!perpus terbaru, !perpus latest",
-            inline=False,
+            name="Aliases", value="!perpus terbaru, !perpus latest", inline=False,
         )
         helpmain.add_field(
             name="*Catatan*",
-            value="Semua command bisa dilihat infonya "
-            "dengan !help <nama command>",
+            value="Semua command bisa dilihat infonya " "dengan !help <nama command>",
             inline=False,
         )
-        helpmain.set_footer(
-            text="Dibawakan oleh naoTimes "
-            f"|| Dibuat oleh N4O#8868 versi {self._ver}"
-        )
+        helpmain.set_footer(text="Dibawakan oleh naoTimes " f"|| Dibuat oleh N4O#8868 versi {self._ver}")
         await ctx.send(embed=helpmain)
 
     @perpushelp.command(name="kategori", aliases=["category"])
     async def perpus_kategori(self, ctx):
         helpmain = discord.Embed(
-            title="Bantuan Perintah (!perpus kategori)",
-            description=f"versi {self._ver}",
-            color=0x00AAAA,
+            title="Bantuan Perintah (!perpus kategori)", description=f"versi {self._ver}", color=0x00AAAA,
         )
-        helpmain.set_thumbnail(
-            url="https://image.ibb.co/darSzH/question_mark_1750942_640.png"
-        )
-        helpmain.set_author(
-            name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png"
-        )
+        helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(
-            name="!perpus katergori",
-            value="```Melihat kategori```",
-            inline=False,
+            name="!perpus katergori", value="```Melihat kategori```", inline=False,
         )
+        helpmain.add_field(name="Contoh", value="!perpus kategori", inline=False)
         helpmain.add_field(
-            name="Contoh", value="!perpus kategori", inline=False
-        )
-        helpmain.add_field(
-            name="Aliases",
-            value="!perpus kategori, !perpus category",
-            inline=False,
+            name="Aliases", value="!perpus kategori, !perpus category", inline=False,
         )
         helpmain.add_field(
             name="*Catatan*",
-            value="Semua command bisa dilihat infonya "
-            "dengan !help <nama command>",
+            value="Semua command bisa dilihat infonya " "dengan !help <nama command>",
             inline=False,
         )
-        helpmain.set_footer(
-            text="Dibawakan oleh naoTimes "
-            f"|| Dibuat oleh N4O#8868 versi {self._ver}"
-        )
+        helpmain.set_footer(text="Dibawakan oleh naoTimes " f"|| Dibuat oleh N4O#8868 versi {self._ver}")
         await ctx.send(embed=helpmain)
 
     @oldhelp.group(name="nh")
     async def nh_help(self, ctx):
         if not ctx.invoked_subcommand:
             helpmain = discord.Embed(
-                title="Bantuan Perintah (!nh)",
-                description=f"versi {self._ver}",
-                color=0x00AAAA,
+                title="Bantuan Perintah (!nh)", description=f"versi {self._ver}", color=0x00AAAA,
             )
-            helpmain.set_thumbnail(
-                url="https://image.ibb.co/darSzH/question_mark_1750942_640.png"
-            )
+            helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
             helpmain.set_author(
-                name="naoTimes",
-                icon_url="https://p.n4o.xyz/i/naotimes_ava.png",
+                name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png",
             )
             helpmain.add_field(
-                name="!nh atau !help nh",
-                value="```Memunculkan bantuan perintah```",
-                inline=False,
+                name="!nh atau !help nh", value="```Memunculkan bantuan perintah```", inline=False,
             )
             helpmain.add_field(
-                name="!nh cari <query>",
-                value="```Mencari kode nuklir.```",
-                inline=False,
+                name="!nh cari <query>", value="```Mencari kode nuklir.```", inline=False,
             )
             helpmain.add_field(
-                name="!nh info <kode>",
-                value="```Melihat informasi kode nuklir.```",
-                inline=False,
+                name="!nh info <kode>", value="```Melihat informasi kode nuklir.```", inline=False,
             )
             helpmain.add_field(
-                name="!nh baca <kode>",
-                value="```Membaca langsung kode nuklir.```",
-                inline=False,
+                name="!nh baca <kode>", value="```Membaca langsung kode nuklir.```", inline=False,
             )
             helpmain.add_field(
                 name="!nh unduh <kode>",
@@ -1884,25 +1413,16 @@ class Helper(commands.Cog):
                 inline=False,
             )
             helpmain.add_field(name="Aliases", value="Tidak ada", inline=False)
-            helpmain.set_footer(
-                text="Dibawakan oleh naoTimes "
-                f"|| Dibuat oleh N4O#8868 versi {self._ver}"
-            )
+            helpmain.set_footer(text="Dibawakan oleh naoTimes " f"|| Dibuat oleh N4O#8868 versi {self._ver}")
             await ctx.send(embed=helpmain)
 
     @nh_help.command(name="cari", aliases=["search"])  # noqa: F811
     async def nh_cari(self, ctx):
         helpmain = discord.Embed(
-            title="Bantuan Perintah (!nh cari)",
-            description=f"versi {self._ver}",
-            color=0x00AAAA,
+            title="Bantuan Perintah (!nh cari)", description=f"versi {self._ver}", color=0x00AAAA,
         )
-        helpmain.set_thumbnail(
-            url="https://image.ibb.co/darSzH/question_mark_1750942_640.png"
-        )
-        helpmain.set_author(
-            name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png"
-        )
+        helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(
             name="!nh cari <pencarian>",
             value="```Mencari <pencarian> di nHentai\nFitur pencarian"
@@ -1911,76 +1431,49 @@ class Helper(commands.Cog):
         )
         helpmain.add_field(
             name="Contoh",
-            value='!nh cari "females only"\n!nh cari "hibike euphonium"'
-            "\n!nh cari metamorphosis",
+            value='!nh cari "females only"\n!nh cari "hibike euphonium"' "\n!nh cari metamorphosis",
             inline=False,
         )
-        helpmain.add_field(
-            name="Aliases", value="!nh cari, !nh search", inline=False
-        )
+        helpmain.add_field(name="Aliases", value="!nh cari, !nh search", inline=False)
         helpmain.add_field(
             name="*Catatan*",
-            value="Semua command bisa dilihat infonya "
-            "dengan !help <nama command>",
+            value="Semua command bisa dilihat infonya " "dengan !help <nama command>",
             inline=False,
         )
-        helpmain.set_footer(
-            text="Dibawakan oleh naoTimes "
-            f"|| Dibuat oleh N4O#8868 versi {self._ver}"
-        )
+        helpmain.set_footer(text="Dibawakan oleh naoTimes " f"|| Dibuat oleh N4O#8868 versi {self._ver}")
         await ctx.send(embed=helpmain)
 
     @nh_help.command(name="info", aliases=["informasi"])
     async def nh_info(self, ctx):
         helpmain = discord.Embed(
-            title="Bantuan Perintah (!nh info)",
-            description=f"versi {self._ver}",
-            color=0x00AAAA,
+            title="Bantuan Perintah (!nh info)", description=f"versi {self._ver}", color=0x00AAAA,
         )
-        helpmain.set_thumbnail(
-            url="https://image.ibb.co/darSzH/question_mark_1750942_640.png"
-        )
-        helpmain.set_author(
-            name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png"
-        )
+        helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(
             name="!nh info <kode_nuklir>",
             value="```Mencari informasi tentang <kode_nuklir> di nHentai```",
             inline=False,
         )
         helpmain.add_field(
-            name="Contoh",
-            value="!nh info 177013\n!nh info 290691",
-            inline=False,
+            name="Contoh", value="!nh info 177013\n!nh info 290691", inline=False,
         )
-        helpmain.add_field(
-            name="Aliases", value="!nh info, !nh informasi", inline=False
-        )
+        helpmain.add_field(name="Aliases", value="!nh info, !nh informasi", inline=False)
         helpmain.add_field(
             name="*Catatan*",
-            value="Semua command bisa dilihat infonya "
-            "dengan !help <nama command>",
+            value="Semua command bisa dilihat infonya " "dengan !help <nama command>",
             inline=False,
         )
-        helpmain.set_footer(
-            text="Dibawakan oleh naoTimes "
-            f"|| Dibuat oleh N4O#8868 versi {self._ver}"
-        )
+        helpmain.set_footer(text="Dibawakan oleh naoTimes " f"|| Dibuat oleh N4O#8868 versi {self._ver}")
         await ctx.send(embed=helpmain)
 
     @nh_help.command(name="baca", aliases=["read"])
     async def nh_baca(self, ctx):
         helpmain = discord.Embed(
-            title="Bantuan Perintah (!nh baca)",
-            description=f"versi {self._ver}",
-            color=0x00AAAA,
+            title="Bantuan Perintah (!nh baca)", description=f"versi {self._ver}", color=0x00AAAA,
         )
-        helpmain.set_thumbnail(
-            url="https://image.ibb.co/darSzH/question_mark_1750942_640.png"
-        )
-        helpmain.set_author(
-            name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png"
-        )
+        helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(
             name="!nh baca <kode_nuklir>",
             value="```Membaca langsung dari Discord\n"
@@ -1992,38 +1485,24 @@ class Helper(commands.Cog):
             inline=False,
         )
         helpmain.add_field(
-            name="Contoh",
-            value="!nh baca 177013\n!nh baca 290691",
-            inline=False,
+            name="Contoh", value="!nh baca 177013\n!nh baca 290691", inline=False,
         )
-        helpmain.add_field(
-            name="Aliases", value="!nh baca, !nh read", inline=False
-        )
+        helpmain.add_field(name="Aliases", value="!nh baca, !nh read", inline=False)
         helpmain.add_field(
             name="*Catatan*",
-            value="Semua command bisa dilihat infonya "
-            "dengan !help <nama command>",
+            value="Semua command bisa dilihat infonya " "dengan !help <nama command>",
             inline=False,
         )
-        helpmain.set_footer(
-            text="Dibawakan oleh naoTimes "
-            f"|| Dibuat oleh N4O#8868 versi {self._ver}"
-        )
+        helpmain.set_footer(text="Dibawakan oleh naoTimes " f"|| Dibuat oleh N4O#8868 versi {self._ver}")
         await ctx.send(embed=helpmain)
 
     @nh_help.command(name="unduh", aliases=["down", "dl", "download"])
     async def nh_unduh(self, ctx):
         helpmain = discord.Embed(
-            title="Bantuan Perintah (!nh unduh)",
-            description=f"versi {self._ver}",
-            color=0x00AAAA,
+            title="Bantuan Perintah (!nh unduh)", description=f"versi {self._ver}", color=0x00AAAA,
         )
-        helpmain.set_thumbnail(
-            url="https://image.ibb.co/darSzH/question_mark_1750942_640.png"
-        )
-        helpmain.set_author(
-            name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png"
-        )
+        helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(
             name="!nh unduh <kode_nuklir>",
             value="```Mengunduh <kode_nuklir>\nJika gambar belum sempat di "
@@ -2032,68 +1511,42 @@ class Helper(commands.Cog):
             inline=False,
         )
         helpmain.add_field(
-            name="Contoh",
-            value="!nh unduh 177013\n!nh unduh 290691",
-            inline=False,
+            name="Contoh", value="!nh unduh 177013\n!nh unduh 290691", inline=False,
         )
         helpmain.add_field(
-            name="Aliases",
-            value="!nh unduh, !nh down, !nh dl, !nh download",
-            inline=False,
+            name="Aliases", value="!nh unduh, !nh down, !nh dl, !nh download", inline=False,
         )
         helpmain.add_field(
             name="*Catatan*",
-            value="Semua command bisa dilihat infonya "
-            "dengan !help <nama command>",
+            value="Semua command bisa dilihat infonya " "dengan !help <nama command>",
             inline=False,
         )
-        helpmain.set_footer(
-            text="Dibawakan oleh naoTimes "
-            f"|| Dibuat oleh N4O#8868 versi {self._ver}"
-        )
+        helpmain.set_footer(text="Dibawakan oleh naoTimes " f"|| Dibuat oleh N4O#8868 versi {self._ver}")
         await ctx.send(embed=helpmain)
 
     @oldhelp.command()
     async def info(self, ctx):
         helpmain = discord.Embed(
-            title="Bantuan Perintah (!info)",
-            description=f"versi {self._ver}",
-            color=0x00AAAA,
+            title="Bantuan Perintah (!info)", description=f"versi {self._ver}", color=0x00AAAA,
         )
-        helpmain.set_thumbnail(
-            url="https://image.ibb.co/darSzH/question_mark_1750942_640.png"
-        )
-        helpmain.set_author(
-            name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png"
-        )
-        helpmain.add_field(
-            name="!info", value="Melihat Informasi bot ini", inline=False
-        )
+        helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
+        helpmain.add_field(name="!info", value="Melihat Informasi bot ini", inline=False)
         helpmain.add_field(
             name="*Catatan*",
-            value="Semua command bisa dilihat infonya "
-            "dengan !help <nama command>",
+            value="Semua command bisa dilihat infonya " "dengan !help <nama command>",
             inline=False,
         )
-        helpmain.set_footer(
-            text="Dibawakan oleh naoTimes "
-            f"|| Dibuat oleh N4O#8868 versi {self._ver}"
-        )
+        helpmain.set_footer(text="Dibawakan oleh naoTimes " f"|| Dibuat oleh N4O#8868 versi {self._ver}")
         await ctx.send(embed=helpmain)
 
     @oldhelp.command()
     async def prefix(self, ctx):
         helpmain = discord.Embed(
-            title="Bantuan Perintah (!prefix)",
-            description=f"versi {self._ver}",
-            color=0x00AAAA,
+            title="Bantuan Perintah (!prefix)", description=f"versi {self._ver}", color=0x00AAAA,
         )
-        helpmain.set_thumbnail(
-            url="https://image.ibb.co/darSzH/question_mark_1750942_640.png"
-        )
-        helpmain.set_author(
-            name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png"
-        )
+        helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(
             name="!prefix <prefix>",
             value="Menambah server custom prefix baru ke server ini"
@@ -2101,57 +1554,38 @@ class Helper(commands.Cog):
             inline=False,
         )
         helpmain.add_field(
-            name="!prefix clear",
-            value="Menghapus server custom prefix dari server ini",
-            inline=False,
+            name="!prefix clear", value="Menghapus server custom prefix dari server ini", inline=False,
         )
         helpmain.add_field(name="Minimum Permission", value="- Manage Server")
         helpmain.add_field(
-            name="Aliases",
-            value="!prefix\n!prefix clear, !prefix hapus, !prefix bersihkan",
-            inline=False,
+            name="Aliases", value="!prefix\n!prefix clear, !prefix hapus, !prefix bersihkan", inline=False,
         )
         helpmain.add_field(
             name="*Catatan*",
-            value="Semua command bisa dilihat infonya "
-            "dengan !help <nama command>",
+            value="Semua command bisa dilihat infonya " "dengan !help <nama command>",
             inline=False,
         )
-        helpmain.set_footer(
-            text="Dibawakan oleh naoTimes "
-            f"|| Dibuat oleh N4O#8868 versi {self._ver}"
-        )
+        helpmain.set_footer(text="Dibawakan oleh naoTimes " f"|| Dibuat oleh N4O#8868 versi {self._ver}")
         await ctx.send(embed=helpmain)
 
     @oldhelp.command()
     async def ping(self, ctx):
         helpmain = discord.Embed(
-            title="Bantuan Perintah (!ping)",
-            description=f"versi {self._ver}",
-            color=0x00AAAA,
+            title="Bantuan Perintah (!ping)", description=f"versi {self._ver}", color=0x00AAAA,
         )
-        helpmain.set_thumbnail(
-            url="https://image.ibb.co/darSzH/question_mark_1750942_640.png"
-        )
-        helpmain.set_author(
-            name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png"
-        )
+        helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
+        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
         helpmain.add_field(
             name="!ping",
-            value="Melihat cepat rambat koneksi dari "
-            "server ke discord dan ke github",
+            value="Melihat cepat rambat koneksi dari " "server ke discord dan ke github",
             inline=False,
         )
         helpmain.add_field(
             name="*Catatan*",
-            value="Semua command bisa dilihat infonya "
-            "dengan !help <nama command>",
+            value="Semua command bisa dilihat infonya " "dengan !help <nama command>",
             inline=False,
         )
-        helpmain.set_footer(
-            text="Dibawakan oleh naoTimes "
-            f"|| Dibuat oleh N4O#8868 versi {self._ver}"
-        )
+        helpmain.set_footer(text="Dibawakan oleh naoTimes " f"|| Dibuat oleh N4O#8868 versi {self._ver}")
         await ctx.send(embed=helpmain)
 
     @commands.command(aliases=["invite"])
@@ -2183,14 +1617,8 @@ class Helper(commands.Cog):
     @commands.guild_only()
     async def supermotd(self, ctx):
         if ctx.message.author.id != self.bot.owner.id:
-            print(
-                "[@] Someone want to use supermotd "
-                "but not the bot owner, ignoring..."
-            )
-            print(
-                "[@] User that are trying to use it: "
-                + str(ctx.message.author.id)
-            )
+            print("[@] Someone want to use supermotd " "but not the bot owner, ignoring...")
+            print("[@] User that are trying to use it: " + str(ctx.message.author.id))
             return
 
         print("[@] Super MOTD Activated")
@@ -2201,8 +1629,7 @@ class Helper(commands.Cog):
         mod_list = json_data["supermod"]
 
         starting_messages = await ctx.send(
-            "**Initiated Super MOTD, please write"
-            " the content below**\n*Type `cancel` to cancel*"
+            "**Initiated Super MOTD, please write" " the content below**\n*Type `cancel` to cancel*"
         )
 
         def check(m):
@@ -2215,15 +1642,11 @@ class Helper(commands.Cog):
             return await ctx.send("**MOTD Message announcement cancelled.**")
 
         print("MOTD Content:\n{}".format(motd_content.content))
-        await starting_messages.edit(
-            "**Initiated Super MOTD, please write the content below**"
-        )
+        await starting_messages.edit("**Initiated Super MOTD, please write the content below**")
 
         preview_msg = await ctx.send(
             "**MOTD Preview**\n"
-            "```{}```\nAre you sure want to send this message?".format(
-                motd_content.content
-            )
+            "```{}```\nAre you sure want to send this message?".format(motd_content.content)
         )
         to_react = ["✅", "❌"]
         for reaction in to_react:
@@ -2239,9 +1662,7 @@ class Helper(commands.Cog):
             return True
 
         try:
-            res, user = await self.bot.wait_for(
-                "reaction_add", timeout=30.0, check=check_react
-            )
+            res, user = await self.bot.wait_for("reaction_add", timeout=30.0, check=check_react)
         except asyncio.TimeoutError:
             await ctx.send("***Timeout!***")
             return await preview_msg.clear_reactions()
@@ -2259,20 +1680,14 @@ class Helper(commands.Cog):
                     srv_mod = server_in.get_member(int(mod))
                     await srv_mod.send(
                         "**Announcement dari N4O#8868"
-                        " (Bot Owner):**\n\n{}\n\n*Pada: {}*".format(
-                            motd_content.content, get_current_time()
-                        )
+                        " (Bot Owner):**\n\n{}\n\n*Pada: {}*".format(motd_content.content, get_current_time())
                     )
                     success_rate += 1
                     print("[@] Success")
                 except Exception:
                     failed_user.append(mod)
                     print("[@] Failed")
-            await preview_msg.edit(
-                "**Done! {}/{} user get the message**".format(
-                    success_rate, len(mod_list)
-                )
-            )
+            await preview_msg.edit("**Done! {}/{} user get the message**".format(success_rate, len(mod_list)))
             if failed_user:
                 print("Failed user list: {}".format(", ".join(failed_user)))
         elif "❌" in str(res.emoji):

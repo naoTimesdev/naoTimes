@@ -18,18 +18,21 @@ from discord.ext import commands
 from nthelper.fsdb import FansubDBBridge
 from nthelper.kbbiasync import KBBI, AutentikasiKBBI
 from nthelper.showtimes_helper import naoTimesDB
-from nthelper.utils import (HelpGenerator, __version__, get_server,
-                            get_version, ping_website, prefixes_with_data,
-                            read_files, write_files)
+from nthelper.utils import (
+    HelpGenerator,
+    __version__,
+    get_server,
+    get_version,
+    ping_website,
+    prefixes_with_data,
+    read_files,
+    write_files,
+)
 
 # Silent some imported module
 logging.getLogger("websockets").setLevel(logging.WARNING)
 
-cogs_list = [
-    "cogs." + x.replace(".py", "")
-    for x in os.listdir("cogs")
-    if x.endswith(".py")
-]
+cogs_list = ["cogs." + x.replace(".py", "") for x in os.listdir("cogs") if x.endswith(".py")]
 
 logger = logging.getLogger()
 logging.basicConfig(
@@ -41,9 +44,7 @@ logging.basicConfig(
 
 console = logging.StreamHandler(sys.stdout)
 console.setLevel(logging.INFO)
-console_formatter = logging.Formatter(
-    "[%(levelname)s] (%(name)s): %(funcName)s: %(message)s"
-)
+console_formatter = logging.Formatter("[%(levelname)s] (%(name)s): %(funcName)s: %(message)s")
 console.setFormatter(console_formatter)
 logger.addHandler(console)
 
@@ -89,10 +90,7 @@ async def init_bot(loop):
         await kbbi_auth.autentikasi()
         cookie_baru = await kbbi_auth.ambil_cookies()
         logger.warn("saving new KBBI cookie...")
-        new_data = {
-            "cookie": cookie_baru,
-            "expires": round(current_dt + (15 * 24 * 60 * 60))
-        }
+        new_data = {"cookie": cookie_baru, "expires": round(current_dt + (15 * 24 * 60 * 60))}
         await write_files(new_data, "kbbi_auth.json")
         kbbi_cookie = cookie_baru
         kbbi_expires = round(current_dt + (15 * 24 * 60 * 60))
@@ -108,14 +106,8 @@ async def init_bot(loop):
         logger.info("Initiating discord.py")
         description = "Penyuruh Fansub biar kerja cepat\n"
         description += f"versi {__version__} || Dibuat oleh: N4O#8868"
-        prefixes = partial(
-            prefixes_with_data,
-            prefixes_data=srv_prefixes,
-            default=default_prefix,
-        )
-        bot = commands.Bot(
-            command_prefix=prefixes, description=description, loop=loop
-        )
+        prefixes = partial(prefixes_with_data, prefixes_data=srv_prefixes, default=default_prefix,)
+        bot = commands.Bot(command_prefix=prefixes, description=description, loop=loop)
         bot.remove_command("help")
         if not hasattr(bot, "logger"):
             bot.logger = logger
@@ -134,11 +126,8 @@ async def init_bot(loop):
         if not hasattr(bot, "kbbi_cookie"):
             bot.kbbi_cookie = kbbi_cookie
             bot.kbbi_expires = kbbi_expires
-            bot.kbbi_auth = {
-                "email": kbbi_conf["email"],
-                "password": kbbi_conf["password"]
-            }
-        if not hasattr(bot,"fsdb"):
+            bot.kbbi_auth = {"email": kbbi_conf["email"], "password": kbbi_conf["password"]}
+        if not hasattr(bot, "fsdb"):
             logger.info("Binding FansubDB...")
             bot.fsdb = FansubDBBridge()
         logger.info("Success Loading Discord.py")
@@ -206,9 +195,7 @@ async def on_ready():
     logger.info("[$] Connected to discord.")
     activity = discord.Game(name=presence_status[0], type=3)
     await bot.change_presence(activity=activity)
-    logger.info(
-        "---------------------------------------------------------------"
-    )
+    logger.info("---------------------------------------------------------------")
     if not hasattr(bot, "showtimes_resync"):
         bot.showtimes_resync = []
     if not hasattr(bot, "botconf"):
@@ -223,17 +210,11 @@ async def on_ready():
             bot.prefix = prefix
     if not hasattr(bot, "ntdb"):
         mongos = bot_config["mongodb"]
-        bot.ntdb = naoTimesDB(
-            mongos["ip_hostname"], mongos["port"], mongos["dbname"]
-        )
+        bot.ntdb = naoTimesDB(mongos["ip_hostname"], mongos["port"], mongos["dbname"])
         logger.info("Connected to naoTimes Database:")
-        logger.info(
-            "IP:Port: {}:{}".format(mongos["ip_hostname"], mongos["port"])
-        )
+        logger.info("IP:Port: {}:{}".format(mongos["ip_hostname"], mongos["port"]))
         logger.info("Database: {}".format(mongos["dbname"]))
-        logger.info(
-            "---------------------------------------------------------------"
-        )
+        logger.info("---------------------------------------------------------------")
         if not mongos["skip_fetch"]:
             logger.info("Fetching nao_showtimes from server db to local json")
             js_data = await bot.ntdb.fetch_all_as_json()
@@ -247,9 +228,7 @@ async def on_ready():
                     svfn = os.path.join(showtimes_folder, f"super_admin.json")
                 await write_files(fdata, svfn)
             logger.info("File fetched and saved to local json")
-            logger.info(
-                "---------------------------------------------------------------"  # noqa: E501
-            )
+            logger.info("---------------------------------------------------------------")  # noqa: E501
     if not hasattr(bot, "uptime"):
         bot.owner = (await bot.application_info()).owner
         bot.uptime = time.time()
@@ -263,22 +242,16 @@ async def on_ready():
             logger.info("[!!] Failed Loading " + load + " module.")
             announce_error(e)
     logger.info("[#][@][!] All cogs/extensions loaded.")
-    logger.info(
-        "---------------------------------------------------------------"
-    )
+    logger.info("---------------------------------------------------------------")
     logger.info("Bot Ready!")
     logger.info("Using Python {}".format(sys.version))
     logger.info("And Using Discord.py v{}".format(discord.__version__))
-    logger.info(
-        "---------------------------------------------------------------"
-    )
+    logger.info("---------------------------------------------------------------")
     logger.info("Logged in as:")
     logger.info("Bot name: {}".format(bot.user.name))
     logger.info("With Client ID: {}".format(bot.user.id))
     logger.info("With naoTimes version: {}".format(__version__))
-    logger.info(
-        "---------------------------------------------------------------"
-    )
+    logger.info("---------------------------------------------------------------")
 
 
 async def change_bot_presence():
@@ -295,9 +268,7 @@ async def change_bot_presence():
 
 async def send_hastebin(info):
     async with aiohttp.ClientSession() as session:
-        async with session.post(
-            "https://hastebin.com/documents", data=str(info)
-        ) as resp:
+        async with session.post("https://hastebin.com/documents", data=str(info)) as resp:
             if resp.status == 200:
                 return "Error Occured\nSince the log is way too long here's a hastebin logs.\nhttps://hastebin.com/{}.py".format(  # noqa: E501
                     (await resp.json())["key"]
@@ -330,26 +301,18 @@ async def on_command_error(ctx, error):
         return await ctx.send(f"`{ctx.command}`` dinon-aktifkan.")
     elif isinstance(error, commands.NoPrivateMessage):
         try:
-            return await ctx.author.send(
-                f"`{ctx.command}`` tidak bisa dipakai di Private Messages."
-            )
+            return await ctx.author.send(f"`{ctx.command}`` tidak bisa dipakai di Private Messages.")
         except Exception:
             return
 
     current_time = time.time()
 
-    logger.error(
-        "Ignoring exception in command {}:".format(ctx.command)
-    )
-    traceback.print_exception(
-        type(error), error, error.__traceback__, file=sys.stderr
-    )
+    logger.error("Ignoring exception in command {}:".format(ctx.command))
+    traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
     tb = traceback.format_exception(type(error), error, error.__traceback__)
     error_fmt = (
         "```An Error has occured...\nIn Command: {0.command}\nCogs: {0.command.cog_name}\nAuthor: {0.message.author} ({0.message.author.id})\n"  # noqa: E501
-        "Server: {0.message.guild.id}\nMessage: {0.message.clean_content}".format(  # noqa: E501
-            ctx
-        )
+        "Server: {0.message.guild.id}\nMessage: {0.message.clean_content}".format(ctx)  # noqa: E501
     )
     msg = "```py\n{}```\n{}\n```py\n{}\n```".format(
         datetime.utcnow().strftime("%b/%d/%Y %H:%M:%S UTC") + "\n" + "ERROR!",
@@ -364,9 +327,7 @@ async def on_command_error(ctx, error):
         timestamp=datetime.utcfromtimestamp(current_time),
     )
     embed.add_field(
-        name="Cogs",
-        value="[nT!] {0.cog_name}".format(ctx.command),
-        inline=False,
+        name="Cogs", value="[nT!] {0.cog_name}".format(ctx.command), inline=False,
     )
     embed.add_field(
         name="Perintah yang dipakai",
@@ -374,21 +335,15 @@ async def on_command_error(ctx, error):
         inline=False,
     )
     embed.add_field(
-        name="Server Insiden",
-        value="{0.guild.name} ({0.guild.id})".format(ctx.message),
-        inline=False,
+        name="Server Insiden", value="{0.guild.name} ({0.guild.id})".format(ctx.message), inline=False,
     )
     embed.add_field(
         name="Orang yang memakainya",
-        value="{0.author.name}#{0.author.discriminator} ({0.author.id})".format(  # noqa: E501
-            ctx.message
-        ),
+        value="{0.author.name}#{0.author.discriminator} ({0.author.id})".format(ctx.message),  # noqa: E501
         inline=False,
     )
     embed.add_field(
-        name="Traceback",
-        value="```py\n{}\n```".format("".join(tb)),
-        inline=True,
+        name="Traceback", value="```py\n{}\n```".format("".join(tb)), inline=True,
     )
     embed.set_thumbnail(url="http://p.ihateani.me/1bnBuV9C")
     try:
@@ -398,8 +353,7 @@ async def on_command_error(ctx, error):
             msg = await send_hastebin(msg)
         await bot.owner.send(msg)
     await ctx.send(
-        "**Error**: Insiden internal ini telah dilaporkan ke"
-        " N4O#8868, mohon tunggu jawabannya kembali."
+        "**Error**: Insiden internal ini telah dilaporkan ke" " N4O#8868, mohon tunggu jawabannya kembali."
     )
     announce_error(error)
 
@@ -442,9 +396,7 @@ async def ping(ctx):
         text_res = ":x: "
         if ping_res:
             text_res = f"{ping_emote(ping)} "
-        text_res += "{}: `{}`".format(
-            name, "{}ms".format(ping) if ping_res else "nan"
-        )
+        text_res += "{}: `{}`".format(name, "{}ms".format(ping) if ping_res else "nan")
         return text_res
 
     ihaapi_ping = irnd(ihaapi_ping)
@@ -508,9 +460,7 @@ async def fetch_bot_count_data():
     )
 
     if not json_data:
-        text_fmt += "\n\nJumlah server Showtimes: {}\nJumlah anime Showtimes: {}".format(  # noqa: E501
-            0, 0
-        )
+        text_fmt += "\n\nJumlah server Showtimes: {}\nJumlah anime Showtimes: {}".format(0, 0)  # noqa: E501
     else:
         ntimes_srv = []
         total_animemes = 0
@@ -549,11 +499,8 @@ def create_uptime():
     if up_months != 0:
         return_text += "{} bulan ".format(up_months)
 
-    return (
-        return_text
-        + "{} minggu {} hari {} jam {} menit {} detik`".format(
-            up_weeks, up_days, up_hours, up_minutes, up_secs
-        )
+    return return_text + "{} minggu {} hari {} jam {} menit {} detik`".format(
+        up_weeks, up_days, up_hours, up_minutes, up_secs
     )
 
 
@@ -563,9 +510,7 @@ async def info(ctx):
     Melihat Informasi bot
     """
     infog = discord.Embed(
-        title="naoTimes",
-        description="Sang penagih utang fansub agar fansubnya mau gerak",
-        color=0xDE8730,
+        title="naoTimes", description="Sang penagih utang fansub agar fansubnya mau gerak", color=0xDE8730,
     )
     infog.set_author(
         name="naoTimes",
@@ -573,19 +518,11 @@ async def info(ctx):
     )
     infog.set_thumbnail(url="https://puu.sh/D3x1l/7f97e14c74.png")
     infog.add_field(name="Server Info", value=get_server(), inline=False)
-    infog.add_field(
-        name="Statistik", value=(await fetch_bot_count_data()), inline=False
-    )
-    infog.add_field(
-        name="Dibuat", value="Gak tau, tiba-tiba jadi.", inline=False
-    )
-    infog.add_field(
-        name="Pembuat", value="{}".format(bot.owner.mention), inline=False
-    )
+    infog.add_field(name="Statistik", value=(await fetch_bot_count_data()), inline=False)
+    infog.add_field(name="Dibuat", value="Gak tau, tiba-tiba jadi.", inline=False)
+    infog.add_field(name="Pembuat", value="{}".format(bot.owner.mention), inline=False)
     infog.add_field(name="Bahasa", value=get_version(), inline=False)
-    infog.add_field(
-        name="Fungsi", value="Menagih utang fansub (!help)", inline=False
-    )
+    infog.add_field(name="Fungsi", value="Menagih utang fansub (!help)", inline=False)
     infog.add_field(name="Uptime", value=create_uptime())
     infog.set_footer(
         text=f"naoTimes versi {bot.semver} || Dibuat oleh N4O#8868",
@@ -621,16 +558,10 @@ async def reloadconf(ctx):
     bot.botconf = new_config
     mongo_conf = new_config["mongodb"]
     logger.info("starting new database connection")
-    nt_db = naoTimesDB(
-        mongo_conf["ip_hostname"], mongo_conf["port"], mongo_conf["dbname"]
-    )
+    nt_db = naoTimesDB(mongo_conf["ip_hostname"], mongo_conf["port"], mongo_conf["dbname"])
     logger.info("connected to database...")
     bot.ntdb = nt_db
-    bot.command_prefix = partial(
-        prefixes_with_data,
-        prefixes_data=srv_prefixes,
-        default=default_prefix
-    )
+    bot.command_prefix = partial(prefixes_with_data, prefixes_data=srv_prefixes, default=default_prefix)
     bot.jsdb_streams = streams_list
     bot.jsdb_currency = currency_data
     bot.jsdb_crypto = crypto_data
@@ -683,15 +614,9 @@ async def reload(ctx, *, cogs=None):
     Restart salah satu module bot, owner only
     """
     if not cogs:
-        helpcmd = HelpGenerator(
-            bot,
-            "Reload",
-            desc=f"Reload module bot.",
-        )
+        helpcmd = HelpGenerator(bot, "Reload", desc=f"Reload module bot.",)
         helpcmd.embed.add_field(
-            name="Module/Cogs List",
-            value="\n".join(["- " + cl for cl in cogs_list]),
-            inline=False,
+            name="Module/Cogs List", value="\n".join(["- " + cl for cl in cogs_list]), inline=False,
         )
         return await ctx.send(embed=helpcmd.get())
     if not cogs.startswith("cogs."):
@@ -708,9 +633,7 @@ async def reload(ctx, *, cogs=None):
     except commands.ExtensionFailed as cef:
         logger.error(f"failed to reload {cogs}")
         announce_error(cef)
-        return await msg.edit(
-            content="Failed to (re)load module, please check bot logs."
-        )
+        return await msg.edit(content="Failed to (re)load module, please check bot logs.")
     except commands.ExtensionNotLoaded:
         await msg.edit(content="Failed to reload module, trying to load it...")
         logger.warn(f"{cogs} haven't been loaded yet...")
@@ -721,9 +644,7 @@ async def reload(ctx, *, cogs=None):
         except commands.ExtensionFailed as cer:
             logger.error(f"failed to load {cogs}")
             announce_error(cer)
-            return await msg.edit(
-                content="Failed to (re)load module, please check bot logs."
-            )
+            return await msg.edit(content="Failed to (re)load module, please check bot logs.")
         except commands.ExtensionNotFound:
             logger.warn(f"{cogs} doesn't exist.")
             return await msg.edit(content="Cannot find that module.")
@@ -738,15 +659,9 @@ async def load(ctx, *, cogs=None):
     Load salah satu module bot, owner only
     """
     if not cogs:
-        helpcmd = HelpGenerator(
-            bot,
-            "Load",
-            desc=f"Load module bot.",
-        )
+        helpcmd = HelpGenerator(bot, "Load", desc=f"Load module bot.",)
         helpcmd.embed.add_field(
-            name="Module/Cogs List",
-            value="\n".join(["- " + cl for cl in cogs_list]),
-            inline=False,
+            name="Module/Cogs List", value="\n".join(["- " + cl for cl in cogs_list]), inline=False,
         )
         return await ctx.send(embed=helpcmd.get())
     if not cogs.startswith("cogs."):
@@ -763,9 +678,7 @@ async def load(ctx, *, cogs=None):
     except commands.ExtensionFailed as cef:
         logger.error(f"failed to load {cogs}")
         announce_error(cef)
-        return await msg.edit(
-            content="Failed to load module, please check bot logs."
-        )
+        return await msg.edit(content="Failed to load module, please check bot logs.")
 
     await msg.edit(content=f"Successfully loaded `{cogs}` module.")
 
@@ -777,15 +690,9 @@ async def unload(ctx, *, cogs=None):
     Unload salah satu module bot, owner only
     """
     if not cogs:
-        helpcmd = HelpGenerator(
-            bot,
-            "Unload",
-            desc=f"Unload module bot.",
-        )
+        helpcmd = HelpGenerator(bot, "Unload", desc=f"Unload module bot.",)
         helpcmd.embed.add_field(
-            name="Module/Cogs List",
-            value="\n".join(["- " + cl for cl in cogs_list]),
-            inline=False,
+            name="Module/Cogs List", value="\n".join(["- " + cl for cl in cogs_list]), inline=False,
         )
         return await ctx.send(embed=helpcmd.get())
     if not cogs.startswith("cogs."):
@@ -805,9 +712,7 @@ async def unload(ctx, *, cogs=None):
     except commands.ExtensionFailed as cef:
         logger.error(f"failed to unload {cogs}")
         announce_error(cef)
-        return await msg.edit(
-            content="Failed to unload module, please check bot logs."
-        )
+        return await msg.edit(content="Failed to unload module, please check bot logs.")
 
     await msg.edit(content=f"Successfully unloaded `{cogs}` module.")
 
@@ -826,16 +731,9 @@ async def prefix(ctx, *, msg=None):
         prefix_data = await read_files("server_prefixes.json")
 
     if not msg:
-        helpcmd = HelpGenerator(
-            bot,
-            "Load",
-            desc=f"Load module bot.",
-            color=0x00AAAA
-        )
+        helpcmd = HelpGenerator(bot, "Load", desc=f"Load module bot.", color=0x00AAAA)
         helpmain.embed.add_field(
-            name="Prefix Server",
-            value=prefix_data.get(server_message, "Tidak ada"),
-            inline=False,
+            name="Prefix Server", value=prefix_data.get(server_message, "Tidak ada"), inline=False,
         )
         await helpcmd.generate_aliases()
         return await ctx.send(embed=helpcmd.get())
@@ -847,27 +745,19 @@ async def prefix(ctx, *, msg=None):
 
             await write_files(prefix_data, "server_prefixes.json")
 
-        return await ctx.send(
-            "Berhasil menghapus custom prefix dari server ini"
-        )
+        return await ctx.send("Berhasil menghapus custom prefix dari server ini")
 
     if server_message in prefix_data:
         logger.info(f"{server_message}: changing custom prefix...")
-        send_txt = (
-            "Berhasil mengubah custom prefix ke `{pre_}` untuk server ini"
-        )
+        send_txt = "Berhasil mengubah custom prefix ke `{pre_}` untuk server ini"
     else:
         logger.info(f"{server_message}: adding custom prefix...")
-        send_txt = (
-            "Berhasil menambah custom prefix `{pre_}` untuk server ini"
-        )
+        send_txt = "Berhasil menambah custom prefix `{pre_}` untuk server ini"
     prefix_data[server_message] = msg
 
     await write_files(prefix_data, "server_prefixes.json")
     bot.command_prefix = partial(
-        prefixes_with_data,
-        prefixes_data=prefix_data,
-        default=bot.botconf["default_prefix"],
+        prefixes_with_data, prefixes_data=prefix_data, default=bot.botconf["default_prefix"],
     )
     prefix = bot.command_prefix
     if callable(prefix):
@@ -901,9 +791,7 @@ async def prefix(ctx, *, msg=None):
             failed_cogs.append(cogs)
 
     if failed_cogs:
-        logger.warn("there's cogs that failed\n{}".format(
-            "\n".join(failed_cogs)
-        ))
+        logger.warn("there's cogs that failed\n{}".format("\n".join(failed_cogs)))
 
     await ctx.send(send_txt.format(pre_=msg))
 
@@ -918,16 +806,9 @@ async def prefix_error(self, error, ctx):
             await write_files({}, "server_prefixes.json")
         else:
             prefix_data = await read_files("server_prefixes.json")
-        helpcmd = HelpGenerator(
-            bot,
-            "Load",
-            desc=f"Load module bot.",
-            color=0x00AAAA
-        )
+        helpcmd = HelpGenerator(bot, "Load", desc=f"Load module bot.", color=0x00AAAA)
         helpmain.embed.add_field(
-            name="Prefix Server",
-            value=prefix_data.get(server_message, "Tidak ada"),
-            inline=False,
+            name="Prefix Server", value=prefix_data.get(server_message, "Tidak ada"), inline=False,
         )
         await helpcmd.generate_aliases()
         await ctx.send(embed=helpcmd.get())

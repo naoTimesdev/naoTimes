@@ -263,12 +263,8 @@ async def fetch_owm(location):
     current_weather["humidity"] = f"{currents['humidity']}%"
 
     try:
-        sunrise = datetime.fromtimestamp(currents["sunrise"] + tz_off, tz=timezone.utc).strftime(
-            "%I:%M AM"
-        )
-        sunset = datetime.fromtimestamp(currents["sunset"] + tz_off, tz=timezone.utc).strftime(
-            "%I:%M PM"
-        )
+        sunrise = datetime.fromtimestamp(currents["sunrise"] + tz_off, tz=timezone.utc).strftime("%I:%M AM")
+        sunset = datetime.fromtimestamp(currents["sunset"] + tz_off, tz=timezone.utc).strftime("%I:%M PM")
 
         current_weather["sstime"] = {
             "sunrise": sunrise,
@@ -428,8 +424,7 @@ class CuacaDunia(commands.Cog):
 
         coords = hasil_cuaca["coords"]
         embed.set_footer(
-            text=f"{coords['lat']}, {coords['lon']} "
-            "| Diprakasai oleh OpenWeatherMap & OpenCage Geocoder",
+            text=f"{coords['lat']}, {coords['lon']} " "| Diprakasai oleh OpenWeatherMap & OpenCage Geocoder",
             icon_url="https://openweathermap.org/themes/openweathermap/assets/vendor/owm/img/icons/logo_60x60.png",  # noqa: E501
         )
 

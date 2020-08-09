@@ -120,7 +120,7 @@ class FansubDBBridge:
             "status": project["status"],
             "url": project["url"] if project["url"] is not None else "",
             "misc": project["misc"] if project["misc"] is not None else "",
-            "fansub": response["fansub"]
+            "fansub": response["fansub"],
         }
         return proper_data_map
 
@@ -147,9 +147,7 @@ class FansubDBBridge:
             "misc": "",
         }
         data_baru["_token"] = await self._request_csrf_token(data_baru["anime_id"])
-        accept_head = {
-            "accept": "application/json, text/javascript, */*; q=0.01"
-        }
+        accept_head = {"accept": "application/json, text/javascript, */*; q=0.01"}
         self.logger.info(f"fs{fansub_id}: menambah garapan untuk anime id {anime_id}...")
         res = await self.request_crud("post", "project_anime", data=data_baru, headers=accept_head)
         if "type" not in res:
@@ -167,9 +165,7 @@ class FansubDBBridge:
             data_baru["fansub[]"] = data_baru["fansub"]
             del data_baru["fansub"]
         data_baru["_method"] = "PUT"
-        accept_head = {
-            "accept": "application/json, text/javascript, */*; q=0.01"
-        }
+        accept_head = {"accept": "application/json, text/javascript, */*; q=0.01"}
         self.logger.info(f"{data_baru['_id']}: mengubah data...")
         res = await self.request_crud("post", "project_anime", data=data_baru, headers=accept_head)
         if "type" not in res:
@@ -212,9 +208,7 @@ class FansubDBBridge:
             "_token": csrf_token,
             "mal_url": f"https://myanimelist.net/anime/{mal_id}/",
         }
-        accept_head = {
-            "accept": "application/json, text/javascript, */*; q=0.01"
-        }
+        accept_head = {"accept": "application/json, text/javascript, */*; q=0.01"}
         res = await self.request_crud("post", "import_mal", data=mal_data, headers=accept_head)
         if "type" not in res:
             self.logger.error(f"{mal_id}: terjadi kesalahan: {res['message']}")

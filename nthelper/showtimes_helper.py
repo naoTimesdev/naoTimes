@@ -65,9 +65,7 @@ class naoTimesDB:
 
     def __init__(self, ip_hostname, port, dbname="naotimesdb"):
         self.logger = logging.getLogger("naotimesdb")
-        self.client = motor.motor_asyncio.AsyncIOMotorClient(
-            "mongodb://{}:{}".format(ip_hostname, port)
-        )
+        self.client = motor.motor_asyncio.AsyncIOMotorClient("mongodb://{}:{}".format(ip_hostname, port))
         self.db = self.client[dbname]
 
         self.clientsync = pymongo.MongoClient("mongodb://{}:{}".format(ip_hostname, port))

@@ -32,9 +32,7 @@ class BotArgumentParser(argparse.ArgumentParser):
         raise ArgumentParserError(message)
 
 
-bot_parser = BotArgumentParser(
-    prog="!", usage="!", formatter_class=argparse.ArgumentDefaultsHelpFormatter
-)
+bot_parser = BotArgumentParser(prog="!", usage="!", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 subparser = bot_parser.add_subparsers(dest="command")
 
 

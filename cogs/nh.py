@@ -16,9 +16,7 @@ def setup(bot):
 async def nsfw_channel(ctx):
     if ctx.guild:
         return ctx.channel.is_nsfw()
-    raise commands.NoPrivateMessage(
-        "Perintah tidak bisa dipakai di private message."
-    )
+    raise commands.NoPrivateMessage("Perintah tidak bisa dipakai di private message.")
 
 
 TRANSLASI_BAHASA = {
@@ -43,7 +41,7 @@ def truncate(text: str, m: str) -> str:
     mamount = {"title": 256, "field": 1024, "desc": 2048, "footer": 2048}
     max_len = mamount.get(m, 1024)
     if len(text) > max_len:
-        text = text[0:max_len - 5] + " ..."
+        text = text[0 : max_len - 5] + " ..."
     return text
 
 
@@ -61,36 +59,23 @@ class nHController(commands.Cog):
     async def nhi(self, ctx):
         if not ctx.invoked_subcommand:
             helpmain = discord.Embed(
-                title="Bantuan Perintah (!nh)",
-                description="versi 2.0.0",
-                color=0x00AAAA,
+                title="Bantuan Perintah (!nh)", description="versi 2.0.0", color=0x00AAAA,
             )
-            helpmain.set_thumbnail(
-                url="https://image.ibb.co/darSzH/question_mark_1750942_640.png"
-            )
+            helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
             helpmain.set_author(
-                name="naoTimes",
-                icon_url="https://p.n4o.xyz/i/naotimes_ava.png",
+                name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png",
             )
             helpmain.add_field(
-                name="!nh",
-                value="```Memunculkan bantuan perintah```",
-                inline=False,
+                name="!nh", value="```Memunculkan bantuan perintah```", inline=False,
             )
             helpmain.add_field(
-                name="!nh cari <query>",
-                value="```Mencari kode nuklir.```",
-                inline=False,
+                name="!nh cari <query>", value="```Mencari kode nuklir.```", inline=False,
             )
             helpmain.add_field(
-                name="!nh info <kode>",
-                value="```Melihat informasi kode nuklir.```",
-                inline=False,
+                name="!nh info <kode>", value="```Melihat informasi kode nuklir.```", inline=False,
             )
             helpmain.add_field(
-                name="!nh baca <kode>",
-                value="```Membaca langsung kode nuklir.```",
-                inline=False,
+                name="!nh baca <kode>", value="```Membaca langsung kode nuklir.```", inline=False,
             )
             helpmain.add_field(
                 name="!nh unduh <kode>",
@@ -99,10 +84,7 @@ class nHController(commands.Cog):
                 inline=False,
             )
             helpmain.add_field(name="Aliases", value="Tidak ada", inline=False)
-            helpmain.set_footer(
-                text="Dibawakan oleh naoTimes "
-                "|| Dibuat oleh N4O#8868 versi 2.0.0"
-            )
+            helpmain.set_footer(text="Dibawakan oleh naoTimes " "|| Dibuat oleh N4O#8868 versi 2.0.0")
             await ctx.send(embed=helpmain)
 
     def cek_translasi(self, tags):
@@ -114,19 +96,9 @@ class nHController(commands.Cog):
         return "RAW ({})".format(TRANSLASI_BAHASA.get(lang[0], lang[0]))
 
     async def format_embed_search(self, data, query):
-        embed = discord.Embed(
-            title="Pencarian: {}".format(query),
-            color=0x1F1F1F,
-            url=data["url"],
-        )
-        embed.set_footer(
-            text="Kode: {} | Diprakasai oleh api.ihateani.me".format(
-                data["id"]
-            )
-        )
-        embed.description = "**{}**\n{}".format(
-            data["title"], self.cek_translasi(data["tags"])
-        )
+        embed = discord.Embed(title="Pencarian: {}".format(query), color=0x1F1F1F, url=data["url"],)
+        embed.set_footer(text="Kode: {} | Diprakasai oleh api.ihateani.me".format(data["id"]))
+        embed.description = "**{}**\n{}".format(data["title"], self.cek_translasi(data["tags"]))
         embed.set_image(url=data["cover"])
         return embed
 
@@ -144,8 +116,7 @@ class nHController(commands.Cog):
             timestamp=datetime.fromtimestamp(data["posted_time"]),
         )
         embed.description = "{}\n{}".format(
-            data["original_title"]["japanese"],
-            data["original_title"]["other"],
+            data["original_title"]["japanese"], data["original_title"]["other"],
         )
         for tag in data["tags"].keys():
             if data["tags"][tag]:
@@ -154,14 +125,9 @@ class nHController(commands.Cog):
                     name=TAG_TRANSLATION[tag], value=", ".join(tag_parsed),
                 )
         embed.add_field(
-            name=":nut_and_bolt: Total Halaman",
-            value="{} halaman".format(data["total_pages"]),
+            name=":nut_and_bolt: Total Halaman", value="{} halaman".format(data["total_pages"]),
         )
-        embed.set_footer(
-            text="Favorit: {} | Diprakasai oleh api.ihateani.me".format(
-                data["favorites"]
-            )
-        )
+        embed.set_footer(text="Favorit: {} | Diprakasai oleh api.ihateani.me".format(data["favorites"]))
         embed.set_image(url=data["cover"])
         return embed
 
@@ -184,9 +150,7 @@ class nHController(commands.Cog):
         url_to_use = "https://api.ihateani.me/nh/latest"
         if "search" in do_mode or "cari" in do_mode:
             if query:
-                url_to_use = "https://api.ihateani.me/nh/search?q={}".format(
-                    quote_plus(query)
-                )
+                url_to_use = "https://api.ihateani.me/nh/search?q={}".format(quote_plus(query))
             else:
                 query = "Doujin terbaru"
         else:
@@ -198,13 +162,9 @@ class nHController(commands.Cog):
                 try:
                     response = await resp.json()
                 except aiohttp.client_exceptions.ContentTypeError:
-                    return await ctx.send(
-                        "Terjadi kesalahan ketika menghubungi server."
-                    )
+                    return await ctx.send("Terjadi kesalahan ketika menghubungi server.")
                 if resp.status != 200:
-                    return await ctx.send(
-                        "Tidak dapat menemukan apa-apa dengan kata tersebut."
-                    )
+                    return await ctx.send("Tidak dapat menemukan apa-apa dengan kata tersebut.")
 
         await message.edit(content="Pencarian didapatkan.")
 
@@ -247,9 +207,7 @@ class nHController(commands.Cog):
                     return False
                 return True
 
-            res, user = await self.bot.wait_for(
-                "reaction_add", check=check_react
-            )
+            res, user = await self.bot.wait_for("reaction_add", check=check_react)
             if user != ctx.message.author:
                 pass
             elif "✅" in str(res.emoji):
@@ -304,47 +262,34 @@ class nHController(commands.Cog):
                             return False
                         return True
 
-                    res2, user2 = await self.bot.wait_for(
-                        "reaction_add", check=check_react2
-                    )
+                    res2, user2 = await self.bot.wait_for("reaction_add", check=check_react2)
                     if user2 != ctx.message.author:
                         pass
                     elif "✅" in str(res2.emoji):
                         await msg.clear_reactions()
                         if not download_text_open:
-                            self.logger.warn(
-                                f"{data['id']}: going back to"
-                                " search results..."
-                            )
+                            self.logger.warn(f"{data['id']}: going back to" " search results...")
                             embed = await self.format_embed_search(data, query)
 
                             await msg.edit(embed=embed)
                             break
                         else:
-                            self.logger.debug(
-                                f"{data['id']}: going back to info"
-                            )
+                            self.logger.debug(f"{data['id']}: going back to info")
                             embed = await self.format_embed_info(data)
                             await msg.edit(embed=embed)
                             download_text_open = False
                     elif "\N{INBOX TRAY}" in str(res2.emoji):  # Download
-                        self.logger.info(
-                            f"{data['id']}: showing download link..."
-                        )
+                        self.logger.info(f"{data['id']}: showing download link...")
                         embed = discord.Embed(
                             title=data["title"],
                             color=0x1F1F1F,
                             url=data["url"],
-                            timestamp=datetime.fromtimestamp(
-                                data["posted_time"]
-                            ),
+                            timestamp=datetime.fromtimestamp(data["posted_time"]),
                         )
                         embed.description = "Klik link dibawah ini untuk mendownload\n<https://api.ihateani.me/nh/unduh?id={}>\n\nJika gambar banyak, akan memakan waktu lebih lama ketika proses sebelum download.".format(  # noqa: E501
                             data["id"]
                         )
-                        embed.set_footer(
-                            text="Diprakasai oleh api.ihateani.me"
-                        )
+                        embed.set_footer(text="Diprakasai oleh api.ihateani.me")
                         embed.set_thumbnail(url=data["cover"])
 
                         download_text_open = True
@@ -361,9 +306,7 @@ class nHController(commands.Cog):
                         while True:
                             if first_run_3:
                                 img_link = dataset_img[pospos - 1]
-                                embed = await self.format_embed_image(
-                                    data, pospos, dataset_total, img_link
-                                )
+                                embed = await self.format_embed_image(data, pospos, dataset_total, img_link)
 
                                 first_run_3 = False
                                 await msg.edit(embed=embed)
@@ -390,42 +333,29 @@ class nHController(commands.Cog):
                                     return False
                                 return True
 
-                            res3, user3 = await self.bot.wait_for(
-                                "reaction_add", check=check_react3
-                            )
+                            res3, user3 = await self.bot.wait_for("reaction_add", check=check_react3)
                             if user3 != ctx.message.author:
                                 pass
                             if "✅" in str(res3.emoji):
-                                self.logger.warn(
-                                    f"{data['id']}: going back to info"
-                                )
+                                self.logger.warn(f"{data['id']}: going back to info")
                                 embed = await self.format_embed_info(data)
                                 await msg.clear_reactions()
                                 await msg.edit(embed=embed)
                                 break
                             elif "⏪" in str(res3.emoji):
-                                self.logger.debug(
-                                    f"{data['id']}: reader: "
-                                    "previous image..."
-                                )
+                                self.logger.debug(f"{data['id']}: reader: " "previous image...")
                                 pospos = pospos - 1
                                 img_link = dataset_img[pospos - 1]
 
-                                embed = await self.format_embed_image(
-                                    data, pospos, dataset_total, img_link
-                                )
+                                embed = await self.format_embed_image(data, pospos, dataset_total, img_link)
                                 await msg.clear_reactions()
                                 await msg.edit(embed=embed)
                             elif "⏩" in str(res3.emoji):
-                                self.logger.debug(
-                                    f"{data['id']}: reader: " "next image..."
-                                )
+                                self.logger.debug(f"{data['id']}: reader: " "next image...")
                                 pospos = pospos + 1
                                 img_link = dataset_img[pospos - 1]
 
-                                embed = await self.format_embed_image(
-                                    data, pospos, dataset_total, img_link
-                                )
+                                embed = await self.format_embed_image(data, pospos, dataset_total, img_link)
                                 await msg.clear_reactions()
                                 await msg.edit(embed=embed)
 
@@ -435,24 +365,16 @@ class nHController(commands.Cog):
         if not kode_nuklir.isdigit():
             return await ctx.send("Masukan kode nuklir yang benar.")
 
-        message = await ctx.send(
-            "Memulai proses pengumpulan informasi, mohon tunggu."
-        )
+        message = await ctx.send("Memulai proses pengumpulan informasi, mohon tunggu.")
         self.logger.info(f"querying {kode_nuklir}")
         async with aiohttp.ClientSession() as sesi:
-            async with sesi.get(
-                "https://api.ihateani.me/nh/info/{}".format(kode_nuklir)
-            ) as resp:
+            async with sesi.get("https://api.ihateani.me/nh/info/{}".format(kode_nuklir)) as resp:
                 try:
                     data2 = await resp.json()
                 except aiohttp.client_exceptions.ContentTypeError:
-                    return await ctx.send(
-                        "Terjadi kesalahan ketika menghubungi server."
-                    )
+                    return await ctx.send("Terjadi kesalahan ketika menghubungi server.")
                 if resp.status != 200:
-                    return await ctx.send(
-                        "Tidak dapat menemukan apa-apa dengan kata tersebut."
-                    )
+                    return await ctx.send("Tidak dapat menemukan apa-apa dengan kata tersebut.")
 
         await message.delete()
         first_run_2 = True
@@ -483,9 +405,7 @@ class nHController(commands.Cog):
                     return False
                 return True
 
-            res2, user2 = await self.bot.wait_for(
-                "reaction_add", check=check_react2
-            )
+            res2, user2 = await self.bot.wait_for("reaction_add", check=check_react2)
             if user2 != ctx.message.author:
                 pass
             elif "✅" in str(res2.emoji):
@@ -528,9 +448,7 @@ class nHController(commands.Cog):
                     if first_run_3:
                         img_link = dataset_img[pospos - 1]
 
-                        embed = await self.format_embed_image(
-                            data2, pospos, dataset_total, img_link
-                        )
+                        embed = await self.format_embed_image(data2, pospos, dataset_total, img_link)
                         first_run_3 = False
                         await msg.edit(embed=embed)
 
@@ -556,9 +474,7 @@ class nHController(commands.Cog):
                             return False
                         return True
 
-                    res3, user3 = await self.bot.wait_for(
-                        "reaction_add", check=check_react3
-                    )
+                    res3, user3 = await self.bot.wait_for("reaction_add", check=check_react3)
                     if user3 != ctx.message.author:
                         pass
                     elif "✅" in str(res3.emoji):
@@ -568,27 +484,19 @@ class nHController(commands.Cog):
                         await msg.edit(embed=embed)
                         break
                     elif "⏪" in str(res3.emoji):
-                        self.logger.debug(
-                            f"{kode_nuklir}: reader: previous image..."
-                        )
+                        self.logger.debug(f"{kode_nuklir}: reader: previous image...")
                         pospos = pospos - 1
                         img_link = dataset_img[pospos - 1]
 
-                        embed = await self.format_embed_image(
-                            data2, pospos, dataset_total, img_link
-                        )
+                        embed = await self.format_embed_image(data2, pospos, dataset_total, img_link)
                         await msg.clear_reactions()
                         await msg.edit(embed=embed)
                     elif "⏩" in str(res3.emoji):
-                        self.logger.debug(
-                            f"{kode_nuklir}: reader: next image..."
-                        )
+                        self.logger.debug(f"{kode_nuklir}: reader: next image...")
                         pospos = pospos + 1
                         img_link = dataset_img[pospos - 1]
 
-                        embed = await self.format_embed_image(
-                            data2, pospos, dataset_total, img_link
-                        )
+                        embed = await self.format_embed_image(data2, pospos, dataset_total, img_link)
                         await msg.clear_reactions()
                         await msg.edit(embed=embed)
 
@@ -598,24 +506,16 @@ class nHController(commands.Cog):
         if not kode_nuklir.isdigit():
             return await ctx.send("Masukan kode nuklir yang benar.")
 
-        message = await ctx.send(
-            "Memulai proses pengumpulan informasi, mohon tunggu."
-        )
+        message = await ctx.send("Memulai proses pengumpulan informasi, mohon tunggu.")
         self.logger.info(f"querying {kode_nuklir}")
         async with aiohttp.ClientSession() as sesi:
-            async with sesi.get(
-                "https://api.ihateani.me/nh/info/{}".format(kode_nuklir)
-            ) as resp:
+            async with sesi.get("https://api.ihateani.me/nh/info/{}".format(kode_nuklir)) as resp:
                 try:
                     data2 = await resp.json()
                 except aiohttp.client_exceptions.ContentTypeError:
-                    return await ctx.send(
-                        "Terjadi kesalahan ketika menghubungi server."
-                    )
+                    return await ctx.send("Terjadi kesalahan ketika menghubungi server.")
                 if resp.status != 200:
-                    return await ctx.send(
-                        "Tidak dapat menemukan apa-apa dengan kata tersebut."
-                    )
+                    return await ctx.send("Tidak dapat menemukan apa-apa dengan kata tersebut.")
 
         await message.delete()
         data2["url"] = "https://nhentai.net/g/" + kode_nuklir
@@ -649,9 +549,7 @@ class nHController(commands.Cog):
                     return False
                 return True
 
-            res, user = await self.bot.wait_for(
-                "reaction_add", check=check_react
-            )
+            res, user = await self.bot.wait_for("reaction_add", check=check_react)
             if user != ctx.message.author:
                 pass
             elif "✅" in str(res.emoji):
@@ -665,24 +563,16 @@ class nHController(commands.Cog):
         if not kode_nuklir.isdigit():
             return await ctx.send("Masukan kode nuklir yang benar.")
 
-        message = await ctx.send(
-            "Memulai proses pengumpulan informasi, mohon tunggu."
-        )
+        message = await ctx.send("Memulai proses pengumpulan informasi, mohon tunggu.")
         self.logger.info(f"querying {kode_nuklir}")
         async with aiohttp.ClientSession() as sesi:
-            async with sesi.get(
-                "https://api.ihateani.me/nh/info/{}".format(kode_nuklir)
-            ) as resp:
+            async with sesi.get("https://api.ihateani.me/nh/info/{}".format(kode_nuklir)) as resp:
                 try:
                     data2 = await resp.json()
                 except aiohttp.client_exceptions.ContentTypeError:
-                    return await ctx.send(
-                        "Terjadi kesalahan ketika menghubungi server."
-                    )
+                    return await ctx.send("Terjadi kesalahan ketika menghubungi server.")
                 if resp.status != 200:
-                    return await ctx.send(
-                        "Tidak dapat menemukan apa-apa dengan kata tersebut."
-                    )
+                    return await ctx.send("Tidak dapat menemukan apa-apa dengan kata tersebut.")
 
         await message.delete()
         data2["url"] = "https://nhentai.net/g/" + kode_nuklir
@@ -696,9 +586,7 @@ class nHController(commands.Cog):
                 img_link = dataset_img[pospos - 1]
 
                 self.logger.info(f"{kode_nuklir}: start reading...")
-                embed = await self.format_embed_image(
-                    data2, pospos, dataset_total, img_link
-                )
+                embed = await self.format_embed_image(data2, pospos, dataset_total, img_link)
                 first_run_3 = False
                 msg = await ctx.send(embed=embed)
 
@@ -724,9 +612,7 @@ class nHController(commands.Cog):
                     return False
                 return True
 
-            res3, user3 = await self.bot.wait_for(
-                "reaction_add", check=check_react3
-            )
+            res3, user3 = await self.bot.wait_for("reaction_add", check=check_react3)
             if user3 != ctx.message.author:
                 pass
             elif "✅" in str(res3.emoji):
@@ -739,9 +625,7 @@ class nHController(commands.Cog):
                 pospos = pospos - 1
                 img_link = dataset_img[pospos - 1]
 
-                embed = await self.format_embed_image(
-                    data2, pospos, dataset_total, img_link
-                )
+                embed = await self.format_embed_image(data2, pospos, dataset_total, img_link)
                 await msg.clear_reactions()
                 await msg.edit(embed=embed)
             elif "⏩" in str(res3.emoji):
@@ -749,9 +633,7 @@ class nHController(commands.Cog):
                 pospos = pospos + 1
                 img_link = dataset_img[pospos - 1]
 
-                embed = await self.format_embed_image(
-                    data2, pospos, dataset_total, img_link
-                )
+                embed = await self.format_embed_image(data2, pospos, dataset_total, img_link)
                 await msg.clear_reactions()
                 await msg.edit(embed=embed)
 
@@ -760,6 +642,5 @@ class nHController(commands.Cog):
         if isinstance(error, commands.CheckFailure):
             self.logger.error("need NSFW channel.")
             await ctx.send(
-                "Untuk menggunakan perintah ini, dibutuhkan channel"
-                " yang sudah diaktifkan mode NSFW-nya."
+                "Untuk menggunakan perintah ini, dibutuhkan channel" " yang sudah diaktifkan mode NSFW-nya."
             )

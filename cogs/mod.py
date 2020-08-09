@@ -38,9 +38,7 @@ class AutoMod(commands.Cog):
     async def __precheck_existing(self):
         metadata = await self.read_local()
         if metadata:
-            self.logger.info(
-                "precheck: there's existing data, replacing self data."
-            )
+            self.logger.info("precheck: there's existing data, replacing self data.")
             self.automod_srv = metadata["servers"]
             self.no_no_word = metadata["words"]
         metadata2 = await self.read_local_mute()
@@ -154,9 +152,7 @@ class AutoMod(commands.Cog):
         srv = ctx.message.guild.id
         if srv in self.automod_srv:
             self.automod_srv.remove(srv)
-            await ctx.send(
-                "👮⚙️ Auto-mod has been disabled on this server. ⚙️👮"
-            )
+            await ctx.send("👮⚙️ Auto-mod has been disabled on this server. ⚙️👮")
         else:
             self.automod_srv.append(srv)
             await ctx.send("👮⚙️ Auto-mod has been enabled on this server. ⚙️👮")
@@ -228,21 +224,14 @@ class AutoMod(commands.Cog):
         else:
             channel = fallback_channel
         if amount < 0 or amount > 21600:
-            return await ctx.send(
-                "Minimum slowmode is 0 seconds"
-                "\nMaximum slowmode is 21600 seconds"
-            )
+            return await ctx.send("Minimum slowmode is 0 seconds" "\nMaximum slowmode is 21600 seconds")
         try:
             await channel.edit(slowmode_delay=amount)
         except discord.Forbidden:
             return await ctx.send(
-                "Please give bot `Manage Message` and `Manage Channels` "
-                "permission for this channel."
+                "Please give bot `Manage Message` and `Manage Channels` " "permission for this channel."
             )
-        await ctx.send(
-            "⚙️ Slowmode Activated!\n"
-            f"User can sent message every: {amount} seconds"
-        )
+        await ctx.send("⚙️ Slowmode Activated!\n" f"User can sent message every: {amount} seconds")
 
     @commands.command()
     async def mute(self, ctx, user):
@@ -255,11 +244,7 @@ class AutoMod(commands.Cog):
         bot_perms = bot_user.guild_permissions
 
         self.logger.info("checking bot perms.")
-        if (
-            not bot_perms.manage_channels
-            or not bot_perms.manage_roles
-            or not bot_perms.manage_permissions
-        ):
+        if not bot_perms.manage_channels or not bot_perms.manage_roles or not bot_perms.manage_permissions:
             if not bot_perms.administrator:
                 return await ctx.send(
                     "Bot is missing one of this perms:\n"
@@ -339,9 +324,7 @@ class AutoMod(commands.Cog):
                 except discord.Forbidden:
                     self.logger.warn(f"{channel.name}: failed to set perms.")
         else:
-            mute_roles = ctx.message.guild.get_role(
-                self.mute_roles_map[server_id]
-            )
+            mute_roles = ctx.message.guild.get_role(self.mute_roles_map[server_id])
 
         self.logger.info("Muting user!")
         await user.add_roles(mute_roles, reason="Set by mute moderation cogs.")
