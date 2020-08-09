@@ -38,9 +38,7 @@ steamdb_converter = CommandArgParse(steamdb_args)
 
 
 async def requests(methods, url, **kwargs):
-    async with aiohttp.ClientSession(
-        headers={"User-Agent": "naoTimes/2.0b"}
-    ) as sesi:
+    async with aiohttp.ClientSession(headers={"User-Agent": "naoTimes/2.0b"}) as sesi:
         methods_set = {
             "GET": sesi.get,
             "POST": sesi.post,
@@ -62,9 +60,7 @@ async def requests(methods, url, **kwargs):
 
 
 async def fetch_steam_status():
-    res, msg = await requests(
-        "get", "https://crowbar.steamstat.us/gravity.json"
-    )
+    res, msg = await requests("get", "https://crowbar.steamstat.us/gravity.json")
     if res is None:
         return res, None
 
@@ -80,9 +76,7 @@ class GamesAPI(commands.Cog):
     async def hltb(self, ctx, *, game_name):
         self.logger.info(f"searching: {game_name}")
         request_param = {"q": game_name}
-        results, msg = await requests(
-            "get", self.BASE_URL + "hltb", params=request_param
-        )
+        results, msg = await requests("get", self.BASE_URL + "hltb", params=request_param)
         if results is None:
             self.logger.warn(f"{game_name}: no results.")
             return await ctx.send(msg)
@@ -90,29 +84,21 @@ class GamesAPI(commands.Cog):
         hltb_results = results["results"]
 
         async def _construct_embed(hltb_data: dict):
-            embed = discord.Embed(
-                title=hltb_data["title"],
-                url=hltb_data["url"],
-                color=hltb_data["color"],
-            )
+            embed = discord.Embed(title=hltb_data["title"], url=hltb_data["url"], color=hltb_data["color"],)
             embed.set_thumbnail(url=hltb_data["image"])
             hltbs = hltb_data["hltb"]
             hltb_text = ""
             if hltbs["main"] is not None:
                 hltb_text += "**Bagian Utama**: {}\n".format(hltbs["main"])
             if hltbs["main_extra"] is not None:
-                hltb_text += "**Bagian Utama + Ekstra**: {}\n".format(
-                    hltbs["main_extra"]
-                )
+                hltb_text += "**Bagian Utama + Ekstra**: {}\n".format(hltbs["main_extra"])
             if hltbs["complete"] is not None:
                 hltb_text += "**Perfeksionis**: {}\n".format(hltbs["complete"])
             hltb_text = hltb_text.rstrip("\n")
             hltb_text += f"\n\n*(Info lebih lanjut? [Klik Di sini]({hltb_data['url']}))*"  # noqa: E501
 
             embed.add_field(
-                name="Seberapa lama untuk diselesaikan?",
-                value=hltb_text,
-                inline=False,
+                name="Seberapa lama untuk diselesaikan?", value=hltb_text, inline=False,
             )
             stats_data = []
             if hltb_data["stats"]:
@@ -120,9 +106,7 @@ class GamesAPI(commands.Cog):
                     txt = f"**{st_name.capitalize()}**: {st_stats}"
                     stats_data.append(txt)
             if stats_data != []:
-                embed.add_field(
-                    name="Statistik", value="\n".join(stats_data), inline=False
-                )
+                embed.add_field(name="Statistik", value="\n".join(stats_data), inline=False)
             embed.set_footer(
                 text="Diprakasi oleh HowLongToBeat.com",
                 icon_url="https://howlongtobeat.com/img/hltb_brand.png",
@@ -130,9 +114,7 @@ class GamesAPI(commands.Cog):
             return embed
 
         self.logger.info(f"{game_name}: formatting results...")
-        hltb_formatted = [
-            await _construct_embed(data) for data in hltb_results
-        ]
+        hltb_formatted = [await _construct_embed(data) for data in hltb_results]
 
         first_run = True
         dataset_total = len(hltb_formatted)
@@ -168,9 +150,7 @@ class GamesAPI(commands.Cog):
                 return True
 
             try:
-                res, user = await self.bot.wait_for(
-                    "reaction_add", timeout=30.0, check=check_react
-                )
+                res, user = await self.bot.wait_for("reaction_add", timeout=30.0, check=check_react)
             except asyncio.TimeoutError:
                 self.logger.warn(f"{game_name}: timeout, clearing...")
                 return await msg.clear_reactions()
@@ -220,9 +200,7 @@ class GamesAPI(commands.Cog):
         self.logger.info(f"searching: {pencarian}")
         request_param = {"q": pencarian}
         sapp_fmt = "https://store.steampowered.com/app/{}/"
-        results, msg = await requests(
-            "get", self.BASE_URL + "steamsearch", params=request_param
-        )
+        results, msg = await requests("get", self.BASE_URL + "steamsearch", params=request_param)
         if results is None:
             self.logger.warn(f"{pencarian}: error: {msg}.")
             return await ctx.send(msg)
@@ -233,9 +211,7 @@ class GamesAPI(commands.Cog):
             return await ctx.send("Tidak ada hasil.")
 
         async def _construct_embed(sdb_data):
-            embed = discord.Embed(
-                title=sdb_data["title"], url=sapp_fmt.format(sdb_data["id"])
-            )
+            embed = discord.Embed(title=sdb_data["title"], url=sapp_fmt.format(sdb_data["id"]))
             description = []
             platform = sdb_data["platforms"]
             platforms = []
@@ -251,15 +227,11 @@ class GamesAPI(commands.Cog):
             else:
                 price_data = "**Harga**: {}".format(sdb_data["price"])
             description.append(price_data)
-            description.append(
-                "🎮 **Support**: {}".format(sdb_data["controller_support"])
-            )
+            description.append("🎮 **Support**: {}".format(sdb_data["controller_support"]))
             embed.set_thumbnail(url=sdb_data["thumbnail"])
             embed.description = "\n".join(description)
             embed.set_footer(
-                text="{} | Diprakasai oleh Steam Store API".format(
-                    sdb_data["id"]
-                ),
+                text="{} | Diprakasai oleh Steam Store API".format(sdb_data["id"]),
                 icon_url="https://steamstore-a.akamaihd.net/public/shared/images/responsive/share_steam_logo.png",  # noqa: E501
             )
             return embed
@@ -301,9 +273,7 @@ class GamesAPI(commands.Cog):
                 return True
 
             try:
-                res, user = await self.bot.wait_for(
-                    "reaction_add", timeout=30.0, check=check_react
-                )
+                res, user = await self.bot.wait_for("reaction_add", timeout=30.0, check=check_react)
             except asyncio.TimeoutError:
                 self.logger.warn(f"{pencarian}: timeout!")
                 return await msg.clear_reactions()
@@ -334,9 +304,7 @@ class GamesAPI(commands.Cog):
                 app_ids = int(app_ids)
             except ValueError:
                 return await ctx.send("Bukan appID yang valid.")
-        sdb_data, msg = await requests(
-            "get", self.BASE_URL + "steam/" + str(app_ids)
-        )
+        sdb_data, msg = await requests("get", self.BASE_URL + "steam/" + str(app_ids))
         if sdb_data is None:
             self.logger.warn(f"{app_ids}: error\n{msg}")
             return await ctx.send(msg)
@@ -345,18 +313,12 @@ class GamesAPI(commands.Cog):
             return await ctx.send("Tidak dapat menemukan appID tersebut.")
 
         genres_list = [genre["description"] for genre in sdb_data["genres"]]
-        category_list = [
-            genre["description"] for genre in sdb_data["category"]
-        ]
+        category_list = [genre["description"] for genre in sdb_data["category"]]
 
         self.logger.info(f"{app_ids}: formatting results...")
-        embed = discord.Embed(
-            title=sdb_data["title"], url=sapp_fmt.format(sdb_data["id"])
-        )
+        embed = discord.Embed(title=sdb_data["title"], url=sapp_fmt.format(sdb_data["id"]))
         description = []
-        description.append(
-            self.clean_description(sdb_data["description"]) + "\n"
-        )
+        description.append(self.clean_description(sdb_data["description"]) + "\n")
         if sdb_data["is_free"]:
             price_data = "**Harga**: Gratis!"
         else:
@@ -364,12 +326,8 @@ class GamesAPI(commands.Cog):
                 price_info = sdb_data["price_data"]
                 price_data = "**Harga**: {}".format(price_info["price"])
                 if price_info["discount"]:
-                    price_data += (
-                        f" ({price_info['discounted']} discount)"  # noqa: E501
-                    )
-                    price_data += "\n**Harga Asli**: {}".format(
-                        price_info["original_price"]
-                    )
+                    price_data += f" ({price_info['discounted']} discount)"  # noqa: E501
+                    price_data += "\n**Harga Asli**: {}".format(price_info["original_price"])
             else:
                 price_data = "**Harga**: TBD"
         description.append(price_data)
@@ -383,29 +341,20 @@ class GamesAPI(commands.Cog):
             platforms.append("Linux")
         description.append(" | ".join(platforms))
         if "total_achivements" in sdb_data:
-            description.append(
-                "**Total Achivements**: {}".format(
-                    sdb_data["total_achivements"]
-                )
-            )
+            description.append("**Total Achivements**: {}".format(sdb_data["total_achivements"]))
         embed.set_thumbnail(url=sdb_data["thumbnail"])
         embed.description = "\n".join(description)
         embed.add_field(
             name="Developer",
             value="**Developer**: {}\n**Publisher**: {}".format(
-                ", ".join(sdb_data["developer"]),
-                ", ".join(sdb_data["publisher"]),
+                ", ".join(sdb_data["developer"]), ", ".join(sdb_data["publisher"]),
             ),
             inline=False,
         )
         if category_list:
-            embed.add_field(
-                name="Kategori", value=", ".join(category_list), inline=False
-            )
+            embed.add_field(name="Kategori", value=", ".join(category_list), inline=False)
         if genres_list:
-            embed.add_field(
-                name="Genre", value=", ".join(genres_list), inline=False
-            )
+            embed.add_field(name="Genre", value=", ".join(genres_list), inline=False)
         rls_ = sdb_data["released"]
         if rls_ is None:
             rls_ = "Segera!"
@@ -421,9 +370,7 @@ class GamesAPI(commands.Cog):
             return await ctx.send("Soon™")
 
     @steam.command(name="dbcari", aliases=["searchdb"])
-    async def steam_steamdbcari(
-        self, ctx, *, args: steamdb_converter = steamdb_converter.show_help()
-    ):
+    async def steam_steamdbcari(self, ctx, *, args: steamdb_converter = steamdb_converter.show_help()):
         thumbbase = "https://cdn.cloudflare.steamstatic.com/steam/apps/{}/header.jpg"  # noqa: E501
         sapp_fmt = "https://store.steampowered.com/app/{}/"
         if isinstance(args, str):
@@ -447,9 +394,7 @@ class GamesAPI(commands.Cog):
             f">> DLC: {args.add_dlc}\n>> App: {args.add_app}"
             f"\n>> Musik: {args.add_music}"
         )
-        results, msg = await requests(
-            "get", self.BASE_URL + "steamdbsearch", params=params
-        )
+        results, msg = await requests("get", self.BASE_URL + "steamdbsearch", params=params)
         if results is None:
             self.logger.warn(f"{args.kueri}: error\n{msg}")
             return await ctx.send(msg)
@@ -459,9 +404,7 @@ class GamesAPI(commands.Cog):
             return await ctx.send("Tidak ada hasil.")
 
         async def _construct_embed(sdb_data):
-            embed = discord.Embed(
-                title=sdb_data["title"], url=sapp_fmt.format(sdb_data["id"])
-            )
+            embed = discord.Embed(title=sdb_data["title"], url=sapp_fmt.format(sdb_data["id"]))
             description = []
             if "price" in sdb_data:
                 description.append("Harga: {}".format(sdb_data["price"]))
@@ -486,18 +429,12 @@ class GamesAPI(commands.Cog):
                 inline=False,
             )
             embed.add_field(
-                name="Kategori",
-                value=", ".join(sdb_data["categories"]),
-                inline=False,
+                name="Kategori", value=", ".join(sdb_data["categories"]), inline=False,
             )
-            embed.add_field(
-                name="Label", value=", ".join(sdb_data["tags"]), inline=False
-            )
+            embed.add_field(name="Label", value=", ".join(sdb_data["tags"]), inline=False)
             embed.set_footer(
                 text="Rilis: {} | {}-{} | Diprakasai oleh SteamDB".format(
-                    sdb_data["released"],
-                    sdb_data["type"].capitalize(),
-                    sdb_data["id"],
+                    sdb_data["released"], sdb_data["type"].capitalize(), sdb_data["id"],
                 ),
                 icon_url="https://steamdb.info/static/logos/512px.png",
             )
@@ -540,9 +477,7 @@ class GamesAPI(commands.Cog):
                 return True
 
             try:
-                res, user = await self.bot.wait_for(
-                    "reaction_add", timeout=30.0, check=check_react
-                )
+                res, user = await self.bot.wait_for("reaction_add", timeout=30.0, check=check_react)
             except asyncio.TimeoutError:
                 self.logger.warn(f"{args.kueri}: timeout, exiting...")
                 return await msg.clear_reactions()

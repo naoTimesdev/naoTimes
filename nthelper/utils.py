@@ -84,11 +84,7 @@ async def read_files(fpath):
 async def write_files(data, fpath):
     if isinstance(data, (dict, list, tuple)):
         data = ujson.dumps(
-            data,
-            ensure_ascii=False,
-            encode_html_chars=False,
-            escape_forward_slashes=False,
-            indent=4,
+            data, ensure_ascii=False, encode_html_chars=False, escape_forward_slashes=False, indent=4,
         )
     elif isinstance(data, int):
         data = str(data)

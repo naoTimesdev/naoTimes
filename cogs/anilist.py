@@ -189,9 +189,7 @@ async def current_season_streams():
         "12": "fall",
     }
 
-    url_fetch = (
-        "https://www.livechart.me/streams?all_regions=true&season={season}-{year}&titles=romaji"
-    )
+    url_fetch = "https://www.livechart.me/streams?all_regions=true&season={season}-{year}&titles=romaji"
     url_to_fetch = url_fetch.format(season=seasonal.get(str(month), "winter"), year=year)
 
     anilog.info("fetching: {} {}".format(seasonal.get(str(month), "winter"), year))
@@ -211,9 +209,7 @@ async def current_season_streams():
 
     sup = BeautifulSoup(data, "html.parser")
 
-    streams_lists = sup.find_all(
-        "div", {"class": "column column-block", "data-controller": "stream-list"},
-    )
+    streams_lists = sup.find_all("div", {"class": "column column-block", "data-controller": "stream-list"},)
 
     full_query_result = []
     for streams in streams_lists:
@@ -472,8 +468,7 @@ async def fetch_anichart():
         async with aiohttp.ClientSession() as sesi:
             try:
                 async with sesi.post(
-                    "https://graphql.anilist.co",
-                    json={"query": anichart_query, "variables": variables},
+                    "https://graphql.anilist.co", json={"query": anichart_query, "variables": variables},
                 ) as r:
                     try:
                         data = await r.json()
@@ -552,13 +547,9 @@ async def fetch_anichart():
             time_secs = 100
             time_until_air = str(start_date["year"])
             if start_date["month"]:
-                time_until_air = "{s}/{e}".format(
-                    s=str(start_date["month"]).zfill(2), e=time_until_air
-                )
+                time_until_air = "{s}/{e}".format(s=str(start_date["month"]).zfill(2), e=time_until_air)
             if start_date["day"]:
-                time_until_air = "{s}/{e}".format(
-                    s=str(start_date["day"]).zfill(2), e=time_until_air
-                )
+                time_until_air = "{s}/{e}".format(s=str(start_date["day"]).zfill(2), e=time_until_air)
 
         discord_fill = {
             "title": title,
@@ -608,9 +599,7 @@ async def fetch_anichart():
                             s=str(start_date["month"]).zfill(2), e=time_until_air,
                         )
                     if start_date["day"]:
-                        time_until_air = "{s}/{e}".format(
-                            s=str(start_date["day"]).zfill(2), e=time_until_air
-                        )
+                        time_until_air = "{s}/{e}".format(s=str(start_date["day"]).zfill(2), e=time_until_air)
 
                 discord_fill = {
                     "title": title,
@@ -1062,9 +1051,7 @@ class Anilist(commands.Cog):
         async def generate_embed(dataset, day_left):
             embed = discord.Embed(color=0x19212D)
             embed.set_author(
-                name="Anichart",
-                url="https://anichart.net/",
-                icon_url="https://anichart.net/favicon.ico",
+                name="Anichart", url="https://anichart.net/", icon_url="https://anichart.net/favicon.ico",
             )
             val = ""
             for data in dataset:
@@ -1103,9 +1090,7 @@ class Anilist(commands.Cog):
                 self.logger.info("showing results...")
                 embed = discord.Embed(title="Listing Jadwal Tayang - " + sisen, color=0x19212D)
                 embed.set_author(
-                    name="Anichart",
-                    url="https://anichart.net/",
-                    icon_url="https://anichart.net/favicon.ico",
+                    name="Anichart", url="https://anichart.net/", icon_url="https://anichart.net/favicon.ico",
                 )
                 val = ""
                 for n, data in enumerate(resdata.keys()):

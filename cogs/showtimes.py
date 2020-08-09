@@ -151,12 +151,7 @@ def parse_ani_time(x: int) -> str:
 
 
 async def fetch_anilist(
-    ani_id,
-    current_ep,
-    total_episode=None,
-    return_time_data=False,
-    jadwal_only=False,
-    return_only_time=False,
+    ani_id, current_ep, total_episode=None, return_time_data=False, jadwal_only=False, return_only_time=False,
 ) -> Union[str, tuple]:
     """
     Fetch Anilist.co API data for helping all showtimes
@@ -169,9 +164,7 @@ async def fetch_anilist(
     api_link = "https://graphql.anilist.co"
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.post(
-                api_link, json={"query": anifetch_query, "variables": variables},
-            ) as r:
+            async with session.post(api_link, json={"query": anifetch_query, "variables": variables},) as r:
                 try:
                     data = await r.json()
                 except IndexError:
@@ -264,9 +257,7 @@ async def fetch_anilist(
         if not ext_dt or len(date_dt) < 2:
             raise ValueError("Not enough data.")
         airing_start = (
-            datetime.strptime("-".join(date_dt), "-".join(ext_dt))
-            .replace(tzinfo=timezone.utc)
-            .timestamp()
+            datetime.strptime("-".join(date_dt), "-".join(ext_dt)).replace(tzinfo=timezone.utc).timestamp()
         )
         return airing_start, title_rom, ani_id
 
@@ -289,9 +280,7 @@ async def fetch_anilist(
                 time_data.append(
                     get_original_time(
                         parse_anilist_start_date(
-                            "{}{}{}".format(
-                                start_date["year"], start_date["month"], start_date["day"],
-                            )
+                            "{}{}{}".format(start_date["year"], start_date["month"], start_date["day"],)
                         ),
                         x + 1,
                     )
@@ -814,9 +803,7 @@ class Showtimes(commands.Cog, ShowtimesBase):
             return await self.send_all_projects(ctx, srv_anilist, server_message)
 
         self.logger.info(f"{server_message}: getting close matches...")
-        matches = await self.find_any_matches(
-            judul, srv_anilist, srv_anilist_alias, srv_data["alias"]
-        )
+        matches = await self.find_any_matches(judul, srv_anilist, srv_anilist_alias, srv_data["alias"])
         if not matches:
             self.logger.warn(f"{server_message}: no matches.")
             return await ctx.send("Tidak dapat menemukan judul tersebut di database")
@@ -901,9 +888,7 @@ class Showtimes(commands.Cog, ShowtimesBase):
                 return await self.send_all_projects(ctx, srv_anilist, server_message)
 
             self.logger.info(f"{server_message}: getting close matches...")
-            matches = await self.find_any_matches(
-                judul, srv_anilist, srv_anilist_alias, srv_data["alias"]
-            )
+            matches = await self.find_any_matches(judul, srv_anilist, srv_anilist_alias, srv_data["alias"])
             if not matches:
                 self.logger.warn(f"{server_message}: no matches.")
                 return await ctx.send("Tidak dapat menemukan judul tersebut di database")
@@ -968,9 +953,7 @@ class Showtimes(commands.Cog, ShowtimesBase):
             judul = " ".join(data[2:])
 
             self.logger.info(f"{server_message}: getting close matches...")
-            matches = await self.find_any_matches(
-                judul, srv_anilist, srv_anilist_alias, srv_data["alias"]
-            )
+            matches = await self.find_any_matches(judul, srv_anilist, srv_anilist_alias, srv_data["alias"])
             if not matches:
                 self.logger.warn(f"{server_message}: no matches.")
                 return await ctx.send("Tidak dapat menemukan judul tersebut di database")
@@ -1013,17 +996,13 @@ class Showtimes(commands.Cog, ShowtimesBase):
                     if srv_o_data is None:
                         continue
                     self.logger.debug(f"{server_message}: {other_srv} processing...")
-                    for x in range(
-                        int(current), int(current) + int(jumlah)
-                    ):  # range(int(c), int(c)+int(x))
+                    for x in range(int(current), int(current) + int(jumlah)):  # range(int(c), int(c)+int(x))
                         srv_o_data["anime"][matches[0]]["status"][str(x)]["status"] = "released"
                     srv_o_data["anime"][matches[0]]["last_update"] = str(int(round(time.time())))
                     await store_queue(SaveQueueData(srv_o_data, other_srv, self.bot.fcwd))
                     osrv_dumped[other_srv] = srv_o_data
             self.logger.info(f"{matches[0]}: setting status...")
-            for x in range(
-                int(current), int(current) + int(jumlah)
-            ):  # range(int(c), int(c)+int(x))
+            for x in range(int(current), int(current) + int(jumlah)):  # range(int(c), int(c)+int(x))
                 srv_data["anime"][matches[0]]["status"][str(x)]["status"] = "released"
 
             srv_data["anime"][matches[0]]["last_update"] = str(int(round(time.time())))
@@ -1042,9 +1021,7 @@ class Showtimes(commands.Cog, ShowtimesBase):
                 return await self.send_all_projects(ctx, srv_anilist, server_message)
 
             self.logger.info(f"{server_message}: getting close matches...")
-            matches = await self.find_any_matches(
-                judul, srv_anilist, srv_anilist_alias, srv_data["alias"]
-            )
+            matches = await self.find_any_matches(judul, srv_anilist, srv_anilist_alias, srv_data["alias"])
             if not matches:
                 self.logger.warn(f"{server_message}: no matches.")
                 return await ctx.send("Tidak dapat menemukan judul tersebut di database")
@@ -1177,9 +1154,7 @@ class Showtimes(commands.Cog, ShowtimesBase):
             return await self.send_all_projects(ctx, srv_anilist, server_message)
 
         self.logger.info(f"{server_message}: getting close matches...")
-        matches = await self.find_any_matches(
-            judul, srv_anilist, srv_anilist_alias, srv_data["alias"]
-        )
+        matches = await self.find_any_matches(judul, srv_anilist, srv_anilist_alias, srv_data["alias"])
         if not matches:
             self.logger.warn(f"{server_message}: no matches.")
             return await ctx.send("Tidak dapat menemukan judul tersebut di database")
@@ -1276,9 +1251,7 @@ class Showtimes(commands.Cog, ShowtimesBase):
                     if not target_chan:
                         self.logger.warn(f"{announce_chan}: unknown channel.")
                         continue
-                    embed = discord.Embed(
-                        title="{} - #{}".format(matches[0], current), color=0x1EB5A6,
-                    )
+                    embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=0x1EB5A6,)
                     embed.add_field(
                         name="Status", value=self.parse_status(current_ep_status), inline=False,
                     )
@@ -1321,9 +1294,7 @@ class Showtimes(commands.Cog, ShowtimesBase):
             return await self.send_all_projects(ctx, srv_anilist, server_message)
 
         self.logger.info(f"{server_message}: getting close matches...")
-        matches = await self.find_any_matches(
-            judul, srv_anilist, srv_anilist_alias, srv_data["alias"]
-        )
+        matches = await self.find_any_matches(judul, srv_anilist, srv_anilist_alias, srv_data["alias"])
         if not matches:
             self.logger.warn(f"{server_message}: no matches.")
             return await ctx.send("Tidak dapat menemukan judul tersebut di database")
@@ -1341,8 +1312,7 @@ class Showtimes(commands.Cog, ShowtimesBase):
         if str(ctx.message.author.id) != program_info["staff_assignment"]["QC"]:
             if str(ctx.message.author.id) not in srv_owner:
                 return await ctx.send(
-                    "**Tidak secepat itu ferguso, yang bisa "
-                    "membatalkan rilisan cuma admin atau QCer**"
+                    "**Tidak secepat itu ferguso, yang bisa " "membatalkan rilisan cuma admin atau QCer**"
                 )
 
         current = self.get_current_ep(status_list)
@@ -1471,9 +1441,7 @@ class Showtimes(commands.Cog, ShowtimesBase):
             return await self.send_all_projects(ctx, srv_anilist, server_message)
 
         self.logger.info(f"{server_message}: getting close matches...")
-        matches = await self.find_any_matches(
-            judul, srv_anilist, srv_anilist_alias, srv_data["alias"]
-        )
+        matches = await self.find_any_matches(judul, srv_anilist, srv_anilist_alias, srv_data["alias"])
         if not matches:
             self.logger.warn(f"{server_message}: no matches.")
             return await ctx.send("Tidak dapat menemukan judul tersebut di database")
@@ -1646,9 +1614,7 @@ class Showtimes(commands.Cog, ShowtimesBase):
                 self.logger.warn(f"{ani}: anime already ended, skipping...")
                 continue
             self.logger.info(f"{server_message}: requesting {ani}")
-            fetch_anime_jobs.append(
-                fetch_anilist(srv_data["anime"][ani]["anilist_id"], 1, jadwal_only=True)
-            )
+            fetch_anime_jobs.append(fetch_anilist(srv_data["anime"][ani]["anilist_id"], 1, jadwal_only=True))
 
         self.logger.info(f"{server_message}: running jobs...")
         for anime_job in asyncio.as_completed(fetch_anime_jobs):
@@ -1710,9 +1676,7 @@ class Showtimes(commands.Cog, ShowtimesBase):
             return await self.send_all_projects(ctx, srv_anilist, server_message)
 
         self.logger.info(f"{server_message}: getting close matches...")
-        matches = await self.find_any_matches(
-            judul, srv_anilist, srv_anilist_alias, srv_data["alias"]
-        )
+        matches = await self.find_any_matches(judul, srv_anilist, srv_anilist_alias, srv_data["alias"])
         if not matches:
             self.logger.warn(f"{server_message}: no matches.")
             return await ctx.send("Tidak dapat menemukan judul tersebut di database")
@@ -1805,9 +1769,7 @@ class Showtimes(commands.Cog, ShowtimesBase):
             return await self.send_all_projects(ctx, srv_anilist, server_message)
 
         self.logger.info(f"{server_message}: getting close matches...")
-        matches = await self.find_any_matches(
-            judul, srv_anilist, srv_anilist_alias, srv_data["alias"]
-        )
+        matches = await self.find_any_matches(judul, srv_anilist, srv_anilist_alias, srv_data["alias"])
         if not matches:
             self.logger.warn(f"{server_message}: no matches.")
             return await ctx.send("Tidak dapat menemukan judul tersebut di database")
@@ -1857,19 +1819,17 @@ class Showtimes(commands.Cog, ShowtimesBase):
                 if osrv_data is None:
                     continue
                 if pos_status[posisi] == "x":
-                    osrv_data["anime"][matches[0]]["status"][episode_n]["staff_status"][
-                        posisi
-                    ] = "y"
+                    osrv_data["anime"][matches[0]]["status"][episode_n]["staff_status"][posisi] = "y"
                 elif pos_status[posisi] == "y":
-                    osrv_data["anime"][matches[0]]["status"][episode_n]["staff_status"][
-                        posisi
-                    ] = "x"
+                    osrv_data["anime"][matches[0]]["status"][episode_n]["staff_status"][posisi] = "x"
                 await store_queue(SaveQueueData(osrv_data, other_srv, self.bot.fcwd))
                 osrv_dumped[other_srv] = osrv_data
 
         if pos_status[posisi] == "x":
             srv_data["anime"][matches[0]]["status"][episode_n]["staff_status"][posisi] = "y"
-            txt_msg = "Berhasil mengubah status **{st}** **{an}** episode **#{ep}** ke **beres**"  # noqa: E501
+            txt_msg = (
+                "Berhasil mengubah status **{st}** **{an}** episode **#{ep}** ke **beres**"  # noqa: E501
+            )
         elif pos_status[posisi] == "y":
             srv_data["anime"][matches[0]]["status"][episode_n]["staff_status"][posisi] = "x"
             txt_msg = "Berhasil mengubah status **{st}** **{an}** episode **#{ep}** ke **belum beres**"  # noqa: E501
@@ -1926,9 +1886,7 @@ class ShowtimesAlias(commands.Cog, ShowtimesBase):
                 self.logger.warn(f"{server_message}: not the server admin")
                 return await ctx.send("Hanya admin yang bisa menambah alias")
 
-            srv_anilist, _ = await self.collect_anime_with_alias(
-                srv_data["anime"], srv_data["alias"]
-            )
+            srv_anilist, _ = await self.collect_anime_with_alias(srv_data["anime"], srv_data["alias"])
 
             if len(srv_anilist) < 1:
                 self.logger.warn(f"{server_message}: no registered data on database.")
@@ -2036,14 +1994,10 @@ class ShowtimesAlias(commands.Cog, ShowtimesBase):
             cancel_toggled = False
             while True:
                 embed = discord.Embed(
-                    title="Alias",
-                    description="Periksa data!\nReact jika ingin diubah.",
-                    color=0xE7E363,
+                    title="Alias", description="Periksa data!\nReact jika ingin diubah.", color=0xE7E363,
                 )
                 embed.add_field(
-                    name="1⃣ Anime/Garapan",
-                    value="{}".format(json_tables["target_anime"]),
-                    inline=False,
+                    name="1⃣ Anime/Garapan", value="{}".format(json_tables["target_anime"]), inline=False,
                 )
                 embed.add_field(
                     name="2⃣ Alias", value="{}".format(json_tables["alias_anime"]), inline=False,
@@ -2249,9 +2203,7 @@ class ShowtimesAlias(commands.Cog, ShowtimesBase):
 
         if not srv_anilist_alias:
             self.logger.info(f"{matches[0]}: no registered alias.")
-            return await ctx.send(
-                "Tidak ada alias yang terdaftar untuk judul **{}**".format(matches[0])
-            )
+            return await ctx.send("Tidak ada alias yang terdaftar untuk judul **{}**".format(matches[0]))
 
         alias_chunked = [srv_anilist_alias[i : i + 5] for i in range(0, len(srv_anilist_alias), 5)]
 
@@ -2358,9 +2310,7 @@ class ShowtimesAlias(commands.Cog, ShowtimesBase):
                 del srv_data["alias"][n_del]
 
                 await store_queue(SaveQueueData(srv_data, server_message, self.bot.fcwd))
-                await ctx.send(
-                    "Alias **{} ({})** telah dihapus dari database".format(n_del, matches[0])
-                )
+                await ctx.send("Alias **{} ({})** telah dihapus dari database".format(n_del, matches[0]))
 
                 self.logger.info(f"{server_message}: updating database...")
                 success, msg = await self.bot.ntdb.update_data_server(server_message, srv_data)
@@ -2397,10 +2347,7 @@ class ShowtimesKolaborasi(commands.Cog, ShowtimesBase):
             await helpcmd.generate_field(
                 "kolaborasi dengan",
                 desc="Memulai proses kolaborasi garapan dengan fansub lain.",
-                opts=[
-                    {"name": "server id kolaborasi", "type": "r"},
-                    {"name": "judul", "type": "r"},
-                ],
+                opts=[{"name": "server id kolaborasi", "type": "r"}, {"name": "judul", "type": "r"},],
                 use_fullquote=True,
             )
             await helpcmd.generate_field(
@@ -2418,10 +2365,7 @@ class ShowtimesKolaborasi(commands.Cog, ShowtimesBase):
             await helpcmd.generate_field(
                 "kolaborasi batalkan",
                 desc="Membatalkan proses kolaborasi.",
-                opts=[
-                    {"name": "server id kolaborasi", "type": "r"},
-                    {"name": "kode unik", "type": "r"},
-                ],
+                opts=[{"name": "server id kolaborasi", "type": "r"}, {"name": "kode unik", "type": "r"},],
                 use_fullquote=True,
             )
             await helpcmd.generate_aliases(["joint", "join", "koleb"])
@@ -2454,9 +2398,7 @@ class ShowtimesKolaborasi(commands.Cog, ShowtimesBase):
             return await self.send_all_projects(ctx, srv_anilist, server_message)
 
         self.logger.info(f"{server_message}: getting close matches...")
-        matches = await self.find_any_matches(
-            judul, srv_anilist, srv_anilist_alias, srv_data["alias"]
-        )
+        matches = await self.find_any_matches(judul, srv_anilist, srv_anilist_alias, srv_data["alias"])
         if not matches:
             self.logger.warn(f"{server_message}: no matches.")
             return await ctx.send("Tidak dapat menemukan judul tersebut di database")
@@ -2484,9 +2426,7 @@ class ShowtimesKolaborasi(commands.Cog, ShowtimesBase):
             except Exception:
                 server_ident = server_id
             embed = discord.Embed(
-                title="Kolaborasi",
-                description="Periksa data!\nReact jika ingin diubah.",
-                color=0xE7E363,
+                title="Kolaborasi", description="Periksa data!\nReact jika ingin diubah.", color=0xE7E363,
             )
             embed.add_field(name="Anime/Garapan", value=matches[0], inline=False)
             embed.add_field(name="Server", value=server_ident, inline=False)
@@ -2564,9 +2504,7 @@ class ShowtimesKolaborasi(commands.Cog, ShowtimesBase):
         await ctx.send(embed=embed)
 
         self.logger.info(f"{server_id}: updating database...")
-        success, msg = await self.bot.ntdb.kolaborasi_dengan(
-            server_id, randomize_confirm, table_data
-        )
+        success, msg = await self.bot.ntdb.kolaborasi_dengan(server_id, randomize_confirm, table_data)
 
         if not success:
             self.logger.error(f"{server_id}: failed to update, reason: {msg}")
@@ -2783,15 +2721,11 @@ class ShowtimesKolaborasi(commands.Cog, ShowtimesBase):
         if str(ctx.message.author.id) not in srv_data["serverowner"]:
             return await ctx.send("Hanya admin yang bisa memputuskan kolaborasi")
 
-        matches = await self.find_any_matches(
-            judul, srv_anilist, srv_anilist_alias, srv_data["alias"]
-        )
+        matches = await self.find_any_matches(judul, srv_anilist, srv_anilist_alias, srv_data["alias"])
         if not judul:
             return await self.send_all_projects(ctx, srv_anilist, server_message)
 
-        matches = await self.find_any_matches(
-            judul, srv_anilist, srv_anilist_alias, srv_data["alias"]
-        )
+        matches = await self.find_any_matches(judul, srv_anilist, srv_anilist_alias, srv_data["alias"])
         if not matches:
             self.logger.warn(f"{server_message}: no matches.")
             return await ctx.send("Tidak dapat menemukan judul tersebut di database")
@@ -2973,9 +2907,7 @@ class ShowtimesAdmin(commands.Cog, ShowtimesBase):
                 headers = {"User-Agent": "naoTimes v2.0"}
                 print("\t[#] Fetching nao_showtimes.json")
                 async with session.get(
-                    url.format(
-                        u=self.bot_config["github_info"]["username"], g=self.bot_config["gist_id"],
-                    ),
+                    url.format(u=self.bot_config["github_info"]["username"], g=self.bot_config["gist_id"],),
                     headers=headers,
                 ) as r:
                     try:
@@ -3087,9 +3019,7 @@ class ShowtimesAdmin(commands.Cog, ShowtimesBase):
         cancel_toggled = False
         while True:
             embed = discord.Embed(
-                title="naoTimes",
-                description="Periksa data!\nReact jika ingin diubah.",
-                color=0xE7E363,
+                title="naoTimes", description="Periksa data!\nReact jika ingin diubah.", color=0xE7E363,
             )
             embed.add_field(
                 name="1⃣ Gists ID", value="{}".format(json_tables["id"]), inline=False,
@@ -3252,8 +3182,7 @@ class ShowtimesAdmin(commands.Cog, ShowtimesBase):
         if ctx.message.attachments == []:
             await ctx.message.delete()
             return await ctx.send(
-                "Please provide a valid .json file by uploading "
-                "and add `!!ntadmin patchdb` command"
+                "Please provide a valid .json file by uploading " "and add `!!ntadmin patchdb` command"
             )
 
         print("[@] Fetching attachments")
@@ -3265,8 +3194,7 @@ class ShowtimesAdmin(commands.Cog, ShowtimesBase):
         if filename[filename.rfind(".") :] != ".json":
             await ctx.message.delete()
             return await ctx.send(
-                "Please provide a valid .json file by uploading "
-                "and add `!!ntadmin patchdb` command"
+                "Please provide a valid .json file by uploading " "and add `!!ntadmin patchdb` command"
             )
 
         # Start downloading .json file
@@ -3400,9 +3328,7 @@ class ShowtimesAdmin(commands.Cog, ShowtimesBase):
         success, msg = await self.bot.ntdb.remove_server(srv_id, adm_id)
         if not success:
             await ctx.send(
-                "Terdapat kegagalan ketika ingin menghapus server\nalasan: {}".format(  # noqa: E501
-                    msg
-                )
+                "Terdapat kegagalan ketika ingin menghapus server\nalasan: {}".format(msg)  # noqa: E501
             )
         await ctx.send("Sukses menghapus server `{s}` dari naoTimes".format(s=srv_id))
 
@@ -3514,9 +3440,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
             return await self.send_all_projects(ctx, srv_anilist, server_message)
 
         self.logger.info(f"{server_message}: getting close matches...")
-        matches = await self.find_any_matches(
-            judul, srv_anilist, srv_anilist_alias, srv_data["alias"]
-        )
+        matches = await self.find_any_matches(judul, srv_anilist, srv_anilist_alias, srv_data["alias"])
         if not matches:
             self.logger.warn(f"{server_message}: no matches.")
             return await ctx.send("Tidak dapat menemukan judul tersebut di database")
@@ -3599,9 +3523,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                     staff_list_name[k] = usr_
 
                 embed = discord.Embed(
-                    title="Mengubah Staff",
-                    description="Anime: {}".format(matches[0]),
-                    color=0xEBA279,
+                    title="Mengubah Staff", description="Anime: {}".format(matches[0]), color=0xEBA279,
                 )
                 embed.add_field(name="1⃣ TLor", value=staff_list_name["TL"], inline=False)
                 embed.add_field(name="2⃣ TLCer", value=staff_list_name["TLC"], inline=False)
@@ -3664,8 +3586,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
             embed = discord.Embed(title="Mengubah Role", color=0xEBA279)
             embed.add_field(
                 name="Role ID",
-                value="Ketik ID Role atau mention rolenya\n"
-                "Atau ketik `auto` untuk membuatnya otomatis",
+                value="Ketik ID Role atau mention rolenya\n" "Atau ketik `auto` untuk membuatnya otomatis",
                 inline=False,
             )
             embed.set_footer(
@@ -3704,9 +3625,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
             self.logger.info(f"{matches[0]}: adding new episode...")
             status_list = program_info["status"]
             max_episode = list(status_list.keys())[-1]
-            _, _, _, time_data, _ = await fetch_anilist(
-                program_info["anilist_id"], 1, max_episode, True
-            )
+            _, _, _, time_data, _ = await fetch_anilist(program_info["anilist_id"], 1, max_episode, True)
 
             embed = discord.Embed(
                 title="Menambah Episode",
@@ -3714,9 +3633,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                 color=0xEBA279,
             )
             embed.add_field(
-                name="Masukan jumlah episode yang diinginkan.",
-                value=tambahepisode_instruct,
-                inline=False,
+                name="Masukan jumlah episode yang diinginkan.", value=tambahepisode_instruct, inline=False,
             )
             embed.set_footer(
                 text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
@@ -3788,9 +3705,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                 color=0xEBA279,
             )
             embed.add_field(
-                name="Masukan range episode yang ingin dihapus.",
-                value=hapusepisode_instruct,
-                inline=False,
+                name="Masukan range episode yang ingin dihapus.", value=hapusepisode_instruct, inline=False,
             )
             embed.set_footer(
                 text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
@@ -3804,9 +3719,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                 jumlah_tambahan = await_msg.content
                 embed = discord.Embed(title="Menghapus Episode", color=0xEBA279)
                 embed.add_field(
-                    name="Apakah Yakin?",
-                    value="Range episode: **{}**".format(jumlah_tambahan),
-                    inline=False,
+                    name="Apakah Yakin?", value="Range episode: **{}**".format(jumlah_tambahan), inline=False,
                 )
                 embed.set_footer(
                     text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
@@ -3847,8 +3760,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                         inline=False,
                     )
                     embed.set_footer(
-                        text="Dibawakan oleh naoTimes™®",
-                        icon_url="https://p.n4o.xyz/i/nao250px.png",
+                        text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
                     )
                     await emb_msg.edit(embed=embed)
                 await emb_msg.clear_reactions()
@@ -3885,9 +3797,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
             self.logger.info(f"{matches[0]}: preparing to nuke project...")
             while True:
                 embed = discord.Embed(
-                    title="Menghapus Utang",
-                    description="Anime: {}".format(matches[0]),
-                    color=0xCC1C20,
+                    title="Menghapus Utang", description="Anime: {}".format(matches[0]), color=0xCC1C20,
                 )
                 embed.add_field(
                     name="Peringatan!",
@@ -4261,14 +4171,13 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                 pass
             elif "✅" in str(res.emoji):
                 try:
-                    air_start, _, _ = await fetch_anilist(
-                        await_msg.content, 1, 1, return_only_time=True
-                    )
+                    air_start, _, _ = await fetch_anilist(await_msg.content, 1, 1, return_only_time=True)
                 except Exception:
-                    self.logger.warn(
-                        f"{server_message}: failed to fetch air start, please try again later."
+                    self.logger.warn(f"{server_message}: failed to fetch air start, please try again later.")
+                    return (
+                        False,
+                        "Gagal mendapatkan start_date, silakan coba lagi ketika sudah ada kepastian kapan animenya mulai.",
                     )
-                    return False, "Gagal mendapatkan start_date, silakan coba lagi ketika sudah ada kepastian kapan animenya mulai."
                 table["ani_title"] = title
                 table["poster_data"] = {
                     "url": poster_image,
@@ -4296,8 +4205,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
             embed.set_thumbnail(url=table["poster_img"])
             embed.add_field(
                 name="Role ID",
-                value="Ketik ID Role atau mention rolenya\n"
-                "Atau ketik `auto` untuk membuatnya otomatis",
+                value="Ketik ID Role atau mention rolenya\n" "Atau ketik `auto` untuk membuatnya otomatis",
                 inline=False,
             )
             embed.set_footer(
@@ -4318,9 +4226,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                     elif await_msg.content.startswith("auto"):
                         self.logger.info(f"{server_message}: auto-generating role...")
                         c_role = await ctx.message.guild.create_role(
-                            name=table["ani_title"],
-                            colour=discord.Colour(0xDF2705),
-                            mentionable=True,
+                            name=table["ani_title"], colour=discord.Colour(0xDF2705), mentionable=True,
                         )
                         table["role_id"] = str(c_role.id)
                         await await_msg.delete()
@@ -4383,9 +4289,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
             async def gear_1(table, emb_msg, gear_data):
                 self.logger.info("pengaturan: setting all time data to be the same.")
                 if not gear_data:
-                    table["old_time_data"] = table[
-                        "time_data"
-                    ]  # Make sure old time data are not deleted
+                    table["old_time_data"] = table["time_data"]  # Make sure old time data are not deleted
                     time_table = table["time_data"]
                     new_time_table = []
                     for _ in time_table:
@@ -4485,9 +4389,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
             qc_ = await fetch_username_from_id(json_tables["qcer_id"])
 
             embed = discord.Embed(
-                title="Menambah Utang",
-                description="Periksa data!\nReact jika ingin diubah.",
-                color=0xE7E363,
+                title="Menambah Utang", description="Periksa data!\nReact jika ingin diubah.", color=0xE7E363,
             )
             embed.set_thumbnail(url=json_tables["poster_img"])
             embed.add_field(
@@ -4500,9 +4402,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
             )
             embed.add_field(
                 name="3⃣ Role",
-                value="{}".format(
-                    self.get_role_name(json_tables["role_id"], ctx.message.guild.roles)
-                ),
+                value="{}".format(self.get_role_name(json_tables["role_id"], ctx.message.guild.roles)),
                 inline=False,
             )
             embed.add_field(name="4⃣ Translator", value=tl_, inline=True)
@@ -4687,6 +4587,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                 json_tables["ani_title"]
             )
         )
+
 
 ShowTimesCommands = [
     Showtimes,

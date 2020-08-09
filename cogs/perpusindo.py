@@ -84,23 +84,15 @@ class BotArgumentParser(argparse.ArgumentParser):
 
 def parse_error(err_str):
     if err_str.startswith("unrecognized arguments"):
-        err_str = err_str.replace(
-            "unrecognized arguments", "Argumen tidak diketahui"
-        )
+        err_str = err_str.replace("unrecognized arguments", "Argumen tidak diketahui")
     elif err_str.startswith("the following arguments are required"):
-        err_str = err_str.replace(
-            "the following arguments are required",
-            "Argumen berikut wajib diberikan",
-        )
+        err_str = err_str.replace("the following arguments are required", "Argumen berikut wajib diberikan",)
     if "usage" in err_str:
         err_str = (
             err_str.replace("usage", "Gunakan")
             .replace("positional arguments", "Argumen yang diwajibkan")
             .replace("optional arguments", "Argumen opsional")
-            .replace(
-                "show this help message and exit",
-                "Perlihatkan bantuan perintah",
-            )
+            .replace("show this help message and exit", "Perlihatkan bantuan perintah",)
         )
     return err_str
 
@@ -108,9 +100,7 @@ def parse_error(err_str):
 def parse_args(str_txt: str, s: str, search_mode=True):
     """parse an argument that passed"""
     parser = BotArgumentParser(
-        prog="!perpus " + s,
-        usage="!perpus " + s,
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        prog="!perpus " + s, usage="!perpus " + s, formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     if search_mode:
         parser.add_argument("input", help="Apa yang mau dicari")
@@ -139,11 +129,7 @@ def parse_args(str_txt: str, s: str, search_mode=True):
         help="Tambah filter untuk berkas biasa/normal",
     )
     parser.add_argument(
-        "--aplus",
-        required=False,
-        default=False,
-        action="store_true",
-        help="Tambah filter untuk berkas A+",
+        "--aplus", required=False, default=False, action="store_true", help="Tambah filter untuk berkas A+",
     )
     parser.add_argument(
         "--remake",
@@ -185,10 +171,7 @@ async def check_user(user):
         "pageLoad": "lobby",
     }
     async with aiohttp.ClientSession(headers=__CHROME_UA__) as sesi:
-        async with sesi.post(
-            "https://www.perpusindo.info/commonajax/bindcontentfiles",
-            data=payload,
-        ) as r:
+        async with sesi.post("https://www.perpusindo.info/commonajax/bindcontentfiles", data=payload,) as r:
             data = await r.text()
             if r.status != 200:
                 return False
@@ -212,9 +195,7 @@ async def fetch_perpus(
         temp_kat = []
         for k in kategori:
             if k not in __KATEGORI__.keys():
-                return "Kategori `{}` tidak diketahui. cek lagi dengan `!perpus kategori`".format(
-                    k
-                )
+                return "Kategori `{}` tidak diketahui. cek lagi dengan `!perpus kategori`".format(k)
             te = __KATEGORI__[k]
             if isinstance(te, list):
                 temp_kat.extend(te)
@@ -259,8 +240,7 @@ async def fetch_perpus(
     async with aiohttp.ClientSession(headers=__CHROME_UA__) as sesi:
         try:
             async with sesi.post(
-                "https://www.perpusindo.info/commonajax/bindcontentfiles",
-                data=payload,
+                "https://www.perpusindo.info/commonajax/bindcontentfiles", data=payload,
             ) as r:
                 data = await r.text()
                 if r.status > 310:
@@ -310,9 +290,7 @@ async def fetch_perpus(
             test_remake = soup.find("div", {"class": "berkas-4"})
             if normal_data:
                 name = normal_data.find("h3").text.rstrip().strip("\n")
-                information = (
-                    normal_data.find("span").text.rstrip().strip("\n")
-                )
+                information = normal_data.find("span").text.rstrip().strip("\n")
             if test_aplus:
                 name = test_aplus.find("h3").text.rstrip().strip("\n")
                 information = test_aplus.find("span").text.rstrip().strip("\n")
@@ -323,9 +301,7 @@ async def fetch_perpus(
                 is_trusted = True
             if test_remake:
                 name = test_remake.find("h3").text.rstrip().strip("\n")
-                information = (
-                    test_remake.find("span").text.rstrip().strip("\n")
-                )
+                information = test_remake.find("span").text.rstrip().strip("\n")
                 is_remake = True
 
             dl_links = dict()
@@ -341,9 +317,7 @@ async def fetch_perpus(
             category = None
             user_pp = None
 
-            table_detail = soup.find(
-                "table", {"class": "table tblShareFileDetail"}
-            ).find_all("td")
+            table_detail = soup.find("table", {"class": "table tblShareFileDetail"}).find_all("td")
             for n, i in enumerate(table_detail):
                 if i.text.rstrip().strip("\n").startswith("Tautan"):
                     url = table_detail[n + 1].text.rstrip().strip("\n")
@@ -362,10 +336,9 @@ async def fetch_perpus(
                             fetched = False
                         if fetched:
                             soup2 = BeautifulSoup(data2, "html.parser")
-                            img_uri = soup2.find(
-                                "img",
-                                {"class": "img-thumbnail img-circle thumb128"},
-                            )["src"]
+                            img_uri = soup2.find("img", {"class": "img-thumbnail img-circle thumb128"},)[
+                                "src"
+                            ]
                             user_profile_pic[submitter] = img_uri
                 if i.text.rstrip().strip("\n").startswith("Berkas Dibuat"):
                     create_date = table_detail[n + 1].text.rstrip().strip("\n")
@@ -424,21 +397,14 @@ class PerpusIndo(commands.Cog):
     async def perpus(self, ctx):
         if not ctx.invoked_subcommand:
             helpmain = discord.Embed(
-                title="Bantuan Perintah (!perpus)",
-                description="versi 2.0.0",
-                color=0x00AAAA,
+                title="Bantuan Perintah (!perpus)", description="versi 2.0.0", color=0x00AAAA,
             )
-            helpmain.set_thumbnail(
-                url="https://image.ibb.co/darSzH/question_mark_1750942_640.png"
-            )
+            helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
             helpmain.set_author(
-                name="naoTimes",
-                icon_url="https://p.n4o.xyz/i/naotimes_ava.png",
+                name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png",
             )
             helpmain.add_field(
-                name="!perpus",
-                value="```Memunculkan bantuan perintah```",
-                inline=False,
+                name="!perpus", value="```Memunculkan bantuan perintah```", inline=False,
             )
             helpmain.add_field(
                 name="!perpus cari <argumen>",
@@ -455,12 +421,8 @@ class PerpusIndo(commands.Cog):
                 value="```Melihat kategori apa aja yang bisa dipakai```",
                 inline=False,
             )
-            helpmain.add_field(
-                name="Aliases", value="!perpus, !perpusindo, !pi", inline=False
-            )
-            helpmain.set_footer(
-                text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0"
-            )
+            helpmain.add_field(name="Aliases", value="!perpus, !perpusindo, !pi", inline=False)
+            helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
             await ctx.send(embed=helpmain)
 
     @perpus.command(aliases=["category"])
@@ -500,13 +462,7 @@ class PerpusIndo(commands.Cog):
         if isinstance(args, str):
             return await ctx.send(parse_error(args))
         piqres = await fetch_perpus(
-            args.input,
-            args.kategori,
-            args.user,
-            args.biasa,
-            args.aplus,
-            args.remake,
-            args.trusted,
+            args.input, args.kategori, args.user, args.biasa, args.aplus, args.remake, args.trusted,
         )
         if isinstance(piqres, str):
             return await ctx.send(piqres)
@@ -520,11 +476,7 @@ class PerpusIndo(commands.Cog):
         while True:
             if first_run:
                 data = resdata[num - 1]
-                kwargs_embed = {
-                    "color": color_bar(
-                        data["is_trusted"], data["is_remake"], data["is_aplus"]
-                    )
-                }
+                kwargs_embed = {"color": color_bar(data["is_trusted"], data["is_remake"], data["is_aplus"])}
                 if data["information"]:
                     kwargs_embed["description"] = data["information"]
                 footer_icon = "https://www.perpusindo.info/assets/PINew/img/logo-single.png"
@@ -532,9 +484,7 @@ class PerpusIndo(commands.Cog):
                     if profile_[data["submitter"]]:
                         footer_icon = profile_[data["submitter"]]
                 embed = discord.Embed(**kwargs_embed)
-                embed.set_author(
-                    name=data["name"], url=data["url"], icon_url=footer_icon
-                )
+                embed.set_author(name=data["name"], url=data["url"], icon_url=footer_icon)
                 embed.set_footer(
                     text="Dibuat: {}".format(data["creation"]),
                     icon_url="https://www.perpusindo.info/assets/PINew/img/logo-single.png",
@@ -545,25 +495,15 @@ class PerpusIndo(commands.Cog):
                 if data["situs"]:
                     dl_link_fmt += " [Website]({}) \||".format(data["situs"])
                 for namae, uri in data["download_links"].items():
-                    dl_link_fmt += " **[{n}]({li})** \||".format(
-                        n=namae, li=uri
-                    )
+                    dl_link_fmt += " **[{n}]({li})** \||".format(n=namae, li=uri)
 
+                embed.add_field(name="Uploader", value=data["submitter"], inline=True)
+                embed.add_field(name="Kategori", value=data["category"], inline=True)
                 embed.add_field(
-                    name="Uploader", value=data["submitter"], inline=True
+                    name="Stats", value="**Views**: {}\n**Likes**: {}".format(vi, li), inline=False,
                 )
                 embed.add_field(
-                    name="Kategori", value=data["category"], inline=True
-                )
-                embed.add_field(
-                    name="Stats",
-                    value="**Views**: {}\n**Likes**: {}".format(vi, li),
-                    inline=False,
-                )
-                embed.add_field(
-                    name="Download",
-                    value=dl_link_fmt.rstrip(" \||").rstrip(" \||"),
-                    inline=False,
+                    name="Download", value=dl_link_fmt.rstrip(" \||").rstrip(" \||"), inline=False,
                 )
 
                 first_run = False
@@ -591,9 +531,7 @@ class PerpusIndo(commands.Cog):
                 return True
 
             try:
-                res, user = await self.bot.wait_for(
-                    "reaction_add", timeout=20.0, check=check_react
-                )
+                res, user = await self.bot.wait_for("reaction_add", timeout=20.0, check=check_react)
             except asyncio.TimeoutError:
                 return await msg.clear_reactions()
             if user != ctx.message.author:
@@ -602,11 +540,7 @@ class PerpusIndo(commands.Cog):
                 num = num - 1
                 data = resdata[num - 1]
 
-                kwargs_embed = {
-                    "color": color_bar(
-                        data["is_trusted"], data["is_remake"], data["is_aplus"]
-                    )
-                }
+                kwargs_embed = {"color": color_bar(data["is_trusted"], data["is_remake"], data["is_aplus"])}
                 if data["information"]:
                     kwargs_embed["description"] = data["information"]
                 footer_icon = "https://www.perpusindo.info/assets/PINew/img/logo-single.png"
@@ -614,9 +548,7 @@ class PerpusIndo(commands.Cog):
                     if profile_[data["submitter"]]:
                         footer_icon = profile_[data["submitter"]]
                 embed = discord.Embed(**kwargs_embed)
-                embed.set_author(
-                    name=data["name"], url=data["url"], icon_url=footer_icon
-                )
+                embed.set_author(name=data["name"], url=data["url"], icon_url=footer_icon)
                 embed.set_footer(
                     text="Dibuat: {}".format(data["creation"]),
                     icon_url="https://www.perpusindo.info/assets/PINew/img/logo-single.png",
@@ -627,25 +559,15 @@ class PerpusIndo(commands.Cog):
                 if data["situs"]:
                     dl_link_fmt += " [Website]({}) \||".format(data["situs"])
                 for namae, uri in data["download_links"].items():
-                    dl_link_fmt += " **[{n}]({li})** \||".format(
-                        n=namae, li=uri
-                    )
+                    dl_link_fmt += " **[{n}]({li})** \||".format(n=namae, li=uri)
 
+                embed.add_field(name="Uploader", value=data["submitter"], inline=True)
+                embed.add_field(name="Kategori", value=data["category"], inline=True)
                 embed.add_field(
-                    name="Uploader", value=data["submitter"], inline=True
+                    name="Stats", value="**Views**: {}\n**Likes**: {}".format(vi, li), inline=False,
                 )
                 embed.add_field(
-                    name="Kategori", value=data["category"], inline=True
-                )
-                embed.add_field(
-                    name="Stats",
-                    value="**Views**: {}\n**Likes**: {}".format(vi, li),
-                    inline=False,
-                )
-                embed.add_field(
-                    name="Download",
-                    value=dl_link_fmt.rstrip(" \||"),
-                    inline=False,
+                    name="Download", value=dl_link_fmt.rstrip(" \||"), inline=False,
                 )
 
                 await msg.clear_reactions()
@@ -654,11 +576,7 @@ class PerpusIndo(commands.Cog):
                 num = num + 1
                 data = resdata[num - 1]
 
-                kwargs_embed = {
-                    "color": color_bar(
-                        data["is_trusted"], data["is_remake"], data["is_aplus"]
-                    )
-                }
+                kwargs_embed = {"color": color_bar(data["is_trusted"], data["is_remake"], data["is_aplus"])}
                 if data["information"]:
                     kwargs_embed["description"] = data["information"]
                 footer_icon = "https://www.perpusindo.info/assets/PINew/img/logo-single.png"
@@ -666,9 +584,7 @@ class PerpusIndo(commands.Cog):
                     if profile_[data["submitter"]]:
                         footer_icon = profile_[data["submitter"]]
                 embed = discord.Embed(**kwargs_embed)
-                embed.set_author(
-                    name=data["name"], url=data["url"], icon_url=footer_icon
-                )
+                embed.set_author(name=data["name"], url=data["url"], icon_url=footer_icon)
                 embed.set_footer(
                     text="Dibuat: {}".format(data["creation"]),
                     icon_url="https://www.perpusindo.info/assets/PINew/img/logo-single.png",
@@ -679,25 +595,15 @@ class PerpusIndo(commands.Cog):
                 if data["situs"]:
                     dl_link_fmt += " [Website]({}) \||".format(data["situs"])
                 for namae, uri in data["download_links"].items():
-                    dl_link_fmt += " **[{n}]({li})** \||".format(
-                        n=namae, li=uri
-                    )
+                    dl_link_fmt += " **[{n}]({li})** \||".format(n=namae, li=uri)
 
+                embed.add_field(name="Uploader", value=data["submitter"], inline=True)
+                embed.add_field(name="Kategori", value=data["category"], inline=True)
                 embed.add_field(
-                    name="Uploader", value=data["submitter"], inline=True
+                    name="Stats", value="**Views**: {}\n**Likes**: {}".format(vi, li), inline=False,
                 )
                 embed.add_field(
-                    name="Kategori", value=data["category"], inline=True
-                )
-                embed.add_field(
-                    name="Stats",
-                    value="**Views**: {}\n**Likes**: {}".format(vi, li),
-                    inline=False,
-                )
-                embed.add_field(
-                    name="Download",
-                    value=dl_link_fmt.rstrip(" \||"),
-                    inline=False,
+                    name="Download", value=dl_link_fmt.rstrip(" \||"), inline=False,
                 )
 
                 await msg.clear_reactions()
@@ -709,13 +615,7 @@ class PerpusIndo(commands.Cog):
         if isinstance(args, str):
             return await ctx.send(parse_error(args))
         piqres = await fetch_perpus(
-            None,
-            args.kategori,
-            args.user,
-            args.biasa,
-            args.aplus,
-            args.remake,
-            args.trusted,
+            None, args.kategori, args.user, args.biasa, args.aplus, args.remake, args.trusted,
         )
         if isinstance(piqres, str):
             return await ctx.send(piqres)
@@ -729,11 +629,7 @@ class PerpusIndo(commands.Cog):
         while True:
             if first_run:
                 data = resdata[num - 1]
-                kwargs_embed = {
-                    "color": color_bar(
-                        data["is_trusted"], data["is_remake"], data["is_aplus"]
-                    )
-                }
+                kwargs_embed = {"color": color_bar(data["is_trusted"], data["is_remake"], data["is_aplus"])}
                 if data["information"]:
                     kwargs_embed["description"] = data["information"]
                 footer_icon = "https://www.perpusindo.info/assets/PINew/img/logo-single.png"
@@ -741,9 +637,7 @@ class PerpusIndo(commands.Cog):
                     if profile_[data["submitter"]]:
                         footer_icon = profile_[data["submitter"]]
                 embed = discord.Embed(**kwargs_embed)
-                embed.set_author(
-                    name=data["name"], url=data["url"], icon_url=footer_icon
-                )
+                embed.set_author(name=data["name"], url=data["url"], icon_url=footer_icon)
                 embed.set_footer(
                     text="Dibuat: {}".format(data["creation"]),
                     icon_url="https://www.perpusindo.info/assets/PINew/img/logo-single.png",
@@ -754,25 +648,15 @@ class PerpusIndo(commands.Cog):
                 if data["situs"]:
                     dl_link_fmt += " [Website]({}) \||".format(data["situs"])
                 for namae, uri in data["download_links"].items():
-                    dl_link_fmt += " **[{n}]({li})** \||".format(
-                        n=namae, li=uri
-                    )
+                    dl_link_fmt += " **[{n}]({li})** \||".format(n=namae, li=uri)
 
+                embed.add_field(name="Uploader", value=data["submitter"], inline=True)
+                embed.add_field(name="Kategori", value=data["category"], inline=True)
                 embed.add_field(
-                    name="Uploader", value=data["submitter"], inline=True
+                    name="Stats", value="**Views**: {}\n**Likes**: {}".format(vi, li), inline=False,
                 )
                 embed.add_field(
-                    name="Kategori", value=data["category"], inline=True
-                )
-                embed.add_field(
-                    name="Stats",
-                    value="**Views**: {}\n**Likes**: {}".format(vi, li),
-                    inline=False,
-                )
-                embed.add_field(
-                    name="Download",
-                    value=dl_link_fmt.rstrip(" \||"),
-                    inline=False,
+                    name="Download", value=dl_link_fmt.rstrip(" \||"), inline=False,
                 )
 
                 first_run = False
@@ -800,9 +684,7 @@ class PerpusIndo(commands.Cog):
                 return True
 
             try:
-                res, user = await self.bot.wait_for(
-                    "reaction_add", timeout=20.0, check=check_react
-                )
+                res, user = await self.bot.wait_for("reaction_add", timeout=20.0, check=check_react)
             except asyncio.TimeoutError:
                 return await msg.clear_reactions()
             if user != ctx.message.author:
@@ -811,11 +693,7 @@ class PerpusIndo(commands.Cog):
                 num = num - 1
                 data = resdata[num - 1]
 
-                kwargs_embed = {
-                    "color": color_bar(
-                        data["is_trusted"], data["is_remake"], data["is_aplus"]
-                    )
-                }
+                kwargs_embed = {"color": color_bar(data["is_trusted"], data["is_remake"], data["is_aplus"])}
                 if data["information"]:
                     kwargs_embed["description"] = data["information"]
                 footer_icon = "https://www.perpusindo.info/assets/PINew/img/logo-single.png"
@@ -823,9 +701,7 @@ class PerpusIndo(commands.Cog):
                     if profile_[data["submitter"]]:
                         footer_icon = profile_[data["submitter"]]
                 embed = discord.Embed(**kwargs_embed)
-                embed.set_author(
-                    name=data["name"], url=data["url"], icon_url=footer_icon
-                )
+                embed.set_author(name=data["name"], url=data["url"], icon_url=footer_icon)
                 embed.set_footer(
                     text="Dibuat: {}".format(data["creation"]),
                     icon_url="https://www.perpusindo.info/assets/PINew/img/logo-single.png",
@@ -836,25 +712,15 @@ class PerpusIndo(commands.Cog):
                 if data["situs"]:
                     dl_link_fmt += " [Website]({}) \||".format(data["situs"])
                 for namae, uri in data["download_links"].items():
-                    dl_link_fmt += " **[{n}]({li})** \||".format(
-                        n=namae, li=uri
-                    )
+                    dl_link_fmt += " **[{n}]({li})** \||".format(n=namae, li=uri)
 
+                embed.add_field(name="Uploader", value=data["submitter"], inline=True)
+                embed.add_field(name="Kategori", value=data["category"], inline=True)
                 embed.add_field(
-                    name="Uploader", value=data["submitter"], inline=True
+                    name="Stats", value="**Views**: {}\n**Likes**: {}".format(vi, li), inline=False,
                 )
                 embed.add_field(
-                    name="Kategori", value=data["category"], inline=True
-                )
-                embed.add_field(
-                    name="Stats",
-                    value="**Views**: {}\n**Likes**: {}".format(vi, li),
-                    inline=False,
-                )
-                embed.add_field(
-                    name="Download",
-                    value=dl_link_fmt.rstrip(" \||"),
-                    inline=False,
+                    name="Download", value=dl_link_fmt.rstrip(" \||"), inline=False,
                 )
 
                 await msg.clear_reactions()
@@ -863,11 +729,7 @@ class PerpusIndo(commands.Cog):
                 num = num + 1
                 data = resdata[num - 1]
 
-                kwargs_embed = {
-                    "color": color_bar(
-                        data["is_trusted"], data["is_remake"], data["is_aplus"]
-                    )
-                }
+                kwargs_embed = {"color": color_bar(data["is_trusted"], data["is_remake"], data["is_aplus"])}
                 if data["information"]:
                     kwargs_embed["description"] = data["information"]
                 footer_icon = "https://www.perpusindo.info/assets/PINew/img/logo-single.png"
@@ -875,9 +737,7 @@ class PerpusIndo(commands.Cog):
                     if profile_[data["submitter"]]:
                         footer_icon = profile_[data["submitter"]]
                 embed = discord.Embed(**kwargs_embed)
-                embed.set_author(
-                    name=data["name"], url=data["url"], icon_url=footer_icon
-                )
+                embed.set_author(name=data["name"], url=data["url"], icon_url=footer_icon)
                 embed.set_footer(
                     text="Dibuat: {}".format(data["creation"]),
                     icon_url="https://www.perpusindo.info/assets/PINew/img/logo-single.png",
@@ -888,25 +748,15 @@ class PerpusIndo(commands.Cog):
                 if data["situs"]:
                     dl_link_fmt += " [Website]({}) \||".format(data["situs"])
                 for namae, uri in data["download_links"].items():
-                    dl_link_fmt += " **[{n}]({li})** \||".format(
-                        n=namae, li=uri
-                    )
+                    dl_link_fmt += " **[{n}]({li})** \||".format(n=namae, li=uri)
 
+                embed.add_field(name="Uploader", value=data["submitter"], inline=True)
+                embed.add_field(name="Kategori", value=data["category"], inline=True)
                 embed.add_field(
-                    name="Uploader", value=data["submitter"], inline=True
+                    name="Stats", value="**Views**: {}\n**Likes**: {}".format(vi, li), inline=False,
                 )
                 embed.add_field(
-                    name="Kategori", value=data["category"], inline=True
-                )
-                embed.add_field(
-                    name="Stats",
-                    value="**Views**: {}\n**Likes**: {}".format(vi, li),
-                    inline=False,
-                )
-                embed.add_field(
-                    name="Download",
-                    value=dl_link_fmt.rstrip(" \||"),
-                    inline=False,
+                    name="Download", value=dl_link_fmt.rstrip(" \||"), inline=False,
                 )
 
                 await msg.clear_reactions()

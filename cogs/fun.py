@@ -151,9 +151,7 @@ class Fun(commands.Cog):
                 user_name = "{0.name}#{0.discriminator}".format(msg.author)
             else:
                 guild_members = msg.guild.members
-                guild_members = [
-                    member for member in guild_members if not member.bot
-                ]
+                guild_members = [member for member in guild_members if not member.bot]
                 usr = random.choice(guild_members)
 
                 ava = usr.avatar_url
@@ -220,9 +218,7 @@ class Fun(commands.Cog):
                 nickname = "Tidak ada"
             else:
                 nickname = user.nick
-            em = discord.Embed(
-                timestamp=ctx.message.created_at, color=0x708DD0
-            )
+            em = discord.Embed(timestamp=ctx.message.created_at, color=0x708DD0)
             em.add_field(name="ID User", value=user.id, inline=True)
             if isinstance(user, discord.Member):
                 em.add_field(name="Panggilan", value=nickname, inline=True)
@@ -230,21 +226,15 @@ class Fun(commands.Cog):
                 em.add_field(name="Tahta Tertinggi", value=role, inline=True)
                 em.add_field(
                     name="Akun dibuat",
-                    value=translate_date(
-                        user.created_at.__format__("%A, %d. %B %Y @ %H:%M:%S")
-                    ),
+                    value=translate_date(user.created_at.__format__("%A, %d. %B %Y @ %H:%M:%S")),
                 )
             if isinstance(user, discord.Member):
                 em.add_field(
                     name="Bergabung di server ini",
-                    value=translate_date(
-                        user.joined_at.__format__("%A, %d. %B %Y @ %H:%M:%S")
-                    ),
+                    value=translate_date(user.joined_at.__format__("%A, %d. %B %Y @ %H:%M:%S")),
                 )
             em.set_thumbnail(url=avi)
-            em.set_author(
-                name=user, icon_url="https://p.n4o.xyz/i/naotimes_ava.png"
-            )
+            em.set_author(name=user, icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
             await ctx.send(embed=em)
         except discord.errors.HTTPException:
             if isinstance(user, discord.Member):
@@ -256,27 +246,16 @@ class Fun(commands.Cog):
                         user.status,
                         user.activity,
                         role,
-                        translate_date(
-                            user.created_at.__format__(
-                                "%A, %d. %B %Y @ %H:%M:%S"
-                            )
-                        ),
-                        translate_date(
-                            user.joined_at.__format__(
-                                "%A, %d. %B %Y @ %H:%M:%S"
-                            )
-                        ),
+                        translate_date(user.created_at.__format__("%A, %d. %B %Y @ %H:%M:%S")),
+                        translate_date(user.joined_at.__format__("%A, %d. %B %Y @ %H:%M:%S")),
                         avi,
                     )
                 )
             else:
-                msg = (
-                    "**User Info:** ```User ID: %s\nAccount Created: %s\nAvatar url:%s```"  # noqa: E501
-                    % (
-                        user.id,
-                        user.created_at.__format__("%A, %d. %B %Y @ %H:%M:%S"),
-                        avi,
-                    )
+                msg = "**User Info:** ```User ID: %s\nAccount Created: %s\nAvatar url:%s```" % (  # noqa: E501
+                    user.id,
+                    user.created_at.__format__("%A, %d. %B %Y @ %H:%M:%S"),
+                    avi,
                 )
             await ctx.send(msg)
 
@@ -301,11 +280,7 @@ class Fun(commands.Cog):
         avi = user.avatar_url
 
         try:
-            em = discord.Embed(
-                title="Ini dia",
-                timestamp=ctx.message.created_at,
-                color=0x708DD0,
-            )
+            em = discord.Embed(title="Ini dia", timestamp=ctx.message.created_at, color=0x708DD0,)
             em.set_image(url=avi)
             await ctx.send(embed=em)
         except discord.errors.HTTPException:
@@ -314,12 +289,7 @@ class Fun(commands.Cog):
     @commands.command(aliases=["be", "bigemoji"])
     async def bigemote(self, ctx, emoji: discord.Emoji):
         uri = emoji.url
-        uri = (
-            uri.replace(
-                "https://discordapp.com", "https://cdn.discordapp.com"
-            ).replace("/api", "")
-            + "?v=1"
-        )
+        uri = uri.replace("https://discordapp.com", "https://cdn.discordapp.com").replace("/api", "") + "?v=1"
         await ctx.send(uri)
 
     @commands.command()
@@ -342,17 +312,9 @@ class Fun(commands.Cog):
         useravatar = str(ctx.message.author.avatar_url)
         textasker = "Ditanyakan oleh: " + userasking
         pertanyaan = pertanyaan[0].upper() + pertanyaan[1:]
-        rel1 = discord.Embed(
-            title="Kerang Ajaib",
-            timestamp=ctx.message.created_at,
-            color=0x8CEEFF,
-        )
-        rel1.set_thumbnail(
-            url="https://www.shodor.org/~alexc/pics/MagicConch.png"
-        )
-        rel1.add_field(
-            name=pertanyaan, value=["Ya", "Tidak"][rand], inline=False
-        )
+        rel1 = discord.Embed(title="Kerang Ajaib", timestamp=ctx.message.created_at, color=0x8CEEFF,)
+        rel1.set_thumbnail(url="https://www.shodor.org/~alexc/pics/MagicConch.png")
+        rel1.add_field(name=pertanyaan, value=["Ya", "Tidak"][rand], inline=False)
         rel1.set_footer(text=textasker, icon_url=useravatar)
         await ctx.send(embed=rel1)
 
@@ -365,23 +327,17 @@ class Fun(commands.Cog):
         inp_d = [d for d in inp_d if d]
 
         if not inp_d:
-            return await ctx.send(
-                "Tidak ada input untuk dipilih\nGunakan `,` sebagai pemisah."
-            )
+            return await ctx.send("Tidak ada input untuk dipilih\nGunakan `,` sebagai pemisah.")
 
         if len(inp_d) < 2:
-            return await ctx.send(
-                "Hanya ada 1 input untuk dipilih\nGunakan `,` sebagai pemisah."
-            )
+            return await ctx.send("Hanya ada 1 input untuk dipilih\nGunakan `,` sebagai pemisah.")
 
         gen_num = np.random.uniform(0.0, float(len(inp_d) - 1))
 
         result = inp_d[round(gen_num)]
 
         await ctx.send(
-            "**{user}** aku memilih: **{res}**".format(
-                user=ctx.message.author.name, res=result.strip()
-            )
+            "**{user}** aku memilih: **{res}**".format(user=ctx.message.author.name, res=result.strip())
         )
 
     @commands.command(aliases=["penis", "dick", "kntl"])
@@ -457,9 +413,7 @@ class Fun(commands.Cog):
         answer_of_life = random.choice(jawaban_[pick_dataset])
 
         avatar = str(ctx.message.author.avatar_url)
-        ditanyakan = "Ditanyakan oleh: {0.name}#{0.discriminator}".format(
-            ctx.message.author
-        )
+        ditanyakan = "Ditanyakan oleh: {0.name}#{0.discriminator}".format(ctx.message.author)
 
         pertanyaan = input_[0].upper() + input_[1:]
 

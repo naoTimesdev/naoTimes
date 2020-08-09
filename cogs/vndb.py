@@ -29,7 +29,7 @@ class VNDBSocket:
     """
 
     def __init__(
-        self, username=None, password=None, loop = None,
+        self, username=None, password=None, loop=None,
     ):
         self.clientvars = {
             "protocol": 1,
@@ -332,9 +332,7 @@ class VNDB(commands.Cog):
 
                 embed.set_thumbnail(url=data["poster_img"])
                 embed.set_author(
-                    name=data["title"],
-                    url=data["link"],
-                    icon_url="https://ihateani.me/o/vndbico.png",
+                    name=data["title"], url=data["link"], icon_url="https://ihateani.me/o/vndbico.png",
                 )
                 embed.set_footer(text=data["footer"])
 
@@ -402,9 +400,7 @@ class VNDB(commands.Cog):
 
                 embed.set_thumbnail(url=data["poster_img"])
                 embed.set_author(
-                    name=data["title"],
-                    url=data["link"],
-                    icon_url="https://ihateani.me/o/vndbico.png",
+                    name=data["title"], url=data["link"], icon_url="https://ihateani.me/o/vndbico.png",
                 )
                 embed.set_footer(text=data["footer"])
 
@@ -440,9 +436,7 @@ class VNDB(commands.Cog):
 
                 embed.set_thumbnail(url=data["poster_img"])
                 embed.set_author(
-                    name=data["title"],
-                    url=data["link"],
-                    icon_url="https://ihateani.me/o/vndbico.png",
+                    name=data["title"], url=data["link"], icon_url="https://ihateani.me/o/vndbico.png",
                 )
                 embed.set_footer(text=data["footer"])
 
@@ -475,9 +469,7 @@ class VNDB(commands.Cog):
 
                 embed.set_thumbnail(url=data["poster_img"])
                 embed.set_author(
-                    name=data["title"],
-                    url=data["link"],
-                    icon_url="https://ihateani.me/o/vndbico.png",
+                    name=data["title"], url=data["link"], icon_url="https://ihateani.me/o/vndbico.png",
                 )
                 embed.set_footer(text=data["footer"])
 
@@ -528,9 +520,7 @@ class VNDB(commands.Cog):
 
                 embed.set_thumbnail(url=data["poster_img"])
                 embed.set_author(
-                    name=data["title"],
-                    url=data["link"],
-                    icon_url="https://ihateani.me/o/vndbico.png",
+                    name=data["title"], url=data["link"], icon_url="https://ihateani.me/o/vndbico.png",
                 )
                 embed.set_footer(text=data["footer"])
 
@@ -598,9 +588,7 @@ class VNDB(commands.Cog):
 
                 embed.set_thumbnail(url=data["poster_img"])
                 embed.set_author(
-                    name=data["title"],
-                    url=data["link"],
-                    icon_url="https://ihateani.me/o/vndbico.png",
+                    name=data["title"], url=data["link"], icon_url="https://ihateani.me/o/vndbico.png",
                 )
                 embed.set_footer(text=data["footer"])
 
@@ -636,9 +624,7 @@ class VNDB(commands.Cog):
 
                 embed.set_thumbnail(url=data["poster_img"])
                 embed.set_author(
-                    name=data["title"],
-                    url=data["link"],
-                    icon_url="https://ihateani.me/o/vndbico.png",
+                    name=data["title"], url=data["link"], icon_url="https://ihateani.me/o/vndbico.png",
                 )
                 embed.set_footer(text=data["footer"])
 
@@ -671,9 +657,7 @@ class VNDB(commands.Cog):
 
                 embed.set_thumbnail(url=data["poster_img"])
                 embed.set_author(
-                    name=data["title"],
-                    url=data["link"],
-                    icon_url="https://ihateani.me/o/vndbico.png",
+                    name=data["title"], url=data["link"], icon_url="https://ihateani.me/o/vndbico.png",
                 )
                 embed.set_footer(text=data["footer"])
 

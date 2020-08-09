@@ -8,9 +8,15 @@ import discord
 from discord.ext import commands, tasks
 
 from nthelper import write_files
-from nthelper.kbbiasync import (KBBI, AutentikasiKBBI, BatasSehari,
-                                GagalAutentikasi, GagalKoneksi,
-                                TerjadiKesalahan, TidakDitemukan)
+from nthelper.kbbiasync import (
+    KBBI,
+    AutentikasiKBBI,
+    BatasSehari,
+    GagalAutentikasi,
+    GagalKoneksi,
+    TerjadiKesalahan,
+    TidakDitemukan,
+)
 
 
 async def secure_results(hasil_entri: list) -> list:
@@ -45,15 +51,13 @@ async def query_requests_kbbi(kata_pencarian: str, cookies: str) -> Tuple[str, U
         await cari_kata.tutup()
         return (
             kata_pencarian,
-            "Bot telah mencapai batas pencarian harian, "
-            "mohon coba esok hari lagi.",
+            "Bot telah mencapai batas pencarian harian, " "mohon coba esok hari lagi.",
         )
     except GagalKoneksi:
         await cari_kata.tutup()
         return (
             kata_pencarian,
-            "Tidak dapat terhubung dengan KBBI, "
-            "kemungkinan KBBI daring sedang down.",
+            "Tidak dapat terhubung dengan KBBI, " "kemungkinan KBBI daring sedang down.",
         )
 
     hasil_kbbi = cari_kata.serialisasi()
@@ -112,9 +116,7 @@ class KBBICog(commands.Cog):
             return
 
         self.logger.info("reauthenticating...")
-        kbbi_auth = AutentikasiKBBI(
-            self.k_auth["email"], self.k_auth["password"]
-        )
+        kbbi_auth = AutentikasiKBBI(self.k_auth["email"], self.k_auth["password"])
         self.logger.info("auth_check: authenticating...")
         try:
             await kbbi_auth.autentikasi()
@@ -143,9 +145,7 @@ class KBBICog(commands.Cog):
         kata_pencarian = kata_pencarian.lower()
 
         self.logger.info(f"searching {kata_pencarian}")
-        pranala, hasil_entri = await query_requests_kbbi(
-            kata_pencarian, self.cookie
-        )
+        pranala, hasil_entri = await query_requests_kbbi(kata_pencarian, self.cookie)
 
         if isinstance(hasil_entri, str):
             self.logger.error(f"{kata_pencarian}: error\n{hasil_entri}")
@@ -153,9 +153,7 @@ class KBBICog(commands.Cog):
 
         if not hasil_entri:
             self.logger.warn(f"{kata_pencarian}: no results...")
-            return await ctx.send(
-                "Tidak dapat menemukan kata tersebut di KBBI"
-            )
+            return await ctx.send("Tidak dapat menemukan kata tersebut di KBBI")
 
         add_numbering = False
         if len(hasil_entri) > 1:
@@ -180,9 +178,7 @@ class KBBICog(commands.Cog):
             }
             entri["nama"] = hasil["nama"]
             if add_numbering:
-                entri["nama"] = "{a} ({b})".format(
-                    a=hasil["nama"], b=hasil["nomor"]
-                )
+                entri["nama"] = "{a} ({b})".format(a=hasil["nama"], b=hasil["nomor"])
             if hasil["kata_dasar"]:
                 entri["kata_dasar"] = "; ".join(hasil["kata_dasar"])
             if hasil["pelafalan"]:
@@ -220,14 +216,8 @@ class KBBICog(commands.Cog):
                 etimologi_txt = ""
                 etimol = hasil["etimologi"]
                 etimologi_txt += "[{}]".format(etimol["bahasa"])
-                etimologi_txt += " ".join(
-                    "({})".format(k) for k in etimol["kelas"]
-                )
-                etimologi_txt += (
-                    " "
-                    + " ".join((etimol["asal_kata"], etimol["pelafalan"]))
-                    + ": "
-                )
+                etimologi_txt += " ".join("({})".format(k) for k in etimol["kelas"])
+                etimologi_txt += " " + " ".join((etimol["asal_kata"], etimol["pelafalan"])) + ": "
                 etimologi_txt += "; ".join(etimol["arti"])
                 entri["etimologi"] = etimologi_txt
             entri["makna"] = "\n".join(makna_tbl)
@@ -253,9 +243,7 @@ class KBBICog(commands.Cog):
         async def _design_embed(entri):
             embed = discord.Embed(color=0x110063)
             embed.set_author(
-                name=entri["nama"],
-                url=pranala,
-                icon_url="https://p.n4o.xyz/i/kbbi192.png",
+                name=entri["nama"], url=pranala, icon_url="https://p.n4o.xyz/i/kbbi192.png",
             )
             deskripsi = ""
             btb_varian = ""
@@ -266,9 +254,7 @@ class KBBICog(commands.Cog):
             if entri["kata_dasar"]:
                 deskripsi += "**Kata Dasar**: {}\n".format(entri["kata_dasar"])
             if entri["takbaku"]:
-                btb_varian += "**Bentuk tak baku**: {}\n".format(
-                    entri["takbaku"]
-                )
+                btb_varian += "**Bentuk tak baku**: {}\n".format(entri["takbaku"])
             if entri["varian"]:
                 btb_varian += "**Varian**: {}\n".format(entri["varian"])
             if deskripsi:
@@ -276,42 +262,26 @@ class KBBICog(commands.Cog):
 
             entri_terkait = ""
             if entri["turunan"]:
-                entri_terkait += "**Kata Turunan**: {}\n".format(
-                    entri["turunan"]
-                )
+                entri_terkait += "**Kata Turunan**: {}\n".format(entri["turunan"])
             if entri["gabungan"]:
-                entri_terkait += "**Kata Gabungan**: {}\n".format(
-                    entri["gabungan"]
-                )
+                entri_terkait += "**Kata Gabungan**: {}\n".format(entri["gabungan"])
             if entri["peribahasa"]:
-                peri_hi = await _highlight_specifics(
-                    entri["peribahasa"], kata_pencarian
-                )
+                peri_hi = await _highlight_specifics(entri["peribahasa"], kata_pencarian)
                 entri_terkait += "**Peribahasa**: {}\n".format(peri_hi)
             if entri["idiom"]:
-                idiom_hi = await _highlight_specifics(
-                    entri["idiom"], kata_pencarian
-                )
+                idiom_hi = await _highlight_specifics(entri["idiom"], kata_pencarian)
                 entri_terkait += "**Idiom**: {}\n".format(idiom_hi)
+            embed.add_field(name="Makna", value=strunct(entri["makna"], 1024), inline=False)
             embed.add_field(
-                name="Makna", value=strunct(entri["makna"], 1024), inline=False
-            )
-            embed.add_field(
-                name="Contoh",
-                value=strunct(entri["contoh"], 1024),
-                inline=False,
+                name="Contoh", value=strunct(entri["contoh"], 1024), inline=False,
             )
             if entri_terkait:
                 embed.add_field(
-                    name="Entri Terkait",
-                    value=strunct(entri_terkait, 1024),
-                    inline=False,
+                    name="Entri Terkait", value=strunct(entri_terkait, 1024), inline=False,
                 )
             if btb_varian:
                 embed.add_field(
-                    name="Bentuk tak baku/Varian",
-                    value=strunct(btb_varian, 1024),
-                    inline=False,
+                    name="Bentuk tak baku/Varian", value=strunct(btb_varian, 1024), inline=False,
                 )
             embed.set_footer(text="Menggunakan KBBI Daring versi 3.0.0")
             return embed
@@ -320,9 +290,7 @@ class KBBICog(commands.Cog):
         dataset_total = len(final_dataset)
         pos = 1
         if not final_dataset:
-            return await ctx.send(
-                "Terjadi kesalahan komunikasi dengan server KBBI."
-            )
+            return await ctx.send("Terjadi kesalahan komunikasi dengan server KBBI.")
         self.logger.info(f"{kata_pencarian}: total {dataset_total} results.")
         while True:
             if first_run:
@@ -355,9 +323,7 @@ class KBBICog(commands.Cog):
                 return True
 
             try:
-                res, user = await self.bot.wait_for(
-                    "reaction_add", timeout=20.0, check=check_react
-                )
+                res, user = await self.bot.wait_for("reaction_add", timeout=20.0, check=check_react)
             except asyncio.TimeoutError:
                 self.logger.warn(f"{kata_pencarian}: timeout, nuking!")
                 return await msg.clear_reactions()

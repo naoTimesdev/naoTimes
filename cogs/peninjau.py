@@ -312,9 +312,7 @@ async def fix_taggings(n):
 
 async def query_take_first_result(query):
     async with aiohttp.ClientSession() as sesi:
-        async with sesi.get(
-            "http://anibin.blogspot.com/search?q={}".format(query)
-        ) as resp:
+        async with sesi.get("http://anibin.blogspot.com/search?q={}".format(query)) as resp:
             response = await resp.text()
 
     # Let's fiddle with the data
@@ -332,20 +330,16 @@ async def query_take_first_result(query):
         first_query = query_list[0]
 
     # Query results
-    query_title = first_query.find(
-        "h3", attrs={"class": "post-title entry-title"}
-    ).text.strip()
+    query_title = first_query.find("h3", attrs={"class": "post-title entry-title"}).text.strip()
 
     if not query_title:
         return None, None, None
 
-    content_data = str(
-        first_query.find("div", attrs={"class": "post-body entry-content"})
-    )
+    content_data = str(first_query.find("div", attrs={"class": "post-body entry-content"}))
     n_from = content_data.find("評価:")
     if n_from == -1:
         return False, False, False
-    nat_res = content_data[n_from + 3:]
+    nat_res = content_data[n_from + 3 :]
     nat_res = nat_res[: nat_res.find("<br/>")]
 
     n_from2 = content_data.find("制作:")
@@ -353,7 +347,7 @@ async def query_take_first_result(query):
     if n_from2 == -1:
         return [query_title, nat_res, "Unknown"]
 
-    studio = content_data[n_from2 + 3:]
+    studio = content_data[n_from2 + 3 :]
     studio = studio[: studio.find("<br/>")]
 
     return [query_title, nat_res, studio]
@@ -432,9 +426,7 @@ class AsyncTranslator:
 
     async def translate(self, string_=None):
         if not self.source_l:
-            self.logger.warn(
-                "source language is not detected yet, detecting..."
-            )
+            self.logger.warn("source language is not detected yet, detecting...")
             await self.detect_language(string_)
         data = {"q": string_}
         url = "{url}&sl={from_lang}&tl={to_lang}&hl={to_lang}&tk={tk}&{q}".format(  # noqa: E501
@@ -461,9 +453,7 @@ class AsyncTranslator:
         return result
 
 
-async def chunked_translate(
-    sub_data, number, target_lang, untranslated, mode=".ass"
-):
+async def chunked_translate(sub_data, number, target_lang, untranslated, mode=".ass"):
     """
     Process A chunked part of translation
     Since async keep crashing :/
@@ -478,14 +468,10 @@ async def chunked_translate(
         org_line = sub_data[n].text
         clean_line = sub_data[n].plaintext
         tags_exists = re.match(regex_tags, org_line)
-        line = re.sub(
-            regex_newline, r"\1\\LNGSX \2", org_line
-        )  # Change newline
+        line = re.sub(regex_newline, r"\1\\LNGSX \2", org_line)  # Change newline
         if tags_exists:
             line = scramble_tags(line)
-            line = re.sub(
-                r"(})", r"} ", line
-            )  # Add some line for proper translating
+            line = re.sub(r"(})", r"} ", line)  # Add some line for proper translating
         try:
             res = await Translator.translate(line)
             if tags_exists:
@@ -496,9 +482,7 @@ async def chunked_translate(
             if mode == ".ass":
                 sub_data[n].text = res + "{" + clean_line + "}"
             else:
-                sub_data[n].text = re.sub(
-                    r"{.*}", r"", res
-                )  # Just to make sure
+                sub_data[n].text = re.sub(r"{.*}", r"", res)  # Just to make sure
         except Exception as err:
             logger.warn(f"translation problem (line {n + 1}): {err}")
             untranslated += 1
@@ -509,9 +493,7 @@ async def chunked_translate(
 async def persamaankata(cari: str, mode: str = "sinonim") -> Union[str, None]:
     """Mencari antonim/sinonim dari persamaankata.com"""
     async with aiohttp.ClientSession() as sesi:
-        async with sesi.get(
-            "http://m.persamaankata.com/search.php?q={}".format(cari)
-        ) as resp:
+        async with sesi.get("http://m.persamaankata.com/search.php?q={}".format(cari)) as resp:
             response = await resp.text()
             if resp.status > 299:
                 return "Tidak dapat terhubung dengan API."
@@ -536,9 +518,7 @@ async def persamaankata(cari: str, mode: str = "sinonim") -> Union[str, None]:
 async def fetch_jisho(query: str) -> Union[None, dict]:
     async with aiohttp.ClientSession() as sesi:
         try:
-            async with sesi.get(
-                "http://jisho.org/api/v1/search/words?keyword={}".format(query)
-            ) as r:
+            async with sesi.get("http://jisho.org/api/v1/search/words?keyword={}".format(query)) as r:
                 try:
                     data = await r.json()
                 except IndexError:
@@ -593,10 +573,7 @@ async def yahoo_finance(from_, to_):
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.97 Safari/537.36",  # noqa: E501
     }
     async with aiohttp.ClientSession(headers=base_head) as sesi:
-        async with sesi.post(
-            "https://adsynth-ofx-quotewidget-prod.herokuapp.com/api/1",
-            json=data_,
-        ) as resp:
+        async with sesi.post("https://adsynth-ofx-quotewidget-prod.herokuapp.com/api/1", json=data_,) as resp:
             try:
                 response = await resp.json()
                 if response["data"]["HistoricalPoints"]:
@@ -605,11 +582,7 @@ async def yahoo_finance(from_, to_):
                     return response["data"]["CurrentInterbankRate"]
             except Exception:
                 response = await resp.text()
-                return (
-                    "Tidak dapat terhubung dengan API.\nAPI Response: ```\n"
-                    + response
-                    + "\n```"
-                )
+                return "Tidak dapat terhubung dengan API.\nAPI Response: ```\n" + response + "\n```"
 
     return latest["InterbankRate"]
 
@@ -687,17 +660,12 @@ class PeninjauWeb(commands.Cog):
         self.logger.info(f"requested !anibin at {server_message}")
 
         self.logger.info("querying...")
-        (
-            search_title,
-            search_native,
-            search_studio,
-        ) = await query_take_first_result(query)
+        (search_title, search_native, search_studio,) = await query_take_first_result(query)
 
         if not search_title:
             self.logger.warn("no results.")
             return await ctx.send(
-                "Tidak dapat menemukan anime yang diberikan"
-                ", mohon gunakan kanji jika belum."
+                "Tidak dapat menemukan anime yang diberikan" ", mohon gunakan kanji jika belum."
             )
 
         self.logger.info("sending results.")
@@ -711,16 +679,13 @@ class PeninjauWeb(commands.Cog):
         server_message = str(ctx.message.guild.id)
         self.logger.info(f"running command at {server_message}")
         if True:
-            return await ctx.send(
-                "Nonaktif karena rate-limit.\n" "P.S. GOOGLE KAPITALIS ANJ-"
-            )
+            return await ctx.send("Nonaktif karena rate-limit.\n" "P.S. GOOGLE KAPITALIS ANJ-")
         channel = ctx.message.channel
         DICT_LANG = dict(LANGUAGES_LIST)
 
         if targetlang not in DICT_LANG:
             return await ctx.send(
-                "Tidak dapat menemukan bahasa tersebut"
-                "\nSilakan cari informasinya di ISO 639-1"
+                "Tidak dapat menemukan bahasa tersebut" "\nSilakan cari informasinya di ISO 639-1"
             )
 
         if not ctx.message.attachments:
@@ -731,7 +696,7 @@ class PeninjauWeb(commands.Cog):
         attachment = ctx.message.attachments[0]
         uri = attachment.url
         filename = attachment.filename
-        ext_ = filename[filename.rfind("."):]
+        ext_ = filename[filename.rfind(".") :]
 
         if ext_ not in [".ass", ".srt"]:
             await ctx.message.delete()
@@ -741,9 +706,7 @@ class PeninjauWeb(commands.Cog):
             )
 
         msg = await ctx.send(
-            "Memproses `{fn}`...\nTarget alihbahasa: **{t}**".format(
-                fn=filename, t=DICT_LANG[targetlang]
-            )
+            "Memproses `{fn}`...\nTarget alihbahasa: **{t}**".format(fn=filename, t=DICT_LANG[targetlang])
         )
         # Start downloading .ass/.srt file
         self.logger.info("downloading file...")
@@ -762,26 +725,20 @@ class PeninjauWeb(commands.Cog):
             )
         )
 
-        chunked_number = [n_sub[i:i + 30] for i in range(0, len(n_sub), 30)]
+        chunked_number = [n_sub[i : i + 30] for i in range(0, len(n_sub), 30)]
 
         untrans = 0
-        self.logger.info(
-            f"processing a total of {len(n_sub)} with {ext_} mode"
-        )
+        self.logger.info(f"processing a total of {len(n_sub)} with {ext_} mode")
         for n_chunk in chunked_number:
             # Trying this to test if discord.py
             # will destroy itself because it waited to long.
-            parsed_sub, untrans = await chunked_translate(
-                parsed_sub, n_chunk, targetlang, untrans, ext_
-            )
+            parsed_sub, untrans = await chunked_translate(parsed_sub, n_chunk, targetlang, untrans, ext_)
 
         self.logger.info("dumping results...")
         output_file = "{fn}.{lt}{e}".format(fn=filename, lt=targetlang, e=ext_)
         parsed_sub.save(output_file)
 
-        subtitle = "Berkas telah dialihbahasakan ke bahasa **{}**".format(
-            DICT_LANG[targetlang]
-        )
+        subtitle = "Berkas telah dialihbahasakan ke bahasa **{}**".format(DICT_LANG[targetlang])
         if untrans != 0:
             subtitle += "\nSebanyak **{}/{}** baris tidak dialihbahasakan".format(  # noqa: E501
                 untrans, len(n_sub)
@@ -798,10 +755,7 @@ class PeninjauWeb(commands.Cog):
             try:
                 total = float(total)
             except ValueError:
-                return await ctx.send(
-                    "Bukan jumlah uang yang valid "
-                    "(jangan memakai koma, pakai titik)"
-                )
+                return await ctx.send("Bukan jumlah uang yang valid " "(jangan memakai koma, pakai titik)")
 
         mode = "normal"
 
@@ -810,10 +764,7 @@ class PeninjauWeb(commands.Cog):
                 "source": "CoinMarketCap dan yahoo!finance",
                 "logo": "https://p.ihateani.me/PoEnh1XN.png",
             },
-            "normal": {
-                "source": "yahoo!finance",
-                "logo": "https://ihateani.me/o/y!.png",
-            },
+            "normal": {"source": "yahoo!finance", "logo": "https://ihateani.me/o/y!.png",},
         }
 
         from_, to_ = from_.upper(), to_.upper()
@@ -880,9 +831,7 @@ class PeninjauWeb(commands.Cog):
             curr_name_to = self.currency_data[to_]["name"]
 
         if mode == "crypto":
-            self.logger.info(
-                f"converting crypto ({curr_name_from} -> {curr_name_to})"
-            )
+            self.logger.info(f"converting crypto ({curr_name_from} -> {curr_name_to})")
             curr_crypto = await coinmarketcap(crypto_from, crypto_to)
 
         if not full_crypto_mode:
@@ -914,8 +863,7 @@ class PeninjauWeb(commands.Cog):
             timestamp=datetime.now(),
         )
         embed.set_footer(
-            text="Diprakasai dengan {}".format(mode_list[mode]["source"]),
-            icon_url=mode_list[mode]["logo"],
+            text="Diprakasai dengan {}".format(mode_list[mode]["source"]), icon_url=mode_list[mode]["logo"],
         )
 
         await ctx.send(embed=embed)
@@ -986,19 +934,11 @@ class PeninjauWeb(commands.Cog):
                 )
 
                 for i in data["words"]:
-                    format_value = "**Cara baca**: {}\n**Hepburn**: {}".format(
-                        i[1], i[2]
-                    )
-                    embed.add_field(
-                        name=i[0], value=format_value, inline=False
-                    )
+                    format_value = "**Cara baca**: {}\n**Hepburn**: {}".format(i[1], i[2])
+                    embed.add_field(name=i[0], value=format_value, inline=False)
 
-                eng_ = [
-                    i[0] if i[0] is not None else "(?)" for i in data["senses"]
-                ]
-                embed.add_field(
-                    name="Definisi", value="\n".join(eng_), inline=True
-                )
+                eng_ = [i[0] if i[0] is not None else "(?)" for i in data["senses"]]
+                embed.add_field(name="Definisi", value="\n".join(eng_), inline=True)
 
                 first_run = False
                 msg = await ctx.send(embed=embed)
@@ -1026,9 +966,7 @@ class PeninjauWeb(commands.Cog):
                 return True
 
             try:
-                res, user = await self.bot.wait_for(
-                    "reaction_add", timeout=20.0, check=check_react
-                )
+                res, user = await self.bot.wait_for("reaction_add", timeout=20.0, check=check_react)
             except asyncio.TimeoutError:
                 return await msg.clear_reactions()
             if user != ctx.message.author:
@@ -1045,19 +983,11 @@ class PeninjauWeb(commands.Cog):
                 )
 
                 for i in data["words"]:
-                    format_value = "**Cara baca**: {}\n**Hepburn**: {}".format(
-                        i[1], i[2]
-                    )
-                    embed.add_field(
-                        name=i[0], value=format_value, inline=False
-                    )
+                    format_value = "**Cara baca**: {}\n**Hepburn**: {}".format(i[1], i[2])
+                    embed.add_field(name=i[0], value=format_value, inline=False)
 
-                eng_ = [
-                    i[0] if i[0] is not None else "(?)" for i in data["senses"]
-                ]
-                embed.add_field(
-                    name="Definisi", value="\n".join(eng_), inline=True
-                )
+                eng_ = [i[0] if i[0] is not None else "(?)" for i in data["senses"]]
+                embed.add_field(name="Definisi", value="\n".join(eng_), inline=True)
                 await msg.edit(embed=embed)
             elif "⏩" in str(res.emoji):
                 await msg.clear_reactions()
@@ -1071,19 +1001,11 @@ class PeninjauWeb(commands.Cog):
                 )
 
                 for i in data["words"]:
-                    format_value = "**Cara baca**: {}\n**Hepburn**: {}".format(
-                        i[1], i[2]
-                    )
-                    embed.add_field(
-                        name=i[0], value=format_value, inline=False
-                    )
+                    format_value = "**Cara baca**: {}\n**Hepburn**: {}".format(i[1], i[2])
+                    embed.add_field(name=i[0], value=format_value, inline=False)
 
-                eng_ = [
-                    i[0] if i[0] is not None else "(?)" for i in data["senses"]
-                ]
-                embed.add_field(
-                    name="Definisi", value="\n".join(eng_), inline=True
-                )
+                eng_ = [i[0] if i[0] is not None else "(?)" for i in data["senses"]]
+                embed.add_field(name="Definisi", value="\n".join(eng_), inline=True)
                 await msg.edit(embed=embed)
 
 
