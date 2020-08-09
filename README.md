@@ -38,10 +38,13 @@ Admin ID:
 - Discord.py
 - BeautifulSoup4
 - aiohttp>=3.4.2
+- aiofiles
+- ujson
+- motor/pymongo
 - kbbi
-- pytz
 - pysubs2
 - textblob
+- markdownify
 
 
 Bagi pengguna Python 3.7, cek isu berikut: [Rapptz/discord.py#1249](https://github.com/Rapptz/discord.py/issues/1249)
