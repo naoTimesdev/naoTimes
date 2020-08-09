@@ -1,35 +1,46 @@
+# flake8: noqa
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
+
 from __future__ import unicode_literals
 
-__version__ = '0.2.1'
+__version__ = "0.2.1"
 
 import re
+
 try:
     from functools import cmp_to_key
 except ImportError:
     # for python < 3.2; nicked from python 3.2
     def cmp_to_key(mycmp):
         """Convert a cmp= function into a key= function"""
+
         class K(object):
-            __slots__ = ['obj']
+            __slots__ = ["obj"]
+
             def __init__(self, obj):
                 self.obj = obj
+
             def __lt__(self, other):
                 return mycmp(self.obj, other.obj) < 0
+
             def __gt__(self, other):
                 return mycmp(self.obj, other.obj) > 0
+
             def __eq__(self, other):
                 return mycmp(self.obj, other.obj) == 0
+
             def __le__(self, other):
                 return mycmp(self.obj, other.obj) <= 0
+
             def __ge__(self, other):
                 return mycmp(self.obj, other.obj) >= 0
+
             def __ne__(self, other):
                 return mycmp(self.obj, other.obj) != 0
-            __hash__ = None
-        return K
 
+            __hash__ = None
+
+        return K
 
 
 #
@@ -39,7 +50,7 @@ except ImportError:
 #     All rights reserved.
 #     This is free software with ABSOLUTELY NO WARRANTY.
 #
-# You can redistribute it and/or modify it under the terms of 
+# You can redistribute it and/or modify it under the terms of
 # the Ruby's licence.
 #
 
@@ -310,10 +321,10 @@ HEPBURNTAB_H = """ぁ      xa      あ      a      ぃ      xi      い      i  
 じぇ      je
 """
 
-def pairs(arr, size=2):
-    for i in range(0, len(arr)-1, size):
-        yield arr[i:i+size]
 
+def pairs(arr, size=2):
+    for i in range(0, len(arr) - 1, size):
+        yield arr[i : i + size]
 
 
 # Use Katakana
@@ -330,22 +341,25 @@ for pair in pairs(re.split("\s+", KUNREITAB + HEPBURNTAB)):
 # wo -> ヲ, but ヲ/ウォ -> wo
 # du -> ヅ, but ヅ/ドゥ -> du
 # we -> ウェ, ウェ -> we
-ROMKAN.update( {"du": "ヅ", "di": "ヂ", "fu": "フ", "ti": "チ",
-                "wi": "ウィ", "we": "ウェ", "wo": "ヲ" } )
+ROMKAN.update(
+    {"du": "ヅ", "di": "ヂ", "fu": "フ", "ti": "チ", "wi": "ウィ", "we": "ウェ", "wo": "ヲ",}
+)
 
 # Sort in long order so that a longer Romaji sequence precedes.
 
 _len_cmp = lambda x: -len(x)
-ROMPAT = re.compile("|".join(sorted(ROMKAN.keys(), key=_len_cmp)) )
+ROMPAT = re.compile("|".join(sorted(ROMKAN.keys(), key=_len_cmp)))
 
-_kanpat_cmp = lambda x, y: (len(y) > len(x)) - (len(y) < len(x)) or (len(KANROM[x]) > len(KANROM[x])) - (len(KANROM[x]) < len(KANROM[x]))
+_kanpat_cmp = lambda x, y: (len(y) > len(x)) - (len(y) < len(x)) or (
+    len(KANROM[x]) > len(KANROM[x])
+) - (len(KANROM[x]) < len(KANROM[x]))
 KANPAT = re.compile("|".join(sorted(KANROM.keys(), key=cmp_to_key(_kanpat_cmp))))
 
-KUNREI = [y for (x, y) in pairs(re.split("\s+", KUNREITAB)) ]
-HEPBURN = [y for (x, y) in pairs(re.split("\s+", HEPBURNTAB) )]
+KUNREI = [y for (x, y) in pairs(re.split("\s+", KUNREITAB))]
+HEPBURN = [y for (x, y) in pairs(re.split("\s+", HEPBURNTAB))]
 
-KUNPAT = re.compile("|".join(sorted(KUNREI, key=_len_cmp)) )
-HEPPAT = re.compile("|".join(sorted(HEPBURN, key=_len_cmp)) )
+KUNPAT = re.compile("|".join(sorted(KUNREI, key=_len_cmp)))
+HEPPAT = re.compile("|".join(sorted(HEPBURN, key=_len_cmp)))
 
 TO_HEPBURN = {}
 TO_KUNREI = {}
@@ -354,8 +368,7 @@ for kun, hep in zip(KUNREI, HEPBURN):
     TO_HEPBURN[kun] = hep
     TO_KUNREI[hep] = kun
 
-TO_HEPBURN.update( {'ti': 'chi' })
-
+TO_HEPBURN.update({"ti": "chi"})
 
 
 # Use Hiragana
@@ -372,22 +385,25 @@ for pair in pairs(re.split("\s+", KUNREITAB_H + HEPBURNTAB_H)):
 # wo -> ヲ, but ヲ/ウォ -> wo
 # du -> ヅ, but ヅ/ドゥ -> du
 # we -> ウェ, ウェ -> we
-ROMKAN_H.update( {"du": "づ", "di": "ぢ", "fu": "ふ", "ti": "ち",
-                "wi": "うぃ", "we": "うぇ", "wo": "を" } )
+ROMKAN_H.update(
+    {"du": "づ", "di": "ぢ", "fu": "ふ", "ti": "ち", "wi": "うぃ", "we": "うぇ", "wo": "を",}
+)
 
 # Sort in long order so that a longer Romaji sequence precedes.
 
 _len_cmp = lambda x: -len(x)
-ROMPAT_H = re.compile("|".join(sorted(ROMKAN_H.keys(), key=_len_cmp)) )
+ROMPAT_H = re.compile("|".join(sorted(ROMKAN_H.keys(), key=_len_cmp)))
 
-_kanpat_cmp = lambda x, y: (len(y) > len(x)) - (len(y) < len(x)) or (len(KANROM_H[x]) > len(KANROM_H[x])) - (len(KANROM_H[x]) < len(KANROM_H[x]))
+_kanpat_cmp = lambda x, y: (len(y) > len(x)) - (len(y) < len(x)) or (
+    len(KANROM_H[x]) > len(KANROM_H[x])
+) - (len(KANROM_H[x]) < len(KANROM_H[x]))
 KANPAT_H = re.compile("|".join(sorted(KANROM_H.keys(), key=cmp_to_key(_kanpat_cmp))))
 
-KUNREI_H = [y for (x, y) in pairs(re.split("\s+", KUNREITAB_H)) ]
-HEPBURN_H = [y for (x, y) in pairs(re.split("\s+", HEPBURNTAB_H) )]
+KUNREI_H = [y for (x, y) in pairs(re.split("\s+", KUNREITAB_H))]
+HEPBURN_H = [y for (x, y) in pairs(re.split("\s+", HEPBURNTAB_H))]
 
-KUNPAT_H = re.compile("|".join(sorted(KUNREI_H, key=_len_cmp)) )
-HEPPAT_H = re.compile("|".join(sorted(HEPBURN_H, key=_len_cmp)) )
+KUNPAT_H = re.compile("|".join(sorted(KUNREI_H, key=_len_cmp)))
+HEPPAT_H = re.compile("|".join(sorted(HEPBURN_H, key=_len_cmp)))
 
 TO_HEPBURN_H = {}
 TO_KUNREI_H = {}
@@ -396,131 +412,140 @@ for kun, hep in zip(KUNREI_H, HEPBURN_H):
     TO_HEPBURN_H[kun] = hep
     TO_KUNREI_H[hep] = kun
 
-TO_HEPBURN_H.update( {'ti': 'chi' })
-
+TO_HEPBURN_H.update({"ti": "chi"})
 
 
 def normalize_double_n(str):
     """
     Normalize double n.
     """
-    
+
     # Replace double n with n'
     str = re.sub("nn", "n'", str)
     # Remove unnecessary apostrophes
     str = re.sub("n'(?=[^aiueoyn]|$)", "n", str)
-    
+
     return str
+
 
 def to_katakana(str):
     """
     Convert a Romaji (ローマ字) to a Katakana (片仮名).
     """
-    
+
     str = str.lower()
     str = normalize_double_n(str)
-    
+
     tmp = ROMPAT.sub(lambda x: ROMKAN[x.group(0)], str)
     return tmp
+
 
 def to_hiragana(str):
     """
     Convert a Romaji (ローマ字) to a Hiragana (平仮名).
     """
-    
+
     str = str.lower()
     str = normalize_double_n(str)
-    
+
     tmp = ROMPAT_H.sub(lambda x: ROMKAN_H[x.group(0)], str)
     return tmp
+
 
 def to_kana(str):
     """
     Convert a Romaji (ローマ字) to a Katakana (片仮名). (same as to_katakana)
     """
-    
+
     return to_katakana(str)
+
 
 def to_hepburn(str):
     """
     Convert a Kana (仮名) or a Kunrei-shiki Romaji (訓令式ローマ字) to a Hepburn Romaji (ヘボン式ローマ字).
     """
-    
+
     tmp = str
     tmp = KANPAT.sub(lambda x: KANROM[x.group(0)], tmp)
     tmp = KANPAT_H.sub(lambda x: KANROM_H[x.group(0)], tmp)
-    
+
     # Remove unnecessary apostrophes
     tmp = re.sub("n'(?=[^aeiuoyn]|$)", "n", tmp)
-    
+
     # If unmodified, it's a Kunrei-shiki Romaji -- convert it to a Hepburn Romaji
     if tmp == str:
         tmp = tmp.lower()
         tmp = normalize_double_n(tmp)
         tmp = KUNPAT.sub(lambda x: TO_HEPBURN[x.group(0)], tmp)
-    
+
     return tmp
+
 
 def to_kunrei(str):
     """
     Convert a Kana (仮名) or a Hepburn Romaji (ヘボン式ローマ字) to a Kunrei-shiki Romaji (訓令式ローマ字).
     """
-    
+
     tmp = str
     tmp = KANPAT.sub(lambda x: KANROM[x.group(0)], tmp)
     tmp = KANPAT_H.sub(lambda x: KANROM_H[x.group(0)], tmp)
-    
+
     # Remove unnecessary apostrophes
     tmp = re.sub("n'(?=[^aeiuoyn]|$)", "n", tmp)
-    
+
     # If unmodified, it's a Hepburn Romaji Romaji -- convert it to a Kunrei-shiki Romaji
     # If modified, it's also a Hepburn Romaji Romaji -- convert it to a Kunrei-shiki Romaji
     tmp = tmp.lower()
     tmp = normalize_double_n(tmp)
     tmp = HEPPAT.sub(lambda x: TO_KUNREI[x.group(0)], tmp)
-    
+
     return tmp
+
 
 def to_roma(str):
     """
     Convert a Kana (仮名) to a Hepburn Romaji (ヘボン式ローマ字).
     """
-    
+
     tmp = str
     tmp = KANPAT.sub(lambda x: KANROM[x.group(0)], tmp)
     tmp = KANPAT_H.sub(lambda x: KANROM_H[x.group(0)], tmp)
-    
+
     # Remove unnecessary apostrophes
     tmp = re.sub("n'(?=[^aeiuoyn]|$)", "n", tmp)
-    
+
     return tmp
+
 
 def is_consonant(str):
     """
     Return a MatchObject if a Latin letter is a consonant in Japanese.
     Return None otherwise.
     """
-    
+
     str = str.lower()
-    
+
     return re.match("[ckgszjtdhfpbmyrwxn]", str)
+
 
 def is_vowel(str):
     """
     Return a MatchObject if a Latin letter is a vowel in Japanese.
     Return None otherwise.
     """
-    
+
     str = str.lower()
-    
+
     return re.match("[aeiou]", str)
+
 
 def expand_consonant(str):
     """
     Expand consonant to its related moras.
     Example: 'sh' => ['sha', 'she', 'shi', 'sho', 'shu']
     """
-    
+
     str = str.lower()
-    
+
     return sorted([mora for mora in ROMKAN.keys() if re.match("^%s.$" % str, mora)])
+

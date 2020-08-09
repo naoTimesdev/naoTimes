@@ -1,122 +1,164 @@
 # -*- coding: utf-8 -*-
-#!/usr/bin/env python3
 
 import asyncio
-import json
 import logging
 import os
+import pathlib
 import sys
 import time
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
+from functools import partial
 from itertools import cycle
 
 import aiohttp
 import discord
-import requests
 from discord.ext import commands
+
+from nthelper.fsdb import FansubDBBridge
+from nthelper.kbbiasync import KBBI, AutentikasiKBBI
 from nthelper.showtimes_helper import naoTimesDB
+from nthelper.utils import (HelpGenerator, __version__, get_server,
+                            get_version, ping_website, prefixes_with_data,
+                            read_files, write_files)
 
-cogs_list = ['cogs.' + x.replace('.py', '') for x in os.listdir('cogs') if x.endswith('.py')]
+# Silent some imported module
+logging.getLogger("websockets").setLevel(logging.WARNING)
 
-async def fetch_newest_db(CONFIG_DATA):
-    """
-    Fetch the newest naoTimes database from github
-    """
-    print('[#] Fetching newest naoTimes database...')
-    if CONFIG_DATA['gist_id'] == "":
-        return print('[#] naoTimes are not setted up, skipping...')
-    url = 'https://gist.githubusercontent.com/{u}/{g}/raw/nao_showtimes.json'
-    url_rss = 'https://gist.githubusercontent.com/{u}/{g}/raw/fansubrss.json'
-    async with aiohttp.ClientSession() as session:
-        while True:
-            try:
-                headers = {'User-Agent': 'naoTimes v2.0'}
-                print('\t[#] Fetching nao_showtimes.json')
-                async with session.get(url.format(u=CONFIG_DATA['github_info']['username'], g=CONFIG_DATA['gist_id']), headers=headers) as r:
-                    try:
-                        r_data = await r.text()
-                        js_data = json.loads(r_data)
-                        with open('nao_showtimes.json', 'w') as f:
-                            json.dump(js_data, f, indent=4)
-                        print('\t[@] Fetched and saved.')
-                    except IndexError:
-                        continue
-                print('\t[#] Fetching fansubrss.json')
-                async with session.get(url_rss.format(u=CONFIG_DATA['github_info']['username'], g=CONFIG_DATA['gist_id']), headers=headers) as r:
-                    try:
-                        r_data = await r.text()
-                        js_data = json.loads(r_data)
-                        with open('fansubrss.json', 'w') as f:
-                            json.dump(js_data, f, indent=4)
-                        print('[@] Fetched and saved.')
-                    except IndexError:
-                        continue
-                break
-            except aiohttp.ClientError:
-                continue
+cogs_list = [
+    "cogs." + x.replace(".py", "")
+    for x in os.listdir("cogs")
+    if x.endswith(".py")
+]
 
-def prefixes(bot, message):
-    """
-    A modified version of discord.ext.command.when_mentioned_or
-    """
-    server = message.guild
+logger = logging.getLogger()
+logging.basicConfig(
+    level=logging.DEBUG,
+    handlers=[logging.FileHandler("naotimes.log", "w", "utf-8")],
+    format="[%(asctime)s] - (%(name)s)[%(levelname)s](%(funcName)s): %(message)s",  # noqa: E501
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
-    with open('prefixes.json') as f:
-        pre = json.load(f)
-    default_ = "!"
+console = logging.StreamHandler(sys.stdout)
+console.setLevel(logging.INFO)
+console_formatter = logging.Formatter(
+    "[%(levelname)s] (%(name)s): %(funcName)s: %(message)s"
+)
+console.setFormatter(console_formatter)
+logger.addHandler(console)
 
-    pre_data = []
-    pre_ = None
-    if server:
-        id_srv = str(server.id)
-        pre_ = pre.get(id_srv)
-    if not pre_:
-        pre_data.append(default_)
-    else:
-        pre_data.append(pre_)
-    if 'ntd.' not in pre_data:
-        pre_data.append('ntd.')
-    pre_data = [bot.user.mention + ' ', '<@!%s> ' % bot.user.id] + pre_data
 
-    return pre_data
+def announce_error(error):
+    tb = traceback.format_exception(type(error), error, error.__traceback__)
+    logger.error("Exception occured\n" + "".join(tb))
 
-async def init_bot():
+
+async def init_bot(loop):
     """
     Start loading all the bot process
     Will start:
-        - Logging
         - discord.py and the modules
-        - Fetching naoTimes main database
         - Setting some global variable
+        - load local json and add it to Bot class.
     """
-    print('[@] Initializing logger...')
-    logger = logging.getLogger('discord')
-    logger.setLevel(logging.ERROR)
-    handler = logging.FileHandler(filename='discord.log', encoding='utf-8', mode='w')
-    handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
-    logger.addHandler(handler)
+    logger.info("Looking up config")
+    config = await read_files("config.json")
+    logger.info("Loading crypto data...")
+    crypto_data = await read_files("cryptodata.json")
+    logger.info("Loading currency data...")
+    currency_data = await read_files("currencydata.json")
+    logger.info("Loading streaming lists data...")
+    streams_list = await read_files("streaming_lists.json")
+    logger.info("Loading prefixes data...")
+    srv_prefixes = await read_files("server_prefixes.json")
+    logger.info("Opening KBBI auth files...")
+    kbbi_auth = await read_files("kbbi_auth.json")
+    kbbi_cookie = kbbi_auth["cookie"]
+    kbbi_expires = kbbi_auth["expires"]
+    kbbi_conf = config["kbbi"]
 
-    print('[@] Looking up config')
-    with open('config.json', 'r') as fp:
-        config = json.load(fp)
+    logger.info("Testing KBBI cookies...")
+    current_dt = datetime.now(tz=timezone.utc).timestamp()
+    kbbi_cls = KBBI("periksa", kbbi_cookie)
+    is_kbbi_auth = await kbbi_cls.cek_auth()
+    await kbbi_cls.tutup()
+    if not is_kbbi_auth or current_dt >= kbbi_expires:
+        logger.warn("kbbi cookie expired, generating new one...")
+        kbbi_auth = AutentikasiKBBI(kbbi_conf["email"], kbbi_conf["password"])
+        logger.warn("kbbi_auth: authenticating...")
+        await kbbi_auth.autentikasi()
+        cookie_baru = await kbbi_auth.ambil_cookies()
+        logger.warn("saving new KBBI cookie...")
+        new_data = {
+            "cookie": cookie_baru,
+            "expires": round(current_dt + (15 * 24 * 60 * 60))
+        }
+        await write_files(new_data, "kbbi_auth.json")
+        kbbi_cookie = cookie_baru
+        kbbi_expires = round(current_dt + (15 * 24 * 60 * 60))
+
+    cwd = str(pathlib.Path(__file__).parent.absolute())
+    temp_folder = os.path.join(cwd, "automod")
+    if not os.path.isdir(temp_folder):
+        os.makedirs(temp_folder)
+
+    default_prefix = config["default_prefix"]
 
     try:
-        print('[@] Initiating discord.py')
-        description = '''Penyuruh Fansub biar kerja cepat\nversi 2.0.0 || Dibuat oleh: N4O#8868'''
-        bot = commands.Bot(command_prefix=prefixes, description=description)
-        bot.remove_command('help')
-        #await fetch_newest_db(config)
-        print('[@!!] Success Loading Discord.py')
+        logger.info("Initiating discord.py")
+        description = "Penyuruh Fansub biar kerja cepat\n"
+        description += f"versi {__version__} || Dibuat oleh: N4O#8868"
+        prefixes = partial(
+            prefixes_with_data,
+            prefixes_data=srv_prefixes,
+            default=default_prefix,
+        )
+        bot = commands.Bot(
+            command_prefix=prefixes, description=description, loop=loop
+        )
+        bot.remove_command("help")
+        if not hasattr(bot, "logger"):
+            bot.logger = logger
+        if not hasattr(bot, "automod_folder"):
+            bot.automod_folder = temp_folder
+        if not hasattr(bot, "err_echo"):
+            bot.err_echo = announce_error
+        if not hasattr(bot, "semver"):
+            bot.semver = __version__
+        if not hasattr(bot, "jsdb_streams"):
+            bot.jsdb_streams = streams_list
+            bot.jsdb_currency = currency_data
+            bot.jsdb_crypto = crypto_data
+        if not hasattr(bot, "fcwd"):
+            bot.fcwd = cwd
+        if not hasattr(bot, "kbbi_cookie"):
+            bot.kbbi_cookie = kbbi_cookie
+            bot.kbbi_expires = kbbi_expires
+            bot.kbbi_auth = {
+                "email": kbbi_conf["email"],
+                "password": kbbi_conf["password"]
+            }
+        if not hasattr(bot,"fsdb"):
+            logger.info("Binding FansubDB...")
+            bot.fsdb = FansubDBBridge()
+        logger.info("Success Loading Discord.py")
     except Exception as exc:
-        print('[#!!] Failed to load Discord.py ###')
-        print('\t' + str(exc))
-    return bot, config, logger
+        logger.error("Failed to load Discord.py")
+        announce_error(exc)
+    return bot, config
+
 
 # Initiate everything
-print('[@] Initiating bot...')
+logger.info(f"Initiating bot v{__version__}...")
+logger.info("Setting up loop")
+# if sys.platform == "win32":
+#     logger.info("Detected win32, using ProactorEventLoop")
+#     event_loop = asyncio.ProactorEventLoop()
+#     asyncio.set_event_loop(event_loop)
 async_loop = asyncio.get_event_loop()
-bot, bot_config, logger = async_loop.run_until_complete(init_bot())
+res = async_loop.run_until_complete(init_bot(async_loop))
+bot: commands.Bot = res[0]
+bot_config: dict = res[1]
 presence_status = [
     "Mengamati rilisan fansub | !help",
     "Membantu Fansub | !help",
@@ -138,8 +180,7 @@ presence_status = [
     "Mencatat Delayan Fansub | !help",
     "Mengintai waifu orang | !help",
     "Waifu kalian sampah | !help",
-    "Membeli waifu di toko terdekat | !help"
-    "Reinkarnasi Fansub mati | !help",
+    "Membeli waifu di toko terdekat | !help" "Reinkarnasi Fansub mati | !help",
     "Menuju Isekai | !help",
     "Leecher harap menagih dalam 120x24 jam | !help",
     "Membuka donasi | !help",
@@ -155,57 +196,94 @@ presence_status = [
     "Kapan nikah? Ngesub mulu. | !help",
     "Kapan pensi? | !help",
     "Gagal pensi | !help",
-    "Judul Anime - Episode (v9999) | !help"
+    "Judul Anime - Episode (v9999) | !help",
 ]
+
 
 @bot.event
 async def on_ready():
     """Bot loaded here"""
-    print('[$] Connected to discord.')
+    logger.info("[$] Connected to discord.")
     activity = discord.Game(name=presence_status[0], type=3)
     await bot.change_presence(activity=activity)
-    print('---------------------------------------------------------------')
-    print('Bot Ready!')
-    print('Using Python {}'.format(sys.version))
-    print('And Using Discord.py v{}'.format(discord.__version__))
-    print('---------------------------------------------------------------')
-    print('Logged in as:')
-    print('Bot name: {}'.format(bot.user.name))
-    print('With Client ID: {}'.format(bot.user.id))
-    print('---------------------------------------------------------------')
+    logger.info(
+        "---------------------------------------------------------------"
+    )
     if not hasattr(bot, "showtimes_resync"):
         bot.showtimes_resync = []
+    if not hasattr(bot, "botconf"):
+        bot.botconf = bot_config
+    if not hasattr(bot, "prefix"):
+        prefix = bot.command_prefix
+        if callable(prefix):
+            prefix = prefix(bot, "[]")
+        if isinstance(prefix, (list, tuple)):
+            bot.prefix = prefix[0]
+        else:
+            bot.prefix = prefix
     if not hasattr(bot, "ntdb"):
-        mongos = bot_config['mongodb']
-        bot.ntdb = naoTimesDB(mongos['ip_hostname'], mongos['port'], mongos['dbname'])
-        print('Connected to naoTimes Database:')
-        print('IP:Port: {}:{}'.format(mongos['ip_hostname'], mongos['port']))
-        print('Database: {}'.format(mongos['dbname']))
-        print('---------------------------------------------------------------')
-        print('Fetching nao_showtimes from server db to local json')
-        js_data = await bot.ntdb.fetch_all_as_json()
-        with open('nao_showtimes.json', 'w') as f:
-            json.dump(js_data, f, indent=4)
-        print('File fetched and saved to local json')
-        print('---------------------------------------------------------------')
-    if not hasattr(bot, 'uptime'):
+        mongos = bot_config["mongodb"]
+        bot.ntdb = naoTimesDB(
+            mongos["ip_hostname"], mongos["port"], mongos["dbname"]
+        )
+        logger.info("Connected to naoTimes Database:")
+        logger.info(
+            "IP:Port: {}:{}".format(mongos["ip_hostname"], mongos["port"])
+        )
+        logger.info("Database: {}".format(mongos["dbname"]))
+        logger.info(
+            "---------------------------------------------------------------"
+        )
+        if not mongos["skip_fetch"]:
+            logger.info("Fetching nao_showtimes from server db to local json")
+            js_data = await bot.ntdb.fetch_all_as_json()
+            showtimes_folder = os.path.join(bot.fcwd, "showtimes_folder")
+            if not os.path.isdir(showtimes_folder):
+                os.makedirs(showtimes_folder)
+            for fn, fdata in js_data.items():
+                svfn = os.path.join(showtimes_folder, f"{fn}.showtimes")
+                logger.info(f"showtimes: saving to file {fn}")
+                if fn == "supermod":
+                    svfn = os.path.join(showtimes_folder, f"super_admin.json")
+                await write_files(fdata, svfn)
+            logger.info("File fetched and saved to local json")
+            logger.info(
+                "---------------------------------------------------------------"  # noqa: E501
+            )
+    if not hasattr(bot, "uptime"):
         bot.owner = (await bot.application_info()).owner
         bot.uptime = time.time()
-        print('[#][@][!] Start loading cogs...')
-        for load in cogs_list:
-            try:
-                print('[#] Loading ' + load + ' module.')
-                bot.load_extension(load)
-                print('[#] Loaded ' + load + ' module.')
-            except Exception as e:
-                print('[!!] Failed Loading ' + load + ' module.')
-                print('\t' + str(e))
-        print('[#][@][!] All cogs/extensions loaded.')
-        print('---------------------------------------------------------------')
+    logger.info("[#][@][!] Start loading cogs...")
+    for load in cogs_list:
+        try:
+            logger.info("[#] Loading " + load + " module.")
+            bot.load_extension(load)
+            logger.info("[#] Loaded " + load + " module.")
+        except Exception as e:
+            logger.info("[!!] Failed Loading " + load + " module.")
+            announce_error(e)
+    logger.info("[#][@][!] All cogs/extensions loaded.")
+    logger.info(
+        "---------------------------------------------------------------"
+    )
+    logger.info("Bot Ready!")
+    logger.info("Using Python {}".format(sys.version))
+    logger.info("And Using Discord.py v{}".format(discord.__version__))
+    logger.info(
+        "---------------------------------------------------------------"
+    )
+    logger.info("Logged in as:")
+    logger.info("Bot name: {}".format(bot.user.name))
+    logger.info("With Client ID: {}".format(bot.user.id))
+    logger.info("With naoTimes version: {}".format(__version__))
+    logger.info(
+        "---------------------------------------------------------------"
+    )
+
 
 async def change_bot_presence():
     await bot.wait_until_ready()
-    print('[@] Loaded auto-presence.')
+    logger.info("[@] Loaded auto-presence.")
     presences = cycle(presence_status)
 
     while not bot.is_closed:
@@ -214,12 +292,17 @@ async def change_bot_presence():
         activity = discord.Game(name=current_status, type=3)
         await bot.change_presence(activity=activity)
 
+
 async def send_hastebin(info):
-    print(info)
     async with aiohttp.ClientSession() as session:
-        async with session.post("https://hastebin.com/documents", data = str(info)) as resp:
-            if resp.status is 200:
-                return "Error Occured\nSince the log is way too long here's a hastebin logs.\nhttps://hastebin.com/{}.py".format((await resp.json())["key"])
+        async with session.post(
+            "https://hastebin.com/documents", data=str(info)
+        ) as resp:
+            if resp.status == 200:
+                return "Error Occured\nSince the log is way too long here's a hastebin logs.\nhttps://hastebin.com/{}.py".format(  # noqa: E501
+                    (await resp.json())["key"]
+                )
+
 
 @bot.event
 async def on_command_error(ctx, error):
@@ -227,114 +310,115 @@ async def on_command_error(ctx, error):
     ctx   : Context
     error : Exception"""
 
-    if hasattr(ctx.command, 'on_error'):
+    if hasattr(ctx.command, "on_error"):
         return
 
-    ignored = (commands.CommandNotFound, commands.UserInputError, commands.NotOwner)
-    error = getattr(error, 'original', error)
+    ignored = (
+        commands.CommandNotFound,
+        commands.UserInputError,
+        commands.NotOwner,
+        commands.ArgumentParsingError,
+        aiohttp.ClientError,
+        discord.errors.HTTPException,
+    )
+    error = getattr(error, "original", error)
 
     if isinstance(error, ignored):
+        announce_error(error)
         return
     elif isinstance(error, commands.DisabledCommand):
-        return await ctx.send(f'`{ctx.command}`` dinon-aktifkan.')
+        return await ctx.send(f"`{ctx.command}`` dinon-aktifkan.")
     elif isinstance(error, commands.NoPrivateMessage):
         try:
-            return await ctx.author.send(f'`{ctx.command}`` tidak bisa dipakai di Private Messages.')
-        except:
-            pass
+            return await ctx.author.send(
+                f"`{ctx.command}`` tidak bisa dipakai di Private Messages."
+            )
+        except Exception:
+            return
 
     current_time = time.time()
 
-    print('Ignoring exception in command {}:'.format(ctx.command), file=sys.stderr)
-    traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
+    logger.error(
+        "Ignoring exception in command {}:".format(ctx.command)
+    )
+    traceback.print_exception(
+        type(error), error, error.__traceback__, file=sys.stderr
+    )
     tb = traceback.format_exception(type(error), error, error.__traceback__)
-    error_fmt = "```An Error has occured...\nIn Command: {0.command}\nCogs: {0.command.cog_name}\nAuthor: {0.message.author} ({0.message.author.id})\n" \
-                    "Server: {0.message.guild.id}\nMessage: {0.message.clean_content}".format(ctx)
-    msg ="```py\n{}```\n{}\n```py\n{}\n```".format(datetime.utcnow().strftime("%b/%d/%Y %H:%M:%S UTC") + "\n"+ "ERROR!",error_fmt,"".join(tb).replace("`",""))
+    error_fmt = (
+        "```An Error has occured...\nIn Command: {0.command}\nCogs: {0.command.cog_name}\nAuthor: {0.message.author} ({0.message.author.id})\n"  # noqa: E501
+        "Server: {0.message.guild.id}\nMessage: {0.message.clean_content}".format(  # noqa: E501
+            ctx
+        )
+    )
+    msg = "```py\n{}```\n{}\n```py\n{}\n```".format(
+        datetime.utcnow().strftime("%b/%d/%Y %H:%M:%S UTC") + "\n" + "ERROR!",
+        error_fmt,
+        "".join(tb).replace("`", ""),
+    )
 
-    embed = discord.Embed(title="Error Logger", colour=0xff253e, description="Terjadi kesalahan atau Insiden baru-baru ini...", timestamp=datetime.utcfromtimestamp(current_time))
-    embed.add_field(name="Cogs", value="[nT!] {0.cog_name}".format(ctx.command), inline=False)
-    embed.add_field(name="Perintah yang dipakai", value="{0.command}\n`{0.message.clean_content}`".format(ctx), inline=False)
-    embed.add_field(name="Server Insiden", value="{0.guild.name} ({0.guild.id})".format(ctx.message), inline=False)
-    embed.add_field(name="Orang yang memakainya", value="{0.author.name}#{0.author.discriminator} ({0.author.id})".format(ctx.message), inline=False)
-    embed.add_field(name="Traceback", value="```py\n{}\n```".format("".join(tb)), inline=True)
+    embed = discord.Embed(
+        title="Error Logger",
+        colour=0xFF253E,
+        description="Terjadi kesalahan atau Insiden baru-baru ini...",
+        timestamp=datetime.utcfromtimestamp(current_time),
+    )
+    embed.add_field(
+        name="Cogs",
+        value="[nT!] {0.cog_name}".format(ctx.command),
+        inline=False,
+    )
+    embed.add_field(
+        name="Perintah yang dipakai",
+        value="{0.command}\n`{0.message.clean_content}`".format(ctx),
+        inline=False,
+    )
+    embed.add_field(
+        name="Server Insiden",
+        value="{0.guild.name} ({0.guild.id})".format(ctx.message),
+        inline=False,
+    )
+    embed.add_field(
+        name="Orang yang memakainya",
+        value="{0.author.name}#{0.author.discriminator} ({0.author.id})".format(  # noqa: E501
+            ctx.message
+        ),
+        inline=False,
+    )
+    embed.add_field(
+        name="Traceback",
+        value="```py\n{}\n```".format("".join(tb)),
+        inline=True,
+    )
     embed.set_thumbnail(url="http://p.ihateani.me/1bnBuV9C")
     try:
         await bot.owner.send(embed=embed)
-    except:
+    except Exception:
         if len(msg) > 1900:
             msg = await send_hastebin(msg)
         await bot.owner.send(msg)
-    await ctx.send('**Error**: Insiden internal ini telah dilaporkan ke N4O#8868, mohon tunggu jawabannya kembali.')
-    logger.error("".join(tb))
-
-async def other_ping_test(roboto):
-    """Github and anilist ping test"""
-    async with aiohttp.ClientSession() as session:
-        print('Menjalankan tes ping database')
-        t1_git = time.time()
-        res = await roboto.ntdb.ping_server()
-        t2_git = time.time()
-        print('Selesai')
-        git_time = round((t2_git-t1_git)*1000)
-        if not res:
-            git_time = "Unknown"
-        print('Menjalankan tes ping anilist')
-        t1_ani = time.time()
-        while True:
-            try:
-                async with session.get('https://graphql.anilist.co') as r:
-                    try:
-                        await r.json()
-                        break
-                    except IndexError:
-                        continue
-            except aiohttp.ClientError:
-                continue
-        t2_ani = time.time()
-        print('Selesai')
-        ani_time = round((t2_ani-t1_ani)*1000)
-        print('Menjalankan tes ping naotimes api')
-        t1_ntapi = time.time()
-        while True:
-            try:
-                async with session.get('https://s.ihateani.me/api/v2') as r:
-                    try:
-                        await r.json()
-                        t2_ntapi = time.time()
-                        print('Selesai')
-                        ntapi_time = round((t2_ntapi-t1_ntapi)*1000)
-                        break
-                    except IndexError:
-                        ntapi_time = "ERROR"
-                        break
-            except aiohttp.ClientError:
-                ntapi_time = "ERROR"
-                break
+    await ctx.send(
+        "**Error**: Insiden internal ini telah dilaporkan ke"
+        " N4O#8868, mohon tunggu jawabannya kembali."
+    )
+    announce_error(error)
 
 
-    return {'database': git_time, 'anilist': ani_time, 'naotimes': ntapi_time}
+def ping_emote(t_t):
+    if t_t < 50:
+        emote = ":race_car:"
+    elif t_t >= 50 and t_t < 200:
+        emote = ":blue_car:"
+    elif t_t >= 200 and t_t < 500:
+        emote = ":racehorse:"
+    elif t_t >= 200 and t_t < 500:
+        emote = ":runner:"
+    elif t_t >= 500 and t_t < 3500:
+        emote = ":walking:"
+    elif t_t >= 3500:
+        emote = ":snail:"
+    return emote
 
-def create_uptime():
-    current_time = time.time()
-    up_secs = int(round(current_time - bot.uptime)) # Seconds
-
-    up_months = int(up_secs // 2592000) # 30 days format
-    up_secs -= up_months * 2592000
-    up_weeks = int(up_secs // 604800)
-    up_secs -= up_weeks * 604800
-    up_days = int(up_secs // 86400)
-    up_secs -= up_days * 86400
-    up_hours = int(up_secs // 3600)
-    up_secs -= up_hours * 3600
-    up_minutes = int(up_secs // 60)
-    up_secs -= up_minutes * 60
-
-    return_text = ''
-    if up_months != 0:
-        return_text += '{} bulan '.format(up_months)
-
-    return return_text + '{} minggu {} hari {} jam {} menit {} detik'.format(up_weeks, up_days, up_hours, up_minutes, up_secs)
 
 @bot.command()
 async def ping(ctx):
@@ -342,40 +426,60 @@ async def ping(ctx):
     pong!
     """
     channel = ctx.message.channel
-    print('Melakukan tes ping keseluruhan')
+    logger.info("checking websocket...")
+    ws_ping = bot.latency
+    logger.info("checking database...")
+    db_res, db_ping = await bot.ntdb.ping_server()
+    irnd = lambda t: int(round(t))  # noqa: E731
 
-    other_test = await other_ping_test(bot)
+    logger.info("checking api.ihateani.me...")
+    ihapi_res, ihaapi_ping = await ping_website("https://api.ihateani.me/")
 
-    print('Menjalankan tes ping discord')
-    t1 = time.time()
+    logger.info("checking anilist.co")
+    ani_res, ani_ping = await ping_website("https://graphql.anilist.co")
+
+    def _gen_text(ping_res, ping, name):
+        text_res = ":x: "
+        if ping_res:
+            text_res = f"{ping_emote(ping)} "
+        text_res += "{}: `{}`".format(
+            name, "{}ms".format(ping) if ping_res else "nan"
+        )
+        return text_res
+
+    ihaapi_ping = irnd(ihaapi_ping)
+    ani_ping = irnd(ani_ping)
+    db_ping = irnd(db_ping)
+
+    text_res = ":satellite: Ping Results :satellite:"
+    logger.info("checking discord itself.")
+    t1_dis = time.perf_counter()
     async with channel.typing():
-        t2 = time.time()
-        print('Selesai')
+        t2_dis = time.perf_counter()
+        dis_ping = irnd((t2_dis - t1_dis) * 1000)
+        logger.info("generating results....")
+        logger.debug("generating discord res")
+        text_res += f"\n{ping_emote(dis_ping)} Discord: `{dis_ping}ms`"
 
-        print('Menghitung hasil')
-        dis_test = round((t2-t1)*1000)
+        logger.debug("generating websocket res")
+        if ws_ping != float("nan"):
+            ws_time = irnd(ws_ping * 1000)
+            ws_res = f"{ping_emote(ws_time)} Websocket `{ws_time}ms`"
+        else:
+            ws_res = ":x: Websocket: `nan`"
 
-        pingbed = discord.Embed(title="Ping Test", color=0xffffff)
-        pingbed.set_thumbnail(url="https://emojipedia-us.s3.dualstack.us-west-1.amazonaws.com/thumbs/240/twitter/180/satellite-antenna_1f4e1.png")
-        pingbed.add_field(name='Discord', value='{}ms'.format(dis_test), inline=False)
-        pingbed.add_field(name='Database', value='{}ms'.format(other_test['database']), inline=False)
-        pingbed.add_field(name='naoTimes API', value='{}ms'.format(other_test['naotimes']), inline=False)
-        pingbed.add_field(name='Anilist.co', value='{}ms'.format(other_test['anilist']), inline=False)
-        pingbed.set_footer(text="Tested using \"sophisticated\" ping method ")
-        await channel.send(embed=pingbed)
+        text_res += f"\n{ws_res}"
+        logger.debug("generating db res")
+        text_res += f"\n{_gen_text(db_res, db_ping, 'Database')}"
+        logger.debug("generating ihaapi res")
+        text_res += f"\n{_gen_text(ihapi_res, ihaapi_ping, 'naoTimes API')}"
+        logger.debug("generating anilist res")
+        text_res += f"\n{_gen_text(ani_res, ani_ping, 'Anilist.co')}"
+        logger.info("sending results")
+        await channel.send(content=text_res)
 
-def get_version():
-    discord_ver = discord.__version__
-    py_ver = sys.version
-    return "```py\nDiscord.py v{d}\nPython {p}\n```".format(d=discord_ver, p=py_ver)
 
-def get_server():
-    import platform
-    uname = platform.uname()
-    fmt_plat = "```py\nOS: {0.system} {0.release} v{0.version}\nCPU: {0.processor} ({1} threads)\nPID: {2}\n```".format(uname, os.cpu_count(), os.getpid())
-    return fmt_plat
-
-def fetch_bot_count_data():
+async def fetch_bot_count_data():
     server_list = bot.guilds
     total_server = len(server_list)
 
@@ -393,16 +497,20 @@ def fetch_bot_count_data():
     total_valid_users = len(users_list)
 
     # Showtimes
-    if not os.path.isfile('nao_showtimes.json'):
-        print('[@] naoTimes are not initiated, skipping.')
+    if not os.path.isfile("nao_showtimes.json"):
+        logger.warn("naoTimes are not initiated, skipping...")
         json_data = {}
-    with open('nao_showtimes.json', 'r') as fp:
-        json_data = json.load(fp)
 
-    text_fmt = "Jumlah server: {}\nJumlah channels: {}\nJumlah pengguna: {}".format(total_server, total_channels, total_valid_users)
+    json_data = await read_files("nao_showtimes.json")
+
+    text_fmt = "Jumlah server: {}\nJumlah channels: {}\nJumlah pengguna: {}".format(  # noqa: E501
+        total_server, total_channels, total_valid_users
+    )
 
     if not json_data:
-        text_fmt += "\n\nJumlah server Showtimes: {}\nJumlah anime Showtimes: {}".format(0, 0)
+        text_fmt += "\n\nJumlah server Showtimes: {}\nJumlah anime Showtimes: {}".format(  # noqa: E501
+            0, 0
+        )
     else:
         ntimes_srv = []
         total_animemes = 0
@@ -415,195 +523,424 @@ def fetch_bot_count_data():
         for srv in ntimes_srv:
             anime_keys = list(json_data[srv]["anime"].keys())
             total_animemes += len(anime_keys)
-        text_fmt += "\n\nJumlah server Showtimes: {}\nJumlah anime Showtimes: {}".format(total_ntimes_srv, total_animemes)
+        text_fmt += "\n\nJumlah server Showtimes: {}\nJumlah anime Showtimes: {}".format(  # noqa: E501
+            total_ntimes_srv, total_animemes
+        )
 
     return "```" + text_fmt + "```"
+
+
+def create_uptime():
+    current_time = time.time()
+    up_secs = int(round(current_time - bot.uptime))  # Seconds
+
+    up_months = int(up_secs // 2592000)  # 30 days format
+    up_secs -= up_months * 2592000
+    up_weeks = int(up_secs // 604800)
+    up_secs -= up_weeks * 604800
+    up_days = int(up_secs // 86400)
+    up_secs -= up_days * 86400
+    up_hours = int(up_secs // 3600)
+    up_secs -= up_hours * 3600
+    up_minutes = int(up_secs // 60)
+    up_secs -= up_minutes * 60
+
+    return_text = "`"
+    if up_months != 0:
+        return_text += "{} bulan ".format(up_months)
+
+    return (
+        return_text
+        + "{} minggu {} hari {} jam {} menit {} detik`".format(
+            up_weeks, up_days, up_hours, up_minutes, up_secs
+        )
+    )
+
 
 @bot.command()
 async def info(ctx):
     """
     Melihat Informasi bot
     """
-    infog = discord.Embed(title="naoTimes", description="Sang penagih utang fansub agar fansubnya mau gerak", color=0xde8730)
-    infog.set_author(name="naoTimes", icon_url="https://slwordpress.rutgers.edu/wp-content/uploads/sites/98/2015/12/Info-I-Logo.png")
+    infog = discord.Embed(
+        title="naoTimes",
+        description="Sang penagih utang fansub agar fansubnya mau gerak",
+        color=0xDE8730,
+    )
+    infog.set_author(
+        name="naoTimes",
+        icon_url="https://slwordpress.rutgers.edu/wp-content/uploads/sites/98/2015/12/Info-I-Logo.png",  # noqa: E501
+    )
     infog.set_thumbnail(url="https://puu.sh/D3x1l/7f97e14c74.png")
     infog.add_field(name="Server Info", value=get_server(), inline=False)
-    infog.add_field(name="Statistik", value=fetch_bot_count_data(), inline=False)
-    infog.add_field(name="Dibuat", value="Gak tau, tiba-tiba jadi.", inline=False)
-    infog.add_field(name="Pembuat", value="{}".format(bot.owner.mention), inline=False)
+    infog.add_field(
+        name="Statistik", value=(await fetch_bot_count_data()), inline=False
+    )
+    infog.add_field(
+        name="Dibuat", value="Gak tau, tiba-tiba jadi.", inline=False
+    )
+    infog.add_field(
+        name="Pembuat", value="{}".format(bot.owner.mention), inline=False
+    )
     infog.add_field(name="Bahasa", value=get_version(), inline=False)
-    infog.add_field(name="Fungsi", value="Menagih utang fansub (!help)", inline=False)
+    infog.add_field(
+        name="Fungsi", value="Menagih utang fansub (!help)", inline=False
+    )
     infog.add_field(name="Uptime", value=create_uptime())
-    infog.set_footer(text="naoTimes versi 2.0.0 || Dibuat oleh N4O#8868", icon_url='https://p.n4o.xyz/i/nao250px.png')
+    infog.set_footer(
+        text=f"naoTimes versi {bot.semver} || Dibuat oleh N4O#8868",
+        icon_url="https://p.n4o.xyz/i/nao250px.png",
+    )
     await ctx.send(embed=infog)
 
+
 @bot.command()
-@commands.is_owner()
-async def bundir(ctx):
-    """
-    Mematikan bot, owner only
-    """
-    try:
-        await ctx.send(":gun: Membunuh bot...")
-        print('[!!] Starting process...')
-        for unload in cogs_list:
-            bot.unload_extension(unload)
-            print('[#] Unloaded ' + unload + ' module.')
-        print('[@] All modules unloaded.')
-        await bot.logout()
-        await bot.close()
-        print('[!!] Connection closed.')
-        async_loop.close()
-        exit(0)
-    except commands.NotOwner:
-        await ctx.send("Kamu tidak bisa menjalankan perintah ini\n**Alasan:** Bukan Owner Bot")
+async def uptime(ctx):
+    uptime = create_uptime()
+    await ctx.send(f":alarm_clock: {uptime}")
+
 
 @bot.command()
 @commands.is_owner()
-async def reinkarnasi(ctx):
-    """
-    Mematikan lalu menghidupkan bot, owner only
-    """
-    try:
-        await ctx.send(":sparkles: Proses Reinkarnasi Dimulai...")
-        print('[!!] Starting process...')
-        for unload in cogs_list:
-            bot.unload_extension(unload)
-            print('[#] Unloaded ' + unload + ' module.')
-        print('[@] All modules unloaded.')
-        await bot.logout()
-        await bot.close()
-        print('[!!] Connection closed.')
-        async_loop.close()
-        os.execv(sys.executable, ['python'] + sys.argv)
-    except commands.NotOwner:
-        await ctx.send("Kamu tidak bisa menjalankan perintah ini\n**Alasan:** Bukan Owner Bot")
+async def reloadconf(ctx):
+    msg = await ctx.send("Please wait...")
+    logger.info("rereading config files...")
+    new_config = await read_files("config.json")
+    logger.info("Loading crypto data...")
+    crypto_data = await read_files("cryptodata.json")
+    logger.info("Loading currency data...")
+    currency_data = await read_files("currencydata.json")
+    logger.info("Loading streaming lists data...")
+    streams_list = await read_files("streaming_lists.json")
+    logger.info("Loading prefixes data...")
+    srv_prefixes = await read_files("server_prefixes.json")
+
+    default_prefix = new_config["default_prefix"]
+
+    await msg.edit(content="Reassigning attributes")
+    bot.botconf = new_config
+    mongo_conf = new_config["mongodb"]
+    logger.info("starting new database connection")
+    nt_db = naoTimesDB(
+        mongo_conf["ip_hostname"], mongo_conf["port"], mongo_conf["dbname"]
+    )
+    logger.info("connected to database...")
+    bot.ntdb = nt_db
+    bot.command_prefix = partial(
+        prefixes_with_data,
+        prefixes_data=srv_prefixes,
+        default=default_prefix
+    )
+    bot.jsdb_streams = streams_list
+    bot.jsdb_currency = currency_data
+    bot.jsdb_crypto = crypto_data
+
+    prefix = bot.command_prefix
+    if callable(prefix):
+        prefix = prefix(bot, "[]")
+    if isinstance(prefix, (list, tuple)):
+        bot.prefix = prefix[0]
+    else:
+        bot.prefix = prefix
+
+    await msg.edit(content="Reloading all cogs...")
+    logger.info("reloading cogs...")
+    failed_cogs = []
+    for cogs in cogs_list:
+        try:
+            logger.info(f"Re-loading {cogs}")
+            bot.reload_extension(cogs)
+            logger.info(f"reloaded {cogs}")
+        except commands.ExtensionNotLoaded:
+            logger.warn(f"{cogs} haven't been loaded yet...")
+            try:
+                logger.info(f"loading {cogs}")
+                bot.load_extension(cogs)
+                logger.info(f"{cogs} loaded")
+            except commands.ExtensionFailed as cer:
+                logger.error(f"failed to load {cogs}")
+                announce_error(cer)
+                failed_cogs.append(cogs)
+        except commands.ExtensionFailed as cer:
+            logger.error(f"failed to load {cogs}")
+            announce_error(cer)
+            failed_cogs.append(cogs)
+
+    logger.info("finished reloading config.")
+    msg_final = "Finished reloading cogs"
+    if failed_cogs:
+        ext_msg = "But it seems like some cogs failed to load/reload"
+        ext_msg += "\n```\n{}\n```".format("\n".join(failed_cogs))
+        msg_final += "\n{}".format(ext_msg)
+
+    await msg.edit(content=msg_final)
+
 
 @bot.command()
 @commands.is_owner()
-async def reload(ctx, *, module=None):
+async def reload(ctx, *, cogs=None):
     """
     Restart salah satu module bot, owner only
     """
-    if not module:
-        helpmain = discord.Embed(title="Reload", description="versi 2.0.0", color=0x00aaaa)
-        helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
-        helpmain.add_field(name='Module/Cogs List', value="\n".join(['- ' + cl for cl in cogs_list]), inline=False)
-        helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
-        return await ctx.send(embed=helpmain)
-    timetext = 'Started process at'
-    rel1 = discord.Embed(title="Reload Module", color=0x8ceeff)
-    rel1.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
-    rel1.add_field(name=module, value="Status: PROCESSING", inline=False)
-    rel1.set_footer(text=timetext)
-    sayd = await ctx.send(embed=rel1)
-    if 'cogs.' not in module:
-        module = 'cogs.' + module
+    if not cogs:
+        helpcmd = HelpGenerator(
+            bot,
+            "Reload",
+            desc=f"Reload module bot.",
+        )
+        helpcmd.embed.add_field(
+            name="Module/Cogs List",
+            value="\n".join(["- " + cl for cl in cogs_list]),
+            inline=False,
+        )
+        return await ctx.send(embed=helpcmd.get())
+    if not cogs.startswith("cogs."):
+        cogs = "cogs." + cogs
+    logger.info(f"trying to reload {cogs}")
+    msg = await ctx.send("Please wait, reloading module...")
     try:
-        print('[#] Reloading ' + module + ' module.')
-        bot.unload_extension(module)
-        print('[@] Reloaded.')
-        bot.load_extension(module)
-        timetext = 'Module reloaded'
-        rel2 = discord.Embed(title="Reload Module", color=0x6ce170)
-        rel2.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
-        rel2.add_field(name=module, value="Status: SUCCESS", inline=False)
-        rel2.set_footer(text=timetext)
-        await sayd.edit(embed=rel2)
-    except Exception as error:
-        timetext = 'Failed'
-        tb = traceback.format_exception(type(error), error, error.__traceback__)
-        print("".join(tb))
-        rel3 = discord.Embed(title="Module", description="Status: Error", color=0xe73030)
-        rel3.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
-        rel3.add_field(name=module, value="```py\n{}\n```".format("".join(tb)), inline=False)
-        rel3.set_footer(text=timetext)
-        await sayd.edit(embed=rel3)
+        logger.info(f"Re-loading {cogs}")
+        bot.reload_extension(cogs)
+        logger.info(f"reloaded {cogs}")
+    except commands.ExtensionNotFound:
+        logger.warn(f"{cogs} doesn't exist.")
+        return await msg.edit(content="Cannot find that module.")
+    except commands.ExtensionFailed as cef:
+        logger.error(f"failed to reload {cogs}")
+        announce_error(cef)
+        return await msg.edit(
+            content="Failed to (re)load module, please check bot logs."
+        )
+    except commands.ExtensionNotLoaded:
+        await msg.edit(content="Failed to reload module, trying to load it...")
+        logger.warn(f"{cogs} haven't been loaded yet...")
+        try:
+            logger.info(f"trying to load {cogs}")
+            bot.load_extension(cogs)
+            logger.info(f"{cogs} loaded")
+        except commands.ExtensionFailed as cer:
+            logger.error(f"failed to load {cogs}")
+            announce_error(cer)
+            return await msg.edit(
+                content="Failed to (re)load module, please check bot logs."
+            )
+        except commands.ExtensionNotFound:
+            logger.warn(f"{cogs} doesn't exist.")
+            return await msg.edit(content="Cannot find that module.")
+
+    await msg.edit(content=f"Successfully (re)loaded `{cogs}` module.")
 
 
 @bot.command()
 @commands.is_owner()
-async def load(ctx, *, module=None):
+async def load(ctx, *, cogs=None):
     """
     Load salah satu module bot, owner only
     """
-    if not module:
-        helpmain = discord.Embed(title="Load", description="versi 2.0.0", color=0x00aaaa)
-        helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
-        helpmain.add_field(name='Module/Cogs List', value="\n".join(['- ' + cl for cl in cogs_list]), inline=False)
-        helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
-        return await ctx.send(embed=helpmain)
-    timetext = 'Started process at'
-    rel1 = discord.Embed(title="Load Module", color=0x8ceeff)
-    rel1.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
-    rel1.add_field(name=module, value="Status: PROCESSING", inline=False)
-    rel1.set_footer(text=timetext)
-    sayd = await ctx.send(embed=rel1)
-    if 'cogs.' not in module:
-        module = 'cogs.' + module
+    if not cogs:
+        helpcmd = HelpGenerator(
+            bot,
+            "Load",
+            desc=f"Load module bot.",
+        )
+        helpcmd.embed.add_field(
+            name="Module/Cogs List",
+            value="\n".join(["- " + cl for cl in cogs_list]),
+            inline=False,
+        )
+        return await ctx.send(embed=helpcmd.get())
+    if not cogs.startswith("cogs."):
+        cogs = "cogs." + cogs
+    logger.info(f"trying to load {cogs}")
+    msg = await ctx.send("Please wait, loading module...")
     try:
-        print('[#] Loading ' + module + ' module.')
-        bot.load_extension(module)
-        print('[@] Loaded.')
-        timetext = 'Module Loaded'
-        rel2 = discord.Embed(title="Load Module", color=0x6ce170)
-        rel2.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
-        rel2.add_field(name=module, value="Status: SUCCESS", inline=False)
-        rel2.set_footer(text=timetext)
-        await sayd.edit(embed=rel2)
-    except Exception as error:
-        timetext = 'Failed'
-        tb = traceback.format_exception(type(error), error, error.__traceback__)
-        print("".join(tb))
-        rel3 = discord.Embed(title="Module", description="Status: Error", color=0xe73030)
-        rel3.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
-        rel3.add_field(name=module, value="```py\n{}\n```".format("".join(tb)), inline=False)
-        rel3.set_footer(text=timetext)
-        await sayd.edit(embed=rel3)
+        logger.info(f"loading {cogs}")
+        bot.load_extension(cogs)
+        logger.info(f"loaded {cogs}")
+    except commands.ExtensionNotFound:
+        logger.warn(f"{cogs} doesn't exist.")
+        return await msg.edit(content="Cannot find that module.")
+    except commands.ExtensionFailed as cef:
+        logger.error(f"failed to load {cogs}")
+        announce_error(cef)
+        return await msg.edit(
+            content="Failed to load module, please check bot logs."
+        )
+
+    await msg.edit(content=f"Successfully loaded `{cogs}` module.")
 
 
 @bot.command()
 @commands.is_owner()
-async def unload(ctx, *, module=None):
+async def unload(ctx, *, cogs=None):
     """
     Unload salah satu module bot, owner only
     """
-    if not module:
-        helpmain = discord.Embed(title="Unload", description="versi 2.0.0", color=0x00aaaa)
-        helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
-        helpmain.set_author(name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
-        helpmain.add_field(name='Module/Cogs List', value="\n".join(['- ' + cl for cl in cogs_list]), inline=False)
-        helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
-        return await ctx.send(embed=helpmain)
-    timetext = 'Started process at'
-    rel1 = discord.Embed(title="Unload Module", color=0x8ceeff)
-    rel1.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
-    rel1.add_field(name=module, value="Status: PROCESSING", inline=False)
-    rel1.set_footer(text=timetext)
-    sayd = await ctx.send(embed=rel1)
-    if 'cogs.' not in module:
-        module = 'cogs.' + module
+    if not cogs:
+        helpcmd = HelpGenerator(
+            bot,
+            "Unload",
+            desc=f"Unload module bot.",
+        )
+        helpcmd.embed.add_field(
+            name="Module/Cogs List",
+            value="\n".join(["- " + cl for cl in cogs_list]),
+            inline=False,
+        )
+        return await ctx.send(embed=helpcmd.get())
+    if not cogs.startswith("cogs."):
+        cogs = "cogs." + cogs
+    logger.info(f"trying to load {cogs}")
+    msg = await ctx.send("Please wait, unloading module...")
     try:
-        print('[#] Unloading ' + module + ' module.')
-        bot.unload_extension(module)
-        print('[@] Unloaded.')
-        timetext = 'Module unloaded'
-        rel2 = discord.Embed(title="Unload Module", color=0x6ce170)
-        rel2.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
-        rel2.add_field(name=module, value="Status: SUCCESS", inline=False)
-        rel2.set_footer(text=timetext)
-        await sayd.edit(embed=rel2)
-    except Exception as error:
-        timetext = 'Failed'
-        tb = traceback.format_exception(type(error), error, error.__traceback__)
-        print("".join(tb))
-        rel3 = discord.Embed(title="Module", description="Status: Error", color=0xe73030)
-        rel3.set_thumbnail(url="https://d30y9cdsu7xlg0.cloudfront.net/png/4985-200.png")
-        rel3.add_field(name=module, value="```py\n{}\n```".format("".join(tb)), inline=False)
-        rel3.set_footer(text=timetext)
-        await sayd.edit(embed=rel3)
+        logger.info(f"loading {cogs}")
+        bot.unload_extension(cogs)
+        logger.info(f"loaded {cogs}")
+    except commands.ExtensionNotFound:
+        logger.warn(f"{cogs} doesn't exist.")
+        return await msg.edit(content="Cannot find that module.")
+    except commands.ExtensionNotLoaded:
+        logger.warn(f"{cogs} aren't loaded yet.")
+        return await msg.edit(content="Module not loaded yet.")
+    except commands.ExtensionFailed as cef:
+        logger.error(f"failed to unload {cogs}")
+        announce_error(cef)
+        return await msg.edit(
+            content="Failed to unload module, please check bot logs."
+        )
 
-bot.loop.create_task(change_bot_presence())
-bot.run(bot_config['bot_token'], bot=True, reconnect=True)
+    await msg.edit(content=f"Successfully unloaded `{cogs}` module.")
+
+
+@bot.command()  # noqa: F811
+@commands.guild_only()
+@commands.has_permissions(manage_guild=True)
+async def prefix(ctx, *, msg=None):
+    server_message = str(ctx.message.guild.id)
+    logger.info(f"requested at {server_message}")
+    if not os.path.isfile("server_prefixes.json"):
+        prefix_data = {}
+        logger.warn(".json file doesn't exist, making one...")
+        await write_files({}, "server_prefixes.json")
+    else:
+        prefix_data = await read_files("server_prefixes.json")
+
+    if not msg:
+        helpcmd = HelpGenerator(
+            bot,
+            "Load",
+            desc=f"Load module bot.",
+            color=0x00AAAA
+        )
+        helpmain.embed.add_field(
+            name="Prefix Server",
+            value=prefix_data.get(server_message, "Tidak ada"),
+            inline=False,
+        )
+        await helpcmd.generate_aliases()
+        return await ctx.send(embed=helpcmd.get())
+
+    if msg in ["clear", "bersihkan", "hapus"]:
+        if server_message in prefix_data:
+            logger.warn(f"{server_message}: deleting custom prefix...")
+            del prefix_data[server_message]
+
+            await write_files(prefix_data, "server_prefixes.json")
+
+        return await ctx.send(
+            "Berhasil menghapus custom prefix dari server ini"
+        )
+
+    if server_message in prefix_data:
+        logger.info(f"{server_message}: changing custom prefix...")
+        send_txt = (
+            "Berhasil mengubah custom prefix ke `{pre_}` untuk server ini"
+        )
+    else:
+        logger.info(f"{server_message}: adding custom prefix...")
+        send_txt = (
+            "Berhasil menambah custom prefix `{pre_}` untuk server ini"
+        )
+    prefix_data[server_message] = msg
+
+    await write_files(prefix_data, "server_prefixes.json")
+    bot.command_prefix = partial(
+        prefixes_with_data,
+        prefixes_data=prefix_data,
+        default=bot.botconf["default_prefix"],
+    )
+    prefix = bot.command_prefix
+    if callable(prefix):
+        prefix = prefix(bot, "[]")
+    if isinstance(prefix, (list, tuple)):
+        bot.prefix = prefix[0]
+    else:
+        bot.prefix = prefix
+
+    logger.info("reloading all cogs.")
+    loaded_extensions = list(dict(bot.extensions).keys())
+    failed_cogs = []
+    for cogs in loaded_extensions:
+        try:
+            logger.info(f"Re-loading {cogs}")
+            bot.reload_extension(cogs)
+            logger.info(f"reloaded {cogs}")
+        except commands.ExtensionNotLoaded:
+            logger.warn(f"{cogs} haven't been loaded yet...")
+            try:
+                logger.info(f"loading {cogs}")
+                bot.load_extension(cogs)
+                logger.info(f"{cogs} loaded")
+            except commands.ExtensionFailed as cer:
+                logger.error(f"failed to load {cogs}")
+                announce_error(cer)
+                failed_cogs.append(cogs)
+        except commands.ExtensionFailed as cer:
+            logger.error(f"failed to load {cogs}")
+            announce_error(cer)
+            failed_cogs.append(cogs)
+
+    if failed_cogs:
+        logger.warn("there's cogs that failed\n{}".format(
+            "\n".join(failed_cogs)
+        ))
+
+    await ctx.send(send_txt.format(pre_=msg))
+
+
+@prefix.error
+async def prefix_error(self, error, ctx):
+    if isinstance(error, commands.errors.CheckFailure):
+        server_message = str(ctx.message.guild.id)
+        if not os.path.isfile("prefixes.json"):
+            prefix_data = {}
+            logger.warn(".json file doesn't exist, making one...")
+            await write_files({}, "server_prefixes.json")
+        else:
+            prefix_data = await read_files("server_prefixes.json")
+        helpcmd = HelpGenerator(
+            bot,
+            "Load",
+            desc=f"Load module bot.",
+            color=0x00AAAA
+        )
+        helpmain.embed.add_field(
+            name="Prefix Server",
+            value=prefix_data.get(server_message, "Tidak ada"),
+            inline=False,
+        )
+        await helpcmd.generate_aliases()
+        await ctx.send(embed=helpcmd.get())
+
+
+try:
+    bot.loop.create_task(change_bot_presence())
+    bot.run(bot_config["bot_token"], bot=True, reconnect=True)
+except (KeyboardInterrupt, SystemExit, SystemError):
+    logger.warn("Logging out...")
+    async_loop.run_until_complete(bot.logout())
+    logger.warn("Disconnecting from discord...")
+    async_loop.run_until_complete(bot.close())
+finally:
+    logger.warn("Closing async loop.")
+    async_loop.close()
