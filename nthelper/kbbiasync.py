@@ -6,7 +6,12 @@ from urllib.parse import quote
 import aiohttp
 import kbbi
 from bs4 import BeautifulSoup
-from kbbi import BatasSehari, TerjadiKesalahan, TidakDitemukan
+from kbbi import (  # noqa: F401
+    BatasSehari,
+    GagalAutentikasi,
+    TerjadiKesalahan,
+    TidakDitemukan,
+)
 
 
 class GagalKoneksi(kbbi.Galat):
@@ -25,12 +30,16 @@ class AutentikasiKBBI:
         self.posel = posel
         self.sandi = sandi
 
+    async def ambil_cookies(self) -> str:
+        cookie = self.sesi.cookie_jar.filter_cookies("https://kbbi.kemdikbud.go.id/")
+        final_cookie = cookie[".AspNet.ApplicationCookie"].value
+        await self.sesi.close()
+        return final_cookie
+
     async def __ambil_token(self):
-        laman = await self.sesi.get(f"{self.host}/{self.lokasi}")
-        token = re.search(
-            r"<input name=\"__RequestVerificationToken\".*value=\"(.*)\" />",
-            laman.text,
-        )
+        async with self.sesi.get(f"{self.host}/{self.lokasi}") as resp:
+            laman = await resp.text()
+        token = re.search(r"<input name=\"__RequestVerificationToken\".*value=\"(.*)\" />", laman,)
         if not token:
             raise kbbi.TerjadiKesalahan()
         return token.group(1)
@@ -44,7 +53,9 @@ class AutentikasiKBBI:
             "IngatSaya": True,
         }
         try:
-            laman = await self.sesi.post(f"{self.host}/{self.lokasi}", data=payload)
+            async with self.sesi.post(f"{self.host}/{self.lokasi}", data=payload) as resp:
+                await resp.text()
+                final_url = str(resp.url)
         except aiohttp.ClientConnectionError:
             raise GagalKoneksi()
         except aiohttp.ClientError:
@@ -53,10 +64,10 @@ class AutentikasiKBBI:
             raise GagalKoneksi()
         except TimeoutError:
             raise GagalKoneksi()
-        if "Beranda/Error" in laman.url:
-            raise kbbi.TerjadiKesalahan()
-        if "Account/Login" in laman.url:
-            raise kbbi.GagalAutentikasi()
+        if "Beranda/Error" in final_url:
+            raise TerjadiKesalahan()
+        if "Account/Login" in final_url:
+            raise GagalAutentikasi()
 
 
 class KBBI:
@@ -103,6 +114,13 @@ class KBBI:
     async def _cek_autentikasi(self, laman):
         self.terautentikasi = "loginLink" not in laman
 
+    async def cek_auth(self):
+        is_auth = False
+        async with self.sesi.get(self.host) as resp:
+            res = await resp.text()
+            is_auth = "loginLink" not in res
+        return is_auth
+
     def _init_lokasi(self):
         kasus_khusus = [
             "." in self.nama,
@@ -147,16 +165,11 @@ class KBBI:
         """
         return {
             "pranala": f"{self.host}/{self.lokasi}",
-            "entri": [
-                entri.serialisasi(fitur_pengguna) for entri in self.entri
-            ],
+            "entri": [entri.serialisasi(fitur_pengguna) for entri in self.entri],
         }
 
     def __str__(self, contoh=True, terkait=True, fitur_pengguna=True):
-        return "\n\n".join(
-            entri.__str__(contoh, terkait, fitur_pengguna)
-            for entri in self.entri
-        )
+        return "\n\n".join(entri.__str__(contoh, terkait, fitur_pengguna) for entri in self.entri)
 
     def __repr__(self):
         return f"<KBBI: {self.nama}>"
