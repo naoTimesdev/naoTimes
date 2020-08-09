@@ -14,6 +14,5 @@ motor==2.1.0
 textblob==0.15.3
 kbbi==0.4.1
 pysubs2==0.2.4
-redis==3.3.11
 markdownify==0.4.1
 python-magic==0.4.18
