@@ -7,15 +7,11 @@
 <h3 align="center"><b>naoTimes Progress Wrapper</b></h3>
 <p align="center">Menghubungkan progress garapan dari database bot ke website.</p>
 
+**Butuh jQuery!**
+
 1. Download file `naoTimes.js` atau `naoTimes.min.js`
-2. Ubah line berikut di `naoTimes.js` atau `naoTimes.min.js`
-    ```js
-    var gist_raw_url = 'MASUKAN URL RAW GIST TANPA REVISI COMMIT';
-    ```
-    - Format link raw gist: `https://gist.githubusercontent.com/GITHUB_USERNAME/GIST_ID/raw/GIST_FILENAME.EXT`
-    - Merupakan link ke database naoTimes di gist
-3. Tambahkan script javascript ke website
-4. Selipkan snippet html berikut:
+2. Tambahkan script javascript ke website
+3. Selipkan snippet html berikut:
     ```html
     <div id='naotimes' class="progress-wrapper">
         <script type="text/javascript" src="/link/menuju/naoTimes.js"></script> <!-- Ubah line ini -->
@@ -26,7 +22,7 @@
         <img id='naotimes-loading' width="40" height="40" src='https://puu.sh/DiJzU/6af20efe7e.gif'>
     </div>
     ```
-5. Kustomisasi dengan css, listnya ada:
+4. Kustomisasi dengan css, listnya ada:
     - **naotimes-header**: teks header dengan tulisan `Status Garapan`
     - **naotimes-animetitle**: bagian judul anime
     - **naotimes-animeprogress**: bagian anime untuk progressnya
