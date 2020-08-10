@@ -11,8 +11,8 @@ wlogger = logging.getLogger("cogs.cuaca")
 
 
 # Change this.
-GEOCODE_API = "617b541e60c84169b52bc308c4ab163a"
-OWM_API_KEY = "85f8b1a05dab034bef953c469b4f5360"
+GEOCODE_API = ""
+OWM_API_KEY = ""
 
 
 async def fetch_geolat(location: str) -> Tuple[Optional[float], Optional[float], Optional[str]]:
