@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from functools import partial
 from random import choice
 from string import ascii_lowercase, digits
-from typing import Optional, Tuple, Union
+from typing import Union
 
 import aiohttp
 import discord
@@ -28,6 +28,7 @@ anifetch_query = """
 query ($id: Int!) {
     Media(id: $id, type: ANIME) {
         id
+        idMal
         title {
             romaji
             english
@@ -59,12 +60,16 @@ query ($id: Int!) {
 }
 """
 
-tambahepisode_instruct = """Jumlah yang dimaksud adalah jumlah yang ingin ditambahkan dari jumlah episode sekarang
+add_eps_instruct = """Jumlah yang dimaksud adalah jumlah yang ingin ditambahkan dari jumlah episode sekarang
 Misal ketik `4` dan total jumlah episode sekarang adalah `12`
 Maka total akan berubah menjadi `16` `(13, 14, 15, 16)`"""  # noqa: E501
 
-hapusepisode_instruct = """Ranged number, bisa satu digit untuk 1 episode saja atau range dari episode x sampai y
+del_eps_instruct = """Ranged number, bisa satu digit untuk 1 episode saja atau range dari episode x sampai y
 Contoh: `4` untuk episode 4 saja || `4-6` untuk episode 4 sampai 6"""  # noqa: E501
+
+
+class AniTimeParseError(Exception):
+    pass
 
 
 def is_minus(x: Union[int, float]) -> bool:
@@ -83,36 +88,62 @@ def rgbhex_to_rgbint(hex_str: str) -> int:
     return (256 * 256 * r) + (256 * g) + b
 
 
-def parse_anilist_start_date(startDate: str) -> int:
-    """parse start data of anilist data to Unix Epoch"""
-    airing_start = datetime.strptime(startDate, "%Y%m%d")
-    epoch_start = datetime(1970, 1, 1, 0, 0, 0)
-    return int((airing_start - epoch_start).total_seconds())
+def parse_anilist_date(start_date: dict) -> int:
+    """Parse anilist date or normal date into timestamp.
+
+    :param start_date: I'm bad at naming things
+    :type start_date: dict
+    :raises ValueError: If input only include one thing
+    :return: UTC Timestamp
+    :rtype: int
+    """
+    ext_dt = []
+    date_dt = []
+    try:
+        yyyy = start_date["year"]
+        if yyyy is not None:
+            ext_dt.append("%Y")
+            date_dt.append(yyyy)
+    except KeyError:
+        pass
+    try:
+        mm = start_date["month"]
+        if mm is not None:
+            ext_dt.append("%m")
+            date_dt.append(mm)
+    except KeyError:
+        pass
+    try:
+        dd = start_date["day"]
+        if dd is not None:
+            ext_dt.append("%d")
+            date_dt.append(dd)
+    except KeyError:
+        pass
+    if not ext_dt or len(date_dt) < 2:
+        raise AniTimeParseError("Not enough data.")
+    parsed_date = (
+        datetime.strptime("-".join(date_dt), "-".join(ext_dt)).replace(tzinfo=timezone.utc).timestamp()
+    )
+    return int(round(parsed_date))
 
 
 def get_episode_airing(nodes: dict, episode: str) -> tuple:
     """Get total episode of airing anime (using anilist data)"""
     if not nodes:
         return None, "1"  # No data
-    for i in nodes:
-        if i["episode"] == int(episode):
-            return i["airingAt"], i["episode"]  # return episodic data
     if len(nodes) == 1:
         return (
             nodes[0]["airingAt"],
             nodes[-1]["episode"],
         )  # get the only airing data
+    for i in nodes:
+        if i["episode"] == int(episode):
+            return i["airingAt"], i["episode"]  # return episodic data
     return (
         nodes[-1]["airingAt"],
         nodes[-1]["episode"],
     )  # get latest airing data
-
-
-def get_original_time(x: int, total: int) -> int:
-    """what the fuck does this thing even do"""
-    for _ in range(total):
-        x -= 24 * 3600 * 7
-    return x
 
 
 def parse_ani_time(x: int) -> str:
@@ -151,122 +182,135 @@ def parse_ani_time(x: int) -> str:
 
 
 async def fetch_anilist(
-    ani_id, current_ep, total_episode=None, return_time_data=False, jadwal_only=False, return_only_time=False,
-) -> Union[str, tuple]:
+    ani_id,
+    current_ep=None,
+    total_episode=None,
+    return_time_data=False,
+    jadwal_only=True,
+    return_only_time=True,
+) -> Union[str, dict]:
+    """A version 2 of Anilist fetching function
+    Used on most of the Showtimes command.
+
+    :param ani_id: Anilist ID
+    :type ani_id: int
+    :param current_ep: Current episode, defaults to None
+    :type current_ep: [type], optional
+    :param total_episode: Total episode, defaults to None
+    :type total_episode: [type], optional
+    :param return_time_data: Return time data only, defaults to False
+    :type return_time_data: bool, optional
+    :param jadwal_only: Return jadwal only, defaults to True
+    :type jadwal_only: bool, optional
+    :param return_only_time: Return only time, defaults to True
+    :type return_only_time: bool, optional
+    :return: Return results
+    :rtype: Union[str, dict]
     """
-    Fetch Anilist.co API data for helping all showtimes
-    command to work properly
-    Used on almost command, tweaked to make it compatible to every command
-    """
-    variables = {
-        "id": int(ani_id),
-    }
+    if isinstance(ani_id, str):
+        ani_id = int(ani_id)
+    if current_ep is None and (not return_only_time and not jadwal_only):
+        raise ValueError("fetch_anilist: current_ep is none while the other return_only are False.")
+    query_to_send = {"query": anifetch_query, "variables": {"id": ani_id}}
     api_link = "https://graphql.anilist.co"
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.post(api_link, json={"query": anifetch_query, "variables": variables},) as r:
+            async with session.post(api_link, json=query_to_send) as resp:
                 try:
-                    data = await r.json()
+                    data = await resp.json()
                 except IndexError:
-                    return "ERROR: Terjadi kesalahan internal"
-                if r.status != 200:
-                    if r.status == 404:
-                        return "ERROR: Tidak dapat menemukan anime tersebut"
-                    elif r.status == 500:
-                        return "ERROR: Internal Error :/"
+                    return "Tidak dapat memparsing hasil dari request API Anilist."
+                if resp.status != 200:
+                    if resp.status == 404:
+                        return "Anilist tidak dapat menemukan anime tersebut."
+                    elif resp.status == 500:
+                        return "Anilist mengalami kesalahan internal, mohon coba sesaat lagi."
                 try:
                     entry = data["data"]["Media"]
                 except IndexError:
-                    return "ERROR: Tidak ada hasil."
+                    return "Tidak ada hasil."
         except aiohttp.ClientError:
-            return "ERROR: Koneksi terputus"
+            return "Terjadi kesalahan koneksi."
 
+    if isinstance(current_ep, str):
+        current_ep = int(current_ep)
+    if total_episode is not None:
+        if isinstance(total_episode, str):
+            total_episode = int(total_episode)
+
+    compiled_data = {
+        "id": entry["id"],
+        "idMal": entry["idMal"],
+        "title": entry["title"]["romaji"],
+    }
     if jadwal_only:
-        taimu: Optional[str]
-        next_episode: Optional[int]
-        try:
-            time_until = entry["nextAiringEpisode"]["timeUntilAiring"]
-            next_episode = entry["nextAiringEpisode"]["episode"]
+        if "nextAiringEpisode" in entry:
+            air_data = {}
+            next_airing = entry["nextAiringEpisode"]
+            try:
+                time_until = next_airing["timeUntilAiring"]
+                air_data["time_until"] = time_until
+            except KeyError:
+                air_data["time_until"] = None
+            try:
+                next_episode = next_airing["episode"]
+                air_data["episode"] = next_episode
+            except KeyError:
+                air_data["episode"] = None
+            compiled_data["episode_status"] = None
+            if air_data["time_until"] is not None:
+                compiled_data["episode_status"] = parse_ani_time(air_data["time_until"])
+            compiled_data["next_airing"] = air_data
+        return compiled_data
 
-            taimu = parse_ani_time(time_until)
-        except Exception:
-            taimu = None
-            time_until = None
-            next_episode = None
-
-        return taimu, time_until, next_episode, entry["title"]["romaji"]
-
-    poster = [
-        entry["coverImage"]["large"],
-        rgbhex_to_rgbint(entry["coverImage"]["color"]),
-    ]
+    compiled_data["poster_data"] = {
+        "image": entry["coverImage"]["large"],
+        "color": rgbhex_to_rgbint(entry["coverImage"]["color"]),
+    }
     start_date = entry["startDate"]
-    title_rom = entry["title"]["romaji"]
+    try:
+        start_timestamp = parse_anilist_date(start_date)
+        compiled_data["airing_start"] = start_timestamp
+    except AniTimeParseError:
+        compiled_data["airing_start"] = None
+
+    if return_only_time:
+        if compiled_data["airing_start"] is None:
+            raise ValueError("airing_start is empty, need more data.")
+        return compiled_data
+
     airing_time_nodes = entry["airingSchedule"]["nodes"]
     show_format = entry["format"].lower()
-    current_time = int(round(time.time()))
     airing_time, episode_number = get_episode_airing(airing_time_nodes, current_ep)
     if not airing_time:
-        airing_time = parse_anilist_start_date(
-            "{}{}{}".format(start_date["year"], start_date["month"], start_date["day"])
-        )
+        airing_time = start_timestamp
     if show_format in ["tv", "tv_short"]:
-        if str(episode_number) == str(current_ep):
-            pass
-        else:
-            airing_time = get_original_time(airing_time, int(episode_number) - int(current_ep))
-    airing_time = airing_time - current_time
+        if episode_number != current_ep:
+            if current_ep > episode_number:
+                for _ in range(current_ep - episode_number):
+                    airing_time += 7 * 24 * 3600
+            elif episode_number > current_ep:
+                for _ in range(episode_number - current_ep):
+                    airing_time -= 7 * 24 * 3600
+
     try:
         episodes = entry["episodes"]
         if not episodes:
             episodes = 0
-    except KeyError:
-        episodes = 0
-    except IndexError:
+    except (KeyError, IndexError):
         episodes = 0
 
     if not airing_time_nodes:
         airing_time_nodes = []
         temporary_nodes = {}
-        temporary_nodes["airingAt"] = parse_anilist_start_date(
-            "{}{}{}".format(start_date["year"], start_date["month"], start_date["day"])
-        )
+        temporary_nodes["airingAt"] = start_timestamp
         airing_time_nodes.append(temporary_nodes)
 
-    if return_only_time:
-        ext_dt = []
-        date_dt = []
-        try:
-            yyyy = start_date["year"]
-            ext_dt.append("%Y")
-            date_dt.append(yyyy)
-        except KeyError:
-            pass
-        try:
-            mm = start_date["month"]
-            ext_dt.append("%m")
-            date_dt.append(mm)
-        except KeyError:
-            pass
-        try:
-            dd = start_date["day"]
-            ext_dt.append("%d")
-            date_dt.append(dd)
-        except KeyError:
-            pass
-        if not ext_dt or len(date_dt) < 2:
-            raise ValueError("Not enough data.")
-        airing_start = (
-            datetime.strptime("-".join(date_dt), "-".join(ext_dt)).replace(tzinfo=timezone.utc).timestamp()
-        )
-        return airing_start, title_rom, ani_id
-
-    taimu = parse_ani_time(airing_time)
+    parsed_ani_time = parse_ani_time(airing_time)
+    compiled_data["episode_status"] = parsed_ani_time
     if return_time_data:
-        if total_episode is not None and int(total_episode) < episodes:
+        if total_episode is not None and total_episode < episodes:
             total_episode = episodes
-        else:
-            total_episode = int(total_episode)
         time_data = []
         if show_format in ["tv", "tv_short"]:
             for x in range(total_episode):
@@ -274,19 +318,13 @@ async def fetch_anilist(
                     time_data.append(airing_time_nodes[x]["airingAt"])
                 except IndexError:  # Out of range stuff ;_;
                     calc = 24 * 3600 * 7 * x
-                    time_data.append(int(airing_time_nodes[0]["airingAt"]) + calc)
+                    time_data.append(airing_time_nodes[0]["airingAt"] + calc)
         else:
             for x in range(total_episode):
-                time_data.append(
-                    get_original_time(
-                        parse_anilist_start_date(
-                            "{}{}{}".format(start_date["year"], start_date["month"], start_date["day"],)
-                        ),
-                        x + 1,
-                    )
-                )
-        return taimu, poster, title_rom, time_data, total_episode
-    return taimu, poster, title_rom
+                time_data.append(start_timestamp + (x * 7 * 24 * 3600))
+        compiled_data["time_data"] = time_data
+        compiled_data["total_episodes"] = total_episode
+    return compiled_data
 
 
 def get_last_updated(oldtime):
@@ -671,7 +709,7 @@ class ShowtimesBase:
         def split_list(alist, wanted_parts=1):
             length = len(alist)
             return [
-                alist[i * length // wanted_parts : (i + 1) * length // wanted_parts]
+                alist[i * length // wanted_parts:(i + 1) * length // wanted_parts]
                 for i in range(wanted_parts)
             ]
 
@@ -809,7 +847,7 @@ class Showtimes(commands.Cog, ShowtimesBase):
             return await ctx.send("Tidak dapat menemukan judul tersebut di database")
         elif len(matches) > 1:
             self.logger.info(f"{server_message}: multiple matches!")
-            matches = await self.choose_anime(ctx, matches)
+            matches = await self.choose_anime(self.bot, ctx, matches)
             if not matches:
                 return await ctx.send("**Dibatalkan!**")
 
@@ -827,8 +865,8 @@ class Showtimes(commands.Cog, ShowtimesBase):
         poster_image, poster_color = poster_data["url"], poster_data["color"]
 
         if self.any_progress(status_list[current]["staff_status"]):
-            time_data, _, _ = await fetch_anilist(program_info["anilist_id"], current)
-            last_status = time_data
+            anilist_data = await fetch_anilist(program_info["anilist_id"], current)
+            last_status = anilist_data["episode_status"]
             last_text = "Tayang"
         else:
             last_status = get_last_updated(last_update)
@@ -875,11 +913,6 @@ class Showtimes(commands.Cog, ShowtimesBase):
         osrv_dumped = {}
 
         if data[0] not in ["batch", "semua"]:
-            """
-            Merilis rilisan, hanya bisa dipakai sama role tertentu
-            ---
-            judul: Judul anime yang terdaftar
-            """
             self.logger.info(f"{server_message}: using normal mode.")
 
             judul = " ".join(data)
@@ -894,7 +927,7 @@ class Showtimes(commands.Cog, ShowtimesBase):
                 return await ctx.send("Tidak dapat menemukan judul tersebut di database")
             elif len(matches) > 1:
                 self.logger.info(f"{server_message}: multiple matches!")
-                matches = await self.choose_anime(ctx, matches)
+                matches = await self.choose_anime(self.bot, ctx, matches)
                 if not matches:
                     return await ctx.send("**Dibatalkan!**")
 
@@ -959,7 +992,7 @@ class Showtimes(commands.Cog, ShowtimesBase):
                 return await ctx.send("Tidak dapat menemukan judul tersebut di database")
             elif len(matches) > 1:
                 self.logger.info(f"{server_message}: multiple matches!")
-                matches = await self.choose_anime(ctx, matches)
+                matches = await self.choose_anime(self.bot, ctx, matches)
                 if not matches:
                     return await ctx.send("**Dibatalkan!**")
             self.logger.info(f"{server_message}: matched {matches[0]}")
@@ -1027,7 +1060,7 @@ class Showtimes(commands.Cog, ShowtimesBase):
                 return await ctx.send("Tidak dapat menemukan judul tersebut di database")
             elif len(matches) > 1:
                 self.logger.info(f"{server_message}: multiple matches!")
-                matches = await self.choose_anime(ctx, matches)
+                matches = await self.choose_anime(self.bot, ctx, matches)
                 if not matches:
                     return await ctx.send("**Dibatalkan!**")
 
@@ -1135,7 +1168,7 @@ class Showtimes(commands.Cog, ShowtimesBase):
         self.logger.info(f"requested at {server_message}")
         posisi, posisi_asli = await self.get_roles(posisi)
         if posisi is None:
-            self.logger.warn(f"unknown position.")
+            self.logger.warn("unknown position.")
             return await ctx.send(
                 f"Tidak ada posisi **{posisi_asli}**\n"
                 "Yang tersedia: `tl`, `tlc`, `enc`, `ed`, `tm`, `ts`, dan `qc`"
@@ -1300,7 +1333,7 @@ class Showtimes(commands.Cog, ShowtimesBase):
             return await ctx.send("Tidak dapat menemukan judul tersebut di database")
         elif len(matches) > 1:
             self.logger.info(f"{server_message}: multiple matches!")
-            matches = await self.choose_anime(ctx, matches)
+            matches = await self.choose_anime(self.bot, ctx, matches)
             if not matches:
                 return await ctx.send("**Dibatalkan!**")
 
@@ -1447,7 +1480,7 @@ class Showtimes(commands.Cog, ShowtimesBase):
             return await ctx.send("Tidak dapat menemukan judul tersebut di database")
         elif len(matches) > 1:
             self.logger.info(f"{server_message}: multiple matches!")
-            matches = await self.choose_anime(ctx, matches)
+            matches = await self.choose_anime(self.bot, ctx, matches)
             if not matches:
                 return await ctx.send("**Dibatalkan!**")
 
@@ -1614,14 +1647,17 @@ class Showtimes(commands.Cog, ShowtimesBase):
                 self.logger.warn(f"{ani}: anime already ended, skipping...")
                 continue
             self.logger.info(f"{server_message}: requesting {ani}")
-            fetch_anime_jobs.append(fetch_anilist(srv_data["anime"][ani]["anilist_id"], 1, jadwal_only=True))
+            fetch_anime_jobs.append(fetch_anilist(ani_data["anilist_id"], jadwal_only=True))
 
         self.logger.info(f"{server_message}: running jobs...")
         for anime_job in asyncio.as_completed(fetch_anime_jobs):
-            time_data, time_until, episode, title = await anime_job
+            anilist_data = await anime_job
+            time_data = anilist_data["episode_status"]
             if not isinstance(time_data, str):
                 continue
-            await simple_queue.put({"t": time_until, "d": [title, time_data, episode]})
+            next_air = anilist_data["next_airing"]
+            time_until, episode = next_air["time_until"], next_air["episode"]
+            await simple_queue.put({"t": time_until, "d": [anilist_data["title"], time_data, episode]})
 
         self.logger.info(f"{server_message}: starting queue...")
         while not simple_queue.empty():
@@ -1682,7 +1718,7 @@ class Showtimes(commands.Cog, ShowtimesBase):
             return await ctx.send("Tidak dapat menemukan judul tersebut di database")
         elif len(matches) > 1:
             self.logger.info(f"{server_message}: multiple matches!")
-            matches = await self.choose_anime(ctx, matches)
+            matches = await self.choose_anime(self.bot, ctx, matches)
             if not matches:
                 return await ctx.send("**Dibatalkan!**")
 
@@ -1749,7 +1785,7 @@ class Showtimes(commands.Cog, ShowtimesBase):
         self.logger.info(f"requested at {server_message}")
         posisi, posisi_asli = await self.get_roles(posisi)
         if posisi is None:
-            self.logger.warn(f"unknown position.")
+            self.logger.warn("unknown position.")
             return await ctx.send(
                 f"Tidak ada posisi **{posisi_asli}**\n"
                 "Yang tersedia: `tl`, `tlc`, `enc`, `ed`, `tm`, `ts`, dan `qc`"
@@ -1925,7 +1961,7 @@ class ShowtimesAlias(commands.Cog, ShowtimesBase):
                     await ctx.send("Tidak dapat menemukan judul tersebut di database")
                     return False, False
                 elif len(matches) > 1:
-                    matches = await self.choose_anime(ctx, matches)
+                    matches = await self.choose_anime(self.bot, ctx, matches)
                     if not matches:
                         return await ctx.send("**Dibatalkan!**")
 
@@ -2138,7 +2174,7 @@ class ShowtimesAlias(commands.Cog, ShowtimesBase):
             return await ctx.send("Tidak dapat menemukan judul tersebut di database")
         elif len(matches) > 1:
             self.logger.info(f"{server_message}: multiple matches!")
-            matches = await self.choose_anime(ctx, matches)
+            matches = await self.choose_anime(self.bot, ctx, matches)
             if not matches:
                 return await ctx.send("**Dibatalkan!**")
 
@@ -2191,7 +2227,7 @@ class ShowtimesAlias(commands.Cog, ShowtimesBase):
             return await ctx.send("Tidak dapat menemukan judul tersebut di database")
         elif len(matches) > 1:
             self.logger.info(f"{server_message}: multiple matches!")
-            matches = await self.choose_anime(ctx, matches)
+            matches = await self.choose_anime(self.bot, ctx, matches)
             if not matches:
                 return await ctx.send("**Dibatalkan!**")
 
@@ -2205,7 +2241,7 @@ class ShowtimesAlias(commands.Cog, ShowtimesBase):
             self.logger.info(f"{matches[0]}: no registered alias.")
             return await ctx.send("Tidak ada alias yang terdaftar untuk judul **{}**".format(matches[0]))
 
-        alias_chunked = [srv_anilist_alias[i : i + 5] for i in range(0, len(srv_anilist_alias), 5)]
+        alias_chunked = [srv_anilist_alias[i:i + 5] for i in range(0, len(srv_anilist_alias), 5)]
 
         first_run = True
         n = 1
@@ -2242,7 +2278,7 @@ class ShowtimesAlias(commands.Cog, ShowtimesBase):
                 react_ext.extend(["⏪", "⏩"])
 
             react_ext.append("❌")
-            to_react = to_react[0 : len(alias_chunked[n - 1])]
+            to_react = to_react[0:len(alias_chunked[n - 1])]
             to_react.extend(react_ext)
 
             for react in to_react:
@@ -2347,7 +2383,7 @@ class ShowtimesKolaborasi(commands.Cog, ShowtimesBase):
             await helpcmd.generate_field(
                 "kolaborasi dengan",
                 desc="Memulai proses kolaborasi garapan dengan fansub lain.",
-                opts=[{"name": "server id kolaborasi", "type": "r"}, {"name": "judul", "type": "r"},],
+                opts=[{"name": "server id kolaborasi", "type": "r"}, {"name": "judul", "type": "r"}],
                 use_fullquote=True,
             )
             await helpcmd.generate_field(
@@ -2365,7 +2401,7 @@ class ShowtimesKolaborasi(commands.Cog, ShowtimesBase):
             await helpcmd.generate_field(
                 "kolaborasi batalkan",
                 desc="Membatalkan proses kolaborasi.",
-                opts=[{"name": "server id kolaborasi", "type": "r"}, {"name": "kode unik", "type": "r"},],
+                opts=[{"name": "server id kolaborasi", "type": "r"}, {"name": "kode unik", "type": "r"}],
                 use_fullquote=True,
             )
             await helpcmd.generate_aliases(["joint", "join", "koleb"])
@@ -2404,7 +2440,7 @@ class ShowtimesKolaborasi(commands.Cog, ShowtimesBase):
             return await ctx.send("Tidak dapat menemukan judul tersebut di database")
         elif len(matches) > 1:
             self.logger.info(f"{server_message}: multiple matches!")
-            matches = await self.choose_anime(ctx, matches)
+            matches = await self.choose_anime(self.bot, ctx, matches)
             if not matches:
                 return await ctx.send("**Dibatalkan!**")
 
@@ -2721,17 +2757,21 @@ class ShowtimesKolaborasi(commands.Cog, ShowtimesBase):
         if str(ctx.message.author.id) not in srv_data["serverowner"]:
             return await ctx.send("Hanya admin yang bisa memputuskan kolaborasi")
 
-        matches = await self.find_any_matches(judul, srv_anilist, srv_anilist_alias, srv_data["alias"])
+        srv_anilist, srv_anilist_alias = await self.collect_anime_with_alias(
+            srv_data["anime"], srv_data["alias"]
+        )
+
         if not judul:
             return await self.send_all_projects(ctx, srv_anilist, server_message)
 
+        self.logger.info(f"{server_message}: getting close matches...")
         matches = await self.find_any_matches(judul, srv_anilist, srv_anilist_alias, srv_data["alias"])
         if not matches:
             self.logger.warn(f"{server_message}: no matches.")
             return await ctx.send("Tidak dapat menemukan judul tersebut di database")
         elif len(matches) > 1:
             self.logger.info(f"{server_message}: multiple matches!")
-            matches = await self.choose_anime(ctx, matches)
+            matches = await self.choose_anime(self.bot, ctx, matches)
             if not matches:
                 return await ctx.send("**Dibatalkan!**")
 
@@ -2840,12 +2880,12 @@ class ShowtimesAdmin(commands.Cog, ShowtimesBase):
             await helpcmd.generate_field(
                 "ntadmin tambahadmin",
                 desc="Menambah admin ke server baru " "yang terdaftar di database.",
-                opts=[{"name": "server id", "type": "r"}, {"name": "admin id", "type": "r"},],
+                opts=[{"name": "server id", "type": "r"}, {"name": "admin id", "type": "r"}],
             )
             await helpcmd.generate_field(
                 "ntadmin hapusadmin",
                 desc="Menghapus admin dari server baru yang" " terdaftar di database.",
-                opts=[{"name": "server id", "type": "r"}, {"name": "admin id", "type": "r"},],
+                opts=[{"name": "server id", "type": "r"}, {"name": "admin id", "type": "r"}],
             )
             await helpcmd.generate_field(
                 "ntadmin fetchdb", desc="Mengambil database lokal dan kirim ke Discord.",
@@ -3191,7 +3231,7 @@ class ShowtimesAdmin(commands.Cog, ShowtimesBase):
         uri = attachment.url
         filename = attachment.filename
 
-        if filename[filename.rfind(".") :] != ".json":
+        if filename[filename.rfind("."):] != ".json":
             await ctx.message.delete()
             return await ctx.send(
                 "Please provide a valid .json file by uploading " "and add `!!ntadmin patchdb` command"
@@ -3446,7 +3486,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
             return await ctx.send("Tidak dapat menemukan judul tersebut di database")
         elif len(matches) > 1:
             self.logger.info(f"{server_message}: multiple matches!")
-            matches = await self.choose_anime(ctx, matches)
+            matches = await self.choose_anime(self.bot, ctx, matches)
             if not matches:
                 return await ctx.send("**Dibatalkan!**")
 
@@ -3625,7 +3665,8 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
             self.logger.info(f"{matches[0]}: adding new episode...")
             status_list = program_info["status"]
             max_episode = list(status_list.keys())[-1]
-            _, _, _, time_data, _ = await fetch_anilist(program_info["anilist_id"], 1, max_episode, True)
+            anilist_data = await fetch_anilist(program_info["anilist_id"], 1, max_episode, True)
+            time_data = anilist_data["time_data"]
 
             embed = discord.Embed(
                 title="Menambah Episode",
@@ -3633,7 +3674,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                 color=0xEBA279,
             )
             embed.add_field(
-                name="Masukan jumlah episode yang diinginkan.", value=tambahepisode_instruct, inline=False,
+                name="Masukan jumlah episode yang diinginkan.", value=add_eps_instruct, inline=False,
             )
             embed.set_footer(
                 text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
@@ -3705,7 +3746,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                 color=0xEBA279,
             )
             embed.add_field(
-                name="Masukan range episode yang ingin dihapus.", value=hapusepisode_instruct, inline=False,
+                name="Masukan range episode yang ingin dihapus.", value=del_eps_instruct, inline=False,
             )
             embed.set_footer(
                 text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
@@ -3756,7 +3797,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                     )
                     embed.add_field(
                         name="Masukan range episode yang ingin dihapus.",
-                        value=hapusepisode_instruct,
+                        value=del_eps_instruct,
                         inline=False,
                     )
                     embed.set_footer(
@@ -4102,11 +4143,9 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
 
                 await await_msg.delete()
 
-            _, _, _, time_data, correct_episode_num = await fetch_anilist(
-                table["anilist_id"], 1, int(await_msg.content), True
-            )
-            table["episodes"] = correct_episode_num
-            table["time_data"] = time_data
+            anilist_data = await fetch_anilist(table["anilist_id"], 1, int(await_msg.content), True)
+            table["episodes"] = anilist_data["total_episodes"]
+            table["time_data"] = anilist_data["time_data"]
 
             return table, emb_msg
 
@@ -4138,10 +4177,10 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
 
                     await await_msg.delete()
 
-            (_, poster_data, title, time_data, correct_episode_num,) = await fetch_anilist(
-                await_msg.content, 1, 1, True
-            )
-            poster_image, poster_color = poster_data
+            anilist_data = await fetch_anilist(await_msg.content, 1, 1, True)
+            poster_data, title = anilist_data["poster_data"], anilist_data["title"]
+            time_data, episodes_total = anilist_data["time_data"], anilist_data["total_episodes"]
+            poster_image, poster_color = poster_data["image"], poster_data["color"]
 
             embed = discord.Embed(title="Menambah Utang", color=0x96DF6A)
             embed.set_thumbnail(url=poster_image)
@@ -4171,12 +4210,14 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                 pass
             elif "✅" in str(res.emoji):
                 try:
-                    air_start, _, _ = await fetch_anilist(await_msg.content, 1, 1, return_only_time=True)
+                    ani_air_data = await fetch_anilist(await_msg.content, 1, 1, return_only_time=True)
+                    _ = ani_air_data["airing_start"]
                 except Exception:
                     self.logger.warn(f"{server_message}: failed to fetch air start, please try again later.")
                     return (
                         False,
-                        "Gagal mendapatkan start_date, silakan coba lagi ketika sudah ada kepastian kapan animenya mulai.",
+                        "Gagal mendapatkan start_date, silakan coba lagi ketika sudah "
+                        "ada kepastian kapan animenya mulai.",
                     )
                 table["ani_title"] = title
                 table["poster_data"] = {
@@ -4189,12 +4230,12 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                 await emb_msg.clear_reactions()
                 return False, "Dibatalkan oleh user."
 
-            if correct_episode_num == 1:
+            if episodes_total == 1:
                 self.logger.info(f"{server_message}: asking episode total to user...")
                 table, emb_msg = await process_episode(table, emb_msg)
             else:
                 self.logger.info(f"{server_message}: using anilist episode total...")
-                table["episodes"] = correct_episode_num
+                table["episodes"] = episodes_total
                 table["time_data"] = time_data
 
             return table, emb_msg
@@ -4222,7 +4263,6 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                     if await_msg.content.isdigit():
                         table["role_id"] = await_msg.content
                         await await_msg.delete()
-                        break
                     elif await_msg.content.startswith("auto"):
                         self.logger.info(f"{server_message}: auto-generating role...")
                         c_role = await ctx.message.guild.create_role(
@@ -4230,11 +4270,10 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                         )
                         table["role_id"] = str(c_role.id)
                         await await_msg.delete()
-                        break
                 else:
                     table["role_id"] = mentions[0].id
                     await await_msg.delete()
-                    break
+                break
 
             return table, emb_msg
 
@@ -4303,7 +4342,8 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                 for i, _ in enumerate(table["time_data"]):
                     new_time_table.append(table["old_time_data"][i])
 
-                table["old_time_data"] = []  # Remove old time data because it resetted
+                # Remove old time data because it resetted
+                table["old_time_data"] = []
                 table["settings"]["time_data_are_the_same"] = False
                 return table, emb_msg
 
