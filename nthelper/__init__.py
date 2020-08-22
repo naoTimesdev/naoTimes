@@ -34,3 +34,11 @@ from .utils import (
     write_files,
 )
 from .fsdb import FansubDBBridge
+from .cpputest import (
+    CPPUnitTester,
+    CPPTestError,
+    CPPTestCompileError,
+    CPPTestRuntimeError,
+    CPPTestTimeoutError,
+    CPPTestSanitizeError
+)
