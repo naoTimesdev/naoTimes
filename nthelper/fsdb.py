@@ -1,37 +1,61 @@
 import asyncio
 import logging
-import sys
+import os
+import re
 from datetime import datetime, timedelta, timezone
-from typing import AnyStr, Tuple, Union
-from urllib.parse import quote_plus
+from typing import Any, AnyStr, Dict, List, Optional, Tuple, Union
 
 import aiohttp
 from bs4 import BeautifulSoup
 
 import ujson
 
-__CHROME_UA__ = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/84.0.4147.105 Safari/537.36"  # noqa: E501
-
 
 class FansubDBBridge:
-    def __init__(self):
+    def __init__(self, username, password, loop=None):
         self.logger = logging.getLogger("nthelper.fsdb.FansubDBBridge")
         self.session = aiohttp.ClientSession(
             headers={
-                "User-Agent": __CHROME_UA__,
+                "Content-Type": "application/json",
+                "User-Agent": "naoTimes/2.0a (https://github.com/noaione/naoTimes)",
                 "x-requested-by": "naoTimes-FSDB-Bridge",
-                "x-requested-with": "XMLHttpRequest",
             }
         )
+
+        self._user = username
+        self._pass = password
+        self._loop: asyncio.AbstractEventLoop = loop
+        if loop is None:
+            self._loop = asyncio.get_event_loop()
         self.BASE_URL = "https://db.silveryasha.web.id"
-        self.AJAX_API = f"{self.BASE_URL}/ajax"
-        self.CRUD_API = f"{self.BASE_URL}/crud"
+        self.BASE_API = f"{self.BASE_URL}/api"
         self._method_map = {
             "get": self.session.get,
             "post": self.session.post,
             "put": self.session.put,
         }
         self._wib_tz = timezone(timedelta(hours=7))
+
+        self._token = ""  # noqa: E501
+        self._expire = None
+
+        # self._loop.run_until_complete(self.authorize())
+
+    @property
+    def token_data(self):
+        return {"token": self._token, "expires": self._expire}
+
+    def set_token(self, token: str, expires: Optional[Union[int, float]]):
+        self._token = token
+        self._expire = expires
+
+    def get_close_matches(self, target: str, lists: list) -> list:
+        """
+        Find close matches from input target
+        Sort everything if there's more than 2 results
+        """
+        target_compiler = re.compile("({})".format(target), re.IGNORECASE)
+        return [fres for fres in lists if target_compiler.search(fres["name"])]
 
     async def close(self):
         """Close all session connection."""
@@ -53,287 +77,197 @@ class FansubDBBridge:
             res = await resp.text()
         return res
 
-    async def request_ajax(self, method: str, endpoint: str, **kwargs):
-        """Request to AJAX API.
-
-        :param method: HTTP method to use (GET, POST, PUT)
-        :type method: str
-        :param endpoint: Endpoint to use
-        :type endpoint: str
-        :return: json parsed format (dict or list)
-        :rtype: Union[dict, list]
-        """
-        url = f"{self.AJAX_API}/{endpoint}"
+    async def request_api(self, method: str, endpoint: str, **kwargs):
+        url = f"{self.BASE_API}/{endpoint}"
         res = await self.request_db(method, url, **kwargs)
         data = ujson.loads(res)
         return data
 
-    async def request_crud(self, method: str, endpoint: str, **kwargs):
-        """Request to Crud API.
-
-        :param method: HTTP method to use (GET, POST, PUT)
-        :type method: str
-        :param endpoint: Endpoint to use
-        :type endpoint: str
-        :return: json parsed format (dict or list)
-        :rtype: Union[dict, list]
+    async def authorize(self):
         """
-        url = f"{self.CRUD_API}/{endpoint}"
-        res = await self.request_db(method, url, **kwargs)
-        data = ujson.loads(res)
-        return res
-
-    async def _request_csrf_token(self, anime_id=None, is_anime=True) -> str:
-        """Request a CSRF Token
-
-        :param anime_id: anime_id to use, defaults to None
-        :type anime_id: int, optional
-        :param is_anime: Is the CSRF needed for anime page, defaults to True
-        :type is_anime: bool, optional
-        :return: CSRF Token
-        :rtype: str
+        Authorize username and password.
         """
-        self.logger.info(f"fetching csrf token for {anime_id}")
-        fetch_page = f"{self.BASE_URL}"
-        if is_anime:
-            fetch_page += "/anime"
-        if anime_id is not None:
-            fetch_page += f"/{anime_id}"
-        res = await self.request_db("get", fetch_page)
-        soup = BeautifulSoup(res, "html.parser")
-        csrf_token = soup.find("meta", {"name": "csrf-token"})
-        return csrf_token["content"]
+        body = {"username": self._user, "password": self._pass}
+        self.logger.info(f"Authenticating FansubDB with user {self._user}")
+        res = await self.request_api("post", "pintusorga", json=body)
+        if res["type"] == "success":
+            self.logger.info("Successfully logged in.")
+            self._token = res["token"]
+        else:
+            self.logger.error("Failed to authenticate account, disabling fansubdb...")
+            self._token = None
 
-    async def fetch_id_garapan(self, id_garapan: str) -> Union[dict, str]:
-        self.logger.info(f"fetching {id_garapan}...")
-        endpoint = f"project/anime/get?id={id_garapan}"
-        response: dict = await self.request_ajax("get", endpoint)
-        if "message" in response:
-            return response["message"]
-        project = response["projek"]
-        proper_data_map = {
-            "id": id_garapan,
-            "anime_id": project["anime_id"],
-            "flag": project["flag"] if project["flag"] is not None else "",
-            "status": project["status"],
-            "type": project["type"],
-            "status": project["status"],
-            "url": project["url"] if project["url"] is not None else "",
-            "misc": project["misc"] if project["misc"] is not None else "",
-            "fansub": response["fansub"],
-        }
-        return proper_data_map
+    async def check_expires(self):
+        if self._expire is None:
+            return
+        ctime = datetime.now(tz=timezone.utc).timestamp()
+        if ctime - 300 >= self._expire:
+            self.logger.info("Reauthorizing since token expired...")
+            await self.authorize()
 
-    async def tambah_garapan(self, anime_id, fansub_id, is_movie=False) -> Tuple[bool, str]:
-        if not isinstance(anime_id, int):
+    async def find_id_from_mal(self, mal_id: int, dataset: list) -> int:
+        mid_num = len(dataset) // 2
+        mid_data = dataset[mid_num]
+        if mid_data["mal_id"] == mal_id:
+            return mid_data["id"]
+        elif mid_data["mal_id"] > mal_id:
+            for data in dataset[:mid_num]:
+                if data["mal_id"] == mal_id:
+                    return data["id"]
+        elif mid_data["mal_id"] < mal_id:
+            for data in dataset[mid_num:]:
+                if data["mal_id"] == mal_id:
+                    return data["id"]
+        return 0
+
+    async def find_project_id(self, anime_id: int, dataset: list) -> int:
+        dataset.sort(key=lambda x: x["anime"]["id"])
+        mid_num = len(dataset) // 2
+        mid_data = dataset[mid_num]
+        if mid_data["anime"]["id"] == anime_id:
+            return mid_data["id"]
+        elif mid_data["anime"]["id"] > anime_id:
+            for data in dataset[:mid_num]:
+                if data["anime"]["id"] == anime_id:
+                    return data["id"]
+        elif mid_data["anime"]["id"] < anime_id:
+            for data in dataset[mid_num:]:
+                if data["anime"]["id"] == anime_id:
+                    return data["id"]
+        return 0
+
+    async def fetch_animes(self) -> List[dict]:
+        await self.check_expires()
+        headers = {"Authorization": f"Bearer {self._token}"}
+        anime_list: List[dict] = await self.request_api("get", "anime/list", headers=headers)
+        anime_list.sort(key=lambda x: x["id"])
+        for data in anime_list:
+            data["mal_id"] = int(data["mal_id"])
+        return anime_list
+
+    async def fetch_anime(self, anime_id: Union[int, str]) -> dict:
+        await self.check_expires()
+        headers = {"Authorization": f"Bearer {self._token}"}
+        anime_info: dict = await self.request_api("get", f"anime/list/{anime_id}", headers=headers)
+        return anime_info
+
+    async def import_mal(self, mal_id: int) -> Tuple[bool, Union[int, str]]:
+        await self.check_expires()
+        headers = {"Authorization": f"Bearer {self._token}"}
+        body_json = {"mal_id": mal_id}
+        result = await self.request_api("post", "anime/list", json=body_json, headers=headers)
+        if result["type"] == "success":
+            anime_lists = await self.fetch_animes()
+            anime_lists.sort(key=lambda x: x["mal_id"])
+            fs_id = await self.find_id_from_mal(mal_id, anime_lists)
+            return True, fs_id
+        return False, result["message"]
+
+    async def fetch_fansubs(self, search_query: str = "") -> List[dict]:
+        await self.check_expires()
+        headers = {"Authorization": f"Bearer {self._token}"}
+        fansubs_list: list = await self.request_api("get", "fansub/list", headers=headers)
+        if search_query.rstrip() != "":
+            fansubs_list = self.get_close_matches(search_query, fansubs_list)
+        return fansubs_list
+
+    async def fetch_anime_fansubs(self, anime_id: Union[int, str]) -> Tuple[List[dict], str]:
+        if isinstance(anime_id, str):
             try:
                 anime_id = int(anime_id)
-            except Exception:
-                return False, "anime_id bukanlah angka."
-        if not isinstance(fansub_id, int):
+            except ValueError:
+                return [], "Anime ID is not a valid number."
+        await self.check_expires()
+        headers = {"Authorization": f"Bearer {self._token}"}
+        fansubs_list: list = await self.request_api("get", f"projek/anime/{anime_id}", headers=headers)
+        return fansubs_list, "Success"
+
+    async def fetch_fansub_projects(self, fansub_id: Union[int, str]) -> Tuple[List[dict], str]:
+        if isinstance(fansub_id, str):
             try:
                 fansub_id = int(fansub_id)
-            except Exception:
-                return False, "fansub_id bukanlah angka."
-        data_baru = {
-            "_method": "post",
-            "_id": "",
+            except ValueError:
+                return [], "Fansub ID is not a valid number."
+        await self.check_expires()
+        headers = {"Authorization": f"Bearer {self._token}"}
+        project_lists: list = await self.request_api("get", f"projek/fansub/{fansub_id}", headers=headers)
+        return project_lists, "Success"
+
+    async def add_new_project(
+        self, anime_id: Union[int, str], fansub_id: Union[int, str]
+    ) -> Tuple[bool, Union[int, str]]:
+        if isinstance(anime_id, str):
+            try:
+                anime_id = int(anime_id)
+            except ValueError:
+                return False, "Anime ID is not a valid number."
+        if isinstance(fansub_id, str):
+            try:
+                fansub_id = int(fansub_id)
+            except ValueError:
+                return False, "Fansub ID is not a valid number."
+        await self.check_expires()
+        headers = {"Authorization": f"Bearer {self._token}"}
+        json_body = {
             "anime_id": anime_id,
-            "fansub[]": [fansub_id],
-            "flag": "",
-            "type": "BD" if is_movie else "TV",
+            "fansub": [fansub_id],
+            "flag": None,
+            "type": "TV",
+            "subtitle": "Softsub",
             "status": "Tentatif",
-            "url": "",
-            "misc": "",
+            "url": None,
+            "misc": None,
         }
-        data_baru["_token"] = await self._request_csrf_token(data_baru["anime_id"])
-        accept_head = {"accept": "application/json, text/javascript, */*; q=0.01"}
-        self.logger.info(f"fs{fansub_id}: menambah garapan untuk anime id {anime_id}...")
-        res = await self.request_crud("post", "project_anime", data=data_baru, headers=accept_head)
-        if "type" not in res:
-            self.logger.error(f"fs{fansub_id}: terjadi kesalahan: {res['message']}")
-            return False, res["message"]
-        self.logger.info(f"fs{fansub_id}: sukses!")
-        return True, "Success."
+        results: dict = await self.request_api("post", "projek/list", json=json_body, headers=headers)
+        if results["type"] == "success":
+            retry_count = 0
+            while retry_count < 5:
+                fansub_project, _ = await self.fetch_fansub_projects(fansub_id)
+                project_id = await self.find_project_id(anime_id, fansub_project)
+                if project_id != 0:
+                    return True, project_id
+                retry_count += 1
+                await asyncio.sleep(0.25)
+            return False, "Failed to fetch FansubDB Project ID, please contact N4O or mention him."
+        return False, results["message"]
 
-    async def ubah_data(self, data_baru: dict) -> Tuple[bool, str]:
-        data_baru["_token"] = await self._request_csrf_token(data_baru["anime_id"])
-        if "_id" not in data_baru:
-            data_baru["_id"] = int(data_baru["id"])
-            del data_baru["id"]
-        if "fansub[]" not in data_baru:
-            data_baru["fansub[]"] = data_baru["fansub"]
-            del data_baru["fansub"]
-        data_baru["_method"] = "PUT"
-        accept_head = {"accept": "application/json, text/javascript, */*; q=0.01"}
-        self.logger.info(f"{data_baru['_id']}: mengubah data...")
-        res = await self.request_crud("post", "project_anime", data=data_baru, headers=accept_head)
-        if "type" not in res:
-            self.logger.error(f"{data_baru['_id']}: terjadi kesalahan: {res['message']}")
-            return False, res["message"]
-        self.logger.info(f"{data_baru['_id']}: sukses!")
-        return True, "Success."
+    async def get_project(self, project_id: Union[int, str]) -> Tuple[dict, str]:
+        if isinstance(project_id, str):
+            try:
+                project_id = int(project_id)
+            except ValueError:
+                return {}, "Project ID is not a valid number."
+        await self.check_expires()
+        headers = {"Authorization": f"Bearer {self._token}"}
+        results: dict = await self.request_api("get", f"projek/list/{project_id}", headers=headers)
+        return results, "Success"
 
-    async def ubah_status(self, id_garapan: str, status: str) -> Tuple[bool, str]:
-        status_allow = ["jalan", "tamat", "tentatif", "drop"]
-        status = status.lower()
-        if status not in status_allow:
-            self.logger.error(f"{id_garapan}: jenis status tidak diketahui...")
-            return False, "Jenis status tidak diketahui."
-        self.logger.info(f"{id_garapan}: mengambil data...")
-        garapan = await self.fetch_id_garapan(id_garapan)
-        if isinstance(garapan, str):
-            self.logger.error(f"{id_garapan}: terjadi kesalahan: {garapan}")
-            return False, garapan
-        self.logger.info(f"{id_garapan}: mengubah status ke `{status}`...")
-        garapan["status"] = status.capitalize()
-        res, msg = await self.ubah_data(garapan)
-        return True, "Sukses."
+    async def update_project(
+        self, project_id: Union[int, str], to_update: str, update_data: Optional[Union[int, str, List[int]]]
+    ) -> Tuple[bool, str]:
+        if isinstance(project_id, str):
+            try:
+                project_id = int(project_id)
+            except ValueError:
+                return False, "Project ID is not a valid number."
+        await self.check_expires()
+        headers = {"Authorization": f"Bearer {self._token}"}
+        json_body = {to_update: update_data}
+        results: dict = await self.request_api(
+            "put", f"projek/list/{project_id}", json=json_body, headers=headers
+        )
+        if results["type"] == "success":
+            return True, "Success"
+        return False, results["message"]
 
-    async def ubah_bendera(self, id_garapan: str, bendera: str) -> Tuple[bool, str]:
-        self.logger.info(f"{id_garapan}: mengambil data...")
-        garapan = await self.fetch_id_garapan(id_garapan)
-        if isinstance(garapan, str):
-            self.logger.error(f"{id_garapan}: terjadi kesalahan: {garapan}")
-            return False, garapan
-        self.logger.info(f"{id_garapan}: mengubah bendera ke `{bendera}`...")
-        garapan["flag"] = bendera
-        res, msg = await self.ubah_data(garapan)
-        return True, "Sukses."
 
-    async def tambah_anime(self, mal_id):
-        self.logger.info(f"{mal_id}: adding to fansub db")
-        csrf_token = await self._request_csrf_token()
-        mal_data = {
-            "_token": csrf_token,
-            "mal_url": f"https://myanimelist.net/anime/{mal_id}/",
-        }
-        accept_head = {"accept": "application/json, text/javascript, */*; q=0.01"}
-        res = await self.request_crud("post", "import_mal", data=mal_data, headers=accept_head)
-        if "type" not in res:
-            self.logger.error(f"{mal_id}: terjadi kesalahan: {res['message']}")
-            return False, res["message"]
-        self.logger.info(f"{mal_id}: sukses!")
-        return True, "Success."
-
-    def _dict_to_params(self, dictmap: dict) -> str:
-        params = []
-        for key, val in dictmap.items():
-            if val is None:
-                val = ""
-            if not isinstance(val, str):
-                val = str(val)
-            params.append(f"{quote_plus(key)}={quote_plus(val)}")
-        return "&".join(params)
-
-    async def fetch_fansubs(self, filter_fs=None) -> Tuple[bool, Union[list, str]]:
-        parameters = {
-            "draw": 1,
-            "columns[0][data]": "name",
-            "columns[0][name]": "",
-            "columns[0][searchable]": "true",
-            "columns[0][orderable]": "true",
-            "columns[0][search][value]": "",
-            "columns[0][search][regex]": "false",
-            "columns[1][data]": "garapan",
-            "columns[1][name]": "",
-            "columns[1][searchable]": "true",
-            "columns[1][orderable]": "true",
-            "columns[1][search][value]": "",
-            "columns[1][search][regex]": "false",
-            "columns[2][data]": "garapan_now",
-            "columns[2][name]": "",
-            "columns[2][searchable]": "true",
-            "columns[2][orderable]": "true",
-            "columns[2][search][value]": "",
-            "columns[2][search][regex]": "false",
-            "columns[3][data]": "status",
-            "columns[3][name]": "",
-            "columns[3][searchable]": "true",
-            "columns[3][orderable]": "true",
-            "columns[3][search][value]": "",
-            "columns[3][search][regex]": "false",
-            "columns[4][data]": "tautan",
-            "columns[4][name]": "",
-            "columns[4][searchable]": "true",
-            "columns[4][orderable]": "true",
-            "columns[4][search][value]": "",
-            "columns[4][search][regex]": "false",
-            "order[0][column]": 0,
-            "order[0][dir]": "asc",
-            "start": 0,
-            "length": 200,
-            "search[value]": filter_fs if filter_fs is not None else "",
-            "search[regex]": "false",
-            "type": "anime",
-            "status": "",
-        }
-        log_txt = "requesting all fansubs data..."
-        if filter_fs is not None:
-            log_txt = f"requesting `{filter_fs}`..."
-        self.logger.info(log_txt)
-        csrf_token = await self._request_csrf_token(is_anime=False)
-        parameters["_token"] = csrf_token
-        ctime = int(round(datetime.now(self._wib_tz).timestamp() * 1000))
-        parameters["_"] = ctime
-        parsed_param = self._dict_to_params(parameters)
-        self.logger.debug(f"parsed parameters to send: {parsed_param}")
-        resp = await self.request_ajax("get", f"fansub/search?{parsed_param}")
-        if "data" not in resp:
-            self.logger.error(f"error occured: {resp['message']}")
-            return False, resp["message"]
-        dataset: list = resp["data"]
-        if dataset:
-            dataset.sort(key=lambda x: x["id"])
-        return True, dataset
-
-    async def fetch_anime(self, filter_ani=None) -> Tuple[bool, Union[list, str]]:
-        parameters = {
-            "draw": 1,
-            "columns[0][data]": "type",
-            "columns[0][name]": "type",
-            "columns[0][searchable]": "true",
-            "columns[0][orderable]": "true",
-            "columns[0][search][value]": "",
-            "columns[0][search][regex]": "false",
-            "columns[1][data]": "title_url",
-            "columns[1][name]": "title",
-            "columns[1][searchable]": "true",
-            "columns[1][orderable]": "true",
-            "columns[1][search][value]": "",
-            "columns[1][search][regex]": "false",
-            "columns[2][data]": "season_id",
-            "columns[2][name]": "season_id",
-            "columns[2][searchable]": "true",
-            "columns[2][orderable]": "true",
-            "columns[2][search][value]": "",
-            "columns[2][search][regex]": "false",
-            "columns[3][data]": "garapan",
-            "columns[3][name]": "garapan",
-            "columns[3][searchable]": "true",
-            "columns[3][orderable]": "true",
-            "columns[3][search][value]": "",
-            "columns[3][search][regex]": "false",
-            "order[0][column]": 1,
-            "order[0][dir]": "asc",
-            "start": 0,
-            "length": 2000,
-            "search[value]": filter_ani if filter_ani is not None else "",
-            "search[regex]": "false",
-        }
-        log_txt = "requesting all anime data..."
-        if filter_ani is not None:
-            log_txt = f"requesting `{filter_ani}`..."
-        self.logger.info(log_txt)
-        ctime = int(round(datetime.now(self._wib_tz).timestamp() * 1000))
-        parameters["_"] = ctime
-        parsed_param = self._dict_to_params(parameters)
-        self.logger.debug(f"parsed parameters to send: {parsed_param}")
-        resp = await self.request_ajax("get", f"anime/dtanime?{parsed_param}")
-        if "data" not in resp:
-            self.logger.error(f"error occured: {resp['message']}")
-            return False, resp["message"]
-        dataset: list = resp["data"]
-        if dataset:
-            dataset.sort(key=lambda x: x["id"])
-        return True, dataset
+if __name__ == "__main__":
+    loop = asyncio.get_event_loop()
+    fsdb = FansubDBBridge("", "", loop)
+    # success, fs_id = loop.run_until_complete(fsdb.import_mal())
+    res, _ = loop.run_until_complete(fsdb.get_project(1601))
+    with open("joshikausei_n4o.json", "w", encoding="utf-8") as fp:
+        ujson.dump(
+            res, fp, indent=4, ensure_ascii=False, encode_html_chars=False, escape_forward_slashes=False
+        )
+    loop.run_until_complete(fsdb.close())
