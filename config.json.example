@@ -1,0 +1,30 @@
+{
+    "bot_token": "",
+    "default_prefix": "!",
+    "github_info": {
+        "username": "",
+        "personal_access_token": ""
+    },
+    "gist_id": "",
+    "vndb": {
+        "username": "",
+        "password": ""
+    },
+    "nyaasi": {
+        "username": "",
+        "password": ""
+    },
+	"mongodb": {
+		"ip_hostname": "localhost",
+		"port": 13307,
+		"dbname": "naotimesdb"
+	},
+    "kbbi": {
+        "email": "",
+        "password": ""
+    },
+    "fansubdb": {
+        "username": "",
+        "password": ""
+    }
+}
