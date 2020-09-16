@@ -1,4 +1,5 @@
 # flake8: noqa
+# type: ignore
 #!/usr/bin/env python
 
 from __future__ import unicode_literals
@@ -548,3 +549,4 @@ def expand_consonant(str):
     str = str.lower()
 
     return sorted([mora for mora in ROMKAN.keys() if re.match("^%s.$" % str, mora)])
+

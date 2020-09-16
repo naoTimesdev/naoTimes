@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import logging
+from typing import List, Union
 
 import aiohttp
 import discord
@@ -87,22 +88,22 @@ class nHController(commands.Cog):
             helpmain.set_footer(text="Dibawakan oleh naoTimes " "|| Dibuat oleh N4O#8868 versi 2.0.0")
             await ctx.send(embed=helpmain)
 
-    def cek_translasi(self, tags):
-        lang = [i[0].capitalize() for i in tags["languages"]]
+    def cek_translasi(self, tags: List[dict]) -> str:
+        lang: List[str] = [i[0].capitalize() for i in tags["languages"]]  # type: ignore
         if "Translated" in lang:
             lang.remove("Translated")
             lang = [TRANSLASI_BAHASA.get(l, l) for l in lang]
             return "Terjemahan: " + ", ".join(lang)
         return "RAW ({})".format(TRANSLASI_BAHASA.get(lang[0], lang[0]))
 
-    async def format_embed_search(self, data, query):
+    async def format_embed_search(self, data: dict, query: str) -> discord.Embed:
         embed = discord.Embed(title="Pencarian: {}".format(query), color=0x1F1F1F, url=data["url"],)
         embed.set_footer(text="Kode: {} | Diprakasai oleh api.ihateani.me".format(data["id"]))
         embed.description = "**{}**\n{}".format(data["title"], self.cek_translasi(data["tags"]))
         embed.set_image(url=data["cover"])
         return embed
 
-    async def format_embed_info(self, data):
+    async def format_embed_info(self, data: dict) -> discord.Embed:
         lang = [i[0].capitalize() for i in data["tags"]["languages"]]
         if "Translated" in lang:
             lang.remove("Translated")
@@ -131,7 +132,9 @@ class nHController(commands.Cog):
         embed.set_image(url=data["cover"])
         return embed
 
-    async def format_embed_image(self, data, pos, data_total, img_link):
+    async def format_embed_image(
+        self, data: dict, pos: Union[str, int], data_total: Union[str, int], img_link: str
+    ) -> discord.Embed:
         embed = discord.Embed(
             title=data["title"],
             color=0x1F1F1F,
@@ -644,3 +647,4 @@ class nHController(commands.Cog):
             await ctx.send(
                 "Untuk menggunakan perintah ini, dibutuhkan channel" " yang sudah diaktifkan mode NSFW-nya."
             )
+

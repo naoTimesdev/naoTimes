@@ -370,7 +370,7 @@ class GamesAPI(commands.Cog):
             return await ctx.send("Soon™")
 
     @steam.command(name="dbcari", aliases=["searchdb"])
-    async def steam_steamdbcari(self, ctx, *, args: steamdb_converter = steamdb_converter.show_help()):
+    async def steam_steamdbcari(self, ctx, *, args: steamdb_converter = steamdb_converter.show_help()):  # type: ignore
         thumbbase = "https://cdn.cloudflare.steamstatic.com/steam/apps/{}/header.jpg"  # noqa: E501
         sapp_fmt = "https://store.steampowered.com/app/{}/"
         if isinstance(args, str):

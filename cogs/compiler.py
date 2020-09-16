@@ -7,8 +7,13 @@ import aiohttp
 import discord
 from discord.ext import commands
 
-from nthelper import (CPPTestCompileError, CPPTestRuntimeError,
-                      CPPTestSanitizeError, CPPTestTimeoutError, CPPUnitTester)
+from nthelper import (
+    CPPTestCompileError,
+    CPPTestRuntimeError,
+    CPPTestSanitizeError,
+    CPPTestTimeoutError,
+    CPPUnitTester,
+)
 
 
 def setup(bot):
@@ -18,55 +23,39 @@ def setup(bot):
 class CPPCompiler(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.reblocks = re.compile(r"```[a-z]*\n(?P<codes>[\s\S]*?)\n```")
+        self.reblocks = re.compile(r"```[a-zA-Z0-9+\-]*\n(?P<codes>[\s\S]*?)\n```")
         self.logger = logging.getLogger("cogs.compiler.CPPCompiler")
 
-    async def paste_to_hastebin(self, text_to_send):
+    async def paste_to_hastebin(self, text_to_send: str) -> str:
         async with aiohttp.ClientSession() as session:
-            async with session.post(
-                "https://hastebin.com/documents", data=str(text_to_send)
-            ) as resp:
+            async with session.post("https://hastebin.com/documents", data=str(text_to_send)) as resp:
+                haste_key = "unknown"
                 if resp.status == 200:
                     haste_key = (await resp.json())["key"]
-                    return f"https://hastebin.com/{haste_key}.log"
+        return f"https://hastebin.com/{haste_key}.log"
 
-    async def paste_to_psty(self, text_to_send):
-        form_data = {
-            "lang": "cpp",
-            "code": text_to_send
-        }
+    async def paste_to_psty(self, text_to_send: str) -> str:
+        form_data = {"lang": "cpp", "code": text_to_send}
         async with aiohttp.ClientSession() as session:
-            async with session.post(
-                "https://psty.io/upload", data=form_data
-            ) as resp:
+            async with session.post("https://psty.io/upload", data=form_data) as resp:
                 if resp.status == 200:
                     await resp.text()
-                    return str(resp.url)
+                final_url = str(resp.url)
+        return final_url
 
     @commands.command(name="compile")
     async def compile_code(self, ctx):
         server_message = str(ctx.message.guild.id)
         self.logger.info(f"requested at {server_message}")
 
-        embed = discord.Embed(title="C++ Compiler", color=0x82b5f1)
+        embed = discord.Embed(title="C++ Compiler", color=0x82B5F1)
         embed.description = "Compile C++ code at your own comfy discord server."
-        embed.add_field(
-            name="Enter Code",
-            value="Please enter your code (with code blocks/not",
-            inline=False
-        )
-        embed.add_field(
-            name="Limitation",
-            value="20s max, no system() support.",
-            inline=False
-        )
+        embed.add_field(name="Enter Code", value="Please enter your code (with code blocks/not", inline=False)
+        embed.add_field(name="Limitation", value="20s max, no system() support.", inline=False)
         embed.set_footer(text="C++@Discord")
         emb_msg = await ctx.send(embed=embed)
 
-        c_table = {
-            "code_blocks": "",
-            "code_input": []
-        }
+        c_table = {"code_blocks": "", "code_input": []}
 
         msg_author = ctx.message.author
 
@@ -75,18 +64,12 @@ class CPPCompiler(commands.Cog):
 
         async def process_code_blocks(table, emb_msg):
             self.logger.info(f"{server_message}: processing code blocks...")
-            embed = discord.Embed(title="C++ Compiler", color=0x82b5f1)
+            embed = discord.Embed(title="C++ Compiler", color=0x82B5F1)
             embed.description = "Compile C++ code at your own comfy discord server."
             embed.add_field(
-                name="Enter Code",
-                value="Please enter your code (with code blocks/not",
-                inline=False
+                name="Enter Code", value="Please enter your code (with code blocks/not", inline=False
             )
-            embed.add_field(
-                name="Limitation",
-                value="20s max, no system() support.",
-                inline=False
-            )
+            embed.add_field(name="Limitation", value="20s max, no system() support.", inline=False)
             embed.set_footer(text="C++@Discord")
             await emb_msg.edit(embed=embed)
 
@@ -104,7 +87,7 @@ class CPPCompiler(commands.Cog):
                 await await_msg.delete()
                 break
 
-            embed = discord.Embed(title="C++ Compiler", color=0x82b5f1)
+            embed = discord.Embed(title="C++ Compiler", color=0x82B5F1)
             embed.description = "Compile C++ code at your own comfy discord server."
             embed.add_field(
                 name="Is this correct?", value=f"```cpp\n{code_blocks}\n```", inline=False,
@@ -141,12 +124,12 @@ class CPPCompiler(commands.Cog):
         async def give_input(table, emb_msg):
             self.logger.info(f"{server_message}: processing input data...")
             rand_exit_code = "".join([random.choice(ascii_lowercase) for _ in range(8)])
-            embed = discord.Embed(title="C++ Compiler", color=0xf182ca)
+            embed = discord.Embed(title="C++ Compiler", color=0xF182CA)
             embed.description = "Compile C++ code at your own comfy discord server."
             embed.add_field(
                 name="Enter Input",
                 value=f"Enter: `blank_{rand_exit_code}` to set input to blank.",
-                inline=False
+                inline=False,
             )
             embed.set_footer(text="C++@Discord")
             await emb_msg.edit(embed=embed)
@@ -177,19 +160,16 @@ class CPPCompiler(commands.Cog):
         cancel_toggled = False
         while True:
             embed = discord.Embed(
-                title="C++ Compiler",
-                description="Periksa data!\nReact jika ingin diubah.",
-                color=0xcb82f1,
+                title="C++ Compiler", description="Periksa data!\nReact jika ingin diubah.", color=0xCB82F1,
             )
             embed.add_field(
-                name="1⃣ Codes",
-                value="```cpp\n{}\n```".format(c_table["code_blocks"]),
-                inline=False,
+                name="1⃣ Codes", value="```cpp\n{}\n```".format(c_table["code_blocks"]), inline=False,
             )
             embed.add_field(
                 name="2⃣ Input Data",
                 value="```\n{}\n```".format("\n".join(c_table["code_input"]))
-                if c_table["code_input"] else "Tidak ada.",
+                if c_table["code_input"]
+                else "Tidak ada.",
                 inline=False,
             )
             embed.set_footer(text="C++@Discord")
@@ -241,7 +221,7 @@ class CPPCompiler(commands.Cog):
             return await ctx.send("**Dibatalkan!**")
 
         self.logger.info(f"{server_message}: compiling code...")
-        embed = discord.Embed(title="C++ Compiler", color=0xcfd453)
+        embed = discord.Embed(title="C++ Compiler", color=0xCFD453)
         embed.description = "Compiling code..."
         embed.set_footer(text="C++@Discord")
         await emb_msg.edit(embed=embed)
@@ -250,34 +230,27 @@ class CPPCompiler(commands.Cog):
             await cpp_tc.save_and_compile()
         except CPPTestSanitizeError as ctserr:
             await cpp_tc.cleanup_data()
-            embed = discord.Embed(title="C++ Compiler", color=0xb62626)
-            embed.add_field(
-                name="Sanitization Error!",
-                value="```cpp\n{}\n```".format(ctserr)
-            )
+            embed = discord.Embed(title="C++ Compiler", color=0xB62626)
+            embed.add_field(name="Sanitization Error!", value="```cpp\n{}\n```".format(ctserr))
             embed.set_footer(text="C++@Discord")
             await emb_msg.edit(embed=embed)
             return
         except CPPTestCompileError as ctcerr:
             await cpp_tc.cleanup_data()
-            embed = discord.Embed(title="C++ Compiler", color=0xb62626)
-            if len(str(ctcerr)) > 1950:
-                hasted = await self.paste_to_psty(str(ctcerr))
+            embed = discord.Embed(title="C++ Compiler", color=0xB62626)
+            if len(str(ctcerr)) > 1000:
+                hasted = await self.paste_to_hastebin(str(ctcerr))
                 embed.add_field(
                     name="Failed to compile!",
-                    value="Since the error log is way too long, "
-                    f"here's Hastebin dump\n{hasted}"
+                    value="Since the error log is way too long, " f"here's Hastebin dump\n{hasted}",
                 )
             else:
-                embed.add_field(
-                    name="Failed to compile!",
-                    value="```cpp\n{}\n```".format(ctcerr)
-                )
+                embed.add_field(name="Failed to compile!", value="```cpp\n{}\n```".format(ctcerr))
             embed.set_footer(text="C++@Discord")
             await emb_msg.edit(embed=embed)
             return
 
-        embed = discord.Embed(title="C++ Compiler", color=0xcfd453)
+        embed = discord.Embed(title="C++ Compiler", color=0xCFD453)
         embed.description = "Running code..."
         embed.set_footer(text="C++@Discord")
         await emb_msg.edit(embed=embed)
@@ -287,49 +260,39 @@ class CPPCompiler(commands.Cog):
             err_code, out_shit, time_taken = await cpp_tc.run_code()
             if isinstance(out_shit, list):
                 out_shit = "\n".join(out_shit)
-            embed = discord.Embed(title="C++ Compiler", color=0x7bd453)
+            embed = discord.Embed(title="C++ Compiler", color=0x7BD453)
             embed.description = f"Time taken: {time_taken}ms"
-            if len(out_shit) > 1950:
-                hasted = await self.paste_to_psty(out_shit)
+            if len(out_shit) > 1000:
+                hasted = await self.paste_to_hastebin(out_shit)
                 embed.add_field(
                     name="Output",
-                    value="Since the output is way too long, "
-                    f"here's Hastebin dump\n{hasted}"
+                    value="Since the output is way too long, " f"here's Hastebin dump\n{hasted}",
                 )
             else:
-                embed.add_field(
-                    name="Output",
-                    value="```\n{}\n```".format(out_shit)
-                )
+                embed.add_field(name="Output", value="```\n{}\n```".format(out_shit))
             embed.set_footer(text="C++@Discord")
             await emb_msg.edit(embed=embed)
             await cpp_tc.cleanup_data()
             return
         except CPPTestRuntimeError as ctrerr:
             await cpp_tc.cleanup_data()
-            embed = discord.Embed(title="C++ Compiler", color=0xb62626)
-            if len(str(ctrerr)) > 1950:
-                hasted = await self.paste_to_psty(str(ctrerr))
+            embed = discord.Embed(title="C++ Compiler", color=0xB62626)
+            if len(str(ctrerr)) > 1000:
+                hasted = await self.paste_to_hastebin(str(ctrerr))
                 embed.add_field(
                     name="Runtime Error!",
-                    value="Since the error log is way too long, "
-                    f"here's Hastebin dump\n{hasted}"
+                    value="Since the error log is way too long, " f"here's Hastebin dump\n{hasted}",
                 )
             else:
-                embed.add_field(
-                    name="Runtime Error!",
-                    value="```cpp\n{}\n```".format(ctrerr)
-                )
+                embed.add_field(name="Runtime Error!", value="```cpp\n{}\n```".format(ctrerr))
             embed.set_footer(text="C++@Discord")
             await emb_msg.edit(embed=embed)
             return
         except CPPTestTimeoutError as ctterr:
             await cpp_tc.cleanup_data()
-            embed = discord.Embed(title="C++ Compiler", color=0xb62626)
-            embed.add_field(
-                name="Timeout Error!",
-                value="{}".format(ctterr)
-            )
+            embed = discord.Embed(title="C++ Compiler", color=0xB62626)
+            embed.add_field(name="Timeout Error!", value="{}".format(ctterr))
             embed.set_footer(text="C++@Discord")
             await emb_msg.edit(embed=embed)
             return
+

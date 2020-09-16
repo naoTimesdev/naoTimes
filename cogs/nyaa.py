@@ -44,7 +44,7 @@ class BotArgumentParser(argparse.ArgumentParser):
 
 def humanbytes(B: int) -> str:
     """Return the given bytes as a human friendly KB, MB, GB, or TB string"""
-    B = float(B)
+    B = float(B)  # type: ignore
     KB = float(1024)
     MB = float(KB ** 2)  # 1,048,576
     GB = float(KB ** 3)  # 1,073,741,824

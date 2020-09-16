@@ -216,7 +216,7 @@ async def fetch_vndb(
                     plat.append(p.upper())
         else:
             plat.append("Tidak Diketahui")
-        plat = ", ".join(plat)
+        plat = ", ".join(plat)  # type: ignore
 
         rating = d["rating"]
         desc = bbcode_markdown(d["description"])
@@ -226,9 +226,9 @@ async def fetch_vndb(
         if d["languages"]:
             for l in d["languages"]:
                 lang_.append(l.upper())
-            lang_ = ", ".join(lang_)
+            lang_ = ", ".join(lang_)  # type: ignore
         else:
-            lang_ = "Tidak diketahui"
+            lang_ = "Tidak diketahui"  # type: ignore
 
         if d["anime"]:
             anime_stat = "Ada"
@@ -244,9 +244,9 @@ async def fetch_vndb(
         if d["relations"]:
             for r in d["relations"]:
                 relasi_.append(r["title"] + " (" + str(r["id"]) + ")")
-            relasi_ = "\n".join(relasi_)
+            relasi_ = "\n".join(relasi_)  # type: ignore
         else:
-            relasi_ = "Tidak ada"
+            relasi_ = "Tidak ada"  # type: ignore
 
         released = d["released"]
 

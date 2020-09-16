@@ -21,7 +21,11 @@ from .romkan import (
     to_kunrei,
     to_roma,
 )
-from .showtimes_helper import naoTimesDB
+from .showtimes_helper import (
+    naoTimesDB,
+    ShowtimesQueue,
+    ShowtimesQueueData,
+)
 from .utils import (
     HelpGenerator,
     get_current_time,

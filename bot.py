@@ -17,7 +17,7 @@ from discord.ext import commands
 
 from nthelper.fsdb import FansubDBBridge
 from nthelper.kbbiasync import KBBI, AutentikasiKBBI
-from nthelper.showtimes_helper import naoTimesDB
+from nthelper.showtimes_helper import ShowtimesQueue, naoTimesDB
 from nthelper.utils import (
     HelpGenerator,
     __version__,
@@ -84,16 +84,38 @@ async def init_bot(loop):
     is_kbbi_auth = await kbbi_cls.cek_auth()
     await kbbi_cls.tutup()
     if not is_kbbi_auth or current_dt >= kbbi_expires:
-        logger.warn("kbbi cookie expired, generating new one...")
+        logger.warning("kbbi cookie expired, generating new one...")
         kbbi_auth = AutentikasiKBBI(kbbi_conf["email"], kbbi_conf["password"])
-        logger.warn("kbbi_auth: authenticating...")
+        logger.warning("kbbi_auth: authenticating...")
         await kbbi_auth.autentikasi()
         cookie_baru = await kbbi_auth.ambil_cookies()
-        logger.warn("saving new KBBI cookie...")
+        logger.warning("saving new KBBI cookie...")
         new_data = {"cookie": cookie_baru, "expires": round(current_dt + (15 * 24 * 60 * 60))}
         await write_files(new_data, "kbbi_auth.json")
         kbbi_cookie = cookie_baru
         kbbi_expires = round(current_dt + (15 * 24 * 60 * 60))
+
+    logger.info("Opening FSDB Token data...")
+    fsdb_token = await read_files("fsdb_login.json")
+    logger.info("Preparing FSDB Connection...")
+    fsdb_bridge = FansubDBBridge(config["fansubdb"]["username"], config["fansubdb"]["password"])
+    if not fsdb_token:
+        logger.info("Authenticating (No saved token)...")
+        await fsdb_bridge.authorize()
+        fsdb_token = fsdb_bridge.token_data
+        await write_files(fsdb_token, "fsdb_login.json")
+    elif fsdb_token["expires"] is not None:
+        if current_dt - 300 >= fsdb_token["expires"]:
+            logger.info("Reauthenticating (Token expired)...")
+            await fsdb_bridge.authorize()
+            fsdb_token = fsdb_bridge.token_data
+            await write_files(fsdb_token, "fsdb_login.json")
+        else:
+            logger.info("Setting FSDB token...")
+            fsdb_bridge.set_token(fsdb_token["token"], fsdb_token["expires"])
+    else:
+        logger.info("Setting FSDB token...")
+        fsdb_bridge.set_token(fsdb_token["token"], fsdb_token["expires"])
 
     cwd = str(pathlib.Path(__file__).parent.absolute())
     temp_folder = os.path.join(cwd, "automod")
@@ -118,18 +140,23 @@ async def init_bot(loop):
         if not hasattr(bot, "semver"):
             bot.semver = __version__
         if not hasattr(bot, "jsdb_streams"):
+            logger.info("Binding JSON dataset...")
             bot.jsdb_streams = streams_list
             bot.jsdb_currency = currency_data
             bot.jsdb_crypto = crypto_data
         if not hasattr(bot, "fcwd"):
             bot.fcwd = cwd
         if not hasattr(bot, "kbbi_cookie"):
+            logger.info("Binding KBBI Cookies...")
             bot.kbbi_cookie = kbbi_cookie
             bot.kbbi_expires = kbbi_expires
             bot.kbbi_auth = {"email": kbbi_conf["email"], "password": kbbi_conf["password"]}
         if not hasattr(bot, "fsdb"):
             logger.info("Binding FansubDB...")
-            bot.fsdb = FansubDBBridge()
+            bot.fsdb = fsdb_bridge
+        if not hasattr(bot, "showqueue"):
+            logger.info("Binding ShowtimesQueue...")
+            bot.showqueue = ShowtimesQueue(cwd)
         logger.info("Success Loading Discord.py")
     except Exception as exc:
         logger.error("Failed to load Discord.py")
@@ -225,7 +252,7 @@ async def on_ready():
                 svfn = os.path.join(showtimes_folder, f"{fn}.showtimes")
                 logger.info(f"showtimes: saving to file {fn}")
                 if fn == "supermod":
-                    svfn = os.path.join(showtimes_folder, f"super_admin.json")
+                    svfn = os.path.join(showtimes_folder, "super_admin.json")
                 await write_files(fdata, svfn)
             logger.info("File fetched and saved to local json")
             logger.info("---------------------------------------------------------------")  # noqa: E501
@@ -450,7 +477,7 @@ async def fetch_bot_count_data():
 
     # Showtimes
     if not os.path.isfile("nao_showtimes.json"):
-        logger.warn("naoTimes are not initiated, skipping...")
+        logger.warning("naoTimes are not initiated, skipping...")
         json_data = {}
 
     json_data = await read_files("nao_showtimes.json")
@@ -583,7 +610,7 @@ async def reloadconf(ctx):
             bot.reload_extension(cogs)
             logger.info(f"reloaded {cogs}")
         except commands.ExtensionNotLoaded:
-            logger.warn(f"{cogs} haven't been loaded yet...")
+            logger.warning(f"{cogs} haven't been loaded yet...")
             try:
                 logger.info(f"loading {cogs}")
                 bot.load_extension(cogs)
@@ -614,7 +641,7 @@ async def reload(ctx, *, cogs=None):
     Restart salah satu module bot, owner only
     """
     if not cogs:
-        helpcmd = HelpGenerator(bot, "Reload", desc=f"Reload module bot.",)
+        helpcmd = HelpGenerator(bot, "Reload", desc="Reload module bot.",)
         helpcmd.embed.add_field(
             name="Module/Cogs List", value="\n".join(["- " + cl for cl in cogs_list]), inline=False,
         )
@@ -628,7 +655,7 @@ async def reload(ctx, *, cogs=None):
         bot.reload_extension(cogs)
         logger.info(f"reloaded {cogs}")
     except commands.ExtensionNotFound:
-        logger.warn(f"{cogs} doesn't exist.")
+        logger.warning(f"{cogs} doesn't exist.")
         return await msg.edit(content="Cannot find that module.")
     except commands.ExtensionFailed as cef:
         logger.error(f"failed to reload {cogs}")
@@ -636,7 +663,7 @@ async def reload(ctx, *, cogs=None):
         return await msg.edit(content="Failed to (re)load module, please check bot logs.")
     except commands.ExtensionNotLoaded:
         await msg.edit(content="Failed to reload module, trying to load it...")
-        logger.warn(f"{cogs} haven't been loaded yet...")
+        logger.warning(f"{cogs} haven't been loaded yet...")
         try:
             logger.info(f"trying to load {cogs}")
             bot.load_extension(cogs)
@@ -646,7 +673,7 @@ async def reload(ctx, *, cogs=None):
             announce_error(cer)
             return await msg.edit(content="Failed to (re)load module, please check bot logs.")
         except commands.ExtensionNotFound:
-            logger.warn(f"{cogs} doesn't exist.")
+            logger.warning(f"{cogs} doesn't exist.")
             return await msg.edit(content="Cannot find that module.")
 
     await msg.edit(content=f"Successfully (re)loaded `{cogs}` module.")
@@ -659,7 +686,7 @@ async def load(ctx, *, cogs=None):
     Load salah satu module bot, owner only
     """
     if not cogs:
-        helpcmd = HelpGenerator(bot, "Load", desc=f"Load module bot.",)
+        helpcmd = HelpGenerator(bot, "Load", desc="Load module bot.",)
         helpcmd.embed.add_field(
             name="Module/Cogs List", value="\n".join(["- " + cl for cl in cogs_list]), inline=False,
         )
@@ -673,7 +700,7 @@ async def load(ctx, *, cogs=None):
         bot.load_extension(cogs)
         logger.info(f"loaded {cogs}")
     except commands.ExtensionNotFound:
-        logger.warn(f"{cogs} doesn't exist.")
+        logger.warning(f"{cogs} doesn't exist.")
         return await msg.edit(content="Cannot find that module.")
     except commands.ExtensionFailed as cef:
         logger.error(f"failed to load {cogs}")
@@ -690,7 +717,7 @@ async def unload(ctx, *, cogs=None):
     Unload salah satu module bot, owner only
     """
     if not cogs:
-        helpcmd = HelpGenerator(bot, "Unload", desc=f"Unload module bot.",)
+        helpcmd = HelpGenerator(bot, "Unload", desc="Unload module bot.",)
         helpcmd.embed.add_field(
             name="Module/Cogs List", value="\n".join(["- " + cl for cl in cogs_list]), inline=False,
         )
@@ -704,10 +731,10 @@ async def unload(ctx, *, cogs=None):
         bot.unload_extension(cogs)
         logger.info(f"loaded {cogs}")
     except commands.ExtensionNotFound:
-        logger.warn(f"{cogs} doesn't exist.")
+        logger.warning(f"{cogs} doesn't exist.")
         return await msg.edit(content="Cannot find that module.")
     except commands.ExtensionNotLoaded:
-        logger.warn(f"{cogs} aren't loaded yet.")
+        logger.warning(f"{cogs} aren't loaded yet.")
         return await msg.edit(content="Module not loaded yet.")
     except commands.ExtensionFailed as cef:
         logger.error(f"failed to unload {cogs}")
@@ -725,14 +752,14 @@ async def prefix(ctx, *, msg=None):
     logger.info(f"requested at {server_message}")
     if not os.path.isfile("server_prefixes.json"):
         prefix_data = {}
-        logger.warn(".json file doesn't exist, making one...")
+        logger.warning(".json file doesn't exist, making one...")
         await write_files({}, "server_prefixes.json")
     else:
         prefix_data = await read_files("server_prefixes.json")
 
     if not msg:
-        helpcmd = HelpGenerator(bot, "Load", desc=f"Load module bot.", color=0x00AAAA)
-        helpmain.embed.add_field(
+        helpcmd = HelpGenerator(bot, "Prefix", color=0x00AAAA)
+        helpcmd.embed.add_field(
             name="Prefix Server", value=prefix_data.get(server_message, "Tidak ada"), inline=False,
         )
         await helpcmd.generate_aliases()
@@ -740,7 +767,7 @@ async def prefix(ctx, *, msg=None):
 
     if msg in ["clear", "bersihkan", "hapus"]:
         if server_message in prefix_data:
-            logger.warn(f"{server_message}: deleting custom prefix...")
+            logger.warning(f"{server_message}: deleting custom prefix...")
             del prefix_data[server_message]
 
             await write_files(prefix_data, "server_prefixes.json")
@@ -776,7 +803,7 @@ async def prefix(ctx, *, msg=None):
             bot.reload_extension(cogs)
             logger.info(f"reloaded {cogs}")
         except commands.ExtensionNotLoaded:
-            logger.warn(f"{cogs} haven't been loaded yet...")
+            logger.warning(f"{cogs} haven't been loaded yet...")
             try:
                 logger.info(f"loading {cogs}")
                 bot.load_extension(cogs)
@@ -791,7 +818,7 @@ async def prefix(ctx, *, msg=None):
             failed_cogs.append(cogs)
 
     if failed_cogs:
-        logger.warn("there's cogs that failed\n{}".format("\n".join(failed_cogs)))
+        logger.warning("there's cogs that failed\n{}".format("\n".join(failed_cogs)))
 
     await ctx.send(send_txt.format(pre_=msg))
 
@@ -802,12 +829,12 @@ async def prefix_error(self, error, ctx):
         server_message = str(ctx.message.guild.id)
         if not os.path.isfile("prefixes.json"):
             prefix_data = {}
-            logger.warn(".json file doesn't exist, making one...")
+            logger.warning(".json file doesn't exist, making one...")
             await write_files({}, "server_prefixes.json")
         else:
             prefix_data = await read_files("server_prefixes.json")
-        helpcmd = HelpGenerator(bot, "Load", desc=f"Load module bot.", color=0x00AAAA)
-        helpmain.embed.add_field(
+        helpcmd = HelpGenerator(bot, "Load", desc="Load module bot.", color=0x00AAAA)
+        helpcmd.embed.add_field(
             name="Prefix Server", value=prefix_data.get(server_message, "Tidak ada"), inline=False,
         )
         await helpcmd.generate_aliases()
@@ -818,10 +845,10 @@ try:
     bot.loop.create_task(change_bot_presence())
     bot.run(bot_config["bot_token"], bot=True, reconnect=True)
 except (KeyboardInterrupt, SystemExit, SystemError):
-    logger.warn("Logging out...")
+    logger.warning("Logging out...")
     async_loop.run_until_complete(bot.logout())
-    logger.warn("Disconnecting from discord...")
+    logger.warning("Disconnecting from discord...")
     async_loop.run_until_complete(bot.close())
 finally:
-    logger.warn("Closing async loop.")
+    logger.warning("Closing async loop.")
     async_loop.close()

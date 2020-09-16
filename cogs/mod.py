@@ -26,6 +26,7 @@ class AutoMod(commands.Cog):
         self.no_no_word = []
         self.logger = logging.getLogger("cogs.mod.AutoMod")
         self.mute_roles_map = {}
+        self.shadowban_map = {}
 
         self.modpath = "/root/naotimes/automod/"
         self._locked = False
@@ -45,6 +46,10 @@ class AutoMod(commands.Cog):
         if metadata2:
             self.logger.info("precheck: there's mute list, adding...")
             self.mute_roles_map = metadata2
+        metadata3 = await self.read_local_shadowban()
+        if metadata3:
+            self.logger.info("precheck: there's shadowbanned list, adding...")
+            self.shadowban_map = metadata3
         self.prechecked = True
 
     async def acquire_lock(self):
@@ -57,7 +62,7 @@ class AutoMod(commands.Cog):
     async def release_lock(self):
         self._locked = False
 
-    async def read_file(self, path):
+    async def read_file(self, path: str):
         await self.acquire_lock()
         async with aiofiles.open(path, "r", encoding="utf-8") as f:
             data = await f.read()
@@ -68,27 +73,35 @@ class AutoMod(commands.Cog):
             pass
         return data, path
 
-    async def save_file(self, fpath, content):
+    async def save_file(self, fpath: str, content):
         await self.acquire_lock()
         async with aiofiles.open(fpath, "w", encoding="utf-8") as fp:
             await fp.write(content)
         await self.release_lock()
 
-    async def read_local(self):
+    async def read_local(self) -> dict:
         metafile = os.path.join(self.modpath, "automod.json")
         if not os.path.isfile(metafile):
             return {}
 
         metafile, _ = await self.read_file(metafile)
-        return metafile
+        return metafile  # type: ignore
 
-    async def read_local_mute(self):
+    async def read_local_mute(self) -> dict:
         metafile = os.path.join(self.modpath, "automod_mute.json")
         if not os.path.isfile(metafile):
             return {}
 
         metafile, _ = await self.read_file(metafile)
-        return metafile
+        return metafile  # type: ignore
+
+    async def read_local_shadowban(self) -> dict:
+        metafile = os.path.join(self.modpath, "automod_shadowban.json")
+        if not os.path.isfile(metafile):
+            return {}
+
+        metafile, _ = await self.read_file(metafile)
+        return metafile  # type: ignore
 
     async def save_local(self):
         metafile_path = os.path.join(self.modpath, "automod.json")
@@ -101,7 +114,11 @@ class AutoMod(commands.Cog):
         metafile_path = os.path.join(self.modpath, "automod_mute.json")
         await self.save_file(metafile_path, ujson.dumps(self.mute_roles_map))
 
-    async def verify_word(self, msg_data):
+    async def save_local_shadowban(self):
+        metafile_path = os.path.join(self.modpath, "automod_shadowban.json")
+        await self.save_file(metafile_path, ujson.dumps(self.shadowban_map))
+
+    async def verify_word(self, msg_data: str) -> bool:
         msg_data = msg_data.lower()
         triggered = False
         for no_no in self.no_no_word:
@@ -143,6 +160,45 @@ class AutoMod(commands.Cog):
             if do_delete:
                 await after.delete()
                 await channel.send("⚠️ Auto-mod trigger (Edited Message).")
+
+    @commands.Cog.listener("on_member_join")
+    async def shadowban_watcher(self, member: discord.Member):
+        self.logger.info("new member joined, checking shadowban list...")
+        guilds = member.guild
+        srv_id = str(guilds.id)
+        member_id = str(member.id)
+
+        if srv_id in self.shadowban_map:
+            if member_id in self.shadowban_map[srv_id]:
+                self.logger.info(f"Banning: {member_id}")
+                await guilds.ban(user=member, reason="Banned from shadowban list, goodbye o7")
+
+    @commands.command()
+    @commands.has_permissions(ban_members=True)
+    async def shadowban(self, ctx, *, user_id):
+        srv_id = str(ctx.message.guild.id)
+        if srv_id not in self.shadowban_map:
+            self.shadowban_map[srv_id] = []
+        self.shadowban_map[srv_id].append(str(user_id))
+        self.logger.info(f"{srv_id}: User {user_id} has been shadowbanned.")
+        await self.save_local_shadowban()
+        await ctx.send(f"User `{user_id}` telah di shadowbanned dari server ini.")
+
+    @commands.command()
+    @commands.has_permissions(ban_members=True)
+    async def unshadowban(self, ctx, *, user_id):
+        srv_id = str(ctx.message.guild.id)
+        if srv_id not in self.shadowban_map:
+            return await ctx.send("Tidak ada user yang di shadowbanned di server ini.")
+        if not self.shadowban_map[srv_id]:
+            return await ctx.send("Tidak ada user yang di shadowbanned di server ini.")
+        user_id = str(user_id)
+        if user_id not in self.shadowban_map[srv_id]:
+            return await ctx.send("User tersebut tidak ada di list shadowbanned server.")
+        self.shadowban_map[srv_id].remove(user_id)
+        self.logger.info(f"{srv_id}: User {user_id} has been unshadowbanned.")
+        await self.save_local_shadowban()
+        await ctx.send(f"User `{user_id}` telah di unshadowbanned dari server ini.")
 
     @commands.command()
     @commands.has_permissions(administrator=True)
@@ -189,7 +245,7 @@ class AutoMod(commands.Cog):
         if ctx.message.author.id != 466469077444067372:
             return
         await self.save_local()
-        await ctx.send(f"⚙️ Local file have been overwritten.")
+        await ctx.send("⚙️ Local file have been overwritten.")
 
     @commands.command()
     async def automod_info(self, ctx):

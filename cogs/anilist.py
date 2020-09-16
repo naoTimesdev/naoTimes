@@ -59,7 +59,7 @@ query ($season: MediaSeason, $year: Int, $format: MediaFormat, $excludeFormat: M
         }
     }
 }
-"""
+"""  # noqa: E501
 
 anilist_query = """
 query ($page: Int, $perPage: Int, $search: String) {
@@ -270,7 +270,7 @@ async def fetch_anilist(title, method, streams_list={}):
         try:
             async with sesi.post(
                 "https://graphql.anilist.co",
-                json={"query": anilist_query % method.upper(), "variables": variables,},
+                json={"query": anilist_query % method.upper(), "variables": variables},
             ) as r:
                 try:
                     data = await r.json()

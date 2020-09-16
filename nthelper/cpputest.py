@@ -16,17 +16,12 @@ class CPPTestError(Exception):
 
 class CPPTestSanitizeError(CPPTestError):
     def __init__(self, msg=None):
-        super().__init__(
-            msg
-            or "Sanitization error occured, code contain non-allowed stuff."
-        )
+        super().__init__(msg or "Sanitization error occured, code contain non-allowed stuff.")
 
 
 class CPPTestCompileError(CPPTestError):
     def __init__(self, err_out):
-        super().__init__(
-            err_out
-        )
+        super().__init__(err_out)
 
 
 class CPPTestTimeoutError(CPPTestError):
@@ -47,8 +42,7 @@ class CPPUnitTester:
         self._code = code
         self._in_data = input_data
         self._out_name = os.path.join(
-            self.TEMP_FOLDER,
-            "cu_" + "".join([random.choice(ascii_lowercase) for _ in range(8)])
+            self.TEMP_FOLDER, "cu_" + "".join([random.choice(ascii_lowercase) for _ in range(8)])
         )
 
         self._compiled = False
@@ -71,9 +65,7 @@ class CPPUnitTester:
         self.logger.info("sanitizing code...")
         if "system(" in self._code or "system (" in self._code:
             self.logger.error("code contain system(), cancelling...")
-            raise CPPTestSanitizeError(
-                "Code contained system() command, that's not allowed."
-            )
+            raise CPPTestSanitizeError("Code contained system() command, that's not allowed.")
 
     async def _run_in_async(self, args: list, is_compile=False):
         """Run subprocess in async env
@@ -91,7 +83,7 @@ class CPPUnitTester:
             " ".join(args),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            stdin=asyncio.subprocess.PIPE
+            stdin=asyncio.subprocess.PIPE,
         )
 
         if is_compile:
@@ -100,18 +92,14 @@ class CPPUnitTester:
         elif self._in_data and not is_compile:
             try:
                 idata = "\n".join(self._in_data)
-                stdout, stderr = await asyncio.wait_for(
-                    proc.communicate(idata.encode("utf-8")), 20.0
-                )
+                stdout, stderr = await asyncio.wait_for(proc.communicate(idata.encode("utf-8")), 20.0)
             except asyncio.TimeoutError:
                 proc.kill()
                 raise CPPTestTimeoutError()
             return proc.returncode, stdout.decode(), stderr.decode()
         elif not self._in_data and not is_compile:
             try:
-                stdout, stderr = await asyncio.wait_for(
-                    proc.communicate(), 20.0
-                )
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), 20.0)
             except asyncio.TimeoutError:
                 proc.kill()
                 raise CPPTestTimeoutError()

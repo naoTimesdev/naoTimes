@@ -48,12 +48,11 @@ class Arguments:
 class CommandArgParse(commands.Converter):
     def __init__(self, args: Arguments):
         self._args: Arguments = args
-        self._parser = None
         self._defaults_map: Dict[str, Any] = {}
         self._any_kw = False
         self._init_args()
 
-    def _parse_error(self, err_str):
+    def _parse_error(self, err_str: str) -> str:
         if err_str.startswith("unrecognized arguments"):
             err_str = err_str.replace("unrecognized arguments", "Argumen tidak diketahui")
         elif err_str.startswith("the following arguments are required"):
@@ -85,7 +84,7 @@ class CommandArgParse(commands.Converter):
 
         self._parser = parser
 
-    def _parse_args(self, argument):
+    def _parse_args(self, argument: str):
         try:
             return self._parser.parse_args(shlex.split(argument))
         except ArgumentParserError as argserror:

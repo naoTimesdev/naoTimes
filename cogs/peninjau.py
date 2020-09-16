@@ -7,7 +7,7 @@ import logging
 import os
 import re
 from datetime import datetime
-from typing import Union
+from typing import List, Tuple, Union
 from urllib.parse import urlencode
 
 import aiohttp
@@ -490,7 +490,7 @@ async def chunked_translate(sub_data, number, target_lang, untranslated, mode=".
     return sub_data, untranslated
 
 
-async def persamaankata(cari: str, mode: str = "sinonim") -> Union[str, None]:
+async def persamaankata(cari: str, mode: str = "sinonim") -> Union[List[str], str]:
     """Mencari antonim/sinonim dari persamaankata.com"""
     async with aiohttp.ClientSession() as sesi:
         async with sesi.get("http://m.persamaankata.com/search.php?q={}".format(cari)) as resp:
@@ -515,7 +515,7 @@ async def persamaankata(cari: str, mode: str = "sinonim") -> Union[str, None]:
     return "Tidak ada hasil."
 
 
-async def fetch_jisho(query: str) -> Union[None, dict]:
+async def fetch_jisho(query: str) -> Union[dict, str]:
     async with aiohttp.ClientSession() as sesi:
         try:
             async with sesi.get("http://jisho.org/api/v1/search/words?keyword={}".format(query)) as r:
@@ -620,7 +620,7 @@ async def coinmarketcap(from_, to_) -> float:
     return response["data"]["quote"][to_]["price"]
 
 
-def proper_rounding(curr_now: float, total: float) -> float:
+def proper_rounding(curr_now: float, total: float) -> Tuple[str, int]:
     nnr = 2
     while True:
         conv_num = round(curr_now * total, nnr)

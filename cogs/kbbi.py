@@ -1,8 +1,9 @@
 import asyncio
 import logging
 import os
+import traceback
 from datetime import datetime, timezone
-from typing import Tuple, Union
+from typing import List, Tuple, Union
 
 import discord
 from discord.ext import commands, tasks
@@ -17,6 +18,8 @@ from nthelper.kbbiasync import (
     TerjadiKesalahan,
     TidakDitemukan,
 )
+
+kbbilog = logging.getLogger("cogs.kbbi")
 
 
 async def secure_results(hasil_entri: list) -> list:
@@ -59,6 +62,11 @@ async def query_requests_kbbi(kata_pencarian: str, cookies: str) -> Tuple[str, U
             kata_pencarian,
             "Tidak dapat terhubung dengan KBBI, " "kemungkinan KBBI daring sedang down.",
         )
+    except Exception as error:
+        await cari_kata.tutup()
+        tb = traceback.format_exception(type(error), error, error.__traceback__)
+        kbbilog.error("Exception occured\n" + "".join(tb))
+        return kata_pencarian, "Terjadi kesalahan ketika memparsing hasil dari KBBI, mohon kontak N4O."
 
     hasil_kbbi = cari_kata.serialisasi()
     pranala = hasil_kbbi["pranala"]
@@ -68,19 +76,45 @@ async def query_requests_kbbi(kata_pencarian: str, cookies: str) -> Tuple[str, U
     return pranala, hasil_entri
 
 
-def strunct(text: str, max_chatacters: int) -> str:
+def strunct(text: str, max_characters: int) -> str:
     """A simple text truncate
-    If `text` exceed the `max_chatacters` it will truncate
+    If `text` exceed the `max_characters` it will truncate
     the last 5 characters.
 
     :param text:            str:  Text to truncate
-    :param max_chatacters:  int:  Maximum n character.
+    :param max_characters:  int:  Maximum n character.
     :return: Truncated text (if applicable)
     :rtype: str
     """
-    if len(text) >= max_chatacters - 7:
-        text = text[: max_chatacters - 7] + " [...]"
+    if len(text) >= max_characters - 7:
+        text = text[: max_characters - 7] + " [...]"
     return text
+
+
+def strunct_split(text: str, max_characters: int, splitters: str = " ") -> str:
+    """A text truncate that use a split method
+    If `text` exceed the `max_characters` it will not add more to the list.
+
+    :param text: Text to truncate
+    :type text: str
+    :param max_characters: maximum character
+    :type max_characters: int
+    :param splitters: split character, defaults to " "
+    :type splitters: str, optional
+    :return: A truncated text
+    :rtype: str
+    """
+
+    def len_token(token):
+        return len(splitters.join(token))
+
+    tokenize = text.split(splitters)
+    final_token: List[str] = []
+    for token in tokenize:
+        if len_token(final_token) >= max_characters:
+            break
+        final_token.append(token)
+    return splitters.join(final_token)
 
 
 class KBBICog(commands.Cog):
@@ -92,14 +126,41 @@ class KBBICog(commands.Cog):
 
         self._cwd = bot.fcwd
         self._first_run = False
+        self._use_auth = True
 
         self.logger = logging.getLogger("cogs.kbbi.KBBICog")
         self.daily_check_auth.start()
+        self.check_maintenance_range.start()
+
+        self._on_maintenance = False
+        self._maintenance_range = [None, 0]
+
+    @tasks.loop(minutes=1)
+    async def check_maintenance_range(self):
+        self.logger.debug("Checking maintenance time...")
+        if self._maintenance_range[0] is None:
+            self.logger.debug("Maintenance is not initiated, skipping...")
+            return
+
+        current_time = datetime.now(tz=timezone.utc).timestamp()
+
+        start, end = self._maintenance_range
+        if current_time >= start and current_time <= end:
+            self.logger.debug("Currently on maintenance!")
+            self._on_maintenance = True
+        else:
+            if self._on_maintenance:
+                self.logger.debug("Resetting maintenance range...")
+                self._maintenance_range = [None, 0]
+            self.logger.debug("Currently not on maintenance!")
+            self._on_maintenance = False
 
     @tasks.loop(hours=24)
     async def daily_check_auth(self):
         if not self._first_run:  # Don't run first time
             self._first_run = True
+            return
+        if self._on_maintenance or not self._use_auth:  # Don't run on maintenance or if not using auth.
             return
         ct = datetime.now(tz=timezone.utc).timestamp()
         do_reauth = False
@@ -140,12 +201,79 @@ class KBBICog(commands.Cog):
         save_path = os.path.join(self._cwd, "kbbi_auth.json")
         await write_files(save_data, save_path)
 
+    @commands.command()
+    @commands.is_owner()
+    async def kbbi_auth(self, ctx):
+        if self._use_auth:
+            self._use_auth = False
+            return await ctx.send("Perintah kbbi **tidak akan** menggunakan autentikasi!")
+        else:
+            self._use_auth = True
+            return await ctx.send("Perintah kbbi **akan** menggunakan autentikasi!")
+
+    @commands.command()
+    @commands.is_owner()
+    async def kbbi_reenable(self, ctx):
+        self._maintenance_range = [None, 0]
+        self._on_maintenance = False
+        await ctx.send("Mode maintenance telah dimatikan.")
+
+    @commands.command()
+    @commands.is_owner()
+    async def kbbi_maintenance(self, ctx, *, tanggal):
+        date_fmt = "%d-%m-%Y %H.%M %z"
+        tanggal += " +0700"
+        self.logger.info(f"Setting KBBI Maintenance with start: {tanggal}")
+        try:
+            start_date: datetime = datetime.strptime(tanggal, date_fmt)
+        except ValueError:
+            yang_benar = "DD-MM-YYYY HH.MM"
+            return await ctx.send("Penulisan tanggal salah.\nYang benar: {}".format(yang_benar))
+
+        def check_if_author(m):
+            return m.author == ctx.message.author
+
+        msg = await ctx.send("Mohon masukan tanggal selesai maintenance.")
+        await_msg = await self.bot.wait_for("message", check=check_if_author)
+
+        try:
+            tanggal_akhir = str(await_msg.content)
+            tanggal_akhir += " +0700"
+            end_date: datetime = datetime.strptime(tanggal_akhir, date_fmt)
+        except ValueError:
+            yang_benar = "DD-MM-YYYY HH.MM"
+            return await ctx.send("Penulisan tanggal salah.\nYang benar: {}".format(yang_benar))
+
+        self.logger.info(f"Setting KBBI Maintenance with end: {tanggal_akhir}")
+        await msg.delete()
+        start_ts = start_date.timestamp()
+        end_ts = end_date.timestamp()
+        self._maintenance_range = [start_ts, end_ts]
+
+        current_time = datetime.now(tz=timezone.utc).timestamp()
+        self.logger.info(f"Timestamp info:\nStart: {start_ts}\nEnd: {end_ts}\nCurrent: {current_time}")
+
+        if current_time >= start_ts and current_time <= end_ts:
+            self.logger.info("Setting to maintenance mode immediatly!")
+            self._on_maintenance = True
+
+        await ctx.send("Masa maintenance telah diatur.")
+
     @commands.command(name="kbbi")
     async def _kbbi_cmd_main(self, ctx, *, kata_pencarian: str):
+        if self._on_maintenance:
+            start_time = datetime.fromtimestamp(self._maintenance_range[0] + (7 * 60 * 60), tz=timezone.utc)
+            end_time = datetime.fromtimestamp(self._maintenance_range[1] + (7 * 60 * 60), tz=timezone.utc)
+            txt = "KBBI Daring sedang dalam masa maintenance!\n"
+            txt += "**Waktu Mulai**: {}\n".format(start_time.strftime("%A, %d %B %Y, %H.%M WIB"))
+            txt += "**Waktu Selesai**: {}".format(end_time.strftime("%A, %d %B %Y, %H.%M WIB"))
+            return await ctx.send(txt)
         kata_pencarian = kata_pencarian.lower()
 
         self.logger.info(f"searching {kata_pencarian}")
-        pranala, hasil_entri = await query_requests_kbbi(kata_pencarian, self.cookie)
+        pranala, hasil_entri = await query_requests_kbbi(
+            kata_pencarian, "" if not self._use_auth else self.cookie
+        )
 
         if isinstance(hasil_entri, str):
             self.logger.error(f"{kata_pencarian}: error\n{hasil_entri}")

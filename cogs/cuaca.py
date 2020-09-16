@@ -1,18 +1,16 @@
 import logging
 from datetime import datetime, timezone
-from typing import Tuple, Optional
+from typing import Dict, Optional, Any, Tuple, Union
 
 import aiohttp
 import discord
 from discord.ext import commands
 
-
 wlogger = logging.getLogger("cogs.cuaca")
 
 
-# Change this.
-GEOCODE_API = ""
-OWM_API_KEY = ""
+GEOCODE_API = "926ba9fb92024f5a81f2486ff822b54a"
+OWM_API_KEY = "766e45d52182581e730d6afd1334ea5b"
 
 
 async def fetch_geolat(location: str) -> Tuple[Optional[float], Optional[float], Optional[str]]:
@@ -36,7 +34,7 @@ async def fetch_geolat(location: str) -> Tuple[Optional[float], Optional[float],
     return lat, lng, loc_name
 
 
-def get_uv_index(uvi: int):
+def get_uv_index(uvi: int) -> str:
     uvi_index = str(uvi)
     if uvi < 3:
         uvi_index += " (Rendah)"
@@ -51,7 +49,7 @@ def get_uv_index(uvi: int):
     return uvi_index
 
 
-def get_rain_intensity(precipitation):
+def get_rain_intensity(precipitation: float) -> str:
     if precipitation <= 2.5:
         intensity = "Hujan ringan"
     elif precipitation > 2.5 and precipitation <= 10:
@@ -63,7 +61,7 @@ def get_rain_intensity(precipitation):
     return intensity
 
 
-def translate_day(day_name):
+def translate_day(day_name: str) -> str:
     day_set = {
         "Monday": "Senin",
         "Tuesday": "Selasa",
@@ -76,7 +74,7 @@ def translate_day(day_name):
     return day_set.get(day_name, day_name)
 
 
-def get_wind_degrees(wind_deg):
+def get_wind_degrees(wind_deg: Union[float, int]) -> str:
     if wind_deg < 45:
         res = f"↑ {wind_deg}°"
     elif wind_deg >= 45 and wind_deg < 90:
@@ -98,7 +96,7 @@ def get_wind_degrees(wind_deg):
     return res
 
 
-async def fetch_owm(location):
+async def fetch_owm(location: str) -> Union[dict, str]:
     wlogger.info("Fetching GeoCode...")
     geo_lat, geo_lng, loc_name = await fetch_geolat(location)
     if geo_lat is None:
@@ -238,60 +236,72 @@ async def fetch_owm(location):
             wlogger.info("[OWN] Parsing data...")
             weather_res = await resp.json()
 
+    if "cod" in weather_res:
+        if weather_res["cod"] == 401:
+            return "API key bot owner belum terautentikasi. Mohon kontak Bot Owner atau tunggu beberapa jam kemudian."
+        else:
+            return weather_res["message"]
+
     wlogger.info("Parsing current weather data...")
-    currents = weather_res["current"]
     tz_off = weather_res["timezone_offset"]
-    full_dataset = {}
-    current_weather = {}
+    full_dataset: Dict[str, Any] = {}
     full_dataset["location"] = loc_name
     full_dataset["url"] = hyperlink.format(lat=geo_lat, lon=geo_lng)
     full_dataset["coords"] = {
         "lat": geo_lat,
         "lon": geo_lng,
     }
-    current_weather["temp"] = f"{currents['temp']}°C"
-    current_weather["feels_like"] = f"{currents['feels_like']}°C"
+
+    current_weather: Dict[str, Any] = {}
     try:
-        current_weather["uv"] = get_uv_index(currents["uvi"])
-    except KeyError:
-        pass
-    try:
-        current_weather["clouds"] = f"{currents['clouds']}%"
-    except KeyError:
-        pass
-    current_weather["pressure"] = f"{currents['pressure']}hPa"
-    current_weather["humidity"] = f"{currents['humidity']}%"
+        currents = weather_res["current"]
+        current_weather["temp"] = f"{currents['temp']}°C"
+        current_weather["feels_like"] = f"{currents['feels_like']}°C"
+        try:
+            current_weather["uv"] = get_uv_index(currents["uvi"])
+        except KeyError:
+            pass
+        try:
+            current_weather["clouds"] = f"{currents['clouds']}%"
+        except KeyError:
+            pass
+        current_weather["pressure"] = f"{currents['pressure']}hPa"
+        current_weather["humidity"] = f"{currents['humidity']}%"
 
-    try:
-        sunrise = datetime.fromtimestamp(currents["sunrise"] + tz_off, tz=timezone.utc).strftime("%I:%M AM")
-        sunset = datetime.fromtimestamp(currents["sunset"] + tz_off, tz=timezone.utc).strftime("%I:%M PM")
+        try:
+            sunrise = datetime.fromtimestamp(currents["sunrise"] + tz_off, tz=timezone.utc).strftime(
+                "%I:%M AM"
+            )
+            sunset = datetime.fromtimestamp(currents["sunset"] + tz_off, tz=timezone.utc).strftime("%I:%M PM")
 
-        current_weather["sstime"] = {
-            "sunrise": sunrise,
-            "sunset": sunset,
-        }
-    except KeyError:
-        pass
+            current_weather["sstime"] = {
+                "sunrise": sunrise,
+                "sunset": sunset,
+            }
+        except KeyError:
+            pass
 
-    cweather = currents["weather"][0]
-    cw_desc_orig = cweather["description"]
-    cw_desc_orig = cw_desc_orig[0].upper() + cw_desc_orig[1:]
-    cweather_data = {}
-    cweather_data["icon"] = wicon_template.format(ic=cweather["icon"])
-    cweather_data["description"] = weather_tls_mappings.get(cweather["id"], cw_desc_orig)
-    cweather_data["emoji"] = weather_ids_mappings.get(cweather["id"], "")
-    full_dataset["weather"] = cweather_data
+        cweather = currents["weather"][0]
+        cw_desc_orig = cweather["description"]
+        cw_desc_orig = cw_desc_orig[0].upper() + cw_desc_orig[1:]
+        cweather_data = {}
+        cweather_data["icon"] = wicon_template.format(ic=cweather["icon"])
+        cweather_data["description"] = weather_tls_mappings.get(cweather["id"], cw_desc_orig)
+        cweather_data["emoji"] = weather_ids_mappings.get(cweather["id"], "")
+        full_dataset["weather"] = cweather_data
 
-    cwind_data = {}
-    cwind_data["speed"] = f"{currents['wind_speed']}m/s"
-    cwind_data["deg"] = get_wind_degrees(currents["wind_deg"])
-    current_weather["wind"] = cwind_data
+        cwind_data = {}
+        cwind_data["speed"] = f"{currents['wind_speed']}m/s"
+        cwind_data["deg"] = get_wind_degrees(currents["wind_deg"])
+        current_weather["wind"] = cwind_data
 
-    try:
-        rain_data = {}
-        rain_data["precipitation"] = f"{currents['rain']['1h']}mm"
-        rain_data["intensity"] = get_rain_intensity(currents["rain"]["1h"])
-        current_weather["rain"] = rain_data
+        try:
+            rain_data: Dict[str, Any] = {}
+            rain_data["precipitation"] = f"{currents['rain']['1h']}mm"
+            rain_data["intensity"] = get_rain_intensity(currents["rain"]["1h"])
+            current_weather["rain"] = rain_data
+        except KeyError:
+            pass
     except KeyError:
         pass
 
@@ -301,7 +311,7 @@ async def fetch_owm(location):
     wlogger.info("Parsing daily data...")
     last_7days_compiled = []
     for daily_data in last_7days_data:
-        d_data = {}
+        d_data: Dict[str, Any] = {}
         datedata = datetime.fromtimestamp(daily_data["dt"] + tz_off, tz=timezone.utc)
         temp_data = daily_data["temp"]
         d_data["date_name"] = translate_day(datedata.strftime("%A"))
@@ -323,14 +333,14 @@ async def fetch_owm(location):
             pass
 
         try:
-            rain_data = {}
-            rain_data["precipitation"] = f"{daily_data['rain']}mm"
-            rain_data["intensity"] = get_rain_intensity(daily_data["rain"])
-            d_data["rain"] = rain_data
+            d_rain_data: Dict[str, Any] = {}
+            d_rain_data["precipitation"] = f"{daily_data['rain']}mm"
+            d_rain_data["intensity"] = get_rain_intensity(daily_data["rain"])
+            d_data["rain"] = d_rain_data
         except KeyError:
             pass
 
-        ld_wdata = {}
+        ld_wdata: Dict[str, Any] = {}
         ld_weather = daily_data["weather"][0]
         ldw_desc_orig = ld_weather["description"]
         ldw_desc_orig = ldw_desc_orig[0].upper() + ldw_desc_orig[1:]
@@ -351,10 +361,11 @@ class CuacaDunia(commands.Cog):
 
     @commands.command(aliases=["c", "w", "weather"])
     async def cuaca(self, ctx, *, lokasi: str):
-        if not GEOCODE_API or not OWM_API_KEY:
-            return await ctx.send("Owner bot belum setup module cuaca.")
         self.logger.info("Requested !cuaca command...")
         hasil_cuaca = await fetch_owm(lokasi)
+        if isinstance(hasil_cuaca, str):
+            self.logger.error(hasil_cuaca)
+            return await ctx.send(hasil_cuaca)
         if hasil_cuaca == {}:
             self.logger.warn("no results")
             return await ctx.send("Tidak dapat menemukan lokasi tersebut.")
@@ -366,28 +377,30 @@ class CuacaDunia(commands.Cog):
         loc_name = ", ".join(loc_name[:2])
         embed = discord.Embed(color=0xEC6E4C)
         embed.set_thumbnail(url=cw_data["icon"])
-        description = cw_data["emoji"]
+        if cur_data:
+            description = cw_data["emoji"]
+            if description:
+                description += " "
+            description += cur_data["temp"]
+            description += f" (Terasa {cur_data['feels_like']})\n"
+            description += f"`({cw_data['description']})`\n"
+
+            if "sstime" in cur_data:
+                cw_sstime = cur_data["sstime"]
+                description += f"☀️ {cw_sstime['sunrise']} | 🌑 {cw_sstime['sunset']}\n"
+            if "uv" in cur_data:
+                description += f"🔥 {cur_data['uv']}\n"
+            if "clouds" in cur_data:
+                description += f"☁️ {cur_data['clouds']}\n"
+            description += f"💦 {cur_data['humidity']}\n"
+            if "rain" in cur_data:
+                description += f"☔ {cur_data['rain']['precipitation']}\n"
+            description += f"💨 {cur_data['wind']['speed']} "
+            description += f"({cur_data['wind']['deg']})\n"
+            description += f"**Tekanan**: {cur_data['pressure']}"
+
         if description:
-            description += " "
-        description += cur_data["temp"]
-        description += f" (Terasa {cur_data['feels_like']})\n"
-        description += f"`({cw_data['description']})`\n"
-
-        if "sstime" in cur_data:
-            cw_sstime = cur_data["sstime"]
-            description += f"☀️ {cw_sstime['sunrise']} | 🌑 {cw_sstime['sunset']}\n"
-        if "uv" in cur_data:
-            description += f"🔥 {cur_data['uv']}\n"
-        if "clouds" in cur_data:
-            description += f"☁️ {cur_data['clouds']}\n"
-        description += f"💦 {cur_data['humidity']}\n"
-        if "rain" in cur_data:
-            description += f"☔ {cur_data['rain']['precipitation']}\n"
-        description += f"💨 {cur_data['wind']['speed']} "
-        description += f"({cur_data['wind']['deg']})\n"
-        description += f"**Tekanan**: {cur_data['pressure']}"
-
-        embed.description = description
+            embed.description = description
 
         self.logger.info(f"{lokasi}: Processing daily data...")
         for daily_data in hasil_cuaca["daily"]:

@@ -1,13 +1,16 @@
 import asyncio
 import functools
 import logging
+import os
 import time
 import traceback
 from copy import deepcopy
+from typing import List, Union
 
 import motor.motor_asyncio
 import pymongo
 
+from .utils import read_files, write_files
 
 showtimes_log = logging.getLogger("showtimes_helper")
 
@@ -94,7 +97,7 @@ class naoTimesDB:
         coll_cur = coll.find({})
         res = list(await coll_cur.to_list(length=100))
         res = res[0]
-        del res["_id"]
+        del res["_id"]  # type: ignore
         return res, collection
 
     @safe_asynclock
@@ -369,10 +372,10 @@ class naoTimesDB:
         target_srv_data = await self.get_server(target_server)
         source_srv_data = await self.get_server(source_server)
         if not target_srv_data:
-            self.logger.warn(f"target server doesn't exist.")
+            self.logger.warn("target server doesn't exist.")
             return False, "Server target tidak terdaftar di naoTimes."
         if not source_srv_data:
-            self.logger.warn(f"init server doesn't exist.")
+            self.logger.warn("init server doesn't exist.")
             return False, "Server awal tidak terdaftar di naoTimes."
 
         res, msg = await self.update_data_server(source_server, srv1_data)
@@ -433,3 +436,103 @@ class naoTimesDB:
 
         res, msg = await self.update_data_server(server, srv_data)
         return res, msg
+
+
+class ShowtimesQueueData:
+    """A queue data of save state
+    used mainly for queue-ing when there's shit ton of stuff
+    to save to the local database.
+    """
+
+    def __init__(self, dataset: Union[list, dict], server_id: str):
+        self.dataset = dataset
+        self.server_id = server_id
+
+        self._type = "dumps"
+
+    def job_type(self):
+        return self._type
+
+
+class ShowtimesQueue:
+    """A helper to queue save local showtimes database.
+
+    Use asyncio.Queue and asyncio.Task
+    """
+
+    def __init__(self, cwd, loop=None):
+        self.folder_cwd = cwd
+
+        self._loop: asyncio.AbstractEventLoop = asyncio.get_event_loop() if loop is None else loop
+        self._logger = logging.getLogger("nthelper.showtimes_helper.ShowtimesQueue")
+
+        self._showqueue: asyncio.Queue = asyncio.Queue()
+        self._showtasks: asyncio.Task = asyncio.Task(self.background_jobs(), loop=self._loop)
+        # self._showdata: dict = {}
+
+        self._lock = False
+
+    # async def get_data(self, server_id: str, retry_time: int = 5):
+    #     if retry_time <= 0:
+    #         retry_time = 1
+    #     dataset = {}
+    #     is_success = False
+    #     while retry_time > 0:
+    #         _temp_data = self._showdata.get(server_id, "no data in showdata")
+    #         if not isinstance(_temp_data, str):
+    #             dataset = self._showdata.pop(server_id)
+    #             is_success = True
+    #             break
+    #         retry_time -= 1
+    #         await asyncio.sleep(0.2)
+    #     return dataset, is_success
+
+    async def _dumps_data(self, dataset: Union[list, dict], server_id: str):
+        self._logger.info(f"dumping db {server_id}")
+        svfn = os.path.join(self.folder_cwd, "showtimes_folder", f"{server_id}.showtimes")
+        await self._lock_job()
+        try:
+            await write_files(dataset, svfn)
+        except Exception:
+            self._logger.error("Failed to dumps database...")
+            pass
+        await self._job_done()
+
+    async def fetch_database(self, server_id: str):
+        self._logger.info(f"opening db {server_id}")
+        svfn = os.path.join(self.folder_cwd, "showtimes_folder", f"{server_id}.showtimes")
+        if not os.path.isfile(svfn):
+            return None
+        await self._lock_job()
+        try:
+            json_data = await read_files(svfn)
+        except Exception:
+            self._logger.error("Failed to read database...")
+            json_data = None
+        # self._logger.info("Adding to data part...")
+        # self._showdata[server_id] = json_data
+        await self._job_done()
+        return json_data
+
+    async def _lock_job(self):
+        while self._lock:
+            await asyncio.sleep(0.2)
+        self._lock = True
+
+    async def _job_done(self):
+        self._lock = False
+
+    async def background_jobs(self):
+        self._logger.info("Starting ShowtimesQueue Task...")
+        while True:
+            try:
+                sq_data: ShowtimesQueueData = await self._showqueue.get()
+                self._logger.info(f"job get, running: {sq_data.server_id}")
+                self._logger.info(f"job data type: {sq_data.job_type()}")
+                await self._dumps_data(sq_data.dataset, sq_data.server_id)
+                self._showqueue.task_done()
+            except asyncio.CancelledError:
+                return
+
+    async def add_job(self, save_data: ShowtimesQueueData):
+        await self._showqueue.put(save_data)

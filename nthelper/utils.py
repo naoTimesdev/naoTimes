@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 
 import asyncio
+import functools
 import logging
 import os
 import platform
 import sys
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import aiofiles
 import aiohttp
@@ -23,7 +24,24 @@ main_log = logging.getLogger("nthelper.utils")
 __CHROME_UA__ = ""
 
 
-def get_server():
+def sync_wrap(func):
+    @asyncio.coroutine
+    @functools.wraps(func)
+    def run(*args, loop=None, executor=None, **kwargs):
+        if loop is None:
+            loop = asyncio.get_event_loop()
+        pfunc = functools.partial(func, *args, **kwargs)
+        return loop.run_in_executor(executor, pfunc)
+
+    return run
+
+
+def get_server() -> str:
+    """Generate a server information.
+
+    :return: server info
+    :rtype: str
+    """
     uname = platform.uname()
     fmt_plat = "```py\nOS: {0.system} {0.release} v{0.version}\nCPU: {0.processor} ({1} threads)\nPID: {2}\n```".format(  # noqa: E501
         uname, os.cpu_count(), os.getpid()
@@ -31,7 +49,12 @@ def get_server():
     return fmt_plat
 
 
-def get_version():
+def get_version() -> str:
+    """Generate Python and Discord.py version
+
+    :return: python and discord.py version
+    :rtype: str
+    """
     py_ver = sys.version
     return "```py\nDiscord.py v{d}\nPython {p}\n```".format(d=discord_ver, p=py_ver)
 
@@ -57,7 +80,15 @@ def prefixes_with_data(bot, message, prefixes_data, default):
     return pre_data
 
 
-async def ping_website(url):
+async def ping_website(url: str) -> Tuple[bool, float]:
+    """Ping a website and return how long it takes
+    ---
+
+    :param url: Website to ping
+    :type url: str
+    :return: return a bool if ping success or not and time taken in ms.
+    :rtype: Tuple[bool, float]
+    """
     t1 = time.perf_counter()
     try:
         async with aiohttp.ClientSession() as sesi:
@@ -69,7 +100,16 @@ async def ping_website(url):
     return True, (t2 - t1) * 1000
 
 
-async def read_files(fpath):
+async def read_files(fpath: str) -> Any:
+    """Read a files
+    ---
+
+    :param fpath: file path
+    :type fpath: str
+    :return: file contents, parsed with ujson if it's list or dict
+             if file doesn't exist, return None
+    :rtype: Any
+    """
     if not os.path.isfile(fpath):
         return None
     async with aiofiles.open(fpath, "r", encoding="utf-8") as fp:
@@ -81,7 +121,15 @@ async def read_files(fpath):
     return data
 
 
-async def write_files(data, fpath):
+async def write_files(data: Any, fpath: str):
+    """Write data to files
+    ---
+
+    :param data: data to write, can be any
+    :type data: Any
+    :param fpath: file path
+    :type fpath: str
+    """
     if isinstance(data, (dict, list, tuple)):
         data = ujson.dumps(
             data, ensure_ascii=False, encode_html_chars=False, escape_forward_slashes=False, indent=4,
@@ -132,6 +180,7 @@ def get_current_time() -> str:
 # Message utils
 async def send_timed_msg(ctx: Any, message: str, delay: Union[int, float] = 5):
     """Send a timed message to a discord channel.
+    ---
 
     :param ctx: context manager of the channel
     :type ctx: Any
@@ -169,7 +218,7 @@ class HelpGenerator:
     ```
     """
 
-    def __init__(self, bot, cmd_name="", desc="", color=None):
+    def __init__(self, bot: commands.Bot, cmd_name: str = "", desc: str = "", color=None):
         self.bot: commands.Bot = bot
         self.logger = logging.getLogger("nthelper.utils.HelpGenerator")
 
@@ -230,6 +279,9 @@ class HelpGenerator:
         return pre + name + end
 
     def __start_generate(self):
+        """
+        Start generating embed
+        """
         self.logger.info(f"start generating embed for: {self.cmd_name}")
         embed = discord.Embed(color=self.color)
         embed.set_author(
@@ -248,8 +300,30 @@ class HelpGenerator:
         self.embed = embed
 
     async def generate_field(
-        self, cmd_name, opts=[], desc="", examples=[], inline=False, use_fullquote=False,
-    ) -> discord.Embed:
+        self,
+        cmd_name: str,
+        opts: List[Dict[str, str]] = [],
+        desc: str = "",
+        examples: List[str] = [],
+        inline: bool = False,
+        use_fullquote: bool = False,
+    ):
+        """Generate a help fields
+        ---
+
+        :param cmd_name: command name
+        :type cmd_name: str
+        :param opts: command options, defaults to []
+        :type opts: List[Dict[str, str]], optional
+        :param desc: command description, defaults to ""
+        :type desc: str, optional
+        :param examples: command example, defaults to []
+        :type examples: List[str], optional
+        :param inline: put field inline with previous field, defaults to False
+        :type inline: bool, optional
+        :param use_fullquote: Use block quote, defaults to False
+        :type use_fullquote: bool, optional
+        """
         self.logger.debug(f"generating field: {cmd_name}")
         gen_name = self._pre + cmd_name
         final_desc = ""
@@ -264,7 +338,7 @@ class HelpGenerator:
                 try:
                     a_d = opt["desc"]
                 except KeyError:
-                    a_d = None
+                    a_d = ""
                 capsuled = self.__encapsule(a_n, a_t)
                 opts_list.append(capsuled)
 
@@ -294,7 +368,15 @@ class HelpGenerator:
                 name="Contoh", value="\n".join(examples), inline=False,
             )
 
-    async def generate_aliases(self, aliases=[], add_note=True):
+    async def generate_aliases(self, aliases: List[str] = [], add_note: bool = True):
+        """Generate end part and aliases
+        ---
+
+        :param aliases: aliases for command, defaults to []
+        :type aliases: List[str], optional
+        :param add_note: add ending note or not, defaults to True
+        :type add_note: bool, optional
+        """
         self.logger.debug(f"generating for {self.cmd_name}")
         aliases = [f"{self._pre}{alias}" for alias in aliases]
         if aliases:
