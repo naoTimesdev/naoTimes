@@ -28,6 +28,7 @@ from nthelper.utils import (
     read_files,
     write_files,
 )
+from nthelper.bot import naoTimesBot
 
 # Silent some imported module
 logging.getLogger("websockets").setLevel(logging.WARNING)
@@ -78,22 +79,23 @@ async def init_bot(loop):
     kbbi_expires = kbbi_auth["expires"]
     kbbi_conf = config["kbbi"]
 
-    logger.info("Testing KBBI cookies...")
-    current_dt = datetime.now(tz=timezone.utc).timestamp()
-    kbbi_cls = KBBI("periksa", kbbi_cookie)
-    is_kbbi_auth = await kbbi_cls.cek_auth()
-    await kbbi_cls.tutup()
-    if not is_kbbi_auth or current_dt >= kbbi_expires:
-        logger.warning("kbbi cookie expired, generating new one...")
-        kbbi_auth = AutentikasiKBBI(kbbi_conf["email"], kbbi_conf["password"])
-        logger.warning("kbbi_auth: authenticating...")
-        await kbbi_auth.autentikasi()
-        cookie_baru = await kbbi_auth.ambil_cookies()
-        logger.warning("saving new KBBI cookie...")
-        new_data = {"cookie": cookie_baru, "expires": round(current_dt + (15 * 24 * 60 * 60))}
-        await write_files(new_data, "kbbi_auth.json")
-        kbbi_cookie = cookie_baru
-        kbbi_expires = round(current_dt + (15 * 24 * 60 * 60))
+    if not kbbi_conf["skip_check"]:
+        logger.info("Testing KBBI cookies...")
+        current_dt = datetime.now(tz=timezone.utc).timestamp()
+        kbbi_cls = KBBI("periksa", kbbi_cookie)
+        is_kbbi_auth = await kbbi_cls.cek_auth()
+        await kbbi_cls.tutup()
+        if not is_kbbi_auth or current_dt >= kbbi_expires:
+            logger.warning("kbbi cookie expired, generating new one...")
+            kbbi_auth = AutentikasiKBBI(kbbi_conf["email"], kbbi_conf["password"])
+            logger.warning("kbbi_auth: authenticating...")
+            await kbbi_auth.autentikasi()
+            cookie_baru = await kbbi_auth.ambil_cookies()
+            logger.warning("saving new KBBI cookie...")
+            new_data = {"cookie": cookie_baru, "expires": round(current_dt + (15 * 24 * 60 * 60))}
+            await write_files(new_data, "kbbi_auth.json")
+            kbbi_cookie = cookie_baru
+            kbbi_expires = round(current_dt + (15 * 24 * 60 * 60))
 
     logger.info("Opening FSDB Token data...")
     fsdb_token = await read_files("fsdb_login.json")
@@ -129,10 +131,10 @@ async def init_bot(loop):
         description = "Penyuruh Fansub biar kerja cepat\n"
         description += f"versi {__version__} || Dibuat oleh: N4O#8868"
         prefixes = partial(prefixes_with_data, prefixes_data=srv_prefixes, default=default_prefix,)
-        bot = commands.Bot(command_prefix=prefixes, description=description, loop=loop)
+        bot = naoTimesBot(command_prefix=prefixes, description=description, loop=loop)
         bot.remove_command("help")
-        if not hasattr(bot, "logger"):
-            bot.logger = logger
+        # if not hasattr(bot, "logger"):
+        #     bot.logger = logger
         if not hasattr(bot, "automod_folder"):
             bot.automod_folder = temp_folder
         if not hasattr(bot, "err_echo"):
@@ -173,7 +175,7 @@ logger.info("Setting up loop")
 #     asyncio.set_event_loop(event_loop)
 async_loop = asyncio.get_event_loop()
 res = async_loop.run_until_complete(init_bot(async_loop))
-bot: commands.Bot = res[0]
+bot: naoTimesBot = res[0]
 bot_config: dict = res[1]
 presence_status = [
     "Mengamati rilisan fansub | !help",
@@ -850,5 +852,10 @@ except (KeyboardInterrupt, SystemExit, SystemError):
     logger.warning("Disconnecting from discord...")
     async_loop.run_until_complete(bot.close())
 finally:
+    logger.warning("Closing queue loop.")
+    async_loop.run_until_complete(bot.showqueue.shutdown())
+    logger.warning("Shutting down fsdb connection...")
+    async_loop.run_until_complete(bot.fsdb.close())
     logger.warning("Closing async loop.")
+    async_loop.stop()
     async_loop.close()

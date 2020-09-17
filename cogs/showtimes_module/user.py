@@ -9,19 +9,18 @@ from functools import partial
 import discord
 from discord.ext import commands
 
-from nthelper.fsdb import FansubDBBridge
-from nthelper.showtimes_helper import ShowtimesQueue, naoTimesDB
+from nthelper.bot import naoTimesBot
 
 from .base import ShowtimesBase, fetch_anilist, get_last_updated
 
 
 class ShowtimesUser(commands.Cog, ShowtimesBase):
-    def __init__(self, bot):
+    def __init__(self, bot: naoTimesBot):
         super(ShowtimesUser, self).__init__()
         self.bot = bot
-        self.showqueue: ShowtimesQueue = bot.showqueue
-        self.ntdb: naoTimesDB = bot.ntdb
-        self.fsdb: FansubDBBridge = bot.fsdb
+        self.showqueue = bot.showqueue
+        self.ntdb = bot.ntdb
+        self.fsdb = bot.fsdb
         # pylint: disable=E1101
         self.logger = logging.getLogger("cogs.showtimes_module.user.ShowtimesUser")
         self.srv_fetch = partial(self.fetch_showtimes, cwd=bot.fcwd)
@@ -31,24 +30,6 @@ class ShowtimesUser(commands.Cog, ShowtimesBase):
 
     def __str__(self):
         return "Showtimes User"
-
-    async def resync_failure(self):
-        self.logger.info("starting task...")
-        while True:
-            try:
-                srv = await self.bot.showtimes_resync.get()
-                self.logger.info(f"job get, resynchronizing: {srv}")
-                srv_data = await self.showqueue.fetch_database(srv)
-                res, msg = await self.ntdb.update_data_server(srv, srv_data)
-                if not res:
-                    self.logger.error(f"\tFailed to update, reason: {msg}")
-                    self.bot.showtimes_resync.task_done()
-                    await self.bot.showtimes_resync.put(srv)
-                else:
-                    self.logger.info(f"{srv}: resynchronized!")
-                    self.bot.showtimes_resync.task_done()
-            except asyncio.CancelledError:
-                return
 
     @commands.command(aliases=["blame", "mana"])
     @commands.guild_only()

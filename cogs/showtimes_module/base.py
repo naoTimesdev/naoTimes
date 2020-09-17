@@ -217,12 +217,6 @@ async def fetch_anilist(
             return "Terjadi kesalahan koneksi."
 
     showlog.info(f"parsing info for {ani_id}")
-    if isinstance(current_ep, str):
-        current_ep = int(current_ep)
-    if total_episode is not None:
-        if isinstance(total_episode, str):
-            total_episode = int(total_episode)
-
     compiled_data = {
         "id": entry["id"],
         "idMal": entry["idMal"],
@@ -263,6 +257,12 @@ async def fetch_anilist(
         if compiled_data["airing_start"] is None:
             raise ValueError("airing_start is empty, need more data.")
         return compiled_data
+
+    if isinstance(current_ep, str):
+        current_ep = int(current_ep)
+    if total_episode is not None:
+        if isinstance(total_episode, str):
+            total_episode = int(total_episode)
 
     airing_time_nodes = entry["airingSchedule"]["nodes"]
     show_format = entry["format"].lower()
@@ -508,6 +508,30 @@ class ShowtimesBase:
             self.logger.info(f"picked: {res_matches[0]}")
         return res_matches
 
+    async def split_search_id(self, dataset: list, needed_id: str, matching_id: int):
+        def to_int(x):
+            if isinstance(x, str):
+                x = int(x)
+            return x
+
+        mid_num = len(dataset) // 2
+        mid_data = dataset[mid_num]
+        match_data = to_int(mid_data[needed_id])
+        if match_data == matching_id:
+            return mid_data
+        elif match_data > matching_id:
+            for data in dataset[:mid_num]:
+                if to_int(data[needed_id]) == matching_id:
+                    return data
+        elif match_data < matching_id:
+            for data in dataset[mid_num:]:
+                if to_int(data[needed_id]) == matching_id:
+                    return data
+        for data in dataset:
+            if to_int(data[needed_id]) == matching_id:
+                return data
+        return None
+
     def parse_status(self, status: dict) -> str:
         """
         Parse status and return a formatted text
@@ -685,3 +709,32 @@ class ShowtimesBase:
                 first_time = False
             else:
                 await ctx.send("{}".format(", ".join(data)))
+
+    async def confirmation_dialog(self, bot, ctx, message: str) -> bool:
+        dis_msg = await ctx.send(message)
+        to_react = ["✅", "❌"]
+        for react in to_react:
+            await dis_msg.add_reaction(react)
+
+        def check_react(reaction, user):
+            if reaction.message.id != dis_msg.id:
+                return False
+            if user != ctx.message.author:
+                return False
+            if str(reaction.emoji) not in to_react:
+                return False
+            return True
+
+        dialog_tick = True
+        while True:
+            res, user = await bot.wait_for("reaction_add", check=check_react)
+            if user != ctx.message.author:
+                pass
+            elif "✅" in str(res.emoji):
+                await dis_msg.delete()
+                break
+            elif "❌" in str(res.emoji):
+                dialog_tick = False
+                await dis_msg.delete()
+                break
+        return dialog_tick

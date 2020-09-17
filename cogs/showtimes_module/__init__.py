@@ -2,7 +2,9 @@
 
 from .base import ShowtimesBase, fetch_anilist, get_last_updated
 
-from .user import ShowtimesUser
-from .staff import ShowtimesStaff
-from .admin import ShowtimesAlias, ShowtimesKolaborasi, ShowtimesData
+from .data import ShowtimesData
+from .fsdb import ShowtimesFansubDB
+from .others import ShowtimesAlias, ShowtimesKolaborasi
 from .owner import ShowtimesOwner
+from .staff import ShowtimesStaff
+from .user import ShowtimesUser
