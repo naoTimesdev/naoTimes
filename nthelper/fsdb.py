@@ -1,12 +1,10 @@
 import asyncio
 import logging
-import os
 import re
 from datetime import datetime, timedelta, timezone
-from typing import Any, AnyStr, Dict, List, Optional, Tuple, Union
+from typing import AnyStr, List, Optional, Tuple, Union
 
 import aiohttp
-from bs4 import BeautifulSoup
 
 import ujson
 
@@ -33,6 +31,7 @@ class FansubDBBridge:
             "get": self.session.get,
             "post": self.session.post,
             "put": self.session.put,
+            "delete": self.session.delete,
         }
         self._wib_tz = timezone(timedelta(hours=7))
 
@@ -79,6 +78,7 @@ class FansubDBBridge:
 
     async def request_api(self, method: str, endpoint: str, **kwargs):
         url = f"{self.BASE_API}/{endpoint}"
+        self.logger.info(f"{method}: request to {endpoint}")
         res = await self.request_db(method, url, **kwargs)
         data = ujson.loads(res)
         return data
@@ -99,6 +99,9 @@ class FansubDBBridge:
 
     async def check_expires(self):
         if self._expire is None:
+            return
+        if self._token == "":
+            await self.authorize()
             return
         ctime = datetime.now(tz=timezone.utc).timestamp()
         if ctime - 300 >= self._expire:
@@ -194,7 +197,7 @@ class FansubDBBridge:
         return project_lists, "Success"
 
     async def add_new_project(
-        self, anime_id: Union[int, str], fansub_id: Union[int, str]
+        self, anime_id: Union[int, str], fansub_id: Union[int, str], status: str = "Tentatif"
     ) -> Tuple[bool, Union[int, str]]:
         if isinstance(anime_id, str):
             try:
@@ -206,6 +209,8 @@ class FansubDBBridge:
                 fansub_id = int(fansub_id)
             except ValueError:
                 return False, "Fansub ID is not a valid number."
+        if status not in ["Tentatif", "Jalan", "Tamat", "Drop"]:
+            return False, "Invalid status."
         await self.check_expires()
         headers = {"Authorization": f"Bearer {self._token}"}
         json_body = {
@@ -214,20 +219,21 @@ class FansubDBBridge:
             "flag": None,
             "type": "TV",
             "subtitle": "Softsub",
-            "status": "Tentatif",
+            "status": status,
             "url": None,
             "misc": None,
         }
         results: dict = await self.request_api("post", "projek/list", json=json_body, headers=headers)
         if results["type"] == "success":
             retry_count = 0
+            await asyncio.sleep(0.25)
             while retry_count < 5:
                 fansub_project, _ = await self.fetch_fansub_projects(fansub_id)
                 project_id = await self.find_project_id(anime_id, fansub_project)
                 if project_id != 0:
                     return True, project_id
                 retry_count += 1
-                await asyncio.sleep(0.25)
+                await asyncio.sleep(1)
             return False, "Failed to fetch FansubDB Project ID, please contact N4O or mention him."
         return False, results["message"]
 
@@ -260,13 +266,27 @@ class FansubDBBridge:
             return True, "Success"
         return False, results["message"]
 
+    async def delete_project(self, project_id: Union[int, str]) -> Tuple[bool, str]:
+        if isinstance(project_id, str):
+            try:
+                project_id = int(project_id)
+            except ValueError:
+                return False, "Project ID is not a valid number."
+        await self.check_expires()
+        headers = {"Authorization": f"Bearer {self._token}"}
+        results: dict = await self.request_api("delete", f"projek/list/{project_id}", headers=headers)
+        if results["type"] == "success":
+            return True, "Success"
+        return False, results["message"]
+
 
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     fsdb = FansubDBBridge("", "", loop)
     # success, fs_id = loop.run_until_complete(fsdb.import_mal())
-    res, _ = loop.run_until_complete(fsdb.get_project(1601))
-    with open("joshikausei_n4o.json", "w", encoding="utf-8") as fp:
+    loop.run_until_complete(fsdb.authorize())
+    res, _ = loop.run_until_complete(fsdb.fetch_fansub_projects(18))
+    with open("delima_projects.json", "w", encoding="utf-8") as fp:
         ujson.dump(
             res, fp, indent=4, ensure_ascii=False, encode_html_chars=False, escape_forward_slashes=False
         )
