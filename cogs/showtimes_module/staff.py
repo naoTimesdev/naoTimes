@@ -6,20 +6,20 @@ import time
 import discord
 from discord.ext import commands, tasks
 
-from nthelper.fsdb import FansubDBBridge
-from nthelper.showtimes_helper import ShowtimesQueue, ShowtimesQueueData, naoTimesDB
+from nthelper.bot import naoTimesBot
+from nthelper.showtimes_helper import ShowtimesQueueData
 from nthelper.utils import get_current_time
 
 from .base import ShowtimesBase
 
 
 class ShowtimesStaff(commands.Cog, ShowtimesBase):
-    def __init__(self, bot):
+    def __init__(self, bot: naoTimesBot):
         super(ShowtimesStaff, self).__init__()
         self.bot = bot
-        self.showqueue: ShowtimesQueue = bot.showqueue
-        self.ntdb: naoTimesDB = bot.ntdb
-        self.fsdb: FansubDBBridge = bot.fsdb
+        self.showqueue = bot.showqueue
+        self.ntdb = bot.ntdb
+        self.fsdb = bot.fsdb
         # pylint: disable=E1101
         self.resync_failed_server.start()
         self.logger = logging.getLogger("cogs.showtimes_module.staff.ShowtimesStaff")
@@ -74,6 +74,8 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
         koleb_list = []
         osrv_dumped = {}
 
+        should_update_fsdb = False
+        fsdb_update_to = "Tentatif"
         if data[0] not in ["batch", "semua"]:
             self.logger.info(f"{server_message}: using normal mode.")
 
@@ -106,9 +108,14 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                         koleb_list.append(ko_data)
 
             current = self.get_current_ep(status_list)
+            episode_set = list(status_list.keys())
             if not current:
                 self.logger.warning(f"{matches[0]}: no episode left to be worked on.")
                 return await ctx.send("**Sudah beres digarap!**")
+
+            if current == episode_set[0]:
+                should_update_fsdb = True
+                fsdb_update_to = "Jalan"
 
             if str(ctx.message.author.id) != program_info["staff_assignment"]["QC"]:
                 if str(ctx.message.author.id) not in srv_owner:
@@ -172,7 +179,7 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
 
             current = self.get_current_ep(status_list)
             if not current:
-                self.logger.warning(f"{matches[0]}: no episode left " "to be worked on.")
+                self.logger.warning(f"{matches[0]}: no episode left to be worked on.")
                 return await ctx.send("**Sudah beres digarap!**")
 
             if str(ctx.message.author.id) != program_info["staff_assignment"]["QC"]:
@@ -200,6 +207,12 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
             for x in range(int(current), int(current) + int(jumlah)):  # range(int(c), int(c)+int(x))
                 srv_data["anime"][matches[0]]["status"][str(x)]["status"] = "released"
 
+            should_update_fsdb = True
+            fsdb_update_to = "Jalan"
+            last_ep = int(list(status_list.keys())[-1])
+            if last_ep == int(current) + int(jumlah):
+                fsdb_update_to = "Tamat"
+
             srv_data["anime"][matches[0]]["last_update"] = str(int(round(time.time())))
 
             text_data = "**{} - #{} sampai #{}** telah dirilis".format(
@@ -209,6 +222,8 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                 matches[0], current, int(current) + int(jumlah) - 1
             )
         elif data[0] == "semua":
+            should_update_fsdb = True
+            fsdb_update_to = "Tamat"
             self.logger.info(f"{server_message}: using all mode.")
             judul = " ".join(data[1:])
 
@@ -278,6 +293,11 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
         await self.showqueue.add_job(ShowtimesQueueData(srv_data, server_message))
         self.logger.info(f"{server_message}: sending message")
         await ctx.send(text_data)
+
+        if "fsdb_data" in program_info and should_update_fsdb:
+            self.logger.info("Re-Updating back FSDB project to Not done.")
+            fsdb_data = program_info["fsdb_data"]
+            await self.fsdb.update_project(fsdb_data["id"], "status", fsdb_update_to)
 
         self.logger.info(f"{server_message}: updating database...")
         success, msg = await self.ntdb.update_data_server(server_message, srv_data)
@@ -511,8 +531,10 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                 )
 
         current = self.get_current_ep(status_list)
+        reset_fsdb = False
         if not current:
             current = int(list(status_list.keys())[-1])
+            reset_fsdb = True
         else:
             current = int(current) - 1
 
@@ -550,6 +572,10 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
         await self.showqueue.add_job(ShowtimesQueueData(srv_data, server_message))
         self.logger.info(f"{matches[0]}: sending progress info to staff...")
         await ctx.send("Berhasil membatalkan rilisan **{}** episode {}".format(matches[0], current))
+
+        if "fsdb_data" in program_info and reset_fsdb:
+            self.logger.info("Re-Updating back FSDB project to Not done.")
+            await self.fsdb.update_project(program_info["fsdb_data"]["id"], "status", "Jalan")
 
         self.logger.info(f"{server_message}: updating database...")
         success, msg = await self.ntdb.update_data_server(server_message, srv_data)
