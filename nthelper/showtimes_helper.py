@@ -5,7 +5,7 @@ import os
 import time
 import traceback
 from copy import deepcopy
-from typing import List, Union
+from typing import Union
 
 import motor.motor_asyncio
 import pymongo
@@ -52,12 +52,6 @@ def safe_asynclock(func):
             return ret
 
     return safelock
-
-
-class naoTimesABC:
-    def __init__(self, commit_type, **kwargs):
-        self.__dict__.update(kwargs)
-        self.commit_type = commit_type
 
 
 class naoTimesDB:
@@ -471,6 +465,15 @@ class ShowtimesQueue:
         # self._showdata: dict = {}
 
         self._lock = False
+
+    async def shutdown(self):
+        """
+        Teardown everything
+        """
+        tasks = [task for task in self._showtasks.all_tasks() if task is not self._showtasks.current_task()]
+        list(map(lambda task: task.cancel(), tasks))
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        self._logger.info("finished awaiting cancelled tasks, results: {0}".format(results))
 
     # async def get_data(self, server_id: str, retry_time: int = 5):
     #     if retry_time <= 0:
