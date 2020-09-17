@@ -8,7 +8,7 @@ import platform
 import sys
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
 import aiofiles
 import aiohttp
@@ -18,7 +18,7 @@ from discord.ext import commands
 
 import ujson
 
-__version__ = "2.0.1b"
+__version__ = "2.0.1a"
 
 main_log = logging.getLogger("nthelper.utils")
 __CHROME_UA__ = ""
