@@ -2,16 +2,17 @@
 
 import logging
 
-from discord.ext import commands
-
 from .showtimes_module import (
-    ShowtimesAlias,
-    ShowtimesData,
-    ShowtimesKolaborasi,
-    ShowtimesOwner,
-    ShowtimesStaff,
     ShowtimesUser,
+    ShowtimesStaff,
+    ShowtimesAlias,
+    ShowtimesKolaborasi,
+    ShowtimesData,
+    ShowtimesFansubDB,
+    ShowtimesOwner,
 )
+
+from nthelper.bot import naoTimesBot
 
 showlogger = logging.getLogger("cogs.showtimes")
 
@@ -21,11 +22,12 @@ ShowTimesCommands = [
     ShowtimesAlias,
     ShowtimesKolaborasi,
     ShowtimesData,
+    ShowtimesFansubDB,
     ShowtimesOwner,
 ]
 
 
-def setup(bot: commands.Bot):
+def setup(bot: naoTimesBot):
     for ShowTC in ShowTimesCommands:
         try:
             ShowTCLoad = ShowTC(bot)
@@ -36,7 +38,7 @@ def setup(bot: commands.Bot):
             showlogger.error(f"\tTraceback -> {ex}")
 
 
-def teardown(bot: commands.Bot):
+def teardown(bot: naoTimesBot):
     for ShowTC in ShowTimesCommands:
         try:
             ShowTCLoad = ShowTC(bot)
