@@ -364,6 +364,43 @@ class Fun(commands.Cog):
 
         await ctx.send(txt)
 
+    @commands.command(name="dadu", aliases=["dice"])
+    async def roll_dice(self, ctx, dice_type: str):
+        try:
+            roll_amount, dice_faces = dice_type.split("d")
+        except ValueError:
+            return await ctx.send("Jenis dadu tidak diketahui, gunakan format seperti `d20`")
+
+        if roll_amount.strip() == "":
+            roll_amount = 1  # type: ignore
+        else:
+            if not roll_amount.isdigit():
+                return await ctx.send(f"Jumlah roll `{roll_amount}` bukanlah angka")
+            roll_amount = int(roll_amount)  # type: ignore
+        if not dice_faces.isdigit():
+            return await ctx.send(f"Jumlah sisi dadu `{dice_faces}` bukanlah angka")
+        dice_faces = int(dice_faces)  # type: ignore
+        dice_faces_range = list(range(1, dice_faces + 1))  # type: ignore
+
+        total_output = []
+        for _ in range(roll_amount):  # type: ignore
+            total_output.append(random.choice(dice_faces_range))
+
+        total_output_txt = [f"**{do}**" for do in total_output]
+
+        output_text = f"Hasil kocok dadu (**{dice_type}**): "
+        output_text += " + ".join(total_output_txt)
+        if len(total_output) > 1:
+            output_text += f" = **{sum(total_output)}**"
+        await ctx.send(output_text)
+
+    @commands.command(name="kocok", aliases=["roll"])
+    async def roll_dice_ranged(self, ctx, max_num: int):
+        dice_faces_range = list(range(1, max_num + 1))
+        roll_outcome = random.choice(dice_faces_range)
+
+        await ctx.send(f"Hasil kocok dadu: **{roll_outcome}** (**1**-**{max_num}**)")
+
     @commands.command(name="8ball")
     async def _8ball(self, ctx, *, input_):
         server_message = str(ctx.message.guild.id)
