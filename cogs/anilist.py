@@ -12,6 +12,8 @@ import discord
 import discord.ext.commands as commands
 from bs4 import BeautifulSoup
 
+from nthelper.bot import naoTimesBot
+
 anilog = logging.getLogger("cogs.anilist")
 
 
@@ -263,30 +265,9 @@ class LegalStreaming:
         return index_data["streams"]
 
 
-async def fetch_anilist(title, method, streams_list={}):
-    variables = {"search": title, "page": 1, "perPage": 50}
-    anilog.info("requesting to API...")
-    async with aiohttp.ClientSession() as sesi:
-        try:
-            async with sesi.post(
-                "https://graphql.anilist.co",
-                json={"query": anilist_query % method.upper(), "variables": variables},
-            ) as r:
-                try:
-                    data = await r.json()
-                except IndexError:
-                    return "ERROR: Terjadi kesalahan internal"
-                if r.status != 200:
-                    if r.status == 404:
-                        return "Tidak ada hasil."
-                    elif r.status == 500:
-                        return "ERROR: Internal Error :/"
-                try:
-                    query = data["data"]["Page"]["media"]
-                except IndexError:
-                    return "Tidak ada hasil."
-        except aiohttp.ClientError:
-            return "ERROR: Koneksi terputus"
+async def parse_anilist_results(results, method, streams_list={}):
+    anilog.info("parsing API results...")
+    query = results["Page"]["media"]
 
     # Koleksi translasi dan perubahan teks
     status_tl = {
@@ -322,7 +303,7 @@ async def fetch_anilist(title, method, streams_list={}):
         return "Tidak ada hasil."
 
     if method == "anime":
-        legal22222s = LegalStreaming(streams_list)
+        legalstreams_data = LegalStreaming(streams_list)
     full_query_result = []
     anilog.info("parsing results...")
     for entry in query:
@@ -408,7 +389,7 @@ async def fetch_anilist(title, method, streams_list={}):
             dataset["ch_vol"] = ch_vol
         if method == "anime":
             anilog.info("Fetching stream for: {}".format(title))
-            streams_list = await legal22222s.find_by_id(ani_id)
+            streams_list = await legalstreams_data.find_by_id(ani_id)
             if streams_list:
                 dataset["streams"] = streams_list
             dataset["episodes"] = entry["episodes"]
@@ -666,17 +647,23 @@ async def fetch_anichart():
 
 
 class Anilist(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: naoTimesBot):
         self.bot = bot
         self.streams_list = bot.jsdb_streams["data"]
         self.logger = logging.getLogger("cogs.anilist.Anilist")
+
+        self.anibucket = bot.anibucket
 
     @commands.command(aliases=["animu", "kartun", "ani"])
     @commands.guild_only()
     async def anime(self, ctx, *, judul):
         """Mencari informasi anime lewat API anilist.co"""
         self.logger.info(f"searching {judul}")
-        aqres = await fetch_anilist(judul, "anime", self.streams_list)
+        variables = {"search": judul, "page": 1, "perPage": 50}
+        req_res = await self.anibucket.handle(anilist_query % "ANIME", variables)
+        if isinstance(req_res, str):
+            return await ctx.send(req_res)
+        aqres = await parse_anilist_results(req_res, "anime", self.streams_list)
         if isinstance(aqres, str):
             return await ctx.send(aqres)
 
@@ -895,7 +882,11 @@ class Anilist(commands.Cog):
     async def manga(self, ctx, *, judul):
         """Mencari informasi manga lewat API anilist.co"""
         self.logger.info(f"searching {judul}")
-        aqres = await fetch_anilist(judul, "manga")
+        variables = {"search": judul, "page": 1, "perPage": 50}
+        req_res = await self.anibucket.handle(anilist_query % "MANGA", variables)
+        if isinstance(req_res, str):
+            return await ctx.send(req_res)
+        aqres = await parse_anilist_results(req_res, "manga", self.streams_list)
         if isinstance(aqres, str):
             return await ctx.send(aqres)
 
