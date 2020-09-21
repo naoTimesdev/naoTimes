@@ -105,6 +105,15 @@ class KBBI:
         except TimeoutError:
             raise GagalKoneksi()
         laman = await req.text()
+        if req.status != 200:
+            if req.status == 500:
+                raise TerjadiKesalahan()
+            elif req.status == 404:
+                raise TidakDitemukan(self.nama)
+            else:
+                raise kbbi.Galat(
+                    f"Terjadi kesalahan ketika berkomunikasi dengan KBBI, status code: {req.status}"
+                )
         await self._cek_autentikasi(laman)
         await self._cek_galat(req, laman)
         await self._init_entri(laman)
@@ -196,12 +205,7 @@ if __name__ == "__main__":
 
     loop = asyncio.get_event_loop()
 
-    cookies = ""  # noqa: E501
-    # auth = AutentikasiKBBI("", "")
-    # loop.run_until_complete(auth.autentikasi())
-    # cookie = loop.run_until_complete(auth.ambil_cookies())
-    # print(cookie)
-    kb = KBBI("idola", cookies)
+    kb = KBBI("khayal")
     loop.run_until_complete(kb.cari())
     res = kb.serialisasi()
     loop.run_until_complete(kb.sesi.close())
