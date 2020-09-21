@@ -11,7 +11,7 @@ import discord
 from discord.ext import commands
 
 import ujson
-from nthelper import HelpGenerator, write_files
+from nthelper.utils import HelpGenerator, write_files
 from nthelper.showtimes_helper import ShowtimesQueueData
 from nthelper.bot import naoTimesBot
 

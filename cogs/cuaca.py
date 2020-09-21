@@ -238,7 +238,7 @@ async def fetch_owm(location: str) -> Union[dict, str]:
 
     if "cod" in weather_res:
         if weather_res["cod"] == 401:
-            return "API key bot owner belum terautentikasi. Mohon kontak Bot Owner atau tunggu beberapa jam kemudian."
+            return "API key bot owner belum terautentikasi. Mohon kontak Bot Owner atau tunggu beberapa jam kemudian."  # noqa: E501
         else:
             return weather_res["message"]
 
