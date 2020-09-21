@@ -133,6 +133,12 @@ async def init_bot(loop):
     temp_folder = os.path.join(cwd, "automod")
     if not os.path.isdir(temp_folder):
         os.makedirs(temp_folder)
+    fsrss_folder = os.path.join(cwd, "fansubrss_data")
+    if not os.path.isdir(fsrss_folder):
+        os.makedirs(fsrss_folder)
+    showtimes_folder = os.path.join(cwd, "showtimes_folder")
+    if not os.path.isdir(showtimes_folder):
+        os.makedirs(showtimes_folder)
 
     default_prefix = config["default_prefix"]
 
@@ -147,8 +153,6 @@ async def init_bot(loop):
         #     bot.logger = logger
         if not hasattr(bot, "automod_folder"):
             bot.automod_folder = temp_folder
-        if not hasattr(bot, "err_echo"):
-            bot.err_echo = announce_error
         if not hasattr(bot, "semver"):
             bot.semver = __version__
         if not hasattr(bot, "jsdb_streams"):
@@ -345,7 +349,7 @@ async def on_command_error(ctx, error):
     error = getattr(error, "original", error)
 
     if isinstance(error, ignored):
-        announce_error(error)
+        bot.echo_error(error)
         return
     elif isinstance(error, commands.DisabledCommand):
         return await ctx.send(f"`{ctx.command}`` dinon-aktifkan.")
@@ -405,7 +409,7 @@ async def on_command_error(ctx, error):
     await ctx.send(
         "**Error**: Insiden internal ini telah dilaporkan ke" " N4O#8868, mohon tunggu jawabannya kembali."
     )
-    announce_error(error)
+    bot.echo_error(error)
 
 
 def ping_emote(t_t):
@@ -634,11 +638,11 @@ async def reloadconf(ctx):
                 logger.info(f"{cogs} loaded")
             except commands.ExtensionFailed as cer:
                 logger.error(f"failed to load {cogs}")
-                announce_error(cer)
+                bot.echo_error(cer)
                 failed_cogs.append(cogs)
         except commands.ExtensionFailed as cer:
             logger.error(f"failed to load {cogs}")
-            announce_error(cer)
+            bot.echo_error(cer)
             failed_cogs.append(cogs)
 
     logger.info("finished reloading config.")
@@ -676,7 +680,7 @@ async def reload(ctx, *, cogs=None):
         return await msg.edit(content="Cannot find that module.")
     except commands.ExtensionFailed as cef:
         logger.error(f"failed to reload {cogs}")
-        announce_error(cef)
+        bot.echo_error(cef)
         return await msg.edit(content="Failed to (re)load module, please check bot logs.")
     except commands.ExtensionNotLoaded:
         await msg.edit(content="Failed to reload module, trying to load it...")
@@ -687,7 +691,7 @@ async def reload(ctx, *, cogs=None):
             logger.info(f"{cogs} loaded")
         except commands.ExtensionFailed as cer:
             logger.error(f"failed to load {cogs}")
-            announce_error(cer)
+            bot.echo_error(cer)
             return await msg.edit(content="Failed to (re)load module, please check bot logs.")
         except commands.ExtensionNotFound:
             logger.warning(f"{cogs} doesn't exist.")
@@ -721,7 +725,7 @@ async def load(ctx, *, cogs=None):
         return await msg.edit(content="Cannot find that module.")
     except commands.ExtensionFailed as cef:
         logger.error(f"failed to load {cogs}")
-        announce_error(cef)
+        bot.echo_error(cef)
         return await msg.edit(content="Failed to load module, please check bot logs.")
 
     await msg.edit(content=f"Successfully loaded `{cogs}` module.")
@@ -755,7 +759,7 @@ async def unload(ctx, *, cogs=None):
         return await msg.edit(content="Module not loaded yet.")
     except commands.ExtensionFailed as cef:
         logger.error(f"failed to unload {cogs}")
-        announce_error(cef)
+        bot.echo_error(cef)
         return await msg.edit(content="Failed to unload module, please check bot logs.")
 
     await msg.edit(content=f"Successfully unloaded `{cogs}` module.")
@@ -930,11 +934,11 @@ async def prefix(ctx, *, msg=None):
                 logger.info(f"{cogs} loaded")
             except commands.ExtensionFailed as cer:
                 logger.error(f"failed to load {cogs}")
-                announce_error(cer)
+                bot.echo_error(cer)
                 failed_cogs.append(cogs)
         except commands.ExtensionFailed as cer:
             logger.error(f"failed to load {cogs}")
-            announce_error(cer)
+            bot.echo_error(cer)
             failed_cogs.append(cogs)
 
     if failed_cogs:
