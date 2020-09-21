@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 
+import argparse
 import asyncio
+import glob
 import logging
 import os
 import pathlib
@@ -10,11 +12,14 @@ import traceback
 from datetime import datetime, timezone
 from functools import partial
 from itertools import cycle
+from typing import Optional
 
 import aiohttp
 import discord
 from discord.ext import commands
 
+from nthelper.anibucket import AnilistBucket
+from nthelper.bot import naoTimesBot
 from nthelper.fsdb import FansubDBBridge
 from nthelper.kbbiasync import KBBI, AutentikasiKBBI
 from nthelper.showtimes_helper import ShowtimesQueue, naoTimesDB
@@ -28,7 +33,6 @@ from nthelper.utils import (
     read_files,
     write_files,
 )
-from nthelper.bot import naoTimesBot
 
 # Silent some imported module
 logging.getLogger("websockets").setLevel(logging.WARNING)
@@ -48,6 +52,12 @@ console.setLevel(logging.INFO)
 console_formatter = logging.Formatter("[%(levelname)s] (%(name)s): %(funcName)s: %(message)s")
 console.setFormatter(console_formatter)
 logger.addHandler(console)
+
+parser = argparse.ArgumentParser("naotimesbot")
+parser.add_argument("-dcog", "--disable-cogs", default=[], action="append", dest="cogs_skip")
+parser.add_argument("-skbbi", "--skip-kbbi-check", action="store_true", dest="kbbi_check")
+parser.add_argument("-sshow", "--skip-showtimes-fetch", action="store_true", dest="showtimes_fetch")
+args_parsed = parser.parse_args()
 
 
 def announce_error(error):
@@ -79,7 +89,7 @@ async def init_bot(loop):
     kbbi_expires = kbbi_auth["expires"]
     kbbi_conf = config["kbbi"]
 
-    if not kbbi_conf["skip_check"]:
+    if not kbbi_conf["skip_check"] or not args_parsed.kbbi_check:
         logger.info("Testing KBBI cookies...")
         current_dt = datetime.now(tz=timezone.utc).timestamp()
         kbbi_cls = KBBI("periksa", kbbi_cookie)
@@ -159,6 +169,9 @@ async def init_bot(loop):
         if not hasattr(bot, "showqueue"):
             logger.info("Binding ShowtimesQueue...")
             bot.showqueue = ShowtimesQueue(cwd)
+        if not hasattr(bot, "anibucket"):
+            logger.info("Binding AnilistBucket")
+            bot.anibucket = AnilistBucket()
         logger.info("Success Loading Discord.py")
     except Exception as exc:
         logger.error("Failed to load Discord.py")
@@ -244,7 +257,7 @@ async def on_ready():
         logger.info("IP:Port: {}:{}".format(mongos["ip_hostname"], mongos["port"]))
         logger.info("Database: {}".format(mongos["dbname"]))
         logger.info("---------------------------------------------------------------")
-        if not mongos["skip_fetch"]:
+        if not mongos["skip_fetch"] or not args_parsed.showtimes_fetch:
             logger.info("Fetching nao_showtimes from server db to local json")
             js_data = await bot.ntdb.fetch_all_as_json()
             showtimes_folder = os.path.join(bot.fcwd, "showtimes_folder")
@@ -260,16 +273,24 @@ async def on_ready():
             logger.info("---------------------------------------------------------------")  # noqa: E501
     if not hasattr(bot, "uptime"):
         bot.owner = (await bot.application_info()).owner
-        bot.uptime = time.time()
+        bot.uptime = datetime.now(tz=timezone.utc).timestamp()
+    skipped_cogs = []
+    for cogs in args_parsed.cogs_skip:
+        if not cogs.startswith("cogs."):
+            cogs = "cogs." + cogs
+        skipped_cogs.append(cogs)
     logger.info("[#][@][!] Start loading cogs...")
     for load in cogs_list:
+        if load in skipped_cogs:
+            logger.warning(f"Skipping: {load}")
+            continue
         try:
-            logger.info("[#] Loading " + load + " module.")
+            logger.info(f"Loading: {load}")
             bot.load_extension(load)
-            logger.info("[#] Loaded " + load + " module.")
+            logger.info(f"Loaded: {load}")
         except Exception as e:
-            logger.info("[!!] Failed Loading " + load + " module.")
-            announce_error(e)
+            logger.error(f"Failed to load {load} module")
+            bot.echo_error(e)
     logger.info("[#][@][!] All cogs/extensions loaded.")
     logger.info("---------------------------------------------------------------")
     logger.info("Bot Ready!")
@@ -285,10 +306,10 @@ async def on_ready():
 
 async def change_bot_presence():
     await bot.wait_until_ready()
-    logger.info("[@] Loaded auto-presence.")
+    logger.info("Loaded auto-presence.")
     presences = cycle(presence_status)
 
-    while not bot.is_closed:
+    while not bot.is_closed():
         await asyncio.sleep(30)
         current_status = next(presences)
         activity = discord.Game(name=current_status, type=3)
@@ -334,7 +355,7 @@ async def on_command_error(ctx, error):
         except Exception:
             return
 
-    current_time = time.time()
+    current_time = datetime.now(tz=timezone.utc).timestamp()
 
     logger.error("Ignoring exception in command {}:".format(ctx.command))
     traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
@@ -477,40 +498,27 @@ async def fetch_bot_count_data():
 
     total_valid_users = len(users_list)
 
-    # Showtimes
-    if not os.path.isfile("nao_showtimes.json"):
-        logger.warning("naoTimes are not initiated, skipping...")
-        json_data = {}
-
-    json_data = await read_files("nao_showtimes.json")
-
     text_fmt = "Jumlah server: {}\nJumlah channels: {}\nJumlah pengguna: {}".format(  # noqa: E501
         total_server, total_channels, total_valid_users
     )
 
-    if not json_data:
-        text_fmt += "\n\nJumlah server Showtimes: {}\nJumlah anime Showtimes: {}".format(0, 0)  # noqa: E501
-    else:
-        ntimes_srv = []
-        total_animemes = 0
-        for k in json_data:
-            if k == "supermod":
-                continue
-            ntimes_srv.append(k)
+    async def fetch_servers(cwd: str) -> list:
+        bot.logger.info("fetching with glob...")
+        glob_re = os.path.join(cwd, "showtimes_folder", "*.showtimes")
+        basename = os.path.basename
+        all_showtimes = glob.glob(glob_re)
+        all_showtimes = [os.path.splitext(basename(srv))[0] for srv in all_showtimes]
+        return all_showtimes
 
-        total_ntimes_srv = len(ntimes_srv)
-        for srv in ntimes_srv:
-            anime_keys = list(json_data[srv]["anime"].keys())
-            total_animemes += len(anime_keys)
-        text_fmt += "\n\nJumlah server Showtimes: {}\nJumlah anime Showtimes: {}".format(  # noqa: E501
-            total_ntimes_srv, total_animemes
-        )
+    showtimes_servers = await fetch_servers(bot.fcwd)
+    if showtimes_servers:
+        text_fmt += f"\n\nJumlah Server Showtimes: {len(showtimes_servers)}"
 
     return "```" + text_fmt + "```"
 
 
 def create_uptime():
-    current_time = time.time()
+    current_time = datetime.now(tz=timezone.utc).timestamp()
     up_secs = int(round(current_time - bot.uptime))  # Seconds
 
     up_months = int(up_secs // 2592000)  # 30 days format
@@ -524,13 +532,20 @@ def create_uptime():
     up_minutes = int(up_secs // 60)
     up_secs -= up_minutes * 60
 
-    return_text = "`"
-    if up_months != 0:
-        return_text += "{} bulan ".format(up_months)
+    return_data = []
+    if up_months > 0:
+        return_data.append(f"{up_months} bulan")
+    if up_weeks > 0:
+        return_data.append(f"{up_weeks} minggu")
+    if up_days > 0:
+        return_data.append(f"{up_days} hari")
+    if up_hours > 0:
+        return_data.append(f"{up_hours} jam")
+    if up_minutes > 0:
+        return_data.append(f"{up_minutes} menit")
+    return_data.append(f"{up_secs} detik")
 
-    return return_text + "{} minggu {} hari {} jam {} menit {} detik`".format(
-        up_weeks, up_days, up_hours, up_minutes, up_secs
-    )
+    return "`" + " ".join(return_data) + "`"
 
 
 @bot.command()
@@ -726,12 +741,12 @@ async def unload(ctx, *, cogs=None):
         return await ctx.send(embed=helpcmd.get())
     if not cogs.startswith("cogs."):
         cogs = "cogs." + cogs
-    logger.info(f"trying to load {cogs}")
+    logger.info(f"trying to unload {cogs}")
     msg = await ctx.send("Please wait, unloading module...")
     try:
-        logger.info(f"loading {cogs}")
+        logger.info(f"unloading {cogs}")
         bot.unload_extension(cogs)
-        logger.info(f"loaded {cogs}")
+        logger.info(f"unloaded {cogs}")
     except commands.ExtensionNotFound:
         logger.warning(f"{cogs} doesn't exist.")
         return await msg.edit(content="Cannot find that module.")
@@ -744,6 +759,109 @@ async def unload(ctx, *, cogs=None):
         return await msg.edit(content="Failed to unload module, please check bot logs.")
 
     await msg.edit(content=f"Successfully unloaded `{cogs}` module.")
+
+
+class PlaceHolderCommand:
+    """
+    A placeholder command for disabled, it replaced with a simple text
+
+    Usage:
+    ```py
+    # Initialize first the class, then pass the send_placeholder command
+
+    plch_cmd = PlaceHolderCommand(name="kbbi", reason="Website sangat tidak stabil untuk digunakan.")
+    bot.add_command(commands.Command(plch_cmd.send_placeholder, name="kbbi"))
+    ```
+    """
+
+    def __init__(self, name: str, reason: Optional[str] = None):
+        """Initialize the PlaceHolderCommand class
+
+        :param name: command name
+        :type name: str
+        :param reason: reason why that command is being disabled, or replaced by placeholder, defaults to None
+        :type reason: Optional[str], optional
+        """
+        self.reason = reason
+        self.name = name
+
+    async def send_placeholder(self, ctx):
+        send_msg = f"Perintah **`{self.name}`** dinon-aktifkan oleh owner bot ini."
+        if self.reason is not None and self.reason != "":
+            send_msg += f"\n**Alasan**: {self.reason}"
+        await ctx.send(send_msg)
+
+
+@bot.command()
+@commands.is_owner()
+async def disablecmd(ctx, *, cmd_name):
+    """Disable a command"""
+    try:
+        splitted_data = cmd_name.split("-")
+        cmd_name = splitted_data[0]
+        reason_for = "-".join(splitted_data[1:])
+    except ValueError:
+        reason_for = None
+    cmd_name = cmd_name.rstrip().lower()
+    bot.logger.info(f"disabling: {cmd_name}")
+    if cmd_name in ("disablecmd", "enablecmd"):
+        bot.logger.warning("command on not allowed list")
+        return await ctx.send("Tidak bisa menon-aktifkan command `disablecmd` atau `enablecmd`")
+    if bot.copy_of_commands.get(cmd_name) is not None:
+        bot.logger.error("command is already disabled.")
+        return await ctx.send("Command tersebut sudah dinon-aktifkan.")
+
+    command_data: commands.Command = bot.remove_command(cmd_name)
+    if command_data is None:
+        bot.logger.error(f"{cmd_name}: command not found.")
+        return await ctx.send("Tidak dapat menemukan command tersebut.")
+    old_cmd_aliases = command_data.aliases
+    for alias in old_cmd_aliases:
+        # Try to remove it just in case owner remove the alias only.
+        bot.logger.info(f"{cmd_name}: removing `{alias}` alias...")
+        bot.remove_command(alias)
+    old_cmd_name = command_data.name
+    if cmd_name in old_cmd_aliases:
+        bot.logger.info(f"{cmd_name}: removing the cmd from bot since the user provided aliases.")
+        bot.remove_command(old_cmd_name)
+    bot.logger.info(f"{cmd_name}: adding a placeholder command.")
+    plch_cmd = PlaceHolderCommand(name=old_cmd_name, reason=reason_for)
+    bot.add_command(commands.Command(plch_cmd.send_placeholder, name=old_cmd_name, aliases=old_cmd_aliases))
+    bot.copy_of_commands[cmd_name] = command_data
+    bot.logger.info(f"{cmd_name}: command successfully disabled.")
+    await ctx.send(f"Command `{old_cmd_name}` berhasil dinon-aktifkan.")
+
+
+@bot.command()
+@commands.is_owner()
+async def enablecmd(ctx, *, cmd_name):
+    cmd_name = cmd_name.rstrip().lower()
+    bot.logger.info(f"enabling: {cmd_name}")
+    command_data = bot.copy_of_commands.pop(cmd_name)
+    if command_data is None:
+        bot.logger.error(f"{cmd_name}: command not found.")
+        return await ctx.send("Tidak dapat menemukan command tersebut.")
+    # Remove the placeholder command.
+    bot.logger.error(f"{cmd_name}: command not found.")
+    old_cmd_data = bot.remove_command(cmd_name)
+    if old_cmd_data is None:
+        bot.logger.error(f"{cmd_name}: for some unknown reason, it cannot found the command.")
+        return await ctx.send("Entah kenapa, bot tidak bisa menemukan command tersebut.")
+    for alias in old_cmd_data.aliases:
+        bot.logger.info(f"{cmd_name}: removing `{alias}` alias...")
+        bot.remove_command(alias)
+    if cmd_name in old_cmd_data.aliases:
+        bot.logger.info(f"{cmd_name}: removing the cmd from bot since the user provided aliases.")
+        bot.remove_command(old_cmd_data.name)
+    try:
+        bot.logger.info(f"{cmd_name}: readding command...")
+        bot.add_command(command_data)
+    except commands.CommandRegistrationError as cre:
+        bot.logger.error(f"{cmd_name}: command failed to registered.")
+        bot.echo_error(cre)
+        return await ctx.send("Tidak dapat meregistrasi ulang command.")
+    bot.logger.info(f"{cmd_name}: command successfully enabled.")
+    await ctx.send(f"Command `{cmd_name}` berhasil diaktifkan kembali.")
 
 
 @bot.command()  # noqa: F811
