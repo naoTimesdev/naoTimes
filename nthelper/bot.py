@@ -5,6 +5,7 @@ from typing import Dict, Union
 import discord
 from discord.ext import commands
 
+from .anibucket import AnilistBucket
 from .fsdb import FansubDBBridge
 from .showtimes_helper import ShowtimesQueue, naoTimesDB
 from .utils import __version__
@@ -38,8 +39,10 @@ class naoTimesBot(commands.Bot):
 
         self.fsdb: FansubDBBridge
         self.showqueue: ShowtimesQueue
+        self.anibucket: AnilistBucket
 
         self.showtimes_resync: list = []
+        self.copy_of_commands: Dict[str, commands.Command] = {}
         self.ntdb: naoTimesDB
 
         self.uptime: float
