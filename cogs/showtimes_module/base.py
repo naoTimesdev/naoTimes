@@ -9,7 +9,7 @@ from typing import Optional, Union
 import aiohttp
 import discord
 
-from nthelper import read_files, write_files
+from nthelper.utils import read_files, write_files
 
 showlog = logging.getLogger("cogs.showtimes_module.base")
 
@@ -223,8 +223,12 @@ async def fetch_anilist(
         "title": entry["title"]["romaji"],
     }
     if jadwal_only:
-        if "nextAiringEpisode" in entry:
-            air_data = {}
+        air_data = {
+            "time_until": None,
+            "episode": None,
+        }
+        compiled_data["episode_status"] = None
+        if "nextAiringEpisode" in entry and entry["nextAiringEpisode"] is not None:
             next_airing = entry["nextAiringEpisode"]
             try:
                 time_until = next_airing["timeUntilAiring"]
@@ -236,10 +240,9 @@ async def fetch_anilist(
                 air_data["episode"] = next_episode
             except KeyError:
                 air_data["episode"] = None
-            compiled_data["episode_status"] = None
             if next_airing["airingAt"] is not None:
                 compiled_data["episode_status"] = utctime_to_timeleft(next_airing["airingAt"])
-            compiled_data["next_airing"] = air_data
+        compiled_data["next_airing"] = air_data
         return compiled_data
 
     compiled_data["poster_data"] = {
