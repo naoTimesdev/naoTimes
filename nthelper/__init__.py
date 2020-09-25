@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 # flake8: noqa
+# type: ignore
 
 from .cmd_args import (
     ArgumentParserError,
@@ -44,5 +45,9 @@ from .cpputest import (
     CPPTestCompileError,
     CPPTestRuntimeError,
     CPPTestTimeoutError,
-    CPPTestSanitizeError
+    CPPTestSanitizeError,
 )
+
+from .bot import naoTimesBot
+from .anibucket import AnilistBucket
+from .votebackend import VoteWatcher
