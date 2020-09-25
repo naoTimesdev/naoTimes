@@ -1199,7 +1199,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
             await emb_msg.edit(embed=embed)
             collect_anime_dataset = await self.fsdb_conn.fetch_animes()
             collect_anime_dataset.sort(key=lambda x: x["mal_id"])
-            fansubs_projects, _ = await self.fsdb_conn.fetch_fansub_projects(json_tables["fs_id"])
+            fansubs_projects, _ = await self.fsdb_conn.fetch_fansub_projects(srv_data["fsdb_id"])
             existing_projects = {str(data["anime"]["mal_id"]): data["id"] for data in fansubs_projects}
 
             mal_id = new_anime_data["mal_id"]
