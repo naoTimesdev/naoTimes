@@ -29,6 +29,10 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
     def __str__(self):
         return "Showtimes Staff"
 
+    def cog_unload(self):
+        self.logger.info("Cancelling all tasks...")
+        self.resync_failed_server.cancel()
+
     @tasks.loop(minutes=1.0)
     async def resync_failed_server(self):
         if not self.bot.showtimes_resync:

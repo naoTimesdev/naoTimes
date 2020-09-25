@@ -8,7 +8,7 @@ from typing import List, Tuple, Union
 import discord
 from discord.ext import commands, tasks
 
-from nthelper import write_files
+from nthelper.utils import write_files
 from nthelper.kbbiasync import (
     KBBI,
     AutentikasiKBBI,
@@ -134,6 +134,11 @@ class KBBICog(commands.Cog):
 
         self._on_maintenance = False
         self._maintenance_range = [None, 0]
+
+    def cog_unload(self):
+        self.logger.info("Cancelling all tasks...")
+        self.daily_check_auth.cancel()
+        self.check_maintenance_range.cancel()
 
     @tasks.loop(minutes=1)
     async def check_maintenance_range(self):

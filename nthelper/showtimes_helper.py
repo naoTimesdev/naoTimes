@@ -470,10 +470,9 @@ class ShowtimesQueue:
         """
         Teardown everything
         """
-        tasks = [task for task in self._showtasks.all_tasks() if task is not self._showtasks.current_task()]
-        list(map(lambda task: task.cancel(), tasks))
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        self._logger.info("finished awaiting cancelled tasks, results: {0}".format(results))
+        self._logger.info("Cancelling all tasks...")
+        self._showtasks.cancel()
+        self._logger.info("finished awaiting cancelled tasks, stopping...")
 
     # async def get_data(self, server_id: str, retry_time: int = 5):
     #     if retry_time <= 0:
