@@ -355,7 +355,7 @@ class Helper(commands.Cog):
         helpcmd = HelpGenerator(self.bot, "f", "Pencet F untuk memberikan respek")
         await helpcmd.generate_field(
             "f",
-            [{"name": "pesan", "type": "o", "desc": "`[pesan]` bebas mau diisi apa aja.",}],
+            [{"name": "pesan", "type": "o", "desc": "`[pesan]` bebas mau diisi apa aja."}],
             examples=["", "ketauan buka r18"],
         )
         await helpcmd.generate_aliases()
@@ -366,7 +366,7 @@ class Helper(commands.Cog):
         helpcmd = HelpGenerator(self.bot, "kerang", "Bertanya kepada kerang ajaib.")
         await helpcmd.generate_field(
             "kerang",
-            [{"name": "pertanyaan", "type": "r", "desc": "`<pertanyaan>` akan dijawab oleh kerang ajaib.",}],
+            [{"name": "pertanyaan", "type": "r", "desc": "`<pertanyaan>` akan dijawab oleh kerang ajaib."}],
             examples=["apakah utang saya akan selesai?"],
         )
         await helpcmd.generate_aliases()
@@ -409,7 +409,7 @@ class Helper(commands.Cog):
         helpcmd = HelpGenerator(self.bot, "8ball", "Bertanya kepada bola delapan ajaib.")
         await helpcmd.generate_field(
             "8ball",
-            [{"name": "pertanyaan", "type": "r", "desc": "`<pertanyaan>` akan dijawab oleh bola delapan.",}],
+            [{"name": "pertanyaan", "type": "r", "desc": "`<pertanyaan>` akan dijawab oleh bola delapan."}],
             examples=["apakah utang saya akan selesai?"],
         )
         await helpcmd.generate_aliases()
@@ -421,7 +421,7 @@ class Helper(commands.Cog):
         helpcmd = HelpGenerator(self.bot, "reload", "Mereload salah satu module bot.")
         await helpcmd.generate_field(
             "reload",
-            [{"name": "module", "type": "r", "desc": "`<module>` yang akan direload.",}],
+            [{"name": "module", "type": "r", "desc": "`<module>` yang akan direload."}],
             examples=["anilist", "cogs.anilist"],
         )
         await helpcmd.generate_aliases(add_note=False)
@@ -433,7 +433,7 @@ class Helper(commands.Cog):
         helpcmd = HelpGenerator(self.bot, "load", "Load salah satu module bot.")
         await helpcmd.generate_field(
             "load",
-            [{"name": "module", "type": "r", "desc": "`<module>` yang akan diload.",}],
+            [{"name": "module", "type": "r", "desc": "`<module>` yang akan diload."}],
             examples=["anilist", "cogs.anilist"],
         )
         await helpcmd.generate_aliases(add_note=False)
@@ -445,7 +445,7 @@ class Helper(commands.Cog):
         helpcmd = HelpGenerator(self.bot, "unload", "Unload salah satu module bot.")
         await helpcmd.generate_field(
             "unload",
-            [{"name": "module", "type": "r", "desc": "`<module>` yang akan unload.",}],
+            [{"name": "module", "type": "r", "desc": "`<module>` yang akan unload."}],
             examples=["anilist", "cogs.anilist"],
         )
         await helpcmd.generate_aliases(add_note=False)
@@ -454,7 +454,7 @@ class Helper(commands.Cog):
     @oldhelp.command(name="peninjau")
     async def peninjau_help(self, ctx):
         helpcmd = HelpGenerator(
-            self.bot, "Peninjau[*]", desc=f"Bantuan untuk perintah yang mengambil data dari website",
+            self.bot, "Peninjau[*]", desc="Bantuan untuk perintah yang mengambil data dari website",
         )
         await helpcmd.generate_field(
             "anibin",
@@ -493,7 +493,7 @@ class Helper(commands.Cog):
         helpcmd = HelpGenerator(self.bot, "anibin", "Mencari resolusi asli anime melalui anibin.")
         await helpcmd.generate_field(
             "anibin",
-            [{"name": "judul", "type": "r", "desc": "`<judul>` merupakan kueri yang akan dicari nanti",}],
+            [{"name": "judul", "type": "r", "desc": "`<judul>` merupakan kueri yang akan dicari nanti"}],
             examples=["私に天使が舞い降りた"],
         )
         await helpcmd.generate_aliases()
@@ -504,7 +504,7 @@ class Helper(commands.Cog):
         helpcmd = HelpGenerator(self.bot, "kbbi", "Mencari kata di KBBI Daring.")
         await helpcmd.generate_field(
             "kbbi",
-            [{"name": "kata", "type": "r", "desc": "`<kata>` merupakan kueri yang akan dicari nanti",}],
+            [{"name": "kata", "type": "r", "desc": "`<kata>` merupakan kueri yang akan dicari nanti"}],
             examples=["tes", "contoh", "peladen"],
         )
         await helpcmd.generate_aliases()
@@ -515,7 +515,7 @@ class Helper(commands.Cog):
         helpcmd = HelpGenerator(self.bot, "sinonim", "Mencari sinonim sebuah kata.")
         await helpcmd.generate_field(
             "sinonim",
-            [{"name": "kata", "type": "r", "desc": "`<kata>` merupakan kueri yang akan dicari nanti",}],
+            [{"name": "kata", "type": "r", "desc": "`<kata>` merupakan kueri yang akan dicari nanti"}],
             examples=["duduk", "makan"],
         )
         await helpcmd.generate_aliases(["persamaankata", "persamaan"])
@@ -526,7 +526,7 @@ class Helper(commands.Cog):
         helpcmd = HelpGenerator(self.bot, "antonim", "Mencari antonim sebuah kata.")
         await helpcmd.generate_field(
             "antonim",
-            [{"name": "kata", "type": "r", "desc": "`<kata>` merupakan kueri yang akan dicari nanti",}],
+            [{"name": "kata", "type": "r", "desc": "`<kata>` merupakan kueri yang akan dicari nanti"}],
             examples=["berdiri", "hidup"],
         )
         await helpcmd.generate_aliases(["lawankata"])
@@ -537,7 +537,7 @@ class Helper(commands.Cog):
         helpcmd = HelpGenerator(self.bot, "jisho", "Mencari kata di Jisho.")
         await helpcmd.generate_field(
             "jisho",
-            [{"name": "kata", "type": "r", "desc": "`<kata>` merupakan kueri yang akan dicari nanti",}],
+            [{"name": "kata", "type": "r", "desc": "`<kata>` merupakan kueri yang akan dicari nanti"}],
             examples=["duduk", "makan"],
         )
         await helpcmd.generate_aliases(["kanji"])
@@ -790,17 +790,17 @@ class Helper(commands.Cog):
     @showtimes.command(name="staff")
     async def showtimes_staff(self, ctx):
         helpcmd = HelpGenerator(
-            self.bot, "Showtimes Staff[*]", desc=f"Perintah yang dapat digunakan oleh staff fansub.",
+            self.bot, "Showtimes Staff[*]", desc="Perintah yang dapat digunakan oleh staff fansub.",
         )
         await helpcmd.generate_field(
             "beres",
             desc="Menandakan posisi garapan episode menjadi beres.",
-            opts=[{"name": "posisi", "type": "r"}, {"name": "judul", "type": "r"},],
+            opts=[{"name": "posisi", "type": "r"}, {"name": "judul", "type": "r"}],
         )
         await helpcmd.generate_field(
             "gakjadi",
             desc="Menandakan posisi garapan episode menjadi belum beres.",
-            opts=[{"name": "posisi", "type": "r"}, {"name": "judul", "type": "r"},],
+            opts=[{"name": "posisi", "type": "r"}, {"name": "judul", "type": "r"}],
         )
         await helpcmd.generate_field(
             "tandakan",
@@ -831,7 +831,7 @@ class Helper(commands.Cog):
         await helpcmd.generate_field(
             "beres",
             [
-                {"name": "posisi", "type": "r", "desc": self.get_text("posisi"),},
+                {"name": "posisi", "type": "r", "desc": self.get_text("posisi")},
                 {"name": "judul", "type": "r", "desc": self.get_text("judul")},
             ],
             examples=["enc hitoribocchi", "ts hitoribocchi"],
@@ -847,7 +847,7 @@ class Helper(commands.Cog):
         await helpcmd.generate_field(
             "gakjadi",
             [
-                {"name": "posisi", "type": "r", "desc": self.get_text("posisi"),},
+                {"name": "posisi", "type": "r", "desc": self.get_text("posisi")},
                 {"name": "judul", "type": "r", "desc": self.get_text("judul")},
             ],
             examples=["enc hitoribocchi", "ts hitoribocchi"],
@@ -869,7 +869,7 @@ class Helper(commands.Cog):
         await helpcmd.generate_field(
             "rilis batch",
             [
-                {"name": "jumlah", "type": "r", "desc": self.get_text("jumlah"),},
+                {"name": "jumlah", "type": "r", "desc": self.get_text("jumlah")},
                 {"name": "judul", "type": "r", "desc": self.get_text("judul")},
             ],
             desc="Merilis beberapa episode sekaligus.",
@@ -894,7 +894,7 @@ class Helper(commands.Cog):
         )
         await helpcmd.generate_field(
             "batalrilis",
-            [{"name": "judul", "type": "r", "desc": self.get_text("judul")},],
+            [{"name": "judul", "type": "r", "desc": self.get_text("judul")}],
             examples=["hitoribocchi"],
         )
         await helpcmd.generate_aliases(["gakjadirilis", "revert"])
@@ -911,7 +911,7 @@ class Helper(commands.Cog):
         await helpcmd.generate_field(
             "tandakan",
             [
-                {"name": "posisi", "type": "r", "desc": self.get_text("posisi"),},
+                {"name": "posisi", "type": "r", "desc": self.get_text("posisi")},
                 {"name": "episode", "type": "r", "desc": "Episode yang ingin ditandakan."},
                 {"name": "judul", "type": "r", "desc": self.get_text("judul")},
             ],
@@ -923,7 +923,7 @@ class Helper(commands.Cog):
     @showtimes.command(name="alias")
     async def showtimes_alias(self, ctx):
         helpcmd = HelpGenerator(
-            self.bot, "Showtimes Alias[*]", desc=f"Perintah yang dapat digunakan oleh admin/owner fansub.",
+            self.bot, "Showtimes Alias[*]", desc="Perintah yang dapat digunakan oleh admin/owner fansub.",
         )
         await helpcmd.generate_field(
             "alias", desc="Menambah alias baru untuk sebuah judul.",
@@ -974,12 +974,12 @@ class Helper(commands.Cog):
         helpcmd = HelpGenerator(
             self.bot,
             "Showtimes Kolaborasi[*]",
-            desc=f"Perintah yang dapat digunakan oleh admin/owner fansub.",
+            desc="Perintah yang dapat digunakan oleh admin/owner fansub.",
         )
         await helpcmd.generate_field(
             "kolaborasi dengan",
             desc="Memulai proses kolaborasi garapan dengan fansub lain.",
-            opts=[{"name": "server id kolaborasi", "type": "r"}, {"name": "judul", "type": "r"},],
+            opts=[{"name": "server id kolaborasi", "type": "r"}, {"name": "judul", "type": "r"}],
         )
         await helpcmd.generate_field(
             "kolaborasi konfirmasi",
@@ -994,7 +994,7 @@ class Helper(commands.Cog):
         await helpcmd.generate_field(
             "kolaborasi batalkan",
             desc="Membatalkan proses kolaborasi.",
-            opts=[{"name": "server id kolaborasi", "type": "r"}, {"name": "kode unik", "type": "r"},],
+            opts=[{"name": "server id kolaborasi", "type": "r"}, {"name": "kode unik", "type": "r"}],
         )
         await helpcmd.generate_aliases(["joint", "join", "koleb"])
         await ctx.send(embed=helpcmd.get())
@@ -1002,7 +1002,7 @@ class Helper(commands.Cog):
     @showtimes.command(name="admin")
     async def showtimes_admin(self, ctx):
         helpcmd = HelpGenerator(
-            self.bot, "Showtimes Admin[*]", desc=f"Perintah yang dapat digunakan oleh admin/owner fansub.",
+            self.bot, "Showtimes Admin[*]", desc="Perintah yang dapat digunakan oleh admin/owner fansub.",
         )
         await helpcmd.generate_field(
             "tambahutang", desc="Menambah garapan baru ke database.",
@@ -1022,7 +1022,7 @@ class Helper(commands.Cog):
         )
         await helpcmd.generate_field(
             "ubahdata",
-            [{"name": "judul", "type": "r", "desc": self.get_text("judul")},],
+            [{"name": "judul", "type": "r", "desc": self.get_text("judul")}],
             examples=["hitoribocchi"],
         )
         await helpcmd.generate_aliases()
@@ -1044,7 +1044,7 @@ class Helper(commands.Cog):
     @commands.is_owner()
     async def showtimes_owner(self, ctx):
         helpcmd = HelpGenerator(
-            self.bot, "Showtimes Owner[*]", desc=f"Perintah yang dapat digunakan oleh owner bot.",
+            self.bot, "Showtimes Owner[*]", desc="Perintah yang dapat digunakan oleh owner bot.",
         )
         await helpcmd.generate_field(
             "ntadmin initiate", desc="Menginisiasi showtimes.",
@@ -1066,12 +1066,12 @@ class Helper(commands.Cog):
         await helpcmd.generate_field(
             "ntadmin tambahadmin",
             desc="Menambah admin ke server baru yang terdaftar di database.",
-            opts=[{"name": "server id", "type": "r"}, {"name": "admin id", "type": "r"},],
+            opts=[{"name": "server id", "type": "r"}, {"name": "admin id", "type": "r"}],
         )
         await helpcmd.generate_field(
             "ntadmin hapusadmin",
             desc="Menghapus admin dari server baru yang" " terdaftar di database.",
-            opts=[{"name": "server id", "type": "r"}, {"name": "admin id", "type": "r"},],
+            opts=[{"name": "server id", "type": "r"}, {"name": "admin id", "type": "r"}],
         )
         await helpcmd.generate_field(
             "ntadmin fetchdb", desc="Mengambil database lokal dan kirim ke Discord.",
