@@ -59,7 +59,7 @@ def get_version() -> str:
     return "```py\nDiscord.py v{d}\nPython {p}\n```".format(d=discord_ver, p=py_ver)
 
 
-def prefixes_with_data(bot, message, prefixes_data, default):
+def prefixes_with_data(bot, message: discord.Message, prefixes_data: dict, default: str) -> list:
     """
     A modified version of discord.ext.command.when_mentioned_or
     """

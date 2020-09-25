@@ -51,3 +51,13 @@ class naoTimesBot(commands.Bot):
     def echo_error(self, error):
         tb = traceback.format_exception(type(error), error, error.__traceback__)
         self.logger.error("Exception occured\n" + "".join(tb))
+
+    def prefix_srv(self, ctx) -> str:
+        prefix = self.command_prefix
+        if callable(prefix):
+            prefix = prefix(self, ctx.message)
+        if isinstance(prefix, (list, tuple)):
+            final_pre = prefix[0]
+        else:
+            final_pre = prefix
+        return final_pre
