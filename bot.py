@@ -149,6 +149,7 @@ async def init_bot(loop):
         prefixes = partial(prefixes_with_data, prefixes_data=srv_prefixes, default=default_prefix,)
         bot = naoTimesBot(command_prefix=prefixes, description=description, loop=loop)
         bot.remove_command("help")
+        bot.logger.info("Bot loaded, now using bot logger for logging.")
         # if not hasattr(bot, "logger"):
         #     bot.logger = logger
         if not hasattr(bot, "automod_folder"):
@@ -156,29 +157,29 @@ async def init_bot(loop):
         if not hasattr(bot, "semver"):
             bot.semver = __version__
         if not hasattr(bot, "jsdb_streams"):
-            logger.info("Binding JSON dataset...")
+            bot.logger.info("Binding JSON dataset...")
             bot.jsdb_streams = streams_list
             bot.jsdb_currency = currency_data
             bot.jsdb_crypto = crypto_data
         if not hasattr(bot, "fcwd"):
             bot.fcwd = cwd
         if not hasattr(bot, "kbbi_cookie"):
-            logger.info("Binding KBBI Cookies...")
+            bot.logger.info("Binding KBBI Cookies...")
             bot.kbbi_cookie = kbbi_cookie
             bot.kbbi_expires = kbbi_expires
             bot.kbbi_auth = {"email": kbbi_conf["email"], "password": kbbi_conf["password"]}
         if not hasattr(bot, "fsdb"):
-            logger.info("Binding FansubDB...")
+            bot.logger.info("Binding FansubDB...")
             bot.fsdb = fsdb_bridge
         if not hasattr(bot, "showqueue"):
-            logger.info("Binding ShowtimesQueue...")
+            bot.logger.info("Binding ShowtimesQueue...")
             bot.showqueue = ShowtimesQueue(cwd)
         if not hasattr(bot, "anibucket"):
-            logger.info("Binding AnilistBucket")
+            bot.logger.info("Binding AnilistBucket")
             bot.anibucket = AnilistBucket()
-        logger.info("Success Loading Discord.py")
+        bot.logger.info("Success Loading Discord.py")
     except Exception as exc:
-        logger.error("Failed to load Discord.py")
+        bot.logger.error("Failed to load Discord.py")
         announce_error(exc)
     return bot, config
 
@@ -186,10 +187,6 @@ async def init_bot(loop):
 # Initiate everything
 logger.info(f"Initiating bot v{__version__}...")
 logger.info("Setting up loop")
-# if sys.platform == "win32":
-#     logger.info("Detected win32, using ProactorEventLoop")
-#     event_loop = asyncio.ProactorEventLoop()
-#     asyncio.set_event_loop(event_loop)
 async_loop = asyncio.get_event_loop()
 res = async_loop.run_until_complete(init_bot(async_loop))
 bot: naoTimesBot = res[0]
@@ -238,10 +235,10 @@ presence_status = [
 @bot.event
 async def on_ready():
     """Bot loaded here"""
-    logger.info("[$] Connected to discord.")
+    bot.logger.info("Connected to discord.")
     activity = discord.Game(name=presence_status[0], type=3)
     await bot.change_presence(activity=activity)
-    logger.info("---------------------------------------------------------------")
+    bot.logger.info("---------------------------------------------------------------")
     if not hasattr(bot, "showtimes_resync"):
         bot.showtimes_resync = []
     if not hasattr(bot, "botconf"):
@@ -257,24 +254,24 @@ async def on_ready():
     if not hasattr(bot, "ntdb"):
         mongos = bot_config["mongodb"]
         bot.ntdb = naoTimesDB(mongos["ip_hostname"], mongos["port"], mongos["dbname"])
-        logger.info("Connected to naoTimes Database:")
-        logger.info("IP:Port: {}:{}".format(mongos["ip_hostname"], mongos["port"]))
-        logger.info("Database: {}".format(mongos["dbname"]))
-        logger.info("---------------------------------------------------------------")
+        bot.logger.info("Connected to naoTimes Database:")
+        bot.logger.info("IP:Port: {}:{}".format(mongos["ip_hostname"], mongos["port"]))
+        bot.logger.info("Database: {}".format(mongos["dbname"]))
+        bot.logger.info("---------------------------------------------------------------")
         if not mongos["skip_fetch"] or not args_parsed.showtimes_fetch:
-            logger.info("Fetching nao_showtimes from server db to local json")
+            bot.logger.info("Fetching nao_showtimes from server db to local json")
             js_data = await bot.ntdb.fetch_all_as_json()
             showtimes_folder = os.path.join(bot.fcwd, "showtimes_folder")
             if not os.path.isdir(showtimes_folder):
                 os.makedirs(showtimes_folder)
             for fn, fdata in js_data.items():
                 svfn = os.path.join(showtimes_folder, f"{fn}.showtimes")
-                logger.info(f"showtimes: saving to file {fn}")
+                bot.logger.info(f"showtimes: saving to file {fn}")
                 if fn == "supermod":
                     svfn = os.path.join(showtimes_folder, "super_admin.json")
                 await write_files(fdata, svfn)
-            logger.info("File fetched and saved to local json")
-            logger.info("---------------------------------------------------------------")  # noqa: E501
+            bot.logger.info("File fetched and saved to local json")
+            bot.logger.info("---------------------------------------------------------------")  # noqa: E501
     if not hasattr(bot, "uptime"):
         bot.owner = (await bot.application_info()).owner
         bot.uptime = datetime.now(tz=timezone.utc).timestamp()
@@ -283,34 +280,34 @@ async def on_ready():
         if not cogs.startswith("cogs."):
             cogs = "cogs." + cogs
         skipped_cogs.append(cogs)
-    logger.info("[#][@][!] Start loading cogs...")
+    bot.logger.info("[#][@][!] Start loading cogs...")
     for load in cogs_list:
         if load in skipped_cogs:
-            logger.warning(f"Skipping: {load}")
+            bot.logger.warning(f"Skipping: {load}")
             continue
         try:
-            logger.info(f"Loading: {load}")
+            bot.logger.info(f"Loading: {load}")
             bot.load_extension(load)
-            logger.info(f"Loaded: {load}")
+            bot.logger.info(f"Loaded: {load}")
         except Exception as e:
-            logger.error(f"Failed to load {load} module")
+            bot.logger.error(f"Failed to load {load} module")
             bot.echo_error(e)
-    logger.info("[#][@][!] All cogs/extensions loaded.")
-    logger.info("---------------------------------------------------------------")
-    logger.info("Bot Ready!")
-    logger.info("Using Python {}".format(sys.version))
-    logger.info("And Using Discord.py v{}".format(discord.__version__))
-    logger.info("---------------------------------------------------------------")
-    logger.info("Logged in as:")
-    logger.info("Bot name: {}".format(bot.user.name))
-    logger.info("With Client ID: {}".format(bot.user.id))
-    logger.info("With naoTimes version: {}".format(__version__))
-    logger.info("---------------------------------------------------------------")
+    bot.logger.info("[#][@][!] All cogs/extensions loaded.")
+    bot.logger.info("---------------------------------------------------------------")
+    bot.logger.info("Bot Ready!")
+    bot.logger.info("Using Python {}".format(sys.version))
+    bot.logger.info("And Using Discord.py v{}".format(discord.__version__))
+    bot.logger.info("---------------------------------------------------------------")
+    bot.logger.info("Logged in as:")
+    bot.logger.info("Bot name: {}".format(bot.user.name))
+    bot.logger.info("With Client ID: {}".format(bot.user.id))
+    bot.logger.info("With naoTimes version: {}".format(__version__))
+    bot.logger.info("---------------------------------------------------------------")
 
 
 async def change_bot_presence():
     await bot.wait_until_ready()
-    logger.info("Loaded auto-presence.")
+    bot.logger.info("Loaded auto-presence.")
     presences = cycle(presence_status)
 
     while not bot.is_closed():
@@ -361,7 +358,7 @@ async def on_command_error(ctx, error):
 
     current_time = datetime.now(tz=timezone.utc).timestamp()
 
-    logger.error("Ignoring exception in command {}:".format(ctx.command))
+    bot.logger.error("Ignoring exception in command {}:".format(ctx.command))
     traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
     tb = traceback.format_exception(type(error), error, error.__traceback__)
     error_fmt = (
@@ -434,16 +431,16 @@ async def ping(ctx):
     pong!
     """
     channel = ctx.message.channel
-    logger.info("checking websocket...")
+    bot.logger.info("checking websocket...")
     ws_ping = bot.latency
-    logger.info("checking database...")
+    bot.logger.info("checking database...")
     db_res, db_ping = await bot.ntdb.ping_server()
     irnd = lambda t: int(round(t))  # noqa: E731
 
-    logger.info("checking api.ihateani.me...")
+    bot.logger.info("checking api.ihateani.me...")
     ihapi_res, ihaapi_ping = await ping_website("https://api.ihateani.me/")
 
-    logger.info("checking anilist.co")
+    bot.logger.info("checking anilist.co")
     ani_res, ani_ping = await ping_website("https://graphql.anilist.co")
 
     def _gen_text(ping_res, ping, name):
@@ -458,16 +455,16 @@ async def ping(ctx):
     db_ping = irnd(db_ping)
 
     text_res = ":satellite: Ping Results :satellite:"
-    logger.info("checking discord itself.")
+    bot.logger.info("checking discord itself.")
     t1_dis = time.perf_counter()
     async with channel.typing():
         t2_dis = time.perf_counter()
         dis_ping = irnd((t2_dis - t1_dis) * 1000)
-        logger.info("generating results....")
-        logger.debug("generating discord res")
+        bot.logger.info("generating results....")
+        bot.logger.debug("generating discord res")
         text_res += f"\n{ping_emote(dis_ping)} Discord: `{dis_ping}ms`"
 
-        logger.debug("generating websocket res")
+        bot.logger.debug("generating websocket res")
         if ws_ping != float("nan"):
             ws_time = irnd(ws_ping * 1000)
             ws_res = f"{ping_emote(ws_time)} Websocket `{ws_time}ms`"
@@ -475,13 +472,13 @@ async def ping(ctx):
             ws_res = ":x: Websocket: `nan`"
 
         text_res += f"\n{ws_res}"
-        logger.debug("generating db res")
+        bot.logger.debug("generating db res")
         text_res += f"\n{_gen_text(db_res, db_ping, 'Database')}"
-        logger.debug("generating ihaapi res")
+        bot.logger.debug("generating ihaapi res")
         text_res += f"\n{_gen_text(ihapi_res, ihaapi_ping, 'naoTimes API')}"
-        logger.debug("generating anilist res")
+        bot.logger.debug("generating anilist res")
         text_res += f"\n{_gen_text(ani_res, ani_ping, 'Anilist.co')}"
-        logger.info("sending results")
+        bot.logger.info("sending results")
         await channel.send(content=text_res)
 
 
@@ -589,15 +586,15 @@ async def uptime(ctx):
 @commands.is_owner()
 async def reloadconf(ctx):
     msg = await ctx.send("Please wait...")
-    logger.info("rereading config files...")
+    bot.logger.info("rereading config files...")
     new_config = await read_files("config.json")
-    logger.info("Loading crypto data...")
+    bot.logger.info("Loading crypto data...")
     crypto_data = await read_files("cryptodata.json")
-    logger.info("Loading currency data...")
+    bot.logger.info("Loading currency data...")
     currency_data = await read_files("currencydata.json")
-    logger.info("Loading streaming lists data...")
+    bot.logger.info("Loading streaming lists data...")
     streams_list = await read_files("streaming_lists.json")
-    logger.info("Loading prefixes data...")
+    bot.logger.info("Loading prefixes data...")
     srv_prefixes = await read_files("server_prefixes.json")
 
     default_prefix = new_config["default_prefix"]
@@ -605,9 +602,9 @@ async def reloadconf(ctx):
     await msg.edit(content="Reassigning attributes")
     bot.botconf = new_config
     mongo_conf = new_config["mongodb"]
-    logger.info("starting new database connection")
+    bot.logger.info("starting new database connection")
     nt_db = naoTimesDB(mongo_conf["ip_hostname"], mongo_conf["port"], mongo_conf["dbname"])
-    logger.info("connected to database...")
+    bot.logger.info("connected to database...")
     bot.ntdb = nt_db
     bot.command_prefix = partial(prefixes_with_data, prefixes_data=srv_prefixes, default=default_prefix)
     bot.jsdb_streams = streams_list
@@ -623,29 +620,29 @@ async def reloadconf(ctx):
         bot.prefix = prefix
 
     await msg.edit(content="Reloading all cogs...")
-    logger.info("reloading cogs...")
+    bot.logger.info("reloading cogs...")
     failed_cogs = []
     for cogs in cogs_list:
         try:
-            logger.info(f"Re-loading {cogs}")
+            bot.logger.info(f"Re-loading {cogs}")
             bot.reload_extension(cogs)
-            logger.info(f"reloaded {cogs}")
+            bot.logger.info(f"reloaded {cogs}")
         except commands.ExtensionNotLoaded:
-            logger.warning(f"{cogs} haven't been loaded yet...")
+            bot.logger.warning(f"{cogs} haven't been loaded yet...")
             try:
-                logger.info(f"loading {cogs}")
+                bot.logger.info(f"loading {cogs}")
                 bot.load_extension(cogs)
-                logger.info(f"{cogs} loaded")
+                bot.logger.info(f"{cogs} loaded")
             except commands.ExtensionFailed as cer:
-                logger.error(f"failed to load {cogs}")
+                bot.logger.error(f"failed to load {cogs}")
                 bot.echo_error(cer)
                 failed_cogs.append(cogs)
         except commands.ExtensionFailed as cer:
-            logger.error(f"failed to load {cogs}")
+            bot.logger.error(f"failed to load {cogs}")
             bot.echo_error(cer)
             failed_cogs.append(cogs)
 
-    logger.info("finished reloading config.")
+    bot.logger.info("finished reloading config.")
     msg_final = "Finished reloading cogs"
     if failed_cogs:
         ext_msg = "But it seems like some cogs failed to load/reload"
@@ -669,32 +666,32 @@ async def reload(ctx, *, cogs=None):
         return await ctx.send(embed=helpcmd.get())
     if not cogs.startswith("cogs."):
         cogs = "cogs." + cogs
-    logger.info(f"trying to reload {cogs}")
+    bot.logger.info(f"trying to reload {cogs}")
     msg = await ctx.send("Please wait, reloading module...")
     try:
-        logger.info(f"Re-loading {cogs}")
+        bot.logger.info(f"Re-loading {cogs}")
         bot.reload_extension(cogs)
-        logger.info(f"reloaded {cogs}")
+        bot.logger.info(f"reloaded {cogs}")
     except commands.ExtensionNotFound:
-        logger.warning(f"{cogs} doesn't exist.")
+        bot.logger.warning(f"{cogs} doesn't exist.")
         return await msg.edit(content="Cannot find that module.")
     except commands.ExtensionFailed as cef:
-        logger.error(f"failed to reload {cogs}")
+        bot.logger.error(f"failed to reload {cogs}")
         bot.echo_error(cef)
         return await msg.edit(content="Failed to (re)load module, please check bot logs.")
     except commands.ExtensionNotLoaded:
         await msg.edit(content="Failed to reload module, trying to load it...")
-        logger.warning(f"{cogs} haven't been loaded yet...")
+        bot.logger.warning(f"{cogs} haven't been loaded yet...")
         try:
-            logger.info(f"trying to load {cogs}")
+            bot.logger.info(f"trying to load {cogs}")
             bot.load_extension(cogs)
-            logger.info(f"{cogs} loaded")
+            bot.logger.info(f"{cogs} loaded")
         except commands.ExtensionFailed as cer:
-            logger.error(f"failed to load {cogs}")
+            bot.logger.error(f"failed to load {cogs}")
             bot.echo_error(cer)
             return await msg.edit(content="Failed to (re)load module, please check bot logs.")
         except commands.ExtensionNotFound:
-            logger.warning(f"{cogs} doesn't exist.")
+            bot.logger.warning(f"{cogs} doesn't exist.")
             return await msg.edit(content="Cannot find that module.")
 
     await msg.edit(content=f"Successfully (re)loaded `{cogs}` module.")
@@ -714,17 +711,17 @@ async def load(ctx, *, cogs=None):
         return await ctx.send(embed=helpcmd.get())
     if not cogs.startswith("cogs."):
         cogs = "cogs." + cogs
-    logger.info(f"trying to load {cogs}")
+    bot.logger.info(f"trying to load {cogs}")
     msg = await ctx.send("Please wait, loading module...")
     try:
-        logger.info(f"loading {cogs}")
+        bot.logger.info(f"loading {cogs}")
         bot.load_extension(cogs)
-        logger.info(f"loaded {cogs}")
+        bot.logger.info(f"loaded {cogs}")
     except commands.ExtensionNotFound:
-        logger.warning(f"{cogs} doesn't exist.")
+        bot.logger.warning(f"{cogs} doesn't exist.")
         return await msg.edit(content="Cannot find that module.")
     except commands.ExtensionFailed as cef:
-        logger.error(f"failed to load {cogs}")
+        bot.logger.error(f"failed to load {cogs}")
         bot.echo_error(cef)
         return await msg.edit(content="Failed to load module, please check bot logs.")
 
@@ -745,20 +742,20 @@ async def unload(ctx, *, cogs=None):
         return await ctx.send(embed=helpcmd.get())
     if not cogs.startswith("cogs."):
         cogs = "cogs." + cogs
-    logger.info(f"trying to unload {cogs}")
+    bot.logger.info(f"trying to unload {cogs}")
     msg = await ctx.send("Please wait, unloading module...")
     try:
-        logger.info(f"unloading {cogs}")
+        bot.logger.info(f"unloading {cogs}")
         bot.unload_extension(cogs)
-        logger.info(f"unloaded {cogs}")
+        bot.logger.info(f"unloaded {cogs}")
     except commands.ExtensionNotFound:
-        logger.warning(f"{cogs} doesn't exist.")
+        bot.logger.warning(f"{cogs} doesn't exist.")
         return await msg.edit(content="Cannot find that module.")
     except commands.ExtensionNotLoaded:
-        logger.warning(f"{cogs} aren't loaded yet.")
+        bot.logger.warning(f"{cogs} aren't loaded yet.")
         return await msg.edit(content="Module not loaded yet.")
     except commands.ExtensionFailed as cef:
-        logger.error(f"failed to unload {cogs}")
+        bot.logger.error(f"failed to unload {cogs}")
         bot.echo_error(cef)
         return await msg.edit(content="Failed to unload module, please check bot logs.")
 
@@ -873,10 +870,10 @@ async def enablecmd(ctx, *, cmd_name):
 @commands.has_permissions(manage_guild=True)
 async def prefix(ctx, *, msg=None):
     server_message = str(ctx.message.guild.id)
-    logger.info(f"requested at {server_message}")
+    bot.logger.info(f"requested at {server_message}")
     if not os.path.isfile("server_prefixes.json"):
         prefix_data = {}
-        logger.warning(".json file doesn't exist, making one...")
+        bot.logger.warning(".json file doesn't exist, making one...")
         await write_files({}, "server_prefixes.json")
     else:
         prefix_data = await read_files("server_prefixes.json")
@@ -891,7 +888,7 @@ async def prefix(ctx, *, msg=None):
 
     if msg in ["clear", "bersihkan", "hapus"]:
         if server_message in prefix_data:
-            logger.warning(f"{server_message}: deleting custom prefix...")
+            bot.logger.warning(f"{server_message}: deleting custom prefix...")
             del prefix_data[server_message]
 
             await write_files(prefix_data, "server_prefixes.json")
@@ -899,10 +896,10 @@ async def prefix(ctx, *, msg=None):
         return await ctx.send("Berhasil menghapus custom prefix dari server ini")
 
     if server_message in prefix_data:
-        logger.info(f"{server_message}: changing custom prefix...")
+        bot.logger.info(f"{server_message}: changing custom prefix...")
         send_txt = "Berhasil mengubah custom prefix ke `{pre_}` untuk server ini"
     else:
-        logger.info(f"{server_message}: adding custom prefix...")
+        bot.logger.info(f"{server_message}: adding custom prefix...")
         send_txt = "Berhasil menambah custom prefix `{pre_}` untuk server ini"
     prefix_data[server_message] = msg
 
@@ -918,31 +915,31 @@ async def prefix(ctx, *, msg=None):
     else:
         bot.prefix = prefix
 
-    logger.info("reloading all cogs.")
+    bot.logger.info("reloading all cogs.")
     loaded_extensions = list(dict(bot.extensions).keys())
     failed_cogs = []
     for cogs in loaded_extensions:
         try:
-            logger.info(f"Re-loading {cogs}")
+            bot.logger.info(f"Re-loading {cogs}")
             bot.reload_extension(cogs)
-            logger.info(f"reloaded {cogs}")
+            bot.logger.info(f"reloaded {cogs}")
         except commands.ExtensionNotLoaded:
-            logger.warning(f"{cogs} haven't been loaded yet...")
+            bot.logger.warning(f"{cogs} haven't been loaded yet...")
             try:
-                logger.info(f"loading {cogs}")
+                bot.logger.info(f"loading {cogs}")
                 bot.load_extension(cogs)
-                logger.info(f"{cogs} loaded")
+                bot.logger.info(f"{cogs} loaded")
             except commands.ExtensionFailed as cer:
-                logger.error(f"failed to load {cogs}")
+                bot.logger.error(f"failed to load {cogs}")
                 bot.echo_error(cer)
                 failed_cogs.append(cogs)
         except commands.ExtensionFailed as cer:
-            logger.error(f"failed to load {cogs}")
+            bot.logger.error(f"failed to load {cogs}")
             bot.echo_error(cer)
             failed_cogs.append(cogs)
 
     if failed_cogs:
-        logger.warning("there's cogs that failed\n{}".format("\n".join(failed_cogs)))
+        bot.logger.warning("there's cogs that failed\n{}".format("\n".join(failed_cogs)))
 
     await ctx.send(send_txt.format(pre_=msg))
 
@@ -953,7 +950,7 @@ async def prefix_error(self, error, ctx):
         server_message = str(ctx.message.guild.id)
         if not os.path.isfile("prefixes.json"):
             prefix_data = {}
-            logger.warning(".json file doesn't exist, making one...")
+            bot.logger.warning(".json file doesn't exist, making one...")
             await write_files({}, "server_prefixes.json")
         else:
             prefix_data = await read_files("server_prefixes.json")
@@ -965,19 +962,80 @@ async def prefix_error(self, error, ctx):
         await ctx.send(embed=helpcmd.get())
 
 
-try:
-    bot.loop.create_task(change_bot_presence())
-    bot.run(bot_config["bot_token"], bot=True, reconnect=True)
-except (KeyboardInterrupt, SystemExit, SystemError):
-    logger.warning("Logging out...")
-    async_loop.run_until_complete(bot.logout())
-    logger.warning("Disconnecting from discord...")
-    async_loop.run_until_complete(bot.close())
-finally:
-    logger.warning("Closing queue loop.")
+# All of the code from here are mainly a copy of discord.Client.run()
+# function, which have been readjusted to fit my needs.
+async def run_bot(*args, **kwargs):
+    try:
+        await bot.start(*args, **kwargs)
+    finally:
+        await bot.close()
+
+
+def stop_stuff_on_completion(f):
+    bot.logger.info("Closing queue loop.")
     async_loop.run_until_complete(bot.showqueue.shutdown())
-    logger.warning("Shutting down fsdb connection...")
+    bot.logger.info("Shutting down fsdb connection...")
     async_loop.run_until_complete(bot.fsdb.close())
-    logger.warning("Closing async loop.")
     async_loop.stop()
-    async_loop.close()
+
+
+def cancel_all_tasks(loop):
+    """A copy of discord.Client _cancel_tasks function
+
+    :param loop: [description]
+    :type loop: [type]
+    """
+    try:
+        try:
+            task_retriever = asyncio.Task.all_tasks
+        except AttributeError:
+            # future proofing for 3.9 I guess
+            task_retriever = asyncio.all_tasks
+
+        tasks = {t for t in task_retriever(loop=loop) if not t.done()}
+
+        if not tasks:
+            return
+
+        bot.logger.info("Cleaning up after %d tasks.", len(tasks))
+        for task in tasks:
+            task.cancel()
+
+        loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
+        bot.logger.info("All tasks finished cancelling.")
+
+        for task in tasks:
+            if task.cancelled():
+                continue
+            if task.exception() is not None:
+                loop.call_exception_handler(
+                    {
+                        "message": "Unhandled exception during Client.run shutdown.",
+                        "exception": task.exception(),
+                        "task": task,
+                    }
+                )
+        if sys.version_info >= (3, 6):
+            loop.run_until_complete(loop.shutdown_asyncgens())
+    finally:
+        bot.logger.info("Closing the event loop.")
+
+
+future = asyncio.ensure_future(run_bot(bot_config["bot_token"], bot=True, reconnect=True))
+future.add_done_callback(stop_stuff_on_completion)
+try:
+    async_loop.run_forever()
+    bot.loop.create_task(change_bot_presence())
+    # bot.run()
+except (KeyboardInterrupt, SystemExit, SystemError):
+    bot.logger.info("Received signal to terminate bot.")
+finally:
+    future.remove_done_callback(stop_stuff_on_completion)
+    bot.logger.info("Cleaning up tasks.")
+    cancel_all_tasks(async_loop)
+
+if not future.cancelled():
+    try:
+        future.result()
+    except KeyboardInterrupt:
+        pass
