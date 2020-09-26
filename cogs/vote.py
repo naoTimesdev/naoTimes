@@ -4,7 +4,7 @@ import logging
 import os
 from copy import deepcopy
 from datetime import datetime, timezone
-from typing import Union
+from typing import List, Union
 
 import discord
 from discord.ext import commands, tasks
@@ -35,10 +35,15 @@ kickban_timer_kwargs = {
 }
 vote_opsi_args = ["--opsi", "-O"]
 vote_opsi_kwargs = {
-    "required": True,
     "dest": "opsi",
     "action": "append",
     "help": "Opsi voting (minimal 2, batas 10)",
+}
+vote_tipe_yn_args = ["--satu-pilihan", "-S"]
+vote_tipe_yn_kwargs = {
+    "dest": "use_yn",
+    "action": "store_true",
+    "help": "Gunakan tipe satu pilihan (ya/tidak) untuk reactions.",
 }
 vote_timer_kwargs = deepcopy(kickban_timer_kwargs)
 vote_timer_kwargs["default"] = 3
@@ -56,6 +61,7 @@ vote_args = Arguments("vote")
 vote_args.add_args("topik", help="Hal yang ingin divote.")
 vote_args.add_args(*vote_opsi_args, **vote_opsi_kwargs)
 vote_args.add_args(*kickban_timer_args, **vote_timer_kwargs)
+vote_args.add_args(*vote_tipe_yn_args, **vote_tipe_yn_kwargs)
 ban_converter = CommandArgParse(ban_args)
 kick_converter = CommandArgParse(kick_args)
 vote_converter = CommandArgParse(vote_args)
@@ -79,6 +85,60 @@ class VoteApp(commands.Cog):
             return f"{int(seconds // 60)} Menit"
         elif seconds < 60:
             return "Kurang dari 1 menit."
+
+    async def count_reactions(self, vote_meta: dict) -> List[dict]:
+        message_id = vote_meta["id"]
+        channel_id = vote_meta["channel_id"]
+        channel_data: discord.TextChannel = self.bot.get_channel(channel_id)
+        msg_data: discord.Message = await channel_data.fetch_message(message_id)
+        reactions: List[discord.Reaction] = msg_data.reactions
+
+        disallowed_ids = [vote_meta["requester"], self.bot.user.id]
+
+        final_data = []
+        if reactions:
+            self.logger.info("accumulating reaction while bot gone...")
+            if vote_meta["type"] == "kickban" or vote_meta["type"] == "yn":
+                self.logger.info("detected y/n type")
+                y_reaction: discord.Reaction = reactions[0]
+                x_reaction: discord.Reaction = reactions[1]
+
+                users_y: List[Union[discord.User, discord.Member]] = await y_reaction.users().flatten()
+                users_n: List[Union[discord.User, discord.Member]] = await x_reaction.users().flatten()
+                voter_data_y = [user.id for user in users_y if user.id not in disallowed_ids]
+                voter_data_n = [user.id for user in users_n if user.id not in disallowed_ids]
+                final_data.append(
+                    {"id": "y", "tally": len(voter_data_y), "voter": voter_data_y, "name": "Ya"}
+                )
+                final_data.append(
+                    {"id": "n", "tally": len(voter_data_n), "voter": voter_data_n, "name": "Tidak"}
+                )
+            else:
+                self.logger.info("detected other type")
+                for reaction in reactions:
+                    if str(reaction.emoji) in reactions_num:
+                        res_num = res2num[str(reaction.emoji)]
+
+                        users_votes: List[
+                            Union[discord.User, discord.Member]
+                        ] = await y_reaction.users().flatten()
+                        voters_data = [user.id for user in users_votes if user.id not in disallowed_ids]
+
+                        opts_name = vote_meta["answers"][res_num]["name"]
+                        final_data.append(
+                            {
+                                "id": res_num,
+                                "tally": len(voters_data),
+                                "voter": voters_data,
+                                "name": opts_name,
+                            }
+                        )
+            if final_data:
+                return final_data
+        if vote_meta["type"] == "kickban":
+            return vote_meta["vote_data"]
+        else:
+            return vote_meta["answers"]
 
     @tasks.loop(seconds=1, count=1)
     async def _precheck_existing_vote(self):
@@ -105,7 +165,7 @@ class VoteApp(commands.Cog):
                     vote_meta["user_target"],
                     vote_meta["timeout"],
                     vote_meta["limit"],
-                    vote_meta["vote_data"],
+                    await self.count_reactions(vote_meta),
                 )
             else:
                 self.logger.info(f"appending msg `{vote_meta['id']}` to vote watcher")
@@ -113,7 +173,7 @@ class VoteApp(commands.Cog):
                     vote_meta["requester"],
                     {"id": vote_meta["id"], "channel": vote_meta["channel_id"]},
                     vote_meta["question"],
-                    vote_meta["answers"],
+                    await self.count_reactions(vote_meta),
                     vote_meta["timeout"],
                 )
 
@@ -264,6 +324,15 @@ class VoteApp(commands.Cog):
                         value=f"{exported_data['vote_data'][0]['tally']} votes",
                         inline=False,
                     )
+                elif exported_data["type"] == "yn":
+                    y_ans = exported_data["answers"][0]
+                    x_ans = exported_data["answers"][1]
+                    embed.set_field_at(
+                        0, name="✅ Ya", value=f"**Total**: {y_ans['tally']}", inline=True,
+                    )
+                    embed.set_field_at(
+                        1, name="❎ Tidak", value=f"**Total**: {x_ans['tally']}", inline=True,
+                    )
                 else:
                     for i in range(len(exported_data["answers"])):
                         react = num2res[i]
@@ -291,7 +360,7 @@ class VoteApp(commands.Cog):
         try:
             if "✅" in str(reaction.emoji):
                 await self.vote_backend.add_vote(reaction.message.id, user.id, 0)
-            elif "❌" in str(reaction.emoji):
+            elif "❌" in str(reaction.emoji) or "❎" in str(reaction.emoji):
                 await self.vote_backend.add_vote(reaction.message.id, user.id, 1)
             elif str(reaction.emoji) in reactions_num:
                 num_choice = res2num[str(reaction.emoji)]
@@ -310,7 +379,7 @@ class VoteApp(commands.Cog):
         try:
             if "✅" in str(reaction.emoji):
                 await self.vote_backend.remove_vote(reaction.message.id, user.id, 0)
-            elif "❌" in str(reaction.emoji):
+            elif "❌" in str(reaction.emoji) or "❎" in str(reaction.emoji):
                 await self.vote_backend.remove_vote(reaction.message.id, user.id, 1)
             elif str(reaction.emoji) in reactions_num:
                 num_choice = res2num[str(reaction.emoji)]
@@ -344,18 +413,26 @@ class VoteApp(commands.Cog):
             args = f"```py\n{args}\n```"
             return await ctx.send(args)
 
-        if len(args.opsi) < 2:
-            return await ctx.send("Minimal 2 opsi.")
-        if len(args.opsi) > 10:
-            return await ctx.send("Maksimal 10 opsi.")
+        if not args.opsi and not args.use_yn:
+            return await ctx.send("Masukan opsi atau pilih mode ya atau tidak (`-S`)")
+
+        if not args.use_yn:
+            if len(args.opsi) < 2:
+                return await ctx.send("Minimal 2 opsi.")
+            if len(args.opsi) > 10:
+                return await ctx.send("Maksimal 10 opsi.")
 
         embed = discord.Embed(title="Vote!", color=0x2A6968)
         embed.description = (
             f"**Pertanyaan**: {args.topik}\n\nMasukan pilihanmu dengan klik reaction di bawah ini"
         )
-        for nopsi, opsi in enumerate(args.opsi):
-            nres = num2res[nopsi]
-            embed.add_field(name=f"{nres} {opsi}", value="**Total**: 0", inline=False)
+        if not args.use_yn:
+            for nopsi, opsi in enumerate(args.opsi):
+                nres = num2res[nopsi]
+                embed.add_field(name=f"{nres} {opsi}", value="**Total**: 0", inline=False)
+        else:
+            embed.add_field(name="✅ Ya", value="**Total**: 0", inline=True)
+            embed.add_field(name="❎ Tidak", value="**Total**: 0", inline=True)
 
         time_limit = args.detik
         if isinstance(time_limit, (str, float)):
@@ -373,11 +450,15 @@ class VoteApp(commands.Cog):
 
         msg: discord.Message = await ctx.send(embed=embed)
 
-        for nopsi, _ in enumerate(args.opsi):
-            nres = num2res[nopsi]
-            await msg.add_reaction(nres)
+        if args.use_yn:
+            await msg.add_reaction("✅")
+            await msg.add_reaction("❎")
+        else:
+            for nopsi, _ in enumerate(args.opsi):
+                nres = num2res[nopsi]
+                await msg.add_reaction(nres)
 
-        gen_ans = self.vote_backend.generate_answers(args.opsi)
+        gen_ans = self.vote_backend.generate_answers(args.opsi, args.use_yn)
         max_dt = int(round(datetime.now(tz=timezone.utc).timestamp() + time_limit + 2))
         await self.vote_backend.start_watching_vote(
             ctx.message.author.id, {"id": msg.id, "channel": msg.channel.id}, args.topik, gen_ans, max_dt
@@ -536,6 +617,18 @@ class VoteApp(commands.Cog):
     async def voteban_error(self, ctx, error):
         if isinstance(error, commands.BotMissingPermissions):
             await ctx.send("Tidak bisa melakukan vote ban, bot tidak ada hak.")
+
+    @commands.command(name="reactcount")
+    async def get_react_count(self, ctx, msg_id: int):
+        channel_data: discord.TextChannel = self.bot.get_channel(ctx.message.channel.id)
+        msg_data: discord.Message = await channel_data.fetch_message(msg_id)
+        reactions: List[discord.Reaction] = msg_data.reactions
+
+        reaction_data = []
+        for reaction in reactions:
+            reaction_data.append(f"{str(reaction.emoji)} {reaction.count}")
+
+        await ctx.send("\n".join(reaction_data))
 
 
 def setup(bot: naoTimesBot):
