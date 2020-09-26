@@ -143,6 +143,49 @@ async def write_files(data: Any, fpath: str):
         await fpw.write(data)
 
 
+def blocking_read_files(fpath: str) -> Any:
+    """Read a files with blocking
+    ---
+
+    :param fpath: file path
+    :type fpath: str
+    :return: file contents, parsed with ujson if it's list or dict
+             if file doesn't exist, return None
+    :rtype: Any
+    """
+    if not os.path.isfile(fpath):
+        return None
+    with open(fpath, "r", encoding="utf-8") as fp:
+        data = fp.read()
+    try:
+        data = ujson.loads(data)
+    except ValueError:
+        pass
+    return data
+
+
+def blocking_write_files(data: Any, fpath: str):
+    """Write data to files with blocking
+    ---
+
+    :param data: data to write, can be any
+    :type data: Any
+    :param fpath: file path
+    :type fpath: str
+    """
+    if isinstance(data, (dict, list, tuple)):
+        data = ujson.dumps(
+            data, ensure_ascii=False, encode_html_chars=False, escape_forward_slashes=False, indent=4,
+        )
+    elif isinstance(data, int):
+        data = str(data)
+    wmode = "w"
+    if isinstance(data, bytes):
+        wmode = "wb"
+    with open(fpath, wmode, encoding="utf-8") as fpw:
+        fpw.write(data)
+
+
 def get_current_time() -> str:
     """
     Return current time in `DD Month YYYY HH:MM TZ (+X)` format
