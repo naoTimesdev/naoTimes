@@ -1,6 +1,6 @@
 import logging
 import traceback
-from typing import Dict, Union
+from typing import Dict, List, Union
 
 import discord
 from discord.ext import commands
@@ -46,7 +46,11 @@ class naoTimesBot(commands.Bot):
         self.ntdb: naoTimesDB
 
         self.uptime: float
-        self.owner: discord.User
+        self.owner: Union[discord.User, discord.TeamMember]
+
+        self.is_team_bot: bool = False
+        self.team_name: str
+        self.team_members: List[discord.TeamMember] = []
 
     def echo_error(self, error):
         tb = traceback.format_exception(type(error), error, error.__traceback__)
@@ -61,3 +65,40 @@ class naoTimesBot(commands.Bot):
         else:
             final_pre = prefix
         return final_pre
+
+    def is_mentionable(self, ctx, user_data):
+        member = ctx.message.guild.get_member(user_data.id)
+        if member is None:
+            return f"{user_data.name}#{user_data.discriminator}"
+        else:
+            return f"<@{user_data.id}>"
+
+    def teams_to_user(self, user_data):
+        member_data = self.get_user(user_data.id)
+        if not member_data:
+            self.logger.warning("failed to convert TeamMember to User.")
+            return user_data
+        return member_data
+
+    async def detect_teams_bot(self):
+        """|coro|
+
+        Detect if the current bot token is a Teams Bot or a normal User bot.
+
+        If it's a Teams bot, it will assign it properly to not break everything.
+        """
+        app_info: discord.AppInfo = await self.application_info()
+        team_data: discord.Team = app_info.team
+        if team_data is None:
+            self.owner = app_info.owner
+        else:
+            main_owner: discord.TeamMember = team_data.owner
+            members_list: List[discord.TeamMember] = team_data.members
+
+            self.owner = self.teams_to_user(main_owner)
+            self.team_name = team_data.name
+            self.is_team_bot = True
+            for member in members_list:
+                if member.id == main_owner.id:
+                    continue
+                self.team_members.append(self.teams_to_user(member))

@@ -238,6 +238,8 @@ async def on_ready():
     bot.logger.info("Connected to discord.")
     activity = discord.Game(name=presence_status[0], type=3)
     await bot.change_presence(activity=activity)
+    bot.logger.info("Checking bot team status...")
+    await bot.detect_teams_bot()
     bot.logger.info("---------------------------------------------------------------")
     if not hasattr(bot, "showtimes_resync"):
         bot.showtimes_resync = []
@@ -273,7 +275,6 @@ async def on_ready():
             bot.logger.info("File fetched and saved to local json")
             bot.logger.info("---------------------------------------------------------------")  # noqa: E501
     if not hasattr(bot, "uptime"):
-        bot.owner = (await bot.application_info()).owner
         bot.uptime = datetime.now(tz=timezone.utc).timestamp()
     skipped_cogs = []
     for cogs in args_parsed.cogs_skip:
@@ -300,6 +301,10 @@ async def on_ready():
     bot.logger.info("---------------------------------------------------------------")
     bot.logger.info("Logged in as:")
     bot.logger.info("Bot name: {}".format(bot.user.name))
+    bot.logger.info("Bot owned by: {0.name}#{0.discriminator}".format(bot.owner))
+    if bot.is_team_bot and len(bot.team_members) > 0:
+        parsed_member = ", ".join(["{0.name}#{0.discriminator}".format(user) for user in bot.team_members])
+        bot.logger.info("With member teams: {}".format(parsed_member))
     bot.logger.info("With Client ID: {}".format(bot.user.id))
     bot.logger.info("With naoTimes version: {}".format(__version__))
     bot.logger.info("---------------------------------------------------------------")
@@ -361,15 +366,18 @@ async def on_command_error(ctx, error):
     bot.logger.error("Ignoring exception in command {}:".format(ctx.command))
     traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
     tb = traceback.format_exception(type(error), error, error.__traceback__)
-    error_fmt = (
-        "```An Error has occured...\nIn Command: {0.command}\nCogs: {0.command.cog_name}\nAuthor: {0.message.author} ({0.message.author.id})\n"  # noqa: E501
-        "Server: {0.message.guild.id}\nMessage: {0.message.clean_content}".format(ctx)  # noqa: E501
+
+    error_info = "\n".join(
+        [
+            "Perintah: {0.command}".format(ctx),
+            "Pesan: {0.message.clean_content}".format(ctx),
+            "Server: {0.guild.name} ({0.guild.id})".format(ctx.message),
+            "Kanal: #{0.channel.name} ({0.channel.id})".format(ctx.message),
+            "Author: {0.author.name}#{0.author.discriminator} ({0.author.id})".format(ctx.message),
+        ]
     )
-    msg = "```py\n{}```\n{}\n```py\n{}\n```".format(
-        datetime.utcnow().strftime("%b/%d/%Y %H:%M:%S UTC") + "\n" + "ERROR!",
-        error_fmt,
-        "".join(tb).replace("`", ""),
-    )
+    traceback_parsed = "".join(tb).replace("`", "")
+    msg = f"**Terjadi Kesalahan**\n```py\n{error_info}\n```\n```py\n{traceback_parsed}\n```"
 
     embed = discord.Embed(
         title="Error Logger",
@@ -386,7 +394,9 @@ async def on_command_error(ctx, error):
         inline=False,
     )
     embed.add_field(
-        name="Server Insiden", value="{0.guild.name} ({0.guild.id})".format(ctx.message), inline=False,
+        name="Server Insiden",
+        value="{0.guild.name} ({0.guild.id})\n#{0.channel.name} ({0.channel.id})".format(ctx.message),
+        inline=False,
     )
     embed.add_field(
         name="Orang yang memakainya",
@@ -549,6 +559,22 @@ def create_uptime():
     return "`" + " ".join(return_data) + "`"
 
 
+async def creator_info(ctx):
+    if not bot.is_team_bot:
+        return bot.is_mentionable(ctx, bot.owner)
+    else:
+        res = f"{bot.team_name} | "
+        member_data = []
+        member_data.append(bot.is_mentionable(ctx, bot.owner))
+        if bot.team_members:
+            for member in bot.team_members:
+                if member.id == bot.owner.id:
+                    continue
+                member_data.append(bot.is_mentionable(ctx, member))
+        res += " ".join(member_data)
+        return res
+
+
 @bot.command()
 async def info(ctx):
     """
@@ -565,7 +591,7 @@ async def info(ctx):
     infog.add_field(name="Server Info", value=get_server(), inline=False)
     infog.add_field(name="Statistik", value=(await fetch_bot_count_data()), inline=False)
     infog.add_field(name="Dibuat", value="Gak tau, tiba-tiba jadi.", inline=False)
-    infog.add_field(name="Pembuat", value="{}".format(bot.owner.mention), inline=False)
+    infog.add_field(name="Pembuat", value=(await creator_info(ctx)), inline=False)
     infog.add_field(name="Bahasa", value=get_version(), inline=False)
     infog.add_field(name="Fungsi", value="Menagih utang fansub (!help)", inline=False)
     infog.add_field(name="Uptime", value=create_uptime())
