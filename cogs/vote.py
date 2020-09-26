@@ -121,7 +121,7 @@ class VoteApp(commands.Cog):
 
                         users_votes: List[
                             Union[discord.User, discord.Member]
-                        ] = await y_reaction.users().flatten()
+                        ] = await reaction.users().flatten()
                         voters_data = [user.id for user in users_votes if user.id not in disallowed_ids]
 
                         opts_name = vote_meta["answers"][res_num]["name"]

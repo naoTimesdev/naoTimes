@@ -1211,7 +1211,10 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
             else:
                 fsani_id = fsani_data["id"]
                 if str(new_anime_data["mal_id"]) in existing_projects:
-                    new_anime_data["fsdb_data"] = {"id": fsproject_id, "ani_id": fsani_id}
+                    new_anime_data["fsdb_data"] = {
+                        "id": existing_projects[str(new_anime_data["mal_id"])],
+                        "ani_id": fsani_id,
+                    }
                 else:
                     _, fsproject_id = await self.fsdb_conn.add_new_project(fsani_id, srv_data["fsdb_id"])
                     new_anime_data["fsdb_data"] = {"id": fsproject_id, "ani_id": fsani_id}
