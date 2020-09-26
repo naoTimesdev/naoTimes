@@ -67,7 +67,6 @@ class VoteApp(commands.Cog):
         self.logger = logging.getLogger("cogs.vote.VoteApp")
 
         self.vote_backend = VoteWatcher(self.bot.fcwd)
-        self._first_run = True
         self._precheck_existing_vote.start()
         self.readjust_embed.start()
 
@@ -117,7 +116,6 @@ class VoteApp(commands.Cog):
                     vote_meta["answers"],
                     vote_meta["timeout"],
                 )
-        self._first_run = False
 
     def cog_unload(self):
         self.logger.info("Cancelling all tasks...")
@@ -149,8 +147,6 @@ class VoteApp(commands.Cog):
             self.bot.echo_error(dehttp)
 
     async def _voting_over_handler(self):
-        while self._first_run:
-            await asyncio.sleep(0.5)
         self.logger.info("starting vote done task handling...")
         while True:
             try:
@@ -160,10 +156,14 @@ class VoteApp(commands.Cog):
                 final_tally = vote_handler.tally_all()
                 self.logger.info(f"{exported_data['id']}: fetching channel/msg data...")
                 channel: discord.TextChannel = self.bot.get_channel(exported_data["channel_id"])
-                message: discord.Message = await channel.fetch_message(exported_data["id"])
-                embed: discord.Embed = discord.Embed.from_dict(message.embeds[0].to_dict())
-                embed.set_footer(text="Voting Selesai!")
-                await message.edit(embed=embed)
+                try:
+                    message: discord.Message = await channel.fetch_message(exported_data["id"])
+                    embed: discord.Embed = discord.Embed.from_dict(message.embeds[0].to_dict())
+                    embed.set_footer(text="Voting Selesai!")
+                    await message.edit(embed=embed)
+                except discord.NotFound:
+                    self.logger.warning(f"{exported_data['id']}: message missing, will send results...")
+                    pass
 
                 # Sort results.
                 self.logger.info(f"{exported_data['id']}: sorting data...")
@@ -238,18 +238,24 @@ class VoteApp(commands.Cog):
             except asyncio.CancelledError:
                 return
 
-    @tasks.loop(seconds=30)
+    @tasks.loop(seconds=30, count=None)
     async def readjust_embed(self):
-        while self._first_run:
-            await asyncio.sleep(0.5)
-        msg_votes = deepcopy(self.vote_backend.vote_holding)
         current_time = datetime.now(tz=timezone.utc).timestamp()
-        if msg_votes:
+        if self.vote_backend.vote_holding:
+            msg_votes = deepcopy(self.vote_backend.vote_holding)
             self.logger.info("processing vote embed editing...")
             for _, vote_handler in msg_votes.items():
                 exported_data = vote_handler.export_data()
                 channel: discord.TextChannel = self.bot.get_channel(exported_data["channel_id"])
-                message: discord.Message = await channel.fetch_message(exported_data["id"])
+                try:
+                    message: discord.Message = await channel.fetch_message(exported_data["id"])
+                except discord.NotFound:
+                    self.logger.warning(f"{exported_data['id']}: message removed by user, handling it...")
+                    try:
+                        await self.vote_backend.stop_watching_vote(exported_data["id"])
+                    except KeyError:
+                        pass
+                    continue
                 embed: discord.Embed = discord.Embed.from_dict(message.embeds[0].to_dict())
                 if exported_data["type"] == "kickban":
                     embed.set_field_at(
@@ -270,7 +276,7 @@ class VoteApp(commands.Cog):
                         )
                 embed.set_footer(
                     text=f"Sisa Waktu: {self.sec_to_left(abs(current_time - exported_data['timeout']))}"
-                    " | Embed direfresh tiap 30 detik"
+                    " | Embed akan diperbarui tiap 30 detik."
                 )
                 await message.edit(embed=embed)
 
@@ -361,7 +367,9 @@ class VoteApp(commands.Cog):
         if time_limit < 180:
             return await ctx.send("Minimal batas waktu adalah 3 menit.")
 
-        embed.set_footer(text=f"Sisa Waktu: {self.sec_to_left(time_limit)} | Embed direfresh tiap 30 detik")
+        embed.set_footer(
+            text=f"Sisa Waktu: {self.sec_to_left(time_limit)} | Embed akan diperbarui tiap 30 detik."
+        )
 
         msg: discord.Message = await ctx.send(embed=embed)
 
@@ -429,7 +437,9 @@ class VoteApp(commands.Cog):
         if time_limit < 30:
             return await ctx.send("Minimal batas waktu adalah 30 detik.")
 
-        embed.set_footer(text=f"Sisa Waktu: {self.sec_to_left(time_limit)} | Embed direfresh tiap 30 detik")
+        embed.set_footer(
+            text=f"Sisa Waktu: {self.sec_to_left(time_limit)} | Embed akan diperbarui tiap 30 detik."
+        )
 
         msg: discord.Message = await ctx.send(embed=embed)
         await msg.add_reaction("✅")
@@ -499,7 +509,9 @@ class VoteApp(commands.Cog):
         if time_limit < 30:
             return await ctx.send("Minimal batas waktu adalah 30 detik.")
 
-        embed.set_footer(text=f"Sisa Waktu: {self.sec_to_left(time_limit)} | Embed direfresh tiap 30 detik")
+        embed.set_footer(
+            text=f"Sisa Waktu: {self.sec_to_left(time_limit)} | Embed akan diperbarui tiap 30 detik."
+        )
 
         msg: discord.Message = await ctx.send(embed=embed)
         await msg.add_reaction("✅")

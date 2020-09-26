@@ -292,6 +292,19 @@ class VoteWatcher:
             final_data.append(data_internal)
         return final_data
 
+    async def stop_watching_vote(self, message_id: int):
+        if str(message_id) not in self.vote_holding:
+            raise KeyError("Message doesn't exists")
+        self._vote_lock.append(message_id)
+
+        self.logger.info(f"removing {message_id} from voting data...")
+        vote_handler = self.vote_holding[str(message_id)]
+        await self.done_queue.put(vote_handler)
+        del self.vote_holding[str(message_id)]
+        save_path = os.path.join(self._fcwd, "vote_data", f"{message_id}.votedata")
+        os.remove(save_path)
+        self._vote_lock.remove(message_id)
+
     async def start_watching_vote(
         self,
         requester_id: int,
