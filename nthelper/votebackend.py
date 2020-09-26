@@ -4,7 +4,7 @@ import os
 from datetime import datetime, timezone
 from typing import Dict, List, Union
 
-from .utils import write_files
+from .utils import blocking_write_files, write_files
 
 
 def utc_time() -> int:
@@ -31,6 +31,10 @@ class VotingBase:
         self._timeout = timeout
         self._type = vote_type
         self._vote_limit = limit
+        self._voter: List[int] = []
+
+        for ans in self._answers:
+            self._voter.extend(ans["voter"])
 
         self.logger = logging.getLogger("nthelper.votebackend.VotingBase")
 
@@ -83,10 +87,13 @@ class VotingBase:
         if choice_index > len(self._answers):
             self.logger.error(f"{self._mid}: failed to tally index {choice_index}")
             raise IndexError("choice_index are way out of range of answer.")
-        if user_id in self._answers[choice_index]["voter"]:
+        if user_id in self._voter:
             raise ValueError("Cannot vote twice.")
-        self._answers[choice_index]["tally"] += 1
+        if user_id == self._requester:
+            raise KeyError("Requester cannot add vote.")
         self._answers[choice_index]["voter"].append(user_id)
+        self._answers[choice_index]["tally"] = len(self._answers[choice_index]["voter"])
+        self._voter.append(user_id)
 
     def remove_vote(self, user_id: int, choice_index: int):
         """Remove user vote from the voting data
@@ -102,10 +109,15 @@ class VotingBase:
         if choice_index > len(self._answers):
             self.logger.error(f"{self._mid}: failed to tally index {choice_index}")
             raise IndexError("choice_index are way out of range of answer.")
+        if user_id not in self._voter:
+            raise ValueError("Cannot remove vote.")
         if user_id not in self._answers[choice_index]["voter"]:
             raise ValueError("Cannot remove vote.")
-        self._answers[choice_index]["tally"] -= 1
+        if user_id == self._requester:
+            raise KeyError("Requester cannot remove vote.")
         self._answers[choice_index]["voter"].remove(user_id)
+        self._answers[choice_index]["tally"] = len(self._answers[choice_index]["voter"])
+        self._voter.remove(user_id)
 
     def tally_all(self):
         raise NotImplementedError()
@@ -120,10 +132,7 @@ class VotingData(VotingBase):
         vote_answers: List[dict],
         timeout: Union[int, float],
     ):
-        vtype = "yn"
-        if len(vote_answers) > 2:
-            vtype = "mul"
-        super().__init__(requester_id, message_data, vote_question, vote_answers, timeout, vote_type=vtype)
+        super().__init__(requester_id, message_data, vote_question, vote_answers, timeout, vote_type="mul")
 
     def export_data(self) -> dict:
         """Get Voting Data as dict
@@ -174,10 +183,12 @@ class VotingKickBan(VotingBase):
         vote_answers: List[dict],
         timeout: Union[int, float],
         limit: int,
+        type_vote: str,
     ):
         super().__init__(
             requester_id, message_data, user_target, vote_answers, timeout, limit, vote_type="kickban"
         )
+        self._kickban_type = type_vote
 
     def export_data(self) -> dict:
         """Get Voting Data as dict
@@ -194,6 +205,7 @@ class VotingKickBan(VotingBase):
             "timeout": self._timeout,
             "limit": self._vote_limit,
             "type": "kickban",
+            "kickban_type": self._kickban_type,
         }
 
     def refresh(self):
@@ -243,7 +255,7 @@ class VoteWatcher:
         self.logger = logging.getLogger("nthelper.votebackend.VoteWatcher")
         self._fcwd = fcwd
 
-        self._vote_holding: Dict[str, Union[VotingData, VotingKickBan]] = {}
+        self.vote_holding: Dict[str, Union[VotingData, VotingKickBan]] = {}
         self._vote_lock: List[int] = []
 
         self.done_queue: asyncio.Queue = asyncio.Queue()
@@ -252,30 +264,33 @@ class VoteWatcher:
         self._clock_task: asyncio.Task = asyncio.Task(self._clock_tick())
         self._voter_task: asyncio.Task = asyncio.Task(self._handle_voter())
 
-    async def stop_and_flush(self):
+    def stop_and_flush(self):
         """
         This will halt every process and wait for everything to finish tallying,
         then stop it, and then clean everything.
         """
         self.logger.info("stopping all tasks...")
-        tasks_voter = {t for t in self._voter_task.all_tasks() if not t.done()}
-        tasks_clock = {t for t in self._voter_task.all_tasks() if not t.done()}
-        self.logger.info(f"cleaning {len(tasks_voter) + len(tasks_clock)} tasks...")
-        if tasks_voter:
-            for vtask in tasks_voter:
-                vtask.cancel()
-            await asyncio.gather(*tasks_voter, return_exceptions=True)
-        if tasks_clock:
-            for ctask in tasks_clock:
-                ctask.cancel()
-            await asyncio.gather(*tasks_clock, return_exceptions=True)
+        self._clock_task.cancel()
+        self._voter_task.cancel()
         self.logger.info("saving all vote data to file...")
-        all_vote_data = [int(msg_id) for msg_id in self._vote_holding.keys()]
+        all_vote_data = [int(msg_id) for msg_id in self.vote_holding.keys()]
         self._vote_lock.extend(all_vote_data)
 
-        for msg_id, vote_handler in self._vote_holding.items():
+        for msg_id, vote_handler in self.vote_holding.items():
             save_path = os.path.join(self._fcwd, "vote_data", f"{msg_id}.votedata")
-            await write_files(vote_handler.export_data(), save_path)
+            blocking_write_files(vote_handler.export_data(), save_path)
+
+    def generate_answers(self, answers_options: list):
+        final_data = []
+        for n, opts in enumerate(answers_options):
+            data_internal = {
+                "id": n,
+                "tally": 0,
+                "voter": [],
+                "name": opts,
+            }
+            final_data.append(data_internal)
+        return final_data
 
     async def start_watching_vote(
         self,
@@ -286,13 +301,14 @@ class VoteWatcher:
         timeout: Union[int, float],
     ):
         vote_handler = VotingData(requester_id, message_data, question, answers, timeout)
-        self._vote_holding[str(message_data["id"])] = vote_handler
+        self.vote_holding[str(message_data["id"])] = vote_handler
 
         save_path = os.path.join(self._fcwd, "vote_data", f"{message_data['id']}.votedata")
         await write_files(vote_handler.export_data(), save_path)
 
     async def start_watching_vote_kickban(
         self,
+        hammer_type: str,
         requester_id: int,
         message_data: Dict[str, int],
         user_target: int,
@@ -306,38 +322,40 @@ class VoteWatcher:
         ]
         if override_answers is not None:
             yn_watcher = override_answers
-        vote_handler = VotingKickBan(requester_id, message_data, user_target, yn_watcher, timeout, limit)
-        self._vote_holding[str(message_data["id"])] = vote_handler
+        vote_handler = VotingKickBan(
+            requester_id, message_data, user_target, yn_watcher, timeout, limit, hammer_type
+        )
+        self.vote_holding[str(message_data["id"])] = vote_handler
 
         save_path = os.path.join(self._fcwd, "vote_data", f"{message_data['id']}.votedata")
         await write_files(vote_handler.export_data(), save_path)
 
     async def add_vote(self, message_id: int, user_id: int, choice_index: int):
         msg_str_id = str(message_id)
-        if msg_str_id not in self._vote_holding:
+        if msg_str_id not in self.vote_holding:
             raise KeyError("Unknown message_id")
         await self._voter_queue.put(UserVote(message_id, user_id, choice_index))
 
     async def remove_vote(self, message_id: int, user_id: int, choice_index: int):
         msg_str_id = str(message_id)
-        if msg_str_id not in self._vote_holding:
+        if msg_str_id not in self.vote_holding:
             raise KeyError("Unknown message_id")
         await self._voter_queue.put(UserVote(message_id, user_id, choice_index, True))
 
     async def _clock_tick(self):
         while True:
             try:
-                index_to_del = []
-                for n, vote_handler in enumerate(self._vote_holding.values()):
+                to_remove = []
+                for n, vote_handler in enumerate(self.vote_holding.values()):
                     if vote_handler.get_id() in self._vote_lock:
                         continue
                     vote_handler.refresh()
                     if vote_handler.is_timeout():
                         await self.done_queue.put(vote_handler)
-                        index_to_del.append(n)
+                        to_remove.append(str(vote_handler.get_id()))
 
-                for to_del in index_to_del:
-                    del self._vote_holding[to_del]
+                for rem in to_remove:
+                    del self.vote_holding[rem]
 
                 await asyncio.sleep(1.0)
             except asyncio.CancelledError:
@@ -348,35 +366,35 @@ class VoteWatcher:
             try:
                 handle_vote: UserVote = await self._voter_queue.get()
                 self._vote_lock.append(handle_vote.msg_id)
-                if str(handle_vote.msg_id) in self._vote_holding:
+                if str(handle_vote.msg_id) in self.vote_holding:
                     try:
                         if handle_vote.is_remove:
                             self.logger.info(f"{handle_vote.msg_id}: handling vote removal...")
-                            self._vote_holding[str(handle_vote.msg_id)].remove_vote(
+                            self.vote_holding[str(handle_vote.msg_id)].remove_vote(
                                 handle_vote.user_id, handle_vote.choice
                             )
                         else:
                             self.logger.info(f"{handle_vote.msg_id}: handling vote addition...")
-                            self._vote_holding[str(handle_vote.msg_id)].add_vote(
+                            self.vote_holding[str(handle_vote.msg_id)].add_vote(
                                 handle_vote.user_id, handle_vote.choice
                             )
                         self.logger.info(f"{handle_vote.msg_id}: saving vote...")
                         save_path = os.path.join(self._fcwd, "vote_data", f"{handle_vote.msg_id}.votedata")
-                        await write_files(
-                            self._vote_holding[str(handle_vote.msg_id)].export_data(), save_path
-                        )
+                        await write_files(self.vote_holding[str(handle_vote.msg_id)].export_data(), save_path)
                     except IndexError:
                         self.logger.error("failed to handle vote, choice index is out of range.")
                     except ValueError:
                         self.logger.error(
                             "failed to remove/add vote, user vote already exist or non-existant."
                         )
+                    except KeyError:
+                        self.logger.error("failed to remove/add vote, user vote are requester.")
                 else:
                     pass
                 try:
                     self._vote_lock.remove(handle_vote.msg_id)
                 except ValueError:
                     pass
-                await self._voter_queue.task_done()
+                self._voter_queue.task_done()
             except asyncio.CancelledError:
                 return
