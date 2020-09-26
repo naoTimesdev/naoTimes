@@ -132,7 +132,10 @@ class VotingData(VotingBase):
         vote_answers: List[dict],
         timeout: Union[int, float],
     ):
-        super().__init__(requester_id, message_data, vote_question, vote_answers, timeout, vote_type="mul")
+        vtype = "mul"
+        if str(vote_answers[0]["id"]) == "y":
+            vtype = "yn"
+        super().__init__(requester_id, message_data, vote_question, vote_answers, timeout, vote_type=vtype)
 
     def export_data(self) -> dict:
         """Get Voting Data as dict
@@ -165,8 +168,8 @@ class VotingData(VotingBase):
         """
         if self._type == "yn":
             vote_results = {"y": 0, "n": 0}
-            for vote in self._answers:
-                vote_results[vote["name"]] = vote["tally"]
+            vote_results["y"] = self._answers[0]["tally"]
+            vote_results["n"] = self._answers[1]["tally"]
         else:
             vote_results = {}
             for vote in self._answers:
@@ -280,16 +283,20 @@ class VoteWatcher:
             save_path = os.path.join(self._fcwd, "vote_data", f"{msg_id}.votedata")
             blocking_write_files(vote_handler.export_data(), save_path)
 
-    def generate_answers(self, answers_options: list):
+    def generate_answers(self, answers_options: list, two_choice_type=False):
         final_data = []
-        for n, opts in enumerate(answers_options):
-            data_internal = {
-                "id": n,
-                "tally": 0,
-                "voter": [],
-                "name": opts,
-            }
-            final_data.append(data_internal)
+        if not two_choice_type:
+            for n, opts in enumerate(answers_options):
+                data_internal = {
+                    "id": n,
+                    "tally": 0,
+                    "voter": [],
+                    "name": opts,
+                }
+                final_data.append(data_internal)
+        else:
+            final_data.append({"id": "y", "tally": 0, "voter": [], "name": "Ya"})
+            final_data.append({"id": "n", "tally": 0, "voter": [], "name": "Tidak"})
         return final_data
 
     async def stop_watching_vote(self, message_id: int):
@@ -330,8 +337,8 @@ class VoteWatcher:
         override_answers=None,
     ):
         yn_watcher = [
-            {"id": "y", "tally": 0, "voter": [], "name": "Yes"},
-            {"id": "n", "tally": 0, "voter": [], "name": "No"},
+            {"id": "y", "tally": 0, "voter": [], "name": "Ya"},
+            {"id": "n", "tally": 0, "voter": [], "name": "Tidak"},
         ]
         if override_answers is not None:
             yn_watcher = override_answers
