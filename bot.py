@@ -33,6 +33,7 @@ from nthelper.utils import (
     read_files,
     write_files,
 )
+from nthelper.vndbsocket import VNDBSockIOManager
 
 # Silent some imported module
 logging.getLogger("websockets").setLevel(logging.WARNING)
@@ -58,9 +59,8 @@ discord_ver_tuple = tuple([int(ver) for ver in discord.__version__.split(".")])
 discord_intents: Optional[discord.Intents] = None
 if discord_ver_tuple >= (1, 5, 0):
     logger.info("Detected discord.py version 1.5.0, using the new Intents system...")
-    discord_intents = discord.Intents()
     # Enable all except Presences.
-    discord_intents.all()
+    discord_intents = discord.Intents.all()
     discord_intents.presences = False
 
 parser = argparse.ArgumentParser("naotimesbot")
@@ -73,6 +73,104 @@ args_parsed = parser.parse_args()
 def announce_error(error):
     tb = traceback.format_exception(type(error), error, error.__traceback__)
     logger.error("Exception occured\n" + "".join(tb))
+
+
+async def initialize_kbbi(config_data: dict) -> KBBI:
+    if "kbbi" not in config_data:
+        return KBBI()
+    kbbi_conf = config_data["kbbi"]
+    if "email" not in kbbi_conf or "password" not in kbbi_conf:
+        return KBBI()
+    if not kbbi_conf["email"] or not kbbi_conf["password"]:
+        return KBBI()
+    current_dt = datetime.now(tz=timezone.utc).timestamp()
+    logger.info("trying to read KBBI auth files...")
+    kbbi_auth_f = await read_files("kbbi_auth.json")
+
+    kbbi_cls = KBBI()
+    kbbi_cls.set_autentikasi(username=kbbi_conf["email"], password=kbbi_conf["password"])
+
+    if not kbbi_auth_f:
+        logger.info("authenticating to KBBI...")
+        kbbi_auth = AutentikasiKBBI(kbbi_conf["email"], kbbi_conf["password"])
+        await kbbi_auth.autentikasi()
+        cookie_baru = await kbbi_auth.ambil_cookies()
+        kbbi_cls.set_autentikasi(cookie=cookie_baru, expiry=round(current_dt + (15 * 24 * 60 * 60)))
+    else:
+        if current_dt >= kbbi_auth_f["expires"]:
+            logger.warning("kbbi cookie expired, generating new one...")
+            kbbi_auth = AutentikasiKBBI(kbbi_conf["email"], kbbi_conf["password"])
+            await kbbi_auth.autentikasi()
+            cookie_baru = await kbbi_auth.ambil_cookies()
+            kbbi_cls.set_autentikasi(cookie=cookie_baru, expiry=round(current_dt + (15 * 24 * 60 * 60)))
+        else:
+            kbbi_cls.set_autentikasi(cookie=kbbi_auth_f["cookie"], expiry=kbbi_auth_f["expires"])
+            await kbbi_cls.reset_connection()
+            is_kbbi_auth = await kbbi_cls.cek_auth()
+            if not is_kbbi_auth:
+                logger.warning("kbbi cookie expired, generating new one...")
+                kbbi_auth = AutentikasiKBBI(kbbi_conf["email"], kbbi_conf["password"])
+                await kbbi_auth.autentikasi()
+                cookie_baru = await kbbi_auth.ambil_cookies()
+                kbbi_cls.set_autentikasi(cookie=cookie_baru, expiry=round(current_dt + (15 * 24 * 60 * 60)))
+    logger.info("kbbi auth restored, resetting connection.")
+    await kbbi_cls.reset_connection()
+    await write_files(kbbi_cls.get_cookies, "kbbi_auth.json")
+    return kbbi_cls
+
+
+async def initialize_fsdb(config_data: dict):
+    if "fansubdb" not in config_data:
+        return False, None
+    fsdb_conf = config_data["fansubdb"]
+    if "username" not in fsdb_conf or "password" not in fsdb_conf:
+        return False, None
+    if not fsdb_conf["username"] or not fsdb_conf["password"]:
+        return False, None
+
+    current_dt = datetime.now(tz=timezone.utc).timestamp()
+    logger.info("Opening FSDB Token data...")
+    fsdb_token = await read_files("fsdb_login.json")
+    logger.info("Preparing FSDB Connection...")
+    fsdb_bridge = FansubDBBridge(fsdb_conf["username"], fsdb_conf["password"])
+    if not fsdb_token:
+        logger.info("Authenticating (No saved token)...")
+        await fsdb_bridge.authorize()
+        fsdb_token = fsdb_bridge.token_data
+        await write_files(fsdb_token, "fsdb_login.json")
+    elif fsdb_token["expires"] is not None and current_dt - 300 >= fsdb_token["expires"]:
+        logger.info("Reauthenticating (Token expired)...")
+        await fsdb_bridge.authorize()
+        fsdb_token = fsdb_bridge.token_data
+        await write_files(fsdb_token, "fsdb_login.json")
+    else:
+        logger.info("Setting FSDB token...")
+        fsdb_bridge.set_token(fsdb_token["token"], fsdb_token["expires"])
+    return True, fsdb_bridge
+
+
+async def initialize_vndb(config_data: dict, loop):
+    if "vndb" not in config_data:
+        return False, None
+    vndb_conf = config_data["vndb"]
+    if "username" not in vndb_conf or "password" not in vndb_conf:
+        return False, None
+    if not vndb_conf["username"] or not vndb_conf["password"]:
+        return False, None
+
+    logger.info("Initializing VNDB Socket Connection...")
+    vndb_conn = VNDBSockIOManager(vndb_conf["username"], vndb_conf["password"], loop)
+    await vndb_conn.initialize()
+    logger.info("Logging in...")
+    try:
+        await asyncio.wait_for(vndb_conn.async_login(), timeout=10.0)
+    except asyncio.TimeoutError:
+        logger.error("Failed to login, connection timeout after 10 seconds.")
+        return True, vndb_conn
+    if not vndb_conn.loggedin:
+        logger.error("Failed to login, provided username and password is wrong.")
+        return False, None
+    return True, vndb_conn
 
 
 async def init_bot(loop):
@@ -93,51 +191,14 @@ async def init_bot(loop):
     streams_list = await read_files("streaming_lists.json")
     logger.info("Loading prefixes data...")
     srv_prefixes = await read_files("server_prefixes.json")
-    logger.info("Opening KBBI auth files...")
-    kbbi_auth = await read_files("kbbi_auth.json")
-    kbbi_cookie = kbbi_auth["cookie"]
-    kbbi_expires = kbbi_auth["expires"]
-    kbbi_conf = config["kbbi"]
 
-    if not kbbi_conf["skip_check"] or not args_parsed.kbbi_check:
-        logger.info("Testing KBBI cookies...")
-        current_dt = datetime.now(tz=timezone.utc).timestamp()
-        kbbi_cls = KBBI("periksa", kbbi_cookie)
-        is_kbbi_auth = await kbbi_cls.cek_auth()
-        await kbbi_cls.tutup()
-        if not is_kbbi_auth or current_dt >= kbbi_expires:
-            logger.warning("kbbi cookie expired, generating new one...")
-            kbbi_auth = AutentikasiKBBI(kbbi_conf["email"], kbbi_conf["password"])
-            logger.warning("kbbi_auth: authenticating...")
-            await kbbi_auth.autentikasi()
-            cookie_baru = await kbbi_auth.ambil_cookies()
-            logger.warning("saving new KBBI cookie...")
-            new_data = {"cookie": cookie_baru, "expires": round(current_dt + (15 * 24 * 60 * 60))}
-            await write_files(new_data, "kbbi_auth.json")
-            kbbi_cookie = cookie_baru
-            kbbi_expires = round(current_dt + (15 * 24 * 60 * 60))
-
-    logger.info("Opening FSDB Token data...")
-    fsdb_token = await read_files("fsdb_login.json")
-    logger.info("Preparing FSDB Connection...")
-    fsdb_bridge = FansubDBBridge(config["fansubdb"]["username"], config["fansubdb"]["password"])
-    if not fsdb_token:
-        logger.info("Authenticating (No saved token)...")
-        await fsdb_bridge.authorize()
-        fsdb_token = fsdb_bridge.token_data
-        await write_files(fsdb_token, "fsdb_login.json")
-    elif fsdb_token["expires"] is not None:
-        if current_dt - 300 >= fsdb_token["expires"]:
-            logger.info("Reauthenticating (Token expired)...")
-            await fsdb_bridge.authorize()
-            fsdb_token = fsdb_bridge.token_data
-            await write_files(fsdb_token, "fsdb_login.json")
-        else:
-            logger.info("Setting FSDB token...")
-            fsdb_bridge.set_token(fsdb_token["token"], fsdb_token["expires"])
+    if not args_parsed.kbbi_check:
+        kbbi_conn = await initialize_kbbi(config)
     else:
-        logger.info("Setting FSDB token...")
-        fsdb_bridge.set_token(fsdb_token["token"], fsdb_token["expires"])
+        kbbi_conn = KBBI()
+
+    use_fsdb, fsdb_bridge = await initialize_fsdb(config)
+    use_vndb, vndb_conn = await initialize_vndb(config, loop)
 
     cwd = str(pathlib.Path(__file__).parent.absolute())
     temp_folder = os.path.join(cwd, "automod")
@@ -156,7 +217,7 @@ async def init_bot(loop):
         logger.info("Initiating discord.py")
         description = "Penyuruh Fansub biar kerja cepat\n"
         description += f"versi {__version__} || Dibuat oleh: N4O#8868"
-        prefixes = partial(prefixes_with_data, prefixes_data=srv_prefixes, default=default_prefix,)
+        prefixes = partial(prefixes_with_data, prefixes_data=srv_prefixes, default=default_prefix)
         if discord_ver_tuple >= (1, 5, 0):
             # Insert intents
             bot = naoTimesBot(
@@ -168,31 +229,26 @@ async def init_bot(loop):
         bot.logger.info("Bot loaded, now using bot logger for logging.")
         # if not hasattr(bot, "logger"):
         #     bot.logger = logger
-        if not hasattr(bot, "automod_folder"):
-            bot.automod_folder = temp_folder
-        if not hasattr(bot, "semver"):
-            bot.semver = __version__
-        if not hasattr(bot, "jsdb_streams"):
-            bot.logger.info("Binding JSON dataset...")
-            bot.jsdb_streams = streams_list
-            bot.jsdb_currency = currency_data
-            bot.jsdb_crypto = crypto_data
-        if not hasattr(bot, "fcwd"):
-            bot.fcwd = cwd
-        if not hasattr(bot, "kbbi_cookie"):
-            bot.logger.info("Binding KBBI Cookies...")
-            bot.kbbi_cookie = kbbi_cookie
-            bot.kbbi_expires = kbbi_expires
-            bot.kbbi_auth = {"email": kbbi_conf["email"], "password": kbbi_conf["password"]}
-        if not hasattr(bot, "fsdb"):
+        bot.botconf = config
+        bot.automod_folder = temp_folder
+        bot.semver = __version__
+        bot.logger.info("Binding JSON dataset...")
+        bot.jsdb_streams = streams_list
+        bot.jsdb_currency = currency_data
+        bot.jsdb_crypto = crypto_data
+        bot.fcwd = cwd
+        bot.logger.info("Binding KBBI Connection...")
+        bot.kbbi = kbbi_conn
+        if use_fsdb:
             bot.logger.info("Binding FansubDB...")
             bot.fsdb = fsdb_bridge
-        if not hasattr(bot, "showqueue"):
-            bot.logger.info("Binding ShowtimesQueue...")
-            bot.showqueue = ShowtimesQueue(cwd)
-        if not hasattr(bot, "anibucket"):
-            bot.logger.info("Binding AnilistBucket")
-            bot.anibucket = AnilistBucket()
+        if use_vndb:
+            bot.logger.info("Binding VNDB Socket Connection...")
+            bot.vndb_socket = vndb_conn
+        bot.logger.info("Binding ShowtimesQueue...")
+        bot.showqueue = ShowtimesQueue(cwd)
+        bot.logger.info("Binding AnilistBucket")
+        bot.anibucket = AnilistBucket()
         bot.logger.info("Success Loading Discord.py")
     except Exception as exc:
         bot.logger.error("Failed to load Discord.py")
@@ -257,38 +313,42 @@ async def on_ready():
     bot.logger.info("Checking bot team status...")
     await bot.detect_teams_bot()
     bot.logger.info("---------------------------------------------------------------")
-    if not hasattr(bot, "showtimes_resync"):
-        bot.showtimes_resync = []
-    if not hasattr(bot, "botconf"):
-        bot.botconf = bot_config
-    if not hasattr(bot, "prefix"):
-        prefix = bot.command_prefix
-        if callable(prefix):
-            prefix = prefix(bot, "[]")
-        if isinstance(prefix, (list, tuple)):
-            bot.prefix = prefix[0]
-        else:
-            bot.prefix = prefix
-    if not hasattr(bot, "ntdb"):
-        mongos = bot_config["mongodb"]
+    prefix = bot.command_prefix
+    if callable(prefix):
+        prefix = prefix(bot, "[]")
+    if isinstance(prefix, (list, tuple)):
+        bot.prefix = prefix[0]
+    else:
+        bot.prefix = prefix
+    if "mongodb" in bot.botconf:
+        mongos = bot.botconf["mongodb"]
         bot.ntdb = naoTimesDB(mongos["ip_hostname"], mongos["port"], mongos["dbname"])
-        bot.logger.info("Connected to naoTimes Database:")
-        bot.logger.info("IP:Port: {}:{}".format(mongos["ip_hostname"], mongos["port"]))
-        bot.logger.info("Database: {}".format(mongos["dbname"]))
-        bot.logger.info("---------------------------------------------------------------")
-        if not mongos["skip_fetch"] or not args_parsed.showtimes_fetch:
-            bot.logger.info("Fetching nao_showtimes from server db to local json")
-            js_data = await bot.ntdb.fetch_all_as_json()
-            showtimes_folder = os.path.join(bot.fcwd, "showtimes_folder")
-            if not os.path.isdir(showtimes_folder):
-                os.makedirs(showtimes_folder)
-            for fn, fdata in js_data.items():
-                svfn = os.path.join(showtimes_folder, f"{fn}.showtimes")
-                bot.logger.info(f"showtimes: saving to file {fn}")
-                if fn == "supermod":
-                    svfn = os.path.join(showtimes_folder, "super_admin.json")
-                await write_files(fdata, svfn)
-            bot.logger.info("File fetched and saved to local json")
+        try:
+            await bot.ntdb.validate_connection()
+            bot.logger.info("Connected to naoTimes Database:")
+            bot.logger.info("IP:Port: {}:{}".format(mongos["ip_hostname"], mongos["port"]))
+            bot.logger.info("Database: {}".format(mongos["dbname"]))
+            bot.logger.info("---------------------------------------------------------------")
+            if not args_parsed.showtimes_fetch:
+                bot.logger.info("Fetching nao_showtimes from server db to local json")
+                js_data = await bot.ntdb.fetch_all_as_json()
+                showtimes_folder = os.path.join(bot.fcwd, "showtimes_folder")
+                if not os.path.isdir(showtimes_folder):
+                    os.makedirs(showtimes_folder)
+                for fn, fdata in js_data.items():
+                    svfn = os.path.join(showtimes_folder, f"{fn}.showtimes")
+                    bot.logger.info(f"showtimes: saving to file {fn}")
+                    if fn == "supermod":
+                        svfn = os.path.join(showtimes_folder, "super_admin.json")
+                    await write_files(fdata, svfn)
+                bot.logger.info("File fetched and saved to local json")
+                bot.logger.info(
+                    "---------------------------------------------------------------"
+                )  # noqa: E501
+        except Exception:
+            bot.logger.error("Failed to validate if database is up and running.")
+            bot.logger.error("IP:Port: {}:{}".format(mongos["ip_hostname"], mongos["port"]))
+            bot.ntdb = None
             bot.logger.info("---------------------------------------------------------------")  # noqa: E501
     if not hasattr(bot, "uptime"):
         bot.uptime = datetime.now(tz=timezone.utc).timestamp()
@@ -315,14 +375,19 @@ async def on_ready():
     bot.logger.info("Using Python {}".format(sys.version))
     bot.logger.info("And Using Discord.py v{}".format(discord.__version__))
     bot.logger.info("---------------------------------------------------------------")
-    bot.logger.info("Logged in as:")
-    bot.logger.info("Bot name: {}".format(bot.user.name))
-    bot.logger.info("Bot owned by: {0.name}#{0.discriminator}".format(bot.owner))
+    bot.logger.info("Bot Info:")
+    bot.logger.info("Username: {}".format(bot.user.name))
+    if bot.is_team_bot:
+        bot.logger.info(f"Owner: {bot.team_name}")
+    else:
+        bot.logger.info("Owner: {0.name}#{0.discriminator}".format(bot.owner))
     if bot.is_team_bot and len(bot.team_members) > 0:
-        parsed_member = ", ".join(["{0.name}#{0.discriminator}".format(user) for user in bot.team_members])
-        bot.logger.info("With member teams: {}".format(parsed_member))
-    bot.logger.info("With Client ID: {}".format(bot.user.id))
-    bot.logger.info("With naoTimes version: {}".format(__version__))
+        member_set = ["{0.name}#{0.discriminator}".format(bot.owner)]
+        member_set.extend(["{0.name}#{0.discriminator}".format(user) for user in bot.team_members])
+        parsed_member = ", ".join(member_set)
+        bot.logger.info("With team members: {}".format(parsed_member))
+    bot.logger.info("Client ID: {}".format(bot.user.id))
+    bot.logger.info("Running naoTimes version: {}".format(__version__))
     bot.logger.info("---------------------------------------------------------------")
 
 
@@ -714,13 +779,6 @@ async def reload(ctx, *, cogs=None):
         bot.logger.info(f"Re-loading {cogs}")
         bot.reload_extension(cogs)
         bot.logger.info(f"reloaded {cogs}")
-    except commands.ExtensionNotFound:
-        bot.logger.warning(f"{cogs} doesn't exist.")
-        return await msg.edit(content="Cannot find that module.")
-    except commands.ExtensionFailed as cef:
-        bot.logger.error(f"failed to reload {cogs}")
-        bot.echo_error(cef)
-        return await msg.edit(content="Failed to (re)load module, please check bot logs.")
     except commands.ExtensionNotLoaded:
         await msg.edit(content="Failed to reload module, trying to load it...")
         bot.logger.warning(f"{cogs} haven't been loaded yet...")
@@ -735,6 +793,13 @@ async def reload(ctx, *, cogs=None):
         except commands.ExtensionNotFound:
             bot.logger.warning(f"{cogs} doesn't exist.")
             return await msg.edit(content="Cannot find that module.")
+    except commands.ExtensionNotFound:
+        bot.logger.warning(f"{cogs} doesn't exist.")
+        return await msg.edit(content="Cannot find that module.")
+    except commands.ExtensionFailed as cef:
+        bot.logger.error(f"failed to reload {cogs}")
+        bot.echo_error(cef)
+        return await msg.edit(content="Failed to (re)load module, please check bot logs.")
 
     await msg.edit(content=f"Successfully (re)loaded `{cogs}` module.")
 
@@ -759,6 +824,9 @@ async def load(ctx, *, cogs=None):
         bot.logger.info(f"loading {cogs}")
         bot.load_extension(cogs)
         bot.logger.info(f"loaded {cogs}")
+    except commands.ExtensionAlreadyLoaded:
+        bot.logger.warning(f"{cogs} already loaded.")
+        return await msg.edit(content="Module already loaded.")
     except commands.ExtensionNotFound:
         bot.logger.warning(f"{cogs} doesn't exist.")
         return await msg.edit(content="Cannot find that module.")
@@ -880,7 +948,11 @@ async def disablecmd(ctx, *, cmd_name):
 async def enablecmd(ctx, *, cmd_name):
     cmd_name = cmd_name.rstrip().lower()
     bot.logger.info(f"enabling: {cmd_name}")
-    command_data = bot.copy_of_commands.pop(cmd_name)
+    try:
+        command_data = bot.copy_of_commands.pop(cmd_name)
+    except KeyError:
+        bot.logger.error(f"{cmd_name}: command not found.")
+        return await ctx.send("Tidak dapat menemukan command tersebut.")
     if command_data is None:
         bot.logger.error(f"{cmd_name}: command not found.")
         return await ctx.send("Tidak dapat menemukan command tersebut.")
@@ -1018,6 +1090,9 @@ def stop_stuff_on_completion(f):
     async_loop.run_until_complete(bot.showqueue.shutdown())
     bot.logger.info("Shutting down fsdb connection...")
     async_loop.run_until_complete(bot.fsdb.close())
+    bot.logger.info("Shutting down KBBI and VNDB connection...")
+    async_loop.run_until_complete(bot.kbbi.tutup())
+    async_loop.run_until_complete(bot.vndb_socket.close())
     async_loop.stop()
 
 
@@ -1063,7 +1138,7 @@ def cancel_all_tasks(loop):
         bot.logger.info("Closing the event loop.")
 
 
-future = asyncio.ensure_future(run_bot(bot_config["bot_token"], bot=True, reconnect=True))
+future = asyncio.ensure_future(run_bot(bot.botconf["bot_token"], bot=True, reconnect=True))
 future.add_done_callback(stop_stuff_on_completion)
 try:
     async_loop.run_forever()
