@@ -298,7 +298,7 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
         self.logger.info(f"{server_message}: sending message")
         await ctx.send(text_data)
 
-        if "fsdb_data" in program_info and should_update_fsdb:
+        if "fsdb_data" in program_info and should_update_fsdb and self.fsdb is not None:
             self.logger.info("Re-Updating back FSDB project to Not done.")
             fsdb_data = program_info["fsdb_data"]
             await self.fsdb.update_project(fsdb_data["id"], "status", fsdb_update_to)
@@ -577,7 +577,7 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
         self.logger.info(f"{matches[0]}: sending progress info to staff...")
         await ctx.send("Berhasil membatalkan rilisan **{}** episode {}".format(matches[0], current))
 
-        if "fsdb_data" in program_info and reset_fsdb:
+        if "fsdb_data" in program_info and reset_fsdb and self.fsdb is not None:
             self.logger.info("Re-Updating back FSDB project to Not done.")
             await self.fsdb.update_project(program_info["fsdb_data"]["id"], "status", "Jalan")
 

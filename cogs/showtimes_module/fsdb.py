@@ -30,6 +30,8 @@ class ShowtimesFansubDB(commands.Cog, ShowtimesBase):
 
     @commands.group(name="fsdb")
     async def fsdb_cmd(self, ctx):
+        if self.fsdb_conn is None:
+            return await ctx.send("FSDB Tidak di initialisasi oleh owner bot")
         if ctx.invoked_subcommand is None:
             helpcmd = HelpGenerator(self.bot, "fsdb", f"Versi {self.bot.semver}")
             await helpcmd.generate_field("fsdb", desc="Memunculkan bantuan perintah")

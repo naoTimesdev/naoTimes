@@ -281,8 +281,11 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
 
             if program_info["status"][max_episode]["status"] == "released":
                 if "fsdb_data" in program_info:
-                    self.logger.info("Updating FSDB Project to on progress again.")
-                    await self.fsdb_conn.update_project(program_info["fsdb_data"]["id"], "status", "Jalan")
+                    if self.fsdb_conn is not None:
+                        self.logger.info("Updating FSDB Project to on progress again.")
+                        await self.fsdb_conn.update_project(
+                            program_info["fsdb_data"]["id"], "status", "Jalan"
+                        )
 
             self.logger.info(f"{matches[0]}: adding a total of {jumlah_tambahan}...")
             for x in range(
@@ -417,8 +420,11 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
             new_max_ep = list(srv_data["anime"][matches[0]]["status"].keys())[-1]
             if program_info["status"][new_max_ep]["status"] == "released":
                 if "fsdb_data" in program_info:
-                    self.logger.info("Updating FSDB Project to finished.")
-                    await self.fsdb_conn.update_project(program_info["fsdb_data"]["id"], "status", "Tamat")
+                    if self.fsdb_conn is not None:
+                        self.logger.info("Updating FSDB Project to finished.")
+                        await self.fsdb_conn.update_project(
+                            program_info["fsdb_data"]["id"], "status", "Tamat"
+                        )
             srv_data["anime"][matches[0]]["last_update"] = str(int(round(time.time())))
 
             await send_timed_msg(ctx, f"Berhasil menghapus episode {current} ke {total}", 2)
@@ -563,8 +569,9 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
         if hapus_utang:
             self.logger.warning(f"{matches[0]}: nuking project...")
             if "fsdb_data" in program_info:
-                self.logger.info("Updating FSDB Project to dropped.")
-                await self.fsdb_conn.update_project(program_info["fsdb_data"]["id"], "status", "Drop")
+                if self.fsdb_conn is not None:
+                    self.logger.info("Updating FSDB Project to dropped.")
+                    await self.fsdb_conn.update_project(program_info["fsdb_data"]["id"], "status", "Drop")
             current = self.get_current_ep(program_info["status"])
             try:
                 if program_info["status"]["1"]["status"] == "not_released":
@@ -1190,7 +1197,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
 
         new_anime_data["status"] = status
 
-        if "fsdb_id" in srv_data:
+        if "fsdb_id" in srv_data and self.fsdb_conn is not None:
             embed = discord.Embed(title="Menambah Utang", color=0x56ACF3)
             embed.add_field(name="Memproses!", value="Membuat data fansubdb...", inline=True)
             embed.set_footer(
