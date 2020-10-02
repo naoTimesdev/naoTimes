@@ -421,7 +421,7 @@ class ShowtimesBase:
         try:
             await write_files(dataset, svfn)
         except Exception:
-            pass
+            self.logger.info("error occured when trying to write files.")
         await self.__release_lock()
 
     async def dumps_showtimes(self, dataset: dict, server_id: str, cwd: str):
@@ -438,7 +438,7 @@ class ShowtimesBase:
         try:
             await write_files(dataset, svfn)
         except Exception:
-            pass
+            self.logger.info("error occured when trying to write files.")
         await self.__release_lock()
 
     async def choose_anime(self, bot, ctx, matches: list):

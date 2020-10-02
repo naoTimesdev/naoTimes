@@ -9,10 +9,9 @@ from string import ascii_lowercase, digits
 
 import discord
 from discord.ext import commands
-
-from nthelper import HelpGenerator
-from nthelper.showtimes_helper import ShowtimesQueueData
 from nthelper.bot import naoTimesBot
+from nthelper.showtimes_helper import ShowtimesQueueData
+from nthelper.utils import HelpGenerator
 
 from .base import ShowtimesBase
 
@@ -492,7 +491,6 @@ class ShowtimesKolaborasi(commands.Cog, ShowtimesBase):
         super(ShowtimesKolaborasi, self).__init__()
         self.bot = bot
         self.ntdb = bot.ntdb
-        self.fsdb = bot.fsdb
         self.cog_name = "Showtimes Kolaborasi"
         self.showqueue = bot.showqueue
         self.srv_fetch = partial(self.fetch_showtimes, cwd=bot.fcwd)
@@ -582,7 +580,7 @@ class ShowtimesKolaborasi(commands.Cog, ShowtimesBase):
                 self.logger.info(f"{matches[0]}: already on collab.")
                 return await ctx.send("Server tersebut sudah diajak kolaborasi.")
 
-        randomize_confirm = "".join(choice(ascii_lowercase + digits) for i in range(16))
+        randomize_confirm = "".join(choice(ascii_lowercase + digits) for i in range(16))  # nosec
 
         cancel_toggled = False
         first_time = True

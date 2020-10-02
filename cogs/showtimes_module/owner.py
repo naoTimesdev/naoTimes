@@ -20,6 +20,13 @@ from .base import ShowtimesBase, fetch_anilist
 
 class ShowtimesOwner(commands.Cog, ShowtimesBase):
     def __init__(self, bot: naoTimesBot):
+        """Showtimes Owner class.
+
+        This class controls all of stuff that only bot owner can access.
+
+        Args:
+            bot (naoTimesBot): Bot
+        """
         super(ShowtimesOwner, self).__init__()
         self.bot = bot
         self.ntdb = bot.ntdb
@@ -34,7 +41,7 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
     @commands.group(aliases=["naotimesadmin", "naoadmin"])
     @commands.is_owner()
     @commands.guild_only()
-    async def ntadmin(self, ctx):
+    async def ntadmin(self, ctx):  # noqa: D102
         if ctx.invoked_subcommand is None:
             helpcmd = HelpGenerator(self.bot, "ntadmin", desc=f"Versi {self.bot.semver}",)
             await helpcmd.generate_field(
@@ -77,7 +84,7 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
             await ctx.send(embed=helpcmd.get())
 
     @ntadmin.command()
-    async def listserver(self, ctx):
+    async def listserver(self, ctx):  # noqa: D102
         self.logger.info("Requested list server by bot owner.")
         srv_dumps = await self.srv_lists()
         if not srv_dumps:
@@ -102,7 +109,7 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
         await ctx.send(text)
 
     @ntadmin.command()
-    async def listresync(self, ctx):
+    async def listresync(self, ctx):  # noqa: D102
         self.logger.info("Requested resync list by bot owner.")
         resynclist = self.bot.showtimes_resync
         if not resynclist:
@@ -114,31 +121,7 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
         await ctx.send(main_text)
 
     @ntadmin.command()
-    async def migratedb(self, ctx):
-        await ctx.send("Mulai migrasi database!")
-        url = "https://gist.githubusercontent.com/{u}/{g}/raw/nao_showtimes.json"
-        async with aiohttp.ClientSession() as session:
-            while True:
-                headers = {"User-Agent": "naoTimes v2.0"}
-                self.logger.info("fetching old github database.")
-                async with session.get(
-                    url.format(u=self.bot_config["github_info"]["username"], g=self.bot_config["gist_id"],),
-                    headers=headers,
-                ) as r:
-                    try:
-                        r_data = await r.text()
-                        js_data = ujson.loads(r_data)
-                        self.logger.info("fetched and loaded.")
-                        break
-                    except IndexError:
-                        pass
-        await ctx.send("Berhasil mendapatkan database dari github, mulai migrasi ke MongoDB")
-        self.logger.info("Migrating database to MongoDB.")
-        await self.ntdb.patch_all_from_json(js_data)
-        await ctx.send("Selesai migrasi database, silakan di coba cuk.")
-
-    @ntadmin.command()
-    async def fetchdb(self, ctx):
+    async def fetchdb(self, ctx):  # noqa: D102
         self.logger.info("Fetching database from local db.")
         srv_lists = await self.srv_lists()
         if not srv_lists:
@@ -169,7 +152,7 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
         os.remove(save_file_name)  # Cleanup
 
     @ntadmin.command()
-    async def forcepull(self, ctx):
+    async def forcepull(self, ctx):  # noqa: D102
         self.logger.info("Forcing local database with remote database.")
         channel = ctx.message.channel
 
@@ -184,11 +167,8 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
 
     @ntadmin.command()
     @commands.guild_only()
-    async def patchdb(self, ctx):
-        """
-        !! Warning !!
-        This will patch entire database
-        """
+    async def patchdb(self, ctx):  # noqa: D102
+        """This will patch entire database."""
         self.logger.info("Initiating database by bot owner")
 
         if ctx.message.attachments == []:
@@ -261,15 +241,7 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
             await preview_msg.edit(content="**Ok, cancelled process**")
 
     @ntadmin.command()
-    async def tambah(self, ctx, srv_id, adm_id, prog_chan=None):
-        """
-        Menambah server baru ke database naoTimes
-
-        :srv_id: server id
-        :adm_id: admin id
-        :prog_chan: #progress channel id
-        """
-
+    async def tambah(self, ctx, srv_id, adm_id, prog_chan=None):  # noqa: D102
         self.logger.info("Initiated new server addition to database...")
         if srv_id is None:
             return await ctx.send("Tidak ada input server dari user")
@@ -314,12 +286,7 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
         )
 
     @ntadmin.command()
-    async def hapus(self, ctx, srv_id):
-        """
-        Menghapus server dari database naoTimes
-
-        :srv_id: server id
-        """
+    async def hapus(self, ctx, srv_id):  # noqa: D102
         self.logger.info("Initiated server removal from database...")
         if srv_id is None:
             return await ctx.send("Tidak ada input server dari user")
@@ -343,8 +310,7 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
         fpath = os.path.join(self.bot.fcwd, "showtimes_folder", f"{srv_id}.showtimes")
         try:
             os.remove(fpath)
-        except Exception:
-            # FIXME: Add logging here
+        except FileNotFoundError:
             pass
         success, msg = await self.ntdb.remove_server(srv_id, adm_id)
         if not success:
@@ -356,14 +322,7 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
         await ctx.send("Sukses menghapus server `{s}` dari naoTimes".format(s=srv_id))
 
     @ntadmin.command()
-    async def tambahadmin(self, ctx, srv_id: str, adm_id: str):
-        """
-        Menambah admin ke server ke database naoTimes
-
-        :srv_id: server id
-        :adm_id: admin id
-        """
-
+    async def tambahadmin(self, ctx, srv_id: str, adm_id: str):  # noqa: D102
         self.logger.info(f"{srv_id}: Adding new admin ({adm_id})")
         if srv_id is None:
             return await ctx.send("Tidak ada input server dari user")
@@ -392,13 +351,7 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
         await ctx.send("Sukses menambah admin `{a}` di server `{s}`".format(s=srv_id, a=adm_id))
 
     @ntadmin.command()
-    async def hapusadmin(self, ctx, srv_id: str, adm_id: str):
-        """
-        Menghapus admin dari server dari database naoTimes
-
-        :srv_id: server id
-        :adm_id: admin id
-        """
+    async def hapusadmin(self, ctx, srv_id: str, adm_id: str):  # noqa: D102
         self.logger.info(f"{srv_id}: Removing admin ({adm_id})")
         if srv_id is None:
             return await ctx.send("Tidak ada input server dari user")
@@ -436,7 +389,7 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
                 await ctx.send("Tetapi gagal menghapus admin dari top_admin.")
 
     @ntadmin.command()
-    async def modify_db(self, ctx):
+    async def modify_db(self, ctx):  # noqa: D102
         self.logger.info("Batch modifying db, this time: mal_id addition...")
 
         async def _internal_fetch(srv_id):

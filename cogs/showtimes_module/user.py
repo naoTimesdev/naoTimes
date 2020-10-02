@@ -20,7 +20,6 @@ class ShowtimesUser(commands.Cog, ShowtimesBase):
         self.bot = bot
         self.showqueue = bot.showqueue
         self.ntdb = bot.ntdb
-        self.fsdb = bot.fsdb
         # pylint: disable=E1101
         self.logger = logging.getLogger("cogs.showtimes_module.user.ShowtimesUser")
         self.srv_fetch = partial(self.fetch_showtimes, cwd=bot.fcwd)
