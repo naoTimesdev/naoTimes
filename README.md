@@ -27,10 +27,16 @@ Admin ID:
 #progress announce Channel ID:
 ```
 
+## Discord Gateway Intents
+Akan segera di support oleh bot, untuk sementara jangan update ke discord.py versi 1.5.0
+
+Jika sudah situ upgrade, silakan aktifkan **Privileged Gateway Intents** untuk **Server Members Intent**<br>
+Bisa ditemukan di bagian settings Bot di laman [Discord Developer Portal](https://discord.com/developers/).
+
 ## Requirements
 - Python 3.6+
 - MongoDB Server
-- Discord.py [>=1.4.0] (Jangan gunakan versi `async`)
+- Discord.py [>=1.4,<1.5] (Jangan gunakan versi `async`)
 - aiohttp [>=3.6.2]
 - motor [==2.2.0]
 - BeautifulSoup4 [==4.9.1]
