@@ -93,7 +93,7 @@ class VoteApp(commands.Cog):
         msg_data: discord.Message = await channel_data.fetch_message(message_id)
         reactions: List[discord.Reaction] = msg_data.reactions
 
-        disallowed_ids = [vote_meta["requester"], self.bot.user.id]
+        disallowed_ids: List[int] = [vote_meta["requester"], self.bot.user.id]
 
         final_data = []
         if reactions:
@@ -290,8 +290,6 @@ class VoteApp(commands.Cog):
                 try:
                     os.remove(os.path.join(self.bot.fcwd, "vote_data", f"{exported_data['id']}.votedata"))
                 except FileNotFoundError:
-                    pass
-                except Exception:
                     pass
 
                 self.vote_backend.done_queue.task_done()

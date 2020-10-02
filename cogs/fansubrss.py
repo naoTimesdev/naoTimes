@@ -373,7 +373,7 @@ class FansubRSS(commands.Cog):
     def generate_random(self, srv_id: Union[str, int]):
         srv_hash = str(srv_id)[5:]
         strings_best = string.ascii_lowercase + string.digits
-        gen_id = "".join([random.choice(strings_best) for _ in range(10)]) + srv_hash
+        gen_id = "".join([random.choice(strings_best) for _ in range(10)]) + srv_hash  # nosec
         return gen_id
 
     async def read_rss(self, server_id: Union[str, int]) -> dict:

@@ -7,7 +7,7 @@ import aiohttp
 import discord
 from discord.ext import commands
 
-from nthelper import (
+from nthelper.cpputest import (
     CPPTestCompileError,
     CPPTestRuntimeError,
     CPPTestSanitizeError,
@@ -123,7 +123,7 @@ class CPPCompiler(commands.Cog):
 
         async def give_input(table, emb_msg):
             self.logger.info(f"{server_message}: processing input data...")
-            rand_exit_code = "".join([random.choice(ascii_lowercase) for _ in range(8)])
+            rand_exit_code = "".join([random.choice(ascii_lowercase) for _ in range(8)])  # nosec
             embed = discord.Embed(title="C++ Compiler", color=0xF182CA)
             embed.description = "Compile C++ code at your own comfy discord server."
             embed.add_field(
@@ -295,4 +295,3 @@ class CPPCompiler(commands.Cog):
             embed.set_footer(text="C++@Discord")
             await emb_msg.edit(embed=embed)
             return
-

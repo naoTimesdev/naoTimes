@@ -89,7 +89,7 @@ def get_user_status(mode: str) -> str:
         ],
     }
     status = statuses_list.get(mode, ["Unknown"])
-    return random.choice(status)
+    return random.choice(status)  # nosec
 
 
 def translate_date(str_: str) -> str:
@@ -144,7 +144,7 @@ class Fun(commands.Cog):
             re.IGNORECASE,
         )
         if re.findall(cermin_compiler, msg.clean_content):
-            randd = random.uniform(0.5, 1.5)
+            randd = random.uniform(0.5, 1.5)  # nosec
 
             if randd <= 0.9:
                 ava = msg.author.avatar_url
@@ -152,7 +152,7 @@ class Fun(commands.Cog):
             else:
                 guild_members = msg.guild.members
                 guild_members = [member for member in guild_members if not member.bot]
-                usr = random.choice(guild_members)
+                usr = random.choice(guild_members)  # nosec
 
                 ava = usr.avatar_url
                 user_name = "{0.name}#{0.discriminator}".format(usr)
@@ -307,7 +307,7 @@ class Fun(commands.Cog):
 
     @commands.command(aliases=["kerangajaib"])
     async def kerang(self, ctx, *, pertanyaan):
-        rand = random.randint(0, 1)
+        rand = random.randint(0, 1)  # nosec
         userasking = str(ctx.message.author)
         useravatar = str(ctx.message.author.avatar_url)
         textasker = "Ditanyakan oleh: " + userasking
@@ -343,11 +343,11 @@ class Fun(commands.Cog):
     @commands.command(aliases=["penis", "dick", "kntl"])
     async def kontol(self, ctx):
         print("Requested !kontol")
-        length = random.randint(2, 12)
+        length = random.randint(2, 12)  # nosec
 
         txt = "Panjang kntl **{}** adalah:\n".format(ctx.message.author.name)
 
-        multiplier = random.choice([1, 2, 5])
+        multiplier = random.choice([1, 2, 5])  # nosec
         if multiplier == 1:
             length_name = "cm"
         elif multiplier == 2:
@@ -384,7 +384,7 @@ class Fun(commands.Cog):
 
         total_output = []
         for _ in range(roll_amount):  # type: ignore
-            total_output.append(random.choice(dice_faces_range))
+            total_output.append(random.choice(dice_faces_range))  # nosec
 
         total_output_txt = [f"**{do}**" for do in total_output]
 
@@ -397,7 +397,7 @@ class Fun(commands.Cog):
     @commands.command(name="kocok", aliases=["roll"])
     async def roll_dice_ranged(self, ctx, max_num: int):
         dice_faces_range = list(range(1, max_num + 1))
-        roll_outcome = random.choice(dice_faces_range)
+        roll_outcome = random.choice(dice_faces_range)  # nosec
 
         await ctx.send(f"Hasil kocok dadu: **{roll_outcome}** (**1**-**{max_num}**)")
 
@@ -442,12 +442,12 @@ class Fun(commands.Cog):
 
         randomized_dataset = positif_data + netral_data + negatif_data
 
-        for _ in range(random.randint(3, 10)):
+        for _ in range(random.randint(3, 10)):  # nosec
             random.shuffle(randomized_dataset)
 
-        pick_dataset = randomized_dataset[random.randint(0, 9)]
+        pick_dataset = randomized_dataset[random.randint(0, 9)]  # nosec
 
-        answer_of_life = random.choice(jawaban_[pick_dataset])
+        answer_of_life = random.choice(jawaban_[pick_dataset])  # nosec
 
         avatar = str(ctx.message.author.avatar_url)
         ditanyakan = "Ditanyakan oleh: {0.name}#{0.discriminator}".format(ctx.message.author)
