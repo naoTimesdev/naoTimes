@@ -2,6 +2,7 @@
 
 import asyncio
 import re
+from datetime import datetime, timezone
 from urllib.parse import quote
 
 import aiohttp
@@ -16,6 +17,8 @@ from kbbi import (  # noqa: F401
 
 from .utils import sync_wrap
 
+__NT_UA__ = "naoTimes/2.0.1a (https://github.com/noaione/naoTimes)"
+
 
 class GagalKoneksi(kbbi.Galat):
     """Galat ketika laman tidak ditemukan dalam KBBI."""
@@ -29,7 +32,7 @@ class AutentikasiKBBI:
     lokasi = "Account/Login"
 
     def __init__(self, posel=None, sandi=None):
-        self.sesi = aiohttp.ClientSession()
+        self.sesi = aiohttp.ClientSession(headers={"User-Agent": __NT_UA__})
         self.posel = posel
         self.sandi = sandi
 
@@ -63,8 +66,6 @@ class AutentikasiKBBI:
             raise GagalKoneksi()
         except aiohttp.ClientError:
             raise GagalKoneksi()
-        except aiohttp.ClientTimeout:
-            raise GagalKoneksi()
         except TimeoutError:
             raise GagalKoneksi()
         if "Beranda/Error" in final_url:
@@ -78,7 +79,7 @@ class KBBI:
 
     host = "https://kbbi.kemdikbud.go.id"
 
-    def __init__(self, kueri, asp_cookies=None):
+    def __init__(self, asp_cookies=None):
         """Membuat objek KBBI baru berdasarkan kueri yang diberikan.
         :param kueri: Kata kunci pencarian
         :type kueri: str
@@ -87,20 +88,25 @@ class KBBI:
         """
         self._bs4 = sync_wrap(BeautifulSoup)
 
+        self.entri = []
+        self.saran_entri = []
+        self._init_sesi(asp_cookies)
+
+        self._username = ""
+        self._password = ""
+        self._expiry = 0
+        self._cookies = asp_cookies
+
+    async def cari(self, kueri):
         self.nama = kueri
         self.entri = []
         self.saran_entri = []
         self._init_lokasi()
-        self._init_sesi(asp_cookies)
-
-    async def cari(self):
         try:
             req = await self.sesi.get(f"{self.host}/{self.lokasi}")
         except aiohttp.ClientConnectionError:
             raise GagalKoneksi()
         except aiohttp.ClientError:
-            raise GagalKoneksi()
-        except aiohttp.ClientTimeout:
             raise GagalKoneksi()
         except TimeoutError:
             raise GagalKoneksi()
@@ -123,9 +129,39 @@ class KBBI:
 
     def _init_sesi(self, asp_cookies):
         if asp_cookies:
-            self.sesi = aiohttp.ClientSession(cookies={".AspNet.ApplicationCookie": asp_cookies})
+            self.sesi = aiohttp.ClientSession(
+                cookies={".AspNet.ApplicationCookie": asp_cookies}, headers={"User-Agent": __NT_UA__}
+            )
         else:
-            self.sesi = aiohttp.ClientSession()
+            self.sesi = aiohttp.ClientSession(headers={"User-Agent": __NT_UA__})
+
+    def set_autentikasi(self, username=None, password=None, cookie=None, expiry=None):
+        if username is not None:
+            self._username = username
+        if password is not None:
+            self._password = password
+        if cookie is not None:
+            self._cookies = cookie
+        if expiry is not None:
+            self._expiry = expiry
+
+    async def reset_connection(self):
+        await self.tutup()
+        self._init_sesi(self._cookies)
+
+    @property
+    def get_cookies(self):
+        return {"cookie": self._cookies, "expires": self._expiry}
+
+    async def reautentikasi(self):
+        """Autentikasi ulang."""
+        auth_kbbi = AutentikasiKBBI(self._username, self._password)
+        await auth_kbbi.autentikasi()
+        sesi_baru = await auth_kbbi.ambil_cookies()
+        await self.tutup()
+        self._init_sesi(sesi_baru)
+        self._cookies = sesi_baru
+        self._expiry = int(round(datetime.now(tz=timezone.utc).timestamp() + (15 * 24 * 60 * 60)))
 
     async def _cek_autentikasi(self, laman):
         self.terautentikasi = "loginLink" not in laman
@@ -135,6 +171,7 @@ class KBBI:
         async with self.sesi.get(self.host) as resp:
             res = await resp.text()
             is_auth = "loginLink" not in res
+        self.terautentikasi = is_auth
         return is_auth
 
     def _init_lokasi(self):
@@ -196,17 +233,14 @@ class KBBI:
     def __str__(self, contoh=True, terkait=True, fitur_pengguna=True):
         return "\n\n".join(entri.__str__(contoh, terkait, fitur_pengguna) for entri in self.entri)
 
-    def __repr__(self):
-        return f"<KBBI: {self.nama}>"
-
 
 if __name__ == "__main__":
     import json
 
     loop = asyncio.get_event_loop()
 
-    kb = KBBI("khayal")
-    loop.run_until_complete(kb.cari())
+    kb = KBBI()
+    loop.run_until_complete(kb.cari("khayal"))
     res = kb.serialisasi()
     loop.run_until_complete(kb.sesi.close())
     print(res)
