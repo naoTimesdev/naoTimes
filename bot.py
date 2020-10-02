@@ -53,6 +53,16 @@ console_formatter = logging.Formatter("[%(levelname)s] (%(name)s): %(funcName)s:
 console.setFormatter(console_formatter)
 logger.addHandler(console)
 
+# Handle the new Intents.
+discord_ver_tuple = tuple([int(ver) for ver in discord.__version__.split(".")])
+discord_intents: Optional[discord.Intents] = None
+if discord_ver_tuple >= (1, 5, 0):
+    logger.info("Detected discord.py version 1.5.0, using the new Intents system...")
+    discord_intents = discord.Intents()
+    # Enable all except Presences.
+    discord_intents.all()
+    discord_intents.presences = False
+
 parser = argparse.ArgumentParser("naotimesbot")
 parser.add_argument("-dcog", "--disable-cogs", default=[], action="append", dest="cogs_skip")
 parser.add_argument("-skbbi", "--skip-kbbi-check", action="store_true", dest="kbbi_check")
@@ -147,7 +157,13 @@ async def init_bot(loop):
         description = "Penyuruh Fansub biar kerja cepat\n"
         description += f"versi {__version__} || Dibuat oleh: N4O#8868"
         prefixes = partial(prefixes_with_data, prefixes_data=srv_prefixes, default=default_prefix,)
-        bot = naoTimesBot(command_prefix=prefixes, description=description, loop=loop)
+        if discord_ver_tuple >= (1, 5, 0):
+            # Insert intents
+            bot = naoTimesBot(
+                command_prefix=prefixes, description=description, intents=discord_intents, loop=loop
+            )
+        else:
+            bot = naoTimesBot(command_prefix=prefixes, description=description, loop=loop)
         bot.remove_command("help")
         bot.logger.info("Bot loaded, now using bot logger for logging.")
         # if not hasattr(bot, "logger"):
