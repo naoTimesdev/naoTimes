@@ -4,14 +4,13 @@ import asyncio
 import logging
 import random
 import re
-import socket
-import ssl
 from typing import Union
 
 import discord
 import discord.ext.commands as commands
-
 import ujson
+from nthelper.bot import naoTimesBot
+from nthelper.vndbsocket import VNDBSockIOManager
 
 vnlog = logging.getLogger("cogs.vndb")
 
@@ -19,94 +18,6 @@ vnlog = logging.getLogger("cogs.vndb")
 def setup(bot):
     vnlog.debug("adding cogs...")
     bot.add_cog(VNDB(bot))
-
-
-class VNDBSocket:
-    """
-    VNDB Socket Manager but it's asynchronous
-    Base code shamelessly stolen from:
-    https://github.com/ccubed/PyMoe/blob/master/Pymoe/VNDB/connection.py
-    """
-
-    def __init__(
-        self, username=None, password=None, loop=None,
-    ):
-        self.clientvars = {
-            "protocol": 1,
-            "clientver": 2.0,
-            "client": "naoTimes",
-        }
-        self.loggedin = False
-        self.data_buffer = bytes(1024)
-        self.sslcontext = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
-        self.sslcontext.verify_mode = ssl.CERT_REQUIRED
-        self.sslcontext.check_hostname = True
-        self.sslcontext.load_default_certs()
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sslwrap = self.sslcontext.wrap_socket(self.socket, server_hostname="api.vndb.org")
-        self.sslwrap.connect(("api.vndb.org", 19535))
-        # self.sslwrap.setblocking(False)
-        self.loop: asyncio.AbstractEventLoop = loop
-        if self.loop is None:
-            self.loop = asyncio.get_event_loop()
-        # self.login(username, password)
-
-    def close(self):
-        """
-        Close the socket connection.
-        """
-        self.sslwrap.close()
-
-    async def async_login(self, username, password):
-        vars_ = self.clientvars
-        if username and password:
-            vars_["username"] = username
-            vars_["password"] = password
-            ret = await self.send_command_async("login", ujson.dumps(vars_))
-            if not isinstance(ret, str):  # should just be 'Ok'
-                if self.loggedin:
-                    self.loggedin = False
-            self.loggedin = True
-
-    async def send_command_async(self, command, args=None):
-        """
-        Send a command to VNDB and then get the result.
-        :param command: What command are we sending
-        :param args: What are the json args for this command
-        :return: Servers Response
-        :rtype: Dictionary (See D11 docs on VNDB)
-        """
-        if args:
-            if isinstance(args, str):
-                final_command = command + " " + args + "\x04"
-            else:
-                # We just let ujson propogate the error here
-                # if it can't parse the arguments
-                final_command = command + " " + ujson.dumps(args) + "\x04"
-        else:
-            final_command = command + "\x04"
-        await self.loop.sock_sendall(self.sslwrap, final_command.encode("utf-8"))
-        return await self._recv_data_async()
-
-    async def _recv_data_async(self):
-        """
-        Receieves data until we reach the \x04 and then returns it.
-        :return: The data received
-        """
-        temp = ""
-        while True:
-            self.data_buffer = await self.loop.sock_recv(self.sslwrap, 1024)
-            if "\x04" in self.data_buffer.decode("utf-8", "ignore"):
-                temp += self.data_buffer.decode("utf-8", "ignore")
-                break
-            else:
-                temp += self.data_buffer.decode("utf-8", "ignore")
-                self.data_buffer = bytes(1024)
-        temp = temp.replace("\x04", "")
-        if "ok" in temp.lower():  # because login
-            return temp
-        else:
-            return ujson.loads(temp.split(" ", 1)[1])
 
 
 def bbcode_markdown(string: str) -> str:
@@ -136,21 +47,14 @@ def bbcode_markdown(string: str) -> str:
     return string
 
 
-async def fetch_vndb(
-    search_string: str, VNconn: Union[VNDBSocket, None] = None, bot_config: dict = {},
-) -> Union[dict, str]:
+async def fetch_vndb(search_string: str, VNconn: VNDBSockIOManager) -> Union[dict, str]:
     """Main searching function"""
-    if not VNconn:
-        vndb_login = bot_config["vndb"]
-        if not vndb_login["username"] and not vndb_login["password"]:
-            vnlog.warn("please provide login info if you want to use VNDB.")
-            return "Perintah VNDB tidak bisa digunakan karena bot tidak diberikan informasi login untuk VNDB\nCek `config.json` untuk memastikannya."  # noqa: E501
-        VNconn = VNDBSocket(vndb_login["username"], vndb_login["password"])
     if not VNconn.loggedin:
-        await VNconn.async_login(vndb_login["username"], vndb_login["password"])
-        if not VNconn.loggedin:  # Still no.
-            vnlog.warn("failed to sign-in to VNDB.")
-            return "Tidak dapat login dengan username dan password yang diberikan di `config.json` kontak owner bot untuk membenarkannya."  # noqa: E501
+        vnlog.info("Trying to authenticating connection...")
+        try:
+            await asyncio.wait_for(VNconn.async_login(), 15.0)
+        except asyncio.TimeoutError:
+            return "Koneksi timeout, tidak dapat terhubung dengan VNDB."
     if search_string.rstrip().strip().isdigit():
         m_ = "id"
         delim = "="
@@ -162,7 +66,10 @@ async def fetch_vndb(
     )
 
     vnlog.info(f"fetching: {search_string}")
-    res = await VNconn.send_command_async("get", data)
+    try:
+        res = await asyncio.wait_for(VNconn.send_command_async("get", data), timeout=15.0)
+    except asyncio.TimeoutError:
+        return "Koneksi timeout, tidak dapat terhubung dengan VNDB."
     if isinstance(res, str) and res.startswith("results "):
         res = res.replace("results ", "")
         res = ujson.loads(res)
@@ -224,8 +131,8 @@ async def fetch_vndb(
 
         lang_ = []
         if d["languages"]:
-            for l in d["languages"]:
-                lang_.append(l.upper())
+            for la in d["languages"]:
+                lang_.append(la.upper())
             lang_ = ", ".join(lang_)  # type: ignore
         else:
             lang_ = "Tidak diketahui"  # type: ignore
@@ -278,43 +185,47 @@ async def fetch_vndb(
                     dataset[k] = "Tidak diketahui"
 
         full_query_result.append(dataset)
-    VNconn.close()
     return {"result": full_query_result, "data_total": total_data}
 
 
-async def random_search(bot_config: dict):
-    vndb_login = bot_config["vndb"]
-    if not vndb_login["username"] and not vndb_login["password"]:
-        vnlog.warn("please provide login info if you want to use VNDB.")
-        return "Perintah VNDB tidak bisa digunakan karena bot tidak diberikan informasi login untuk VNDB\nCek `config.json` untuk memastikannya."  # noqa: E501
-    VNconn = VNDBSocket(vndb_login["username"], vndb_login["password"])
-    if not VNconn.loggedin:
-        await VNconn.async_login(vndb_login["username"], vndb_login["password"])
-        if not VNconn.loggedin:  # Still no.
-            vnlog.warn("failed to sign-in to VNDB.")
-            return "Tidak dapat login dengan username dan password yang diberikan di `config.json` kontak owner bot untuk membenarkannya."  # noqa: E501
-    vnlog.info(f"fetching database stats...")
-    res = await VNconn.send_command_async("dbstats")
+async def random_search(vndb_conn: VNDBSockIOManager):
+    if not vndb_conn.loggedin:
+        vnlog.info("Trying to authenticating connection...")
+        try:
+            await asyncio.wait_for(vndb_conn.async_login(), 15.0)
+        except asyncio.TimeoutError:
+            return "Koneksi timeout, tidak dapat terhubung dengan VNDB."
+    vnlog.info("fetching database stats...")
+    try:
+        res = await asyncio.wait_for(vndb_conn.send_command_async("dbstats"), 15.0)
+    except asyncio.TimeoutError:
+        return "Koneksi timeout, tidak dapat terhubung dengan VNDB."
     if isinstance(res, str) and res.startswith("dbstats "):
         res = res.replace("dbstats ", "")
         res = ujson.loads(res)
 
     total_vn = res["vn"]
-    rand = random.randint(1, total_vn)
+    rand = random.randint(1, total_vn)  # nosec
     vnlog.info(f"picked {rand}, fetching info...")
-    result = await fetch_vndb(str(rand), VNconn)
+    result = await fetch_vndb(str(rand), vndb_conn)
     return result
 
 
 class VNDB(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: naoTimesBot):
         self.bot = bot
         self.conf = bot.botconf
+
+        self.vnconn = bot.vndb_socket
 
     @commands.command(aliases=["visualnovel", "eroge", "vndb"])
     @commands.guild_only()
     async def vn(self, ctx, *, judul):
-        vnqres = await fetch_vndb(judul, bot_config=self.conf)
+        if self.vnconn is None:
+            return await ctx.send(
+                "Perintah VNDB tidak bisa digunakan karena bot tidak diberikan informasi login untuk VNDB."
+            )
+        vnqres = await fetch_vndb(judul, self.vnconn)
         if isinstance(vnqres, str):
             return await ctx.send(vnqres)
 
@@ -502,7 +413,11 @@ class VNDB(commands.Cog):
 
     @commands.command(aliases=["randomvisualnovel", "randomeroge", "vnrandom"])
     async def randomvn(self, ctx):
-        vnqres = await random_search(self.conf)
+        if self.vnconn is None:
+            return await ctx.send(
+                "Perintah VNDB tidak bisa digunakan karena bot tidak diberikan informasi login untuk VNDB."
+            )
+        vnqres = await random_search(self.vnconn)
         if isinstance(vnqres, str):
             return await ctx.send(vnqres)
 
