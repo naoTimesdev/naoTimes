@@ -84,6 +84,9 @@ class naoTimesDB:
     async def _release_lock(self):
         self.__locked = False
 
+    async def validate_connection(self):
+        await self.db.command({"ping": 1})
+
     @safe_asynclock
     async def fetch_data(self, collection: str, **kwargs) -> tuple:
         self.logger.info(f"Fetching {collection} data...")
