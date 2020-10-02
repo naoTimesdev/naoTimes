@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+from typing import List, Union
 
 import aiofiles
 import discord
@@ -28,7 +29,7 @@ class AutoMod(commands.Cog):
         self.mute_roles_map = {}
         self.shadowban_map = {}
 
-        self.modpath = "/root/naotimes/automod/"
+        self.modpath = os.path.join(self.bot.fcwd, "automod")
         self._locked = False
         self._is_modifying = False
 
