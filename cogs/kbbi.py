@@ -8,12 +8,11 @@ from typing import List, Tuple, Union
 import discord
 from discord.ext import commands, tasks
 
+from nthelper.bot import naoTimesBot
 from nthelper.utils import write_files
 from nthelper.kbbiasync import (
     KBBI,
-    AutentikasiKBBI,
     BatasSehari,
-    GagalAutentikasi,
     GagalKoneksi,
     TerjadiKesalahan,
     TidakDitemukan,
@@ -37,42 +36,35 @@ async def secure_results(hasil_entri: list) -> list:
     return hasil_entri
 
 
-async def query_requests_kbbi(kata_pencarian: str, cookies: str) -> Tuple[str, Union[str, list]]:
+async def query_requests_kbbi(kata_pencarian: str, kbbi_conn: KBBI) -> Tuple[str, Union[str, list]]:
     try:
-        cari_kata = KBBI(kata_pencarian, cookies)
-        await cari_kata.cari()
+        await kbbi_conn.cari(kata_pencarian)
     except TidakDitemukan:
-        await cari_kata.tutup()
         return kata_pencarian, "Tidak dapat menemukan kata tersebut di KBBI."
     except TerjadiKesalahan:
-        await cari_kata.tutup()
         return (
             kata_pencarian,
             "Terjadi kesalahan komunikasi dengan server KBBI.",
         )
     except BatasSehari:
-        await cari_kata.tutup()
         return (
             kata_pencarian,
-            "Bot telah mencapai batas pencarian harian, " "mohon coba esok hari lagi.",
+            "Bot telah mencapai batas pencarian harian, mohon coba esok hari lagi.",
         )
     except GagalKoneksi:
-        await cari_kata.tutup()
         return (
             kata_pencarian,
-            "Tidak dapat terhubung dengan KBBI, " "kemungkinan KBBI daring sedang down.",
+            "Tidak dapat terhubung dengan KBBI, kemungkinan KBBI daring sedang down.",
         )
     except Exception as error:
-        await cari_kata.tutup()
         tb = traceback.format_exception(type(error), error, error.__traceback__)
         kbbilog.error("Exception occured\n" + "".join(tb))
         return kata_pencarian, "Terjadi kesalahan ketika memparsing hasil dari KBBI, mohon kontak N4O."
 
-    hasil_kbbi = cari_kata.serialisasi()
+    hasil_kbbi = kbbi_conn.serialisasi()
     pranala = hasil_kbbi["pranala"]
     hasil_entri = await secure_results(hasil_kbbi["entri"])
 
-    await cari_kata.tutup()
     return pranala, hasil_entri
 
 
@@ -118,22 +110,20 @@ def strunct_split(text: str, max_characters: int, splitters: str = " ") -> str:
 
 
 class KBBICog(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: naoTimesBot):
         self.bot = bot
-        self.cookie: str = bot.kbbi_cookie
-        self.k_expire: int = bot.kbbi_expires
-        self.k_auth: dict = bot.kbbi_auth
+        self.kbbi_conn = bot.kbbi
 
         self._cwd = bot.fcwd
         self._first_run = False
-        self._use_auth = True
+        self._use_auth = self.kbbi_conn.terautentikasi
 
         self.logger = logging.getLogger("cogs.kbbi.KBBICog")
         self.daily_check_auth.start()
         self.check_maintenance_range.start()
 
         self._on_maintenance = False
-        self._maintenance_range = [None, 0]
+        self._maintenance_range: List[int] = [None, 0]  # type: ignore
 
     def cog_unload(self):
         self.logger.info("Cancelling all tasks...")
@@ -169,7 +159,8 @@ class KBBICog(commands.Cog):
             return
         ct = datetime.now(tz=timezone.utc).timestamp()
         do_reauth = False
-        if ct >= self.k_expire:
+        kbbi_data = self.kbbi_conn.get_cookies
+        if ct >= kbbi_data["expires"]:
             self.logger.warn("cookie expired!")
             do_reauth = True
         if not do_reauth:
@@ -182,29 +173,14 @@ class KBBICog(commands.Cog):
             return
 
         self.logger.info("reauthenticating...")
-        kbbi_auth = AutentikasiKBBI(self.k_auth["email"], self.k_auth["password"])
-        self.logger.info("auth_check: authenticating...")
-        try:
-            await kbbi_auth.autentikasi()
-        except GagalKoneksi:
-            self.logger.error("connection error occured.")
-            return
-        except TerjadiKesalahan:
-            self.logger.error("cannot do reauth, please check.")
-            return
-        except GagalAutentikasi:
-            self.logger.error("wrong user/password combination...")
-            return
-
+        await self.kbbi_conn.reautentikasi()
         self.logger.info("auth_check: authenticated, reassigning...")
-        cookie = await kbbi_auth.ambil_cookies()
-        self.cookie = cookie
-        self.k_expire = round(ct + (15 * 24 * 60 * 60))
-        self.logger.info("auth_check: saving data...")
-        await kbbi_auth.sesi.close()
-        save_data = {"cookie": cookie, "expires": self.k_expire}
         save_path = os.path.join(self._cwd, "kbbi_auth.json")
-        await write_files(save_data, save_path)
+        await write_files(self.kbbi_conn.get_cookies, save_path)
+
+    @commands.command()
+    async def print_cookies(self, ctx):
+        print(await self.kbbi_conn.get_cookies)
 
     @commands.command()
     @commands.is_owner()
@@ -276,9 +252,7 @@ class KBBICog(commands.Cog):
         kata_pencarian = kata_pencarian.lower()
 
         self.logger.info(f"searching {kata_pencarian}")
-        pranala, hasil_entri = await query_requests_kbbi(
-            kata_pencarian, "" if not self._use_auth else self.cookie
-        )
+        pranala, hasil_entri = await query_requests_kbbi(kata_pencarian, self.kbbi_conn)
 
         if isinstance(hasil_entri, str):
             self.logger.error(f"{kata_pencarian}: error\n{hasil_entri}")
