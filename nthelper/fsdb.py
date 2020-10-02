@@ -15,7 +15,7 @@ class FansubDBBridge:
         self.session = aiohttp.ClientSession(
             headers={
                 "Content-Type": "application/json",
-                "User-Agent": "naoTimes/2.0a (https://github.com/noaione/naoTimes)",
+                "User-Agent": "naoTimes/2.0.1a (https://github.com/noaione/naoTimes)",
                 "x-requested-by": "naoTimes-FSDB-Bridge",
             }
         )

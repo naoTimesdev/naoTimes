@@ -38,7 +38,11 @@ steamdb_converter = CommandArgParse(steamdb_args)
 
 
 async def requests(methods, url, **kwargs):
-    async with aiohttp.ClientSession(headers={"User-Agent": "naoTimes/2.0b"}) as sesi:
+    async with aiohttp.ClientSession(
+        headers={
+            "User-Agent": "naoTimes/2.0.1a (https://github.com/noaione/naoTimes)"
+        }
+    ) as sesi:
         methods_set = {
             "GET": sesi.get,
             "POST": sesi.post,

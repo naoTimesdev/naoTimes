@@ -24,7 +24,7 @@ class AnilistBucket:
     async def handle(self, query, variables):
         query_to_send = {"query": query, "variables": variables}
         async with aiohttp.ClientSession(
-            headers={"User-Agent": "naoTimes/2.0a (https://github.com/noaione/naoTimes)"}
+            headers={"User-Agent": "naoTimes/2.0.1a (https://github.com/noaione/naoTimes)"}
         ) as session:
             try:
                 await self._handle_rate_limit()
