@@ -7,8 +7,10 @@ from discord.ext import commands
 
 from .anibucket import AnilistBucket
 from .fsdb import FansubDBBridge
+from .kbbiasync import KBBI
 from .showtimes_helper import ShowtimesQueue, naoTimesDB
 from .utils import __version__
+from .vndbsocket import VNDBSockIOManager
 
 
 class naoTimesBot(commands.Bot):
@@ -33,17 +35,15 @@ class naoTimesBot(commands.Bot):
 
         self.fcwd: str
 
-        self.kbbi_cookie: str
-        self.kbbi_expires: int
-        self.kbbi_auth: Dict[str, str]
-
-        self.fsdb: FansubDBBridge
+        self.fsdb: FansubDBBridge = None
         self.showqueue: ShowtimesQueue
         self.anibucket: AnilistBucket
+        self.vndb_socket: VNDBSockIOManager = None
+        self.kbbi: KBBI = None
 
         self.showtimes_resync: list = []
         self.copy_of_commands: Dict[str, commands.Command] = {}
-        self.ntdb: naoTimesDB
+        self.ntdb: naoTimesDB = None
 
         self.uptime: float
         self.owner: Union[discord.User, discord.TeamMember]
