@@ -20,6 +20,7 @@ from nthelper.bot import naoTimesBot
 from nthelper.utils import HelpGenerator, read_files, send_timed_msg, sync_wrap, write_files
 
 asyncfeed = sync_wrap(feedparser.parse)
+fsrsslog = logging.getLogger("cogs.fansubrss")
 
 
 async def confirmation_dialog(bot: naoTimesBot, ctx, message: str) -> bool:
@@ -144,7 +145,7 @@ def time_struct_dt(time_struct: time.struct_time) -> Tuple[str, datetime]:
     return strftime_str, dt_data
 
 
-def filter_data(entries) -> dict:
+def filter_data(entries: dict) -> dict:
     """Remove unnecessary tags that just gonna trashed the data"""
     remove_data = [
         "title_detail",
@@ -223,7 +224,7 @@ async def check_if_valid(url: str) -> bool:
     return True
 
 
-async def parse_message(message, entry_data):
+async def parse_message(message: str, entry_data: dict) -> str:
     matches = re.findall(r"(?P<data>{[^{}]+})", message, re.MULTILINE | re.IGNORECASE)
     msg_fmt_data = [m.strip(r"{}") for m in matches]
 
@@ -236,13 +237,13 @@ async def parse_message(message, entry_data):
     return message.replace("\\n", "\n")
 
 
-def replace_tz(string):
+def replace_tz(string: str):
     for i in range(-12, 13):
         string = string.replace("+0{}:00".format(i), "")
     return string
 
 
-async def parse_embed(embed_data, entry_data) -> discord.Embed:
+async def parse_embed(embed_data: dict, entry_data: dict) -> discord.Embed:
     regex_embed = re.compile(r"(?P<data>{[^{}]+})", re.MULTILINE | re.IGNORECASE)
 
     filtered = {}
@@ -298,10 +299,14 @@ async def parse_embed(embed_data, entry_data) -> discord.Embed:
     return embed_beauty
 
 
-async def recursive_check_feed(url, rss_data, fetched_data):
+async def recursive_check_feed(url: str, rss_data: dict, fetched_data: list) -> Tuple[Optional[list], str, str]:
     last_etag = rss_data["lastEtag"]
     last_modified = rss_data["lastModified"]
-    feed = await async_feedparse(url, etag=last_etag, modified=last_modified)
+    try:
+        feed = await asyncio.wait_for(async_feedparse(url, etag=last_etag, modified=last_modified), timeout=15.0)
+    except asyncio.TimeoutError:
+        fsrsslog.error(f"connection timeout trying to fetch {url} rss.")
+        return None, "", ""
     if not feed:
         return None, "", ""
 
@@ -1195,9 +1200,13 @@ class FansubRSS(commands.Cog):
                 if rss_feed_new_url == ("cancel"):
                     pass
                 else:
-                    if not (await check_if_valid(rss_feed_new_url)):
+                    feed_data = await async_feedparse(rss_metadata["feedUrl"])
+                    if not feed_data:
                         await send_timed_msg(ctx, "URL yang diberikan tidak valid.", 2)
                     else:
+                        entries_data = feed_data.entries
+                        collect_url = [url["link"] for url in entries_data]
+                        saved_rss_data = await self.read_rss_feeds()
                         rss_metadata["feedUrl"] = rss_feed_new_url
                         await send_timed_msg(ctx, f"RSS Feed berhasil diubah ke: <{rss_feed_new_url}>", 2)
                 await extra_msg.delete()
