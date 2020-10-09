@@ -90,6 +90,7 @@ class KBBI:
 
         self.entri = []
         self.saran_entri = []
+        self.terautentikasi = False
         self._init_sesi(asp_cookies)
 
         self._username = ""
