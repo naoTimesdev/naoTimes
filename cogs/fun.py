@@ -1,10 +1,13 @@
 import logging
 import random
 import re
+from datetime import datetime
+from typing import List, Union
 
 import discord
 import numpy as np
 from discord.ext import commands
+from nthelper.bot import naoTimesBot
 
 logger = logging.getLogger("cogs.fun")
 
@@ -69,6 +72,9 @@ def get_user_status(mode: str) -> str:
             "Baca Doujinshi R-18++++",
             "Do not disturb",
             "Jangan ganggu",
+            "Rapat DPR",
+            "Sedang merencanakan UU baru",
+            "Dangdutan bareng polisi",
         ],
         "OFF": [
             "Mokad",
@@ -128,7 +134,7 @@ def translate_date(str_: str) -> str:
 class Fun(commands.Cog):
     """A shitty fun system"""
 
-    def __init__(self, bot):
+    def __init__(self, bot: naoTimesBot):
         self.bot = bot
         self.logger = logging.getLogger("cogs.fun.Fun")
 
@@ -219,11 +225,11 @@ class Fun(commands.Cog):
             else:
                 nickname = user.nick
             em = discord.Embed(timestamp=ctx.message.created_at, color=0x708DD0)
-            em.add_field(name="ID User", value=user.id, inline=True)
+            em.add_field(name="ID Pengguna", value=user.id, inline=True)
             if isinstance(user, discord.Member):
                 em.add_field(name="Panggilan", value=nickname, inline=True)
                 em.add_field(name="Status", value=status, inline=True)
-                em.add_field(name="Tahta Tertinggi", value=role, inline=True)
+                em.add_field(name="Takhta Tertinggi", value=role, inline=True)
                 em.add_field(
                     name="Akun dibuat",
                     value=translate_date(user.created_at.__format__("%A, %d. %B %Y @ %H:%M:%S")),
@@ -258,6 +264,190 @@ class Fun(commands.Cog):
                     avi,
                 )
             await ctx.send(msg)
+
+    @commands.command(aliases=["si"])
+    @commands.guild_only()
+    async def serverinfo(self, ctx):
+        guilds_data: discord.Guild = ctx.message.guild
+        channels_data: List[
+            Union[discord.TextChannel, discord.VoiceChannel, discord.CategoryChannel]
+        ] = guilds_data.channels
+
+        def _humanize_size(num, mul=1024.0, suffix="B"):
+            for unit in ["", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi"]:
+                if abs(num) < mul:
+                    return "%3.1f%s%s" % (num, unit, suffix)
+                num /= mul
+            return "%.1f%s %s" % (num, "Yi", suffix)
+
+        def _is_role_mentionable(role_data: discord.Role) -> str:
+            if role_data.mentionable:
+                return f"<@&{role_data.id}>"
+            return f"**{role_data.name}**"
+
+        def _localize_time(dt_time: datetime) -> str:
+            month_en = dt_time.strftime("%B")
+            tl_map = {
+                "January": "Januari",
+                "February": "Februari",
+                "March": "Maret",
+                "April": "April",
+                "May": "Mei",
+                "June": "Juni",
+                "July": "Juli",
+                "August": "Agustus",
+                "September": "September",
+                "October": "Oktober",
+                "November": "November",
+                "December": "Desember",
+            }
+            month_id = tl_map.get(month_en, month_en)
+            final_data = dt_time.strftime("%d ") + month_id
+            final_data += dt_time.strftime(" %Y, %H:%M:%S UTC")
+            return final_data
+
+        mfa_levels_map = {
+            "none": "<:ntMFAL0:761931842923266050> Tidak ada",
+            "low": "<:ntMFAL1:761931852788924418> Rendah (Surel harus terverifikasi)",
+            "medium": "<:ntMFAL2:761931862695870475> Menengah (Terdaftar di Discord selama 5 menit)",
+            "high": "<:ntMFAL3:761931871708905483> Tinggi (Berada di peladen ini selama 10 menit)",
+            "extreme": "<:ntMFAL4:761931880949219388> Tertinggi (Nomor telepon harus terverifikasi)",
+        }
+        region_map = {
+            "amsterdam": "🇳🇱 Amsterdam",
+            "brazil": "🇧🇷 Brasil",
+            "dubai": "🇪🇬 Dubai",
+            "europe": "🇪🇺 Eropa",
+            "eu_central": "🇪🇺 Eropa Tengah",
+            "eu_west": "🇪🇺 Eropa Barat",
+            "frankfurt": "🇩🇪 Frankfurt",
+            "hongkong": "🇭🇰 Hong Kong",
+            "india": "🇮🇳 India",
+            "japan": "🇯🇵 Jepang",
+            "london": "🇬🇧 London",
+            "russia": "🇷🇺 Rusia",
+            "singapore": "🇸🇬 Singapura",
+            "southafrica": "🇿🇦 Afrika Selatan",
+            "south_korea": "🇰🇷 Korea Selatan",
+            "sydney": "🇦🇺 Sidney",
+            "us_central": "🇺🇸 Amerika Tengah",
+            "us_east": "🇺🇸 Amerika Timur",
+            "us_south": "🇺🇸 Amerika Selatan",
+            "us_west": "🇺🇸 Amerika Barat",
+            "vip_amsterdam": "🇳🇱 Amsterdam (💳 VIP)",
+            "vip_us_east": "🇺🇸 Amerika Timur (💳 VIP)",
+            "vip_us_west": "🇺🇸 Amerika Barat (💳 VIP)",
+        }
+
+        text_channels = []
+        voice_channels = []
+        news_channels = []
+        for channel in channels_data:
+            ctype = str(channel.type)
+            if ctype == "voice":
+                voice_channels.append(channel)
+            elif ctype == "text":
+                text_channels.append(channel)
+            elif ctype == "news":
+                news_channels.append(channel)
+
+        total_channels = len(text_channels) + len(voice_channels) + len(news_channels)
+
+        channels_data = []
+        channels_data.append(f"⌨ **{len(text_channels)}** kanal teks")
+        channels_data.append(f"🔉 **{len(voice_channels)}** kanal suara")
+        if news_channels:
+            channels_data.append(f"📰 **{len(news_channels)}** kanal berita")
+
+        verification_lvl = mfa_levels_map.get(str(guilds_data.verification_level))
+        twofa_status = "✔" if guilds_data.mfa_level == 1 else "❌"
+        vc_region = region_map.get(str(guilds_data.region))
+        created_time = _localize_time(guilds_data.created_at)
+
+        server_members: List[discord.Member] = guilds_data.members
+        bot_accounts = []
+        online_users = []
+        idle_users = []
+        dnd_users = []
+        offline_users = []
+        invisible_users = []
+        for member in server_members:
+            if member.bot:
+                bot_accounts.append(member)
+                continue
+            status = str(member.status)
+            if status == "online":
+                online_users.append(member)
+            elif status == "idle":
+                idle_users.append(member)
+            elif status == "dnd":
+                dnd_users.append(member)
+            elif status == "offline":
+                offline_users.append(member)
+            elif status == "invisible":
+                invisible_users.append(member)
+
+        server_features = guilds_data.features
+        server_type = "Peladen Pribadi"
+        if "PUBLIC" in server_features:
+            server_type = "Peladen Publik"
+        if "COMMUNITY" in server_features:
+            server_type = server_type.replace("Peladen", "Komunitas")
+        if "VERIFIED" in server_features:
+            server_type = "✅ " + server_type + " **[Terverifikasi]**"
+        if "PARTNERED" in server_features:
+            server_type = "🤝 " + server_type + " **[Berpartner]**"
+        extras_info_datas = []
+        boost_count = guilds_data.premium_subscription_count
+        if boost_count > 0:
+            boost_lvl = guilds_data.premium_tier
+            extras_info_datas.append(
+                f"<:ntIconBoost:761958456865062923> Level **{boost_lvl}** (**{boost_count}** boosts)"
+            )
+        extras_info_datas.append(
+            "☺ **{}** emojis limit | 🎞 **{}** file limit | 🎵 **{}** bitrate limit".format(
+                guilds_data.emoji_limit,
+                _humanize_size(guilds_data.filesize_limit),
+                _humanize_size(guilds_data.bitrate_limit, 1000.0),
+            )
+        )
+
+        embed = discord.Embed(colour=0xF7E43)
+        embed.set_author(name=guilds_data.name, icon_url=guilds_data.icon_url)
+        description = []
+        description.append(server_type)
+        description.append(f"👑 **Penguasa**: {self.bot.is_mentionable(ctx, guilds_data.owner)}")
+        description.append(f"📅 **Dibuat**: {created_time}")
+        description.append(vc_region)
+        user_data = []
+        user_data.append(
+            f"<:ntStatL3:761945479511670794> **{len(online_users)}** Daring | "
+            f"<:ntStatL0:761945452987285545> **{len(offline_users)}** Luring"
+        )
+        user_data.append(
+            f"<:ntStatL2:761945472432209940> **{len(idle_users)}** Idle | "
+            f"<:ntStatL1:761945462424338493> **{len(dnd_users)}** DnD"
+        )
+        user_data.append(f"🤖 **{len(bot_accounts)}** Bot")
+        embed.description = "\n".join(description)
+        embed.set_thumbnail(url=guilds_data.icon_url)
+        if "INVITE_SPLASH" in server_features:
+            if guilds_data.splash:
+                embed.set_image(url=guilds_data.splash_url)
+        embed.add_field(name=f"Member [{len(server_members)}]", value="\n".join(user_data), inline=False)
+        embed.add_field(name=f"Kanal [{total_channels}]", value="\n".join(channels_data), inline=False)
+        embed.add_field(
+            name="Level Verifikasi",
+            value=f"{verification_lvl}\n**2FA** Enabled? {twofa_status}",
+            inline=False,
+        )
+        if extras_info_datas:
+            embed.add_field(name="Info Ekstra", value="\n".join(extras_info_datas))
+        footer_part = f"💻 ID: {guilds_data.id}"
+        if guilds_data.shard_id is not None:
+            footer_part += f" | 🔮 Shard: {guilds_data.shard_id}"
+        embed.set_footer(text=footer_part)
+        await ctx.send(embed=embed)
 
     @commands.command(aliases=["pp", "profile", "bigprofile", "ava"])
     async def avatar(self, ctx, *, name=""):
