@@ -3,9 +3,7 @@ import functools
 import glob
 import logging
 import os
-import random
 import re
-import string
 import time
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple, Union
@@ -15,42 +13,19 @@ import discord
 import feedparser
 from discord.ext import commands, tasks
 from markdownify import markdownify as mdparse
-
 from nthelper.bot import naoTimesBot
-from nthelper.utils import HelpGenerator, read_files, send_timed_msg, sync_wrap, write_files
+from nthelper.utils import (
+    HelpGenerator,
+    confirmation_dialog,
+    generate_custom_code,
+    read_files,
+    send_timed_msg,
+    sync_wrap,
+    write_files,
+)
 
 asyncfeed = sync_wrap(feedparser.parse)
 fsrsslog = logging.getLogger("cogs.fansubrss")
-
-
-async def confirmation_dialog(bot: naoTimesBot, ctx, message: str) -> bool:
-    dis_msg = await ctx.send(message)
-    to_react = ["✅", "❌"]
-    for react in to_react:
-        await dis_msg.add_reaction(react)
-
-    def check_react(reaction, user):
-        if reaction.message.id != dis_msg.id:
-            return False
-        if user != ctx.message.author:
-            return False
-        if str(reaction.emoji) not in to_react:
-            return False
-        return True
-
-    dialog_tick = True
-    while True:
-        res, user = await bot.wait_for("reaction_add", check=check_react)
-        if user != ctx.message.author:
-            pass
-        elif "✅" in str(res.emoji):
-            await dis_msg.delete()
-            break
-        elif "❌" in str(res.emoji):
-            dialog_tick = False
-            await dis_msg.delete()
-            break
-    return dialog_tick
 
 
 def clean_text(text_data: str) -> str:
@@ -206,7 +181,7 @@ async def async_feedparse(url: str, **kwargs) -> Optional[feedparser.FeedParserD
         try:
             async with session.get(url) as r:
                 r_data = await r.text()
-        except aiohttp.ClientTimeout:  # type: ignore
+        except asyncio.TimeoutError:
             return None
         except aiohttp.ClientError:
             return None
@@ -237,10 +212,10 @@ async def parse_message(message: str, entry_data: dict) -> str:
     return message.replace("\\n", "\n")
 
 
-def replace_tz(string: str):
+def replace_tz(string_data: str):
     for i in range(-12, 13):
-        string = string.replace("+0{}:00".format(i), "")
-    return string
+        string_data = string_data.replace("+0{}:00".format(i), "")
+    return string_data
 
 
 async def parse_embed(embed_data: dict, entry_data: dict) -> discord.Embed:
@@ -299,11 +274,15 @@ async def parse_embed(embed_data: dict, entry_data: dict) -> discord.Embed:
     return embed_beauty
 
 
-async def recursive_check_feed(url: str, rss_data: dict, fetched_data: list) -> Tuple[Optional[list], str, str]:
+async def recursive_check_feed(
+    url: str, rss_data: dict, fetched_data: list
+) -> Tuple[Optional[list], str, str]:
     last_etag = rss_data["lastEtag"]
     last_modified = rss_data["lastModified"]
     try:
-        feed = await asyncio.wait_for(async_feedparse(url, etag=last_etag, modified=last_modified), timeout=15.0)
+        feed = await asyncio.wait_for(
+            async_feedparse(url, etag=last_etag, modified=last_modified), timeout=15.0
+        )
     except asyncio.TimeoutError:
         fsrsslog.error(f"connection timeout trying to fetch {url} rss.")
         return None, "", ""
@@ -377,8 +356,7 @@ class FansubRSS(commands.Cog):
 
     def generate_random(self, srv_id: Union[str, int]):
         srv_hash = str(srv_id)[5:]
-        strings_best = string.ascii_lowercase + string.digits
-        gen_id = "".join([random.choice(strings_best) for _ in range(10)]) + srv_hash  # nosec
+        gen_id = generate_custom_code(10, True) + srv_hash  # nosec
         return gen_id
 
     async def read_rss(self, server_id: Union[str, int]) -> dict:
@@ -1200,13 +1178,19 @@ class FansubRSS(commands.Cog):
                 if rss_feed_new_url == ("cancel"):
                     pass
                 else:
-                    feed_data = await async_feedparse(rss_metadata["feedUrl"])
+                    self.logger.info(f"{server_id}: parsing and checking feed: {rss_feed_new_url}")
+                    feed_data = await async_feedparse(rss_feed_new_url)
                     if not feed_data:
                         await send_timed_msg(ctx, "URL yang diberikan tidak valid.", 2)
                     else:
                         entries_data = feed_data.entries
                         collect_url = [url["link"] for url in entries_data]
-                        saved_rss_data = await self.read_rss_feeds()
+                        self.logger.info(f"{server_id}: dumping all current entries...")
+                        saved_rss_data = await self.read_rss_feeds(ctx.message.guild.id, rss_metadata["id"])
+                        saved_rss_data["fetchedURL"].extend(collect_url)
+                        await self.write_rss_feeds(
+                            ctx.message.guild.id, rss_metadata["id"], saved_rss_data["fetchedURL"]
+                        )
                         rss_metadata["feedUrl"] = rss_feed_new_url
                         await send_timed_msg(ctx, f"RSS Feed berhasil diubah ke: <{rss_feed_new_url}>", 2)
                 await extra_msg.delete()
@@ -1255,8 +1239,9 @@ class FansubRSS(commands.Cog):
         await msg_final.edit(content="Formatting baru telah disimpan.")
 
     @fansubrss.command(name="premium")
-    async def fansubrss_premium(self, ctx, *, server_id=""):
-        if not (await self.bot.is_owner(ctx.author)):
+    async def fansubrss_premium(self, ctx, *, activation_code=""):
+        server_id = ctx.message.guild.id
+        if not activation_code:
             return await ctx.send(
                 "Fitur premium hanya tersedia bagi yang donasi bulanan via Trakteer\n"
                 "<https://trakteer.id/noaione> [2x Cendol]"
@@ -1267,6 +1252,18 @@ class FansubRSS(commands.Cog):
         if not rss_metadata:
             self.logger.error(f"{server_id}: cannot find metadata...")
             return await ctx.send("FansubRSS belum diaktifkan.")
+
+        activation_code_path = os.path.join(self.bot.fcwd, "premium_code", activation_code)
+        premium_data = await read_files(activation_code_path)
+        if premium_data is None:
+            self.logger.error(f"{server_id}-{activation_code}: unknown activation code...")
+            return await ctx.send("Kode aktivasi tidak diketahui.")
+        if premium_data["id"] != server_id:
+            self.logger.error(f"{server_id}-{activation_code}: wrong server...")
+            return await ctx.send("Kode aktivasi tidak diperuntukan untuk server ini.")
+        if premium_data["cmd"] not in ["fansubrss", "rss"]:
+            self.logger.error(f"{server_id}-{activation_code}: wrong command type...")
+            return await ctx.send("Kode aktivasi tidak diperuntukan untuk perintah FansubRSS.")
 
         if not rss_metadata["premium"]:
             self.logger.info(f"{server_id}: enabling premium feature for this server...")
@@ -1287,6 +1284,7 @@ class FansubRSS(commands.Cog):
             self._server_normal.append(server_id)
             msg_to_send = f"🕸️ | Fitur premium server `{server_id}` telah dinonaktifkan!"
         await self.write_rss(server_id, rss_metadata)
+        os.remove(activation_code_path)
         await ctx.send(msg_to_send)
 
 
