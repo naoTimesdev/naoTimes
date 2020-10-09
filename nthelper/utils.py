@@ -5,18 +5,19 @@ import functools
 import logging
 import os
 import platform
+import random
 import sys
 import time
 from datetime import datetime, timedelta, timezone
+from string import ascii_lowercase, ascii_uppercase, digits
 from typing import Any, Dict, List, Tuple, Union
 
 import aiofiles
 import aiohttp
 import discord
+import ujson
 from discord import __version__ as discord_ver
 from discord.ext import commands
-
-import ujson
 
 __version__ = "2.0.1a"
 
@@ -89,15 +90,25 @@ async def ping_website(url: str) -> Tuple[bool, float]:
     :return: return a bool if ping success or not and time taken in ms.
     :rtype: Tuple[bool, float]
     """
+
+    async def _internal_pinger(url: str):
+        """Internal worker for the ping process."""
+        try:
+            async with aiohttp.ClientSession() as sesi:
+                async with sesi.get(url) as resp:
+                    await resp.text()
+        except aiohttp.ClientError:
+            return False
+        return True
+
     t1 = time.perf_counter()
     try:
-        async with aiohttp.ClientSession() as sesi:
-            async with sesi.get(url) as resp:
-                await resp.text()
-                t2 = time.perf_counter()
-    except aiohttp.ClientError:
+        # Wrap it around asyncio.wait_for to make sure it doesn't wait until 10+ secs
+        res = await asyncio.wait_for(_internal_pinger(url), timeout=10.0)
+        t2 = time.perf_counter()
+    except asyncio.TimeoutError:
         return False, 99999.0
-    return True, (t2 - t1) * 1000
+    return res, (t2 - t1) * 1000
 
 
 async def read_files(fpath: str) -> Any:
@@ -186,6 +197,26 @@ def blocking_write_files(data: Any, fpath: str):
         fpw.write(data)
 
 
+def generate_custom_code(
+    length: int = 8, include_numbers: bool = False, include_uppercase: bool = False
+) -> str:
+    """Generate a random custom code to be used by anything.
+
+    :param length: int: the code length
+    :param include_numbers: bool: include numbers in generated code or not.
+    :param include_uppercase: bool: include uppercased letters in generated code or not.
+    :return: a custom generated string that could be used for anything.
+    :rtype: str
+    """
+    letters_used = ascii_lowercase
+    if include_numbers:
+        letters_used += digits
+    if include_uppercase:
+        letters_used += ascii_uppercase
+    generated = "".join([random.choice(letters_used) for _ in range(length)])  # nosec
+    return generated
+
+
 def get_current_time() -> str:
     """
     Return current time in `DD Month YYYY HH:MM TZ (+X)` format
@@ -236,6 +267,46 @@ async def send_timed_msg(ctx: Any, message: str, delay: Union[int, float] = 5):
     msg = await ctx.send(message)
     await asyncio.sleep(delay)
     await msg.delete()
+
+
+async def confirmation_dialog(bot, ctx, message: str) -> bool:
+    """Send a confirmation dialog.
+
+    :param bot: the bot itself
+    :type bot: naoTimesBot
+    :param ctx: context manager of the channel
+    :type ctx: Any
+    :param message: message to verify
+    :type message: str
+    :return: a true or false using the reaction picked.
+    """
+    dis_msg = await ctx.send(message)
+    to_react = ["✅", "❌"]
+    for react in to_react:
+        await dis_msg.add_reaction(react)
+
+    def check_react(reaction, user):
+        if reaction.message.id != dis_msg.id:
+            return False
+        if user != ctx.message.author:
+            return False
+        if str(reaction.emoji) not in to_react:
+            return False
+        return True
+
+    dialog_tick = True
+    while True:
+        res, user = await bot.wait_for("reaction_add", check=check_react)
+        if user != ctx.message.author:
+            pass
+        elif "✅" in str(res.emoji):
+            await dis_msg.delete()
+            break
+        elif "❌" in str(res.emoji):
+            dialog_tick = False
+            await dis_msg.delete()
+            break
+    return dialog_tick
 
 
 class HelpGenerator:
