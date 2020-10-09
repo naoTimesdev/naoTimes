@@ -696,10 +696,35 @@ class AutoMod(commands.Cog):
         }
         await self.srvlog_add_to_queue(dict_data, "msg")
 
+    # FIXME: Implement better handling for deletion by bot.
     @commands.Cog.listener("on_message_delete")
     async def log_server_message_delete(self, message: discord.Message):
+        if True:
+            # Ignore for now, until I find better solution to supress message deletion by bot
+            # Anyone please help me.
+            return
         is_gucci, server_data, srvlog_settings = self.check_if_gucci(message, "delete_msg")
         if not is_gucci:
+            return
+        deleted_by_bot = True
+        try:
+            audits: List[discord.AuditLogEntry] = await server_data.audit_logs(
+                limit=100, action=discord.AuditLogAction.message_delete
+            ).flatten()
+            for audit in audits:
+                try:
+                    if audit.user.bot:
+                        deleted_by_bot = True
+                        break
+                    else:
+                        deleted_by_bot = False
+                except discord.NotFound:
+                    continue
+                except AttributeError:
+                    continue
+        except discord.Forbidden:
+            deleted_by_bot = False
+        if deleted_by_bot:
             return
         user_data: discord.Member = message.author
         channel_data: discord.TextChannel = message.channel
@@ -870,11 +895,13 @@ class AutoMod(commands.Cog):
                         if self.bot.get_channel(new_channel_id) is not None:
                             metadata_srvlog["id"] = new_channel_id
                             await send_timed_msg(ctx, f"Channel berhasil diubah ke: <#{new_channel_id}>", 2)
+                            await channel_input.delete()
                             break
                         else:
                             await send_timed_msg(ctx, "Tidak dapat menemukan channel tersebut.", 2)
                     else:
                         await send_timed_msg(ctx, "Channel yang diberikan tidak valid.", 2)
+                await channel_input.delete()
             await channel_msg.delete()
         else:
             metadata_srvlog = await self.read_local_server_log(server_id)
@@ -885,6 +912,8 @@ class AutoMod(commands.Cog):
             "3️⃣",
             "4️⃣",
             "5️⃣",
+            "🗑️",
+            "📜",
             "✅",
             "❌",
         ]
@@ -917,7 +946,9 @@ class AutoMod(commands.Cog):
             embed.add_field(
                 name="5️⃣ Roles", value="Aktif" if datasete["role_update"] else "Tidak aktif", inline=False,
             )
-            embed.add_field(name="✅ Simpan", value="Simpan perubahan.", inline=True)
+            embed.add_field(name="🗑️ Matikan", value="Matikan Pencatatan Peladen", inline=False)
+            embed.add_field(name="📜 Aktifkan Semua", value="Aktifkan Semua Pencatatan Peladen", inline=True)
+            embed.add_field(name="✅ Simpan", value="Simpan perubahan.", inline=False)
             embed.add_field(name="❌ Batalkan", value="Batalkan perubahan.", inline=True)
             embed.set_author(name=server_data.name, icon_url=str(server_data.icon_url))
             embed.set_thumbnail(url=str(server_data.icon_url))
@@ -925,6 +956,7 @@ class AutoMod(commands.Cog):
 
         first_run = True
         cancelled = False
+        deletion_from_data = False
         emb_msg: discord.Message
         self.logger.info(f"{server_id}: starting data modifying...")
         while True:
@@ -957,6 +989,20 @@ class AutoMod(commands.Cog):
                 await emb_msg.clear_reactions()
                 cancelled = True
                 break
+            elif "🗑️" in str(res.emoji):
+                await emb_msg.clear_reactions()
+                deletion_from_data = True
+                break
+            elif "📜" in str(res.emoji):
+                await emb_msg.clear_reactions()
+                metadata_srvlog["edit_msg"] = True
+                metadata_srvlog["delete_msg"] = True
+                metadata_srvlog["member_join"] = True
+                metadata_srvlog["member_leave"] = True
+                metadata_srvlog["member_ban"] = True
+                metadata_srvlog["member_unban"] = True
+                metadata_srvlog["nick_update"] = True
+                metadata_srvlog["role_update"] = True
             else:
                 index_n = number_reactions.index(str(res.emoji))
                 if index_n == 0:
@@ -976,6 +1022,13 @@ class AutoMod(commands.Cog):
 
         if cancelled:
             return await ctx.send("Dibatalkan.")
+        if deletion_from_data:
+            self.logger.warning(f"{server_id}: removing from server logging.")
+            if os.path.isfile(srv_log_path):
+                os.remove(srv_log_path)
+            if server_id in self.serverlog_map:
+                del self.serverlog_map[server_id]
+            return await ctx.send("Berhasil menghapus peladen ini dari fitur pencatatan.")
 
         await emb_msg.delete()
 
@@ -983,3 +1036,14 @@ class AutoMod(commands.Cog):
         self.serverlog_map[server_id] = metadata_srvlog
         await self.save_local_server_log(server_id)
         await ctx.send("Pencatatan peladen berhasil diatur.")
+
+        bot_data: discord.Member = server_data.get_member(self.bot.user.id)
+        bot_perms: discord.Permissions = bot_data.guild_permissions
+        if not bot_perms.view_audit_log and metadata_srvlog["delete_msg"]:
+            await ctx.send(
+                "Bot tidak ada akses `View Audit Log` sementara fitur pencatatan pesan diaktifkan.\n"
+                "Mohon berikan bot akses `View Audit Log` agar fitur dapat bekerja dengan normal."
+            )
+        # FIXME: Delete after reimplemented on_message_delete
+        if metadata_srvlog["delete_msg"]:
+            await ctx.send("Pencatatan pesan yang dihapus dinon-aktifkan dari Owner untuk sementara.")
