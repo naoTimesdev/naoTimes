@@ -197,7 +197,7 @@ class FansubDBBridge:
         return project_lists, "Success"
 
     async def add_new_project(
-        self, anime_id: Union[int, str], fansub_id: Union[int, str], status: str = "Tentatif"
+        self, anime_id: Union[int, str], fansub_id: Union[int, str, list], status: str = "Tentatif"
     ) -> Tuple[bool, Union[int, str]]:
         if isinstance(anime_id, str):
             try:
@@ -209,13 +209,26 @@ class FansubDBBridge:
                 fansub_id = int(fansub_id)
             except ValueError:
                 return False, "Fansub ID is not a valid number."
+        if isinstance(fansub_id, list):
+            try:
+                new_fs_id = []
+                for fs_id in fansub_id:
+                    if isinstance(fansub_id, str):
+                        try:
+                            fs_id = int(fs_id)
+                        except ValueError:
+                            return False, "Fansub ID is not a valid number."
+                    new_fs_id.append(fs_id)
+                fansub_id = new_fs_id
+            except ValueError:
+                return False, "Fansub ID is not a valid number."
         if status not in ["Tentatif", "Jalan", "Tamat", "Drop"]:
             return False, "Invalid status."
         await self.check_expires()
         headers = {"Authorization": f"Bearer {self._token}"}
         json_body = {
             "anime_id": anime_id,
-            "fansub": [fansub_id],
+            "fansub": [fansub_id] if not isinstance(fansub_id, list) else fansub_id,
             "flag": None,
             "type": "TV",
             "subtitle": "Softsub",
@@ -223,12 +236,13 @@ class FansubDBBridge:
             "url": None,
             "misc": None,
         }
+        fisrt_fs_id = fansub_id if not isinstance(fansub_id, list) else fansub_id[0]
         results: dict = await self.request_api("post", "projek/list", json=json_body, headers=headers)
         if results["type"] == "success":
             retry_count = 0
             await asyncio.sleep(0.25)
             while retry_count < 5:
-                fansub_project, _ = await self.fetch_fansub_projects(fansub_id)
+                fansub_project, _ = await self.fetch_fansub_projects(fisrt_fs_id)
                 project_id = await self.find_project_id(anime_id, fansub_project)
                 if project_id != 0:
                     return True, project_id
