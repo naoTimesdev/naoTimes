@@ -1593,7 +1593,7 @@ class Helper(commands.Cog):
         invi = discord.Embed(
             title="Ingin invite Bot ini? Klik link di bawah ini!",
             description="[Invite](https://ihateani.me/andfansub)"
-            "\n[Support Server](https://discord.gg/UNXukwt)"
+            f"\n[Support Server](https://discord.gg/7KyYecn) atau ketik `{self.bot.prefix}tiket` di DM Bot."
             "\n[Dukung Dev-nya](https://trakteer.id/noaione)",
             color=0x1,
         )
@@ -1612,6 +1612,18 @@ class Helper(commands.Cog):
         )
         donatur.set_thumbnail(url="https://p.n4o.xyz/i/naotimes_ava.png")
         await ctx.send(embed=donatur)
+
+    @commands.command()
+    async def support(self, ctx):
+        invi = discord.Embed(
+            title="Support!",
+            description="Silakan Join [Support Server](https://discord.gg/7KyYecn)"
+            "\ndan kunjungi #bantuan."
+            f"\nATAU ketik `{self.bot.prefix}tiket` di DM Bot.",
+            color=0x1,
+        )
+        invi.set_thumbnail(url="https://p.n4o.xyz/i/naotimes_ava.png")
+        await ctx.send(embed=invi)
 
     @commands.command()
     @commands.guild_only()
