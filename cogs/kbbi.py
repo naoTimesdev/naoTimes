@@ -165,8 +165,7 @@ class KBBICog(commands.Cog):
             do_reauth = True
         if not do_reauth:
             self.logger.info("checking directly to KBBI...")
-            kbbi_mod = KBBI("periksa", self.cookie)
-            do_reauth = await kbbi_mod.cek_auth()
+            do_reauth = await self.kbbi_conn.cek_auth()
             self.logger.info(f"test results if it needs reauth: {do_reauth}")
         if not do_reauth:
             self.logger.warn("cookie is not expired yet, skipping...")
