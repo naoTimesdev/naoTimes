@@ -30,6 +30,9 @@ class ShowtimesFansubDB(commands.Cog, ShowtimesBase):
 
     @commands.group(name="fsdb")
     async def fsdb_cmd(self, ctx):
+        if self.ntdb is None:
+            self.logger.info("owner hasn't enabled naoTimesDB yet.")
+            return
         if self.fsdb_conn is None:
             return await ctx.send("FSDB Tidak di initialisasi oleh owner bot")
         if ctx.invoked_subcommand is None:
@@ -56,6 +59,9 @@ class ShowtimesFansubDB(commands.Cog, ShowtimesBase):
 
     @fsdb_cmd.command(name="integrasi", aliases=["integrate"])
     async def fsdb_integrasi(self, ctx):
+        if self.ntdb is None:
+            self.logger.info("owner hasn't enabled naoTimesDB yet.")
+            return
         server_message = str(ctx.message.guild.id)
         self.logger.info(f"requested at {server_message}")
         srv_data = await self.showqueue.fetch_database(server_message)
@@ -311,6 +317,9 @@ class ShowtimesFansubDB(commands.Cog, ShowtimesBase):
 
     @fsdb_cmd.command(name="bind", aliases=["hubungkan"])
     async def fsdb_binding(self, ctx, *, judul=None):
+        if self.ntdb is None:
+            self.logger.info("owner hasn't enabled naoTimesDB yet.")
+            return
         server_message = str(ctx.message.guild.id)
         self.logger.info(f"requested at {server_message}")
         srv_data = await self.showqueue.fetch_database(server_message)
@@ -418,6 +427,9 @@ class ShowtimesFansubDB(commands.Cog, ShowtimesBase):
 
     @fsdb_cmd.command(name="fansub")
     async def fsdb_fansub(self, ctx, *, pencarian):
+        if self.ntdb is None:
+            self.logger.info("owner hasn't enabled naoTimesDB yet.")
+            return
         self.logger.info(f"Searching for: {pencarian}")
         results = await self.fsdb_conn.fetch_fansubs(pencarian)
         results = results[:10]

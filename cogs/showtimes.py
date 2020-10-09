@@ -28,6 +28,10 @@ ShowTimesCommands = [
 
 
 def setup(bot: naoTimesBot):
+    if bot.ntdb is None:
+        showlogger.warning("Database are not loaded, only loading Owner subcogs...")
+        bot.add_cog(ShowtimesOwner(bot))
+        return
     for ShowTC in ShowTimesCommands:
         try:
             ShowTCLoad = ShowTC(bot)
@@ -35,10 +39,14 @@ def setup(bot: naoTimesBot):
             bot.add_cog(ShowTCLoad)
         except Exception as ex:
             showlogger.error(f"\tFailed to load {str(ShowTCLoad)} subcogs.")
-            showlogger.error(f"\tTraceback -> {ex}")
+            bot.echo_error(ex)
 
 
 def teardown(bot: naoTimesBot):
+    if bot.ntdb is None:
+        showlogger.warning("Database are not loaded, only loading Owner subcogs...")
+        bot.remove_cog(ShowtimesOwner(bot).qualified_name)
+        return
     for ShowTC in ShowTimesCommands:
         try:
             ShowTCLoad = ShowTC(bot)
@@ -46,4 +54,4 @@ def teardown(bot: naoTimesBot):
             bot.remove_cog(ShowTCLoad.qualified_name)
         except Exception as ex:
             showlogger.error(f"\tFailed to load {str(ShowTCLoad)} subcogs.")
-            showlogger.error(f"\tTraceback -> {ex}")
+            bot.echo_error(ex)

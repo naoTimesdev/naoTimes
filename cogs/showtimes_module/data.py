@@ -42,6 +42,9 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
     @commands.command()
     @commands.guild_only()
     async def ubahdata(self, ctx, *, judul):
+        if self.ntdb is None:
+            self.logger.info("owner hasn't enabled naoTimesDB yet.")
+            return
         server_message = str(ctx.message.guild.id)
         self.logger.info(f"requested at {server_message}")
         srv_data = await self.showqueue.fetch_database(server_message)
@@ -678,6 +681,9 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
         Menggunakan embed agar terlihat lebih enak dibanding sebelumnya
         Merupakan versi 2
         """
+        if self.ntdb is None:
+            self.logger.info("owner hasn't enabled naoTimesDB yet.")
+            return
         server_message = str(ctx.message.guild.id)
         self.logger.info(f"requested at {server_message}")
         srv_data = await self.showqueue.fetch_database(server_message)

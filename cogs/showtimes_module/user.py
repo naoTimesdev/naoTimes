@@ -39,6 +39,9 @@ class ShowtimesUser(commands.Cog, ShowtimesBase):
         ---
         judul: Judul anime yang terdaftar
         """
+        if self.ntdb is None:
+            self.logger.info("owner hasn't enabled naoTimesDB yet.")
+            return
         server_message = str(ctx.message.guild.id)
         self.logger.info(f"requested at {server_message}")
         srv_data = await self.showqueue.fetch_database(server_message)
@@ -104,6 +107,9 @@ class ShowtimesUser(commands.Cog, ShowtimesBase):
         """
         Melihat jadwal anime musiman yang di ambil.
         """
+        if self.ntdb is None:
+            self.logger.info("owner hasn't enabled naoTimesDB yet.")
+            return
         server_message = str(ctx.message.guild.id)
         self.logger.info(f"requested at {server_message}")
         srv_data = await self.showqueue.fetch_database(server_message)
@@ -199,6 +205,9 @@ class ShowtimesUser(commands.Cog, ShowtimesBase):
         ---
         judul: Judul anime yang terdaftar
         """
+        if self.ntdb is None:
+            self.logger.info("owner hasn't enabled naoTimesDB yet.")
+            return
         server_message = str(ctx.message.guild.id)
         self.logger.info(f"requested at {server_message}")
         srv_data = await self.showqueue.fetch_database(server_message)

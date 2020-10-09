@@ -53,6 +53,9 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
     @commands.command(aliases=["release"])
     @commands.guild_only()
     async def rilis(self, ctx, *, data):
+        if self.ntdb is None:
+            self.logger.info("owner hasn't enabled naoTimesDB yet.")
+            return
         data = data.split()
 
         server_message = str(ctx.message.guild.id)
@@ -350,6 +353,9 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
         posisi: tl, tlc, enc, ed, ts, atau qc
         judul: Judul anime yang terdaftar
         """
+        if self.ntdb is None:
+            self.logger.info("owner hasn't enabled naoTimesDB yet.")
+            return
         server_message = str(ctx.message.guild.id)
         self.logger.info(f"requested at {server_message}")
         posisi, posisi_asli = await self.get_roles(posisi)
@@ -497,6 +503,9 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
     @commands.command(aliases=["gakjadirilis", "revert"])
     @commands.guild_only()
     async def batalrilis(self, ctx, *, judul=None):
+        if self.ntdb is None:
+            self.logger.info("owner hasn't enabled naoTimesDB yet.")
+            return
         server_message = str(ctx.message.guild.id)
         self.logger.info(f"requested at {server_message}")
         srv_data = await self.showqueue.fetch_database(server_message)
@@ -643,6 +652,9 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
         posisi: tl, tlc, enc, ed, ts, atau qc
         judul: Judul anime yang terdaftar
         """
+        if self.ntdb is None:
+            self.logger.info("owner hasn't enabled naoTimesDB yet.")
+            return
         server_message = str(ctx.message.guild.id)
         self.logger.info(f"requested at {server_message}")
         posisi, posisi_asli = await self.get_roles(posisi)
@@ -793,6 +805,9 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
         Mark something as done or undone for
         other episode without announcing it
         """
+        if self.ntdb is None:
+            self.logger.info("owner hasn't enabled naoTimesDB yet.")
+            return
         server_message = str(ctx.message.guild.id)
         self.logger.info(f"requested at {server_message}")
         posisi, posisi_asli = await self.get_roles(posisi)

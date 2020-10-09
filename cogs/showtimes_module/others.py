@@ -4,14 +4,12 @@ import asyncio
 import logging
 from copy import deepcopy
 from functools import partial
-from random import choice
-from string import ascii_lowercase, digits
 
 import discord
 from discord.ext import commands
 from nthelper.bot import naoTimesBot
 from nthelper.showtimes_helper import ShowtimesQueueData
-from nthelper.utils import HelpGenerator
+from nthelper.utils import HelpGenerator, generate_custom_code
 
 from .base import ShowtimesBase
 
@@ -36,6 +34,9 @@ class ShowtimesAlias(commands.Cog, ShowtimesBase):
         """
         Initiate alias creation for certain anime
         """
+        if self.ntdb is None:
+            self.logger.info("owner hasn't enabled naoTimesDB yet.")
+            return
         if not ctx.invoked_subcommand:
             server_message = str(ctx.message.guild.id)
             self.logger.info(f"requested at {server_message}")
@@ -504,6 +505,9 @@ class ShowtimesKolaborasi(commands.Cog, ShowtimesBase):
     @commands.group(aliases=["joint", "join", "koleb"])
     @commands.guild_only()
     async def kolaborasi(self, ctx):
+        if self.ntdb is None:
+            self.logger.info("owner hasn't enabled naoTimesDB yet.")
+            return
         if not ctx.invoked_subcommand:
             helpcmd = HelpGenerator(self.bot, "kolaborasi", f"Versi {self.bot.semver}")
             await helpcmd.generate_field(
@@ -580,7 +584,7 @@ class ShowtimesKolaborasi(commands.Cog, ShowtimesBase):
                 self.logger.info(f"{matches[0]}: already on collab.")
                 return await ctx.send("Server tersebut sudah diajak kolaborasi.")
 
-        randomize_confirm = "".join(choice(ascii_lowercase + digits) for i in range(16))  # nosec
+        randomize_confirm = generate_custom_code(16)  # nosec
 
         cancel_toggled = False
         first_time = True

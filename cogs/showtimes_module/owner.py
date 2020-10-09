@@ -85,6 +85,9 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
 
     @ntadmin.command()
     async def listserver(self, ctx):  # noqa: D102
+        if self.ntdb is None:
+            self.logger.info("owner hasn't enabled naoTimesDB yet.")
+            return
         self.logger.info("Requested list server by bot owner.")
         srv_dumps = await self.srv_lists()
         if not srv_dumps:
@@ -110,6 +113,9 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
 
     @ntadmin.command()
     async def listresync(self, ctx):  # noqa: D102
+        if self.ntdb is None:
+            self.logger.info("owner hasn't enabled naoTimesDB yet.")
+            return
         self.logger.info("Requested resync list by bot owner.")
         resynclist = self.bot.showtimes_resync
         if not resynclist:
@@ -122,6 +128,9 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
 
     @ntadmin.command()
     async def fetchdb(self, ctx):  # noqa: D102
+        if self.ntdb is None:
+            self.logger.info("owner hasn't enabled naoTimesDB yet.")
+            return
         self.logger.info("Fetching database from local db.")
         srv_lists = await self.srv_lists()
         if not srv_lists:
@@ -153,6 +162,9 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
 
     @ntadmin.command()
     async def forcepull(self, ctx):  # noqa: D102
+        if self.ntdb is None:
+            self.logger.info("owner hasn't enabled naoTimesDB yet.")
+            return
         self.logger.info("Forcing local database with remote database.")
         channel = ctx.message.channel
 
@@ -168,6 +180,9 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
     @ntadmin.command()
     @commands.guild_only()
     async def patchdb(self, ctx):  # noqa: D102
+        if self.ntdb is None:
+            self.logger.info("owner hasn't enabled naoTimesDB yet.")
+            return
         """This will patch entire database."""
         self.logger.info("Initiating database by bot owner")
 
@@ -242,6 +257,9 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
 
     @ntadmin.command()
     async def tambah(self, ctx, srv_id, adm_id, prog_chan=None):  # noqa: D102
+        if self.ntdb is None:
+            self.logger.info("owner hasn't enabled naoTimesDB yet.")
+            return
         self.logger.info("Initiated new server addition to database...")
         if srv_id is None:
             return await ctx.send("Tidak ada input server dari user")
@@ -287,6 +305,9 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
 
     @ntadmin.command()
     async def hapus(self, ctx, srv_id):  # noqa: D102
+        if self.ntdb is None:
+            self.logger.info("owner hasn't enabled naoTimesDB yet.")
+            return
         self.logger.info("Initiated server removal from database...")
         if srv_id is None:
             return await ctx.send("Tidak ada input server dari user")
@@ -323,6 +344,9 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
 
     @ntadmin.command()
     async def tambahadmin(self, ctx, srv_id: str, adm_id: str):  # noqa: D102
+        if self.ntdb is None:
+            self.logger.info("owner hasn't enabled naoTimesDB yet.")
+            return
         self.logger.info(f"{srv_id}: Adding new admin ({adm_id})")
         if srv_id is None:
             return await ctx.send("Tidak ada input server dari user")
@@ -352,6 +376,9 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
 
     @ntadmin.command()
     async def hapusadmin(self, ctx, srv_id: str, adm_id: str):  # noqa: D102
+        if self.ntdb is None:
+            self.logger.info("owner hasn't enabled naoTimesDB yet.")
+            return
         self.logger.info(f"{srv_id}: Removing admin ({adm_id})")
         if srv_id is None:
             return await ctx.send("Tidak ada input server dari user")
@@ -388,8 +415,22 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
                 self.logger.error(f"{srv_id}: Failed to update top admin database, reason: {msg}")
                 await ctx.send("Tetapi gagal menghapus admin dari top_admin.")
 
+    @ntadmin.command(name="initialisasi", aliases=["init", "initialize"])
+    async def ntadmin_initialisasi(self, ctx):
+        if self.ntdb is None:
+            self.logger.info("owner hasn't enabled naoTimesDB yet.")
+            return await ctx.send(
+                "naoTimesDB are not connected, please restart bot or use reloadconf to try and reconnect it."
+            )
+        server_lists = await self.srv_lists()
+        if server_lists:
+            return await ctx.send("naoTimes Showtimes already initialized.")
+
     @ntadmin.command()
     async def modify_db(self, ctx):  # noqa: D102
+        if self.ntdb is None:
+            self.logger.info("owner hasn't enabled naoTimesDB yet.")
+            return
         self.logger.info("Batch modifying db, this time: mal_id addition...")
 
         async def _internal_fetch(srv_id):
