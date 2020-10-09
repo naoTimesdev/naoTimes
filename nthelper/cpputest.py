@@ -1,13 +1,13 @@
 import asyncio
 import logging
 import os
-import random
 import tempfile
 import time
-from string import ascii_lowercase
 
 import aiofiles
 from aiofiles.os import remove
+
+from .utils import generate_custom_code
 
 
 class CPPTestError(Exception):
@@ -41,9 +41,7 @@ class CPPUnitTester:
     def __init__(self, code, input_data=[]):
         self._code = code
         self._in_data = input_data
-        self._out_name = os.path.join(
-            self.TEMP_FOLDER, "cu_" + "".join([random.choice(ascii_lowercase) for _ in range(8)])
-        )
+        self._out_name = os.path.join(self.TEMP_FOLDER, "cu_" + generate_custom_code())  # nosec
 
         self._compiled = False
         self.logger = logging.getLogger("cpputest.CPPUnitTester")
