@@ -5,15 +5,14 @@ from typing import Dict, Optional, Any, Tuple, Union
 import aiohttp
 import discord
 from discord.ext import commands
+from nthelper.bot import naoTimesBot
 
 wlogger = logging.getLogger("cogs.cuaca")
 
 
-GEOCODE_API = "926ba9fb92024f5a81f2486ff822b54a"
-OWM_API_KEY = "766e45d52182581e730d6afd1334ea5b"
-
-
-async def fetch_geolat(location: str) -> Tuple[Optional[float], Optional[float], Optional[str]]:
+async def fetch_geolat(
+    location: str, GEOCODE_API: str
+) -> Tuple[Optional[float], Optional[float], Optional[str]]:
     API_ENDPOINT = "https://api.opencagedata.com/geocode/v1/json"
     wlogger.info(f"Finding: {location}")
     param = {
@@ -96,9 +95,9 @@ def get_wind_degrees(wind_deg: Union[float, int]) -> str:
     return res
 
 
-async def fetch_owm(location: str) -> Union[dict, str]:
+async def fetch_owm(location: str, bot_conf: dict) -> Union[dict, str]:
     wlogger.info("Fetching GeoCode...")
-    geo_lat, geo_lng, loc_name = await fetch_geolat(location)
+    geo_lat, geo_lng, loc_name = await fetch_geolat(location, bot_conf["weather_data"]["opencageapi"])
     if geo_lat is None:
         return {}
 
@@ -223,7 +222,7 @@ async def fetch_owm(location: str) -> Union[dict, str]:
         "lat": str(geo_lat),
         "lon": str(geo_lng),
         "exclude": "minutely,hourly",
-        "appid": OWM_API_KEY,
+        "appid": bot_conf["weather_data"]["openweatherapi"],
         "units": "metric",
         "lang": "id",
     }
@@ -355,14 +354,26 @@ async def fetch_owm(location: str) -> Union[dict, str]:
 
 
 class CuacaDunia(commands.Cog):
-    def __init__(self, bot):
-        self.bot: commands.Bot = bot
+    def __init__(self, bot: naoTimesBot):
+        self.bot = bot
         self.logger = logging.getLogger("cogs.cuaca.CuacaDunia")
 
     @commands.command(aliases=["c", "w", "weather"])
     async def cuaca(self, ctx, *, lokasi: str):
         self.logger.info("Requested !cuaca command...")
-        hasil_cuaca = await fetch_owm(lokasi)
+        if "weather_data" not in self.bot.botconf:
+            return await ctx.send(
+                "Owner Bot tidak memberikan API Key untuk command cuaca, mohon kontak owner."
+            )
+        if "openweatherapi" not in self.bot.botconf and self.bot.botconf["openweatherapi"] == "":
+            return await ctx.send(
+                "Owner Bot tidak memberikan API Key OpenWeatherMap untuk command cuaca, mohon kontak owner."
+            )
+        if "opencageapi" not in self.bot.botconf and self.bot.botconf["opencageapi"] == "":
+            return await ctx.send(
+                "Owner Bot tidak memberikan API Key OpenCage untuk command cuaca, mohon kontak owner."
+            )
+        hasil_cuaca = await fetch_owm(lokasi, self.bot.botconf)
         if isinstance(hasil_cuaca, str):
             self.logger.error(hasil_cuaca)
             return await ctx.send(hasil_cuaca)
@@ -445,6 +456,6 @@ class CuacaDunia(commands.Cog):
         await ctx.send(content=f"Cuaca untuk **{loc_name}**", embed=embed)
 
 
-def setup(bot: commands.Bot):
+def setup(bot: naoTimesBot):
     wlogger.debug("adding cogs...")
     bot.add_cog(CuacaDunia(bot))

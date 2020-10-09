@@ -21,5 +21,9 @@
     "fansubdb": {
         "username": "",
         "password": ""
-    }
+    },
+	"weather_data": {
+		"openweatherapi": "",
+		"opencageapi": ""
+	}
 }
