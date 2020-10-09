@@ -51,3 +51,4 @@ from .cpputest import (
 from .bot import naoTimesBot
 from .anibucket import AnilistBucket
 from .votebackend import VoteWatcher
+from .vndbsocket import VNDBSockIOManager
