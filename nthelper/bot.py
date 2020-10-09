@@ -1,7 +1,10 @@
 import logging
+import os
+import platform
 import traceback
 from typing import Dict, List, Union
 
+import aiohttp
 import discord
 from discord.ext import commands
 
@@ -11,6 +14,51 @@ from .kbbiasync import KBBI
 from .showtimes_helper import ShowtimesQueue, naoTimesDB
 from .utils import __version__
 from .vndbsocket import VNDBSockIOManager
+
+discord_semver = tuple([int(ver) for ver in discord.__version__.split(".")])
+
+
+class HostingData:
+    def __init__(self, ip, location, timezone):
+        self._ip: str = ip
+        self._location: str = location
+        self._timezone: str = timezone
+
+    def __get_masked_ip(self):
+        ip_data = self._ip
+        if ":" in ip_data:
+            ipv6_data = ip_data.split(":")
+            fv6, lv6 = ipv6_data[0], ipv6_data[-1]
+            masked_ipv6 = ["*" * len(ip) for ip in ipv6_data[1:-1]]
+            ip_data = f"{fv6}:" + ":".join(masked_ipv6) + f":{lv6}"
+        elif "." in ip_data:
+            ipv4_data = ip_data.split(".")
+            fv4, lv4 = ipv4_data[0], ipv4_data[-1]
+            masked_ipv4 = ["*" * len(ip) for ip in ipv4_data[1:-1]]
+            ip_data = f"{fv4}." + ".".join(masked_ipv4) + f".{lv4}"
+        return ip_data
+
+    @property
+    def ip(self):
+        """Return the Hosting Data IP Address."""
+        return self._ip
+
+    @property
+    def masked_ip(self):
+        """Return the Hosting Data Masked (192.***.***.1) IP Address."""
+        return self.__get_masked_ip()
+
+    @property
+    def location(self):
+        """Return the Hosting Data Location (Region, Country)."""
+        return self._location
+
+    @property
+    def timezone(self):
+        """Return the Hosting Data Timezone"""
+        return self._timezone
+
+    tz = timezone
 
 
 class naoTimesBot(commands.Bot):
@@ -26,7 +74,7 @@ class naoTimesBot(commands.Bot):
         self.automod_folder: str
 
         self.semver: str = __version__
-        self.botconf: Dict[str, Union[str, Dict[str, Union[str, int, bool]]]]
+        self.botconf: Dict[str, Union[str, int, bool, Dict[str, Union[str, int, bool]]]]
         self.prefix: str
 
         self.jsdb_streams: dict
@@ -34,6 +82,7 @@ class naoTimesBot(commands.Bot):
         self.jsdb_crypto: dict
 
         self.fcwd: str
+        self.error_logger: int = None
 
         self.fsdb: FansubDBBridge = None
         self.showqueue: ShowtimesQueue
@@ -51,6 +100,11 @@ class naoTimesBot(commands.Bot):
         self.is_team_bot: bool = False
         self.team_name: str
         self.team_members: List[discord.TeamMember] = []
+
+        self._ip_hostname = ""
+        self._host_country = ""
+        self._host_region = ""
+        self._host_tz = ""
 
     def echo_error(self, error):
         tb = traceback.format_exception(type(error), error, error.__traceback__)
@@ -80,6 +134,29 @@ class naoTimesBot(commands.Bot):
             return user_data
         return member_data
 
+    async def send_error_log(self, message=None, embed=None):
+        """|coro|
+
+        Send an error log to bot owner or the set channel.
+
+        Parameters
+        ----------
+        message : str, optional
+            The error message to send, by default None
+        embed : discord.Embed, optional
+            A formatted Discord Embed to send, by default None
+        """
+        content_to_send = {}
+        if message is not None:
+            content_to_send["content"] = message
+        if embed is not None:
+            content_to_send["embed"] = embed
+        if self.error_logger is not None:
+            channel_data = self.get_channel(self.error_logger)
+            await channel_data.send(**content_to_send)
+        else:
+            await self.owner.send(**content_to_send)
+
     async def detect_teams_bot(self):
         """|coro|
 
@@ -102,3 +179,52 @@ class naoTimesBot(commands.Bot):
                 if member.id == main_owner.id:
                     continue
                 self.team_members.append(self.teams_to_user(member))
+
+    async def populate_data(self):
+        """|coro|
+
+        Populate the bot attributes with data like bot IP/Country
+        and other stuff
+        """
+        self.logger.info("getting bot hardware info...")
+        platform_info = platform.uname()
+        self._host_os = platform_info.system
+        self._host_os_ver = f"{platform_info.release}"
+        self._host_name = platform_info.node
+        self._host_arch = platform_info.machine
+
+        self._host_proc = platform_info.processor
+        self._host_proc_threads = os.cpu_count()
+        self._host_pid = os.getpid()
+
+        py_ver = platform.python_version()
+        py_impl = platform.python_implementation()
+        py_compiler = platform.python_compiler()
+        self._host_pyver = f"{py_ver} ({py_impl}) [{py_compiler}]"
+        self._host_dpyver = discord.__version__
+
+        self.logger.info("getting bot connection info...")
+        async with aiohttp.ClientSession() as sesi:
+            async with sesi.get("https://ifconfig.co/json") as resp:
+                conn_data = await resp.json()
+
+        country = conn_data["country"]
+        region = conn_data["region_name"]
+        timezone = conn_data["time_zone"]
+        ip_hostname = conn_data["ip"]
+
+        self._ip_hostname = ip_hostname
+        self._host_country = country
+        self._host_region = region
+        self._host_tz = timezone
+
+    @property
+    def get_hostdata(self) -> HostingData:
+        """Return the bot host data.
+
+        Returns
+        -------
+        Host data: `dict`:
+            A collection of dictionary that contains ip/country/region/tz.
+        """
+        return HostingData(self._ip_hostname, f"{self._host_region}, {self._host_country}", self._host_tz)
