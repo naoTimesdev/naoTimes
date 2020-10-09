@@ -56,12 +56,11 @@ logger.addHandler(console)
 
 # Handle the new Intents.
 discord_ver_tuple = tuple([int(ver) for ver in discord.__version__.split(".")])
-discord_intents: Optional[discord.Intents] = None
+discord_intents = None
 if discord_ver_tuple >= (1, 5, 0):
     logger.info("Detected discord.py version 1.5.0, using the new Intents system...")
     # Enable all except Presences.
     discord_intents = discord.Intents.all()
-    discord_intents.presences = False
 
 parser = argparse.ArgumentParser("naotimesbot")
 parser.add_argument("-dcog", "--disable-cogs", default=[], action="append", dest="cogs_skip")
@@ -173,7 +172,7 @@ async def initialize_vndb(config_data: dict, loop):
     return True, vndb_conn
 
 
-async def init_bot(loop):
+async def init_bot(loop) -> naoTimesBot:
     """
     Start loading all the bot process
     Will start:
@@ -201,15 +200,18 @@ async def init_bot(loop):
     use_vndb, vndb_conn = await initialize_vndb(config, loop)
 
     cwd = str(pathlib.Path(__file__).parent.absolute())
-    temp_folder = os.path.join(cwd, "automod")
-    if not os.path.isdir(temp_folder):
-        os.makedirs(temp_folder)
+    automod_folder = os.path.join(cwd, "automod")
+    if not os.path.isdir(automod_folder):
+        os.makedirs(automod_folder)
     fsrss_folder = os.path.join(cwd, "fansubrss_data")
     if not os.path.isdir(fsrss_folder):
         os.makedirs(fsrss_folder)
     showtimes_folder = os.path.join(cwd, "showtimes_folder")
     if not os.path.isdir(showtimes_folder):
         os.makedirs(showtimes_folder)
+    premium_code_folder = os.path.join(cwd, "premium_code")
+    if not os.path.isdir(premium_code_folder):
+        os.makedirs(premium_code_folder)
 
     default_prefix = config["default_prefix"]
 
@@ -230,7 +232,7 @@ async def init_bot(loop):
         # if not hasattr(bot, "logger"):
         #     bot.logger = logger
         bot.botconf = config
-        bot.automod_folder = temp_folder
+        bot.automod_folder = automod_folder
         bot.semver = __version__
         bot.logger.info("Binding JSON dataset...")
         bot.jsdb_streams = streams_list
@@ -253,16 +255,17 @@ async def init_bot(loop):
     except Exception as exc:
         bot.logger.error("Failed to load Discord.py")
         announce_error(exc)
-    return bot, config
+        return None  # type: ignore
+    return bot
 
 
 # Initiate everything
 logger.info(f"Initiating bot v{__version__}...")
 logger.info("Setting up loop")
 async_loop = asyncio.get_event_loop()
-res = async_loop.run_until_complete(init_bot(async_loop))
-bot: naoTimesBot = res[0]
-bot_config: dict = res[1]
+bot: naoTimesBot = async_loop.run_until_complete(init_bot(async_loop))
+if bot is None:
+    exit(1)
 presence_status = [
     "Mengamati rilisan fansub | !help",
     "Membantu Fansub | !help",
@@ -312,6 +315,7 @@ async def on_ready():
     await bot.change_presence(activity=activity)
     bot.logger.info("Checking bot team status...")
     await bot.detect_teams_bot()
+    await bot.populate_data()
     bot.logger.info("---------------------------------------------------------------")
     prefix = bot.command_prefix
     if callable(prefix):
@@ -350,8 +354,11 @@ async def on_ready():
             bot.logger.error("IP:Port: {}:{}".format(mongos["ip_hostname"], mongos["port"]))
             bot.ntdb = None
             bot.logger.info("---------------------------------------------------------------")  # noqa: E501
-    if not hasattr(bot, "uptime"):
-        bot.uptime = datetime.now(tz=timezone.utc).timestamp()
+    bot.uptime = datetime.now(tz=timezone.utc).timestamp()
+    if "error_logger" in bot.botconf and bot.botconf["error_logger"] is not None:
+        channel_data = bot.get_channel(bot.botconf["error_logger"])
+        if channel_data is not None:
+            bot.error_logger = bot.botconf["error_logger"]
     skipped_cogs = []
     for cogs in args_parsed.cogs_skip:
         if not cogs.startswith("cogs."):
@@ -369,11 +376,13 @@ async def on_ready():
         except Exception as e:
             bot.logger.error(f"Failed to load {load} module")
             bot.echo_error(e)
+    bot_hostdata = bot.get_hostdata
     bot.logger.info("[#][@][!] All cogs/extensions loaded.")
     bot.logger.info("---------------------------------------------------------------")
     bot.logger.info("Bot Ready!")
     bot.logger.info("Using Python {}".format(sys.version))
     bot.logger.info("And Using Discord.py v{}".format(discord.__version__))
+    bot.logger.info("Hosted in: {0.location} [{0.masked_ip}]".format(bot_hostdata))
     bot.logger.info("---------------------------------------------------------------")
     bot.logger.info("Bot Info:")
     bot.logger.info("Username: {}".format(bot.user.name))
@@ -445,7 +454,6 @@ async def on_command_error(ctx, error):
     current_time = datetime.now(tz=timezone.utc).timestamp()
 
     bot.logger.error("Ignoring exception in command {}:".format(ctx.command))
-    traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
     tb = traceback.format_exception(type(error), error, error.__traceback__)
 
     error_info = "\n".join(
@@ -489,13 +497,15 @@ async def on_command_error(ctx, error):
     )
     embed.set_thumbnail(url="http://p.ihateani.me/1bnBuV9C")
     try:
-        await bot.owner.send(embed=embed)
+        await bot.send_error_log(embed=embed)
     except Exception:
         if len(msg) > 1900:
             msg = await send_hastebin(msg)
-        await bot.owner.send(msg)
+        else:
+            await bot.send_error_log(msg)
     await ctx.send(
-        "**Error**: Insiden internal ini telah dilaporkan ke" " N4O#8868, mohon tunggu jawabannya kembali."
+        "**Error**: Insiden internal ini telah dilaporkan "
+        f"ke **{bot.owner.name}#{bot.owner.discriminator}**, mohon tunggu jawabannya kembali."
     )
     bot.echo_error(error)
 
@@ -708,11 +718,34 @@ async def reloadconf(ctx):
 
     await msg.edit(content="Reassigning attributes")
     bot.botconf = new_config
-    mongo_conf = new_config["mongodb"]
-    bot.logger.info("starting new database connection")
-    nt_db = naoTimesDB(mongo_conf["ip_hostname"], mongo_conf["port"], mongo_conf["dbname"])
-    bot.logger.info("connected to database...")
-    bot.ntdb = nt_db
+    try:
+        mongo_conf = new_config["mongodb"]
+        bot.logger.info("starting new database connection")
+        nt_db = naoTimesDB(mongo_conf["ip_hostname"], mongo_conf["port"], mongo_conf["dbname"])
+        await nt_db.validate_connection()
+        bot.logger.info("connected to database...")
+        bot.ntdb = nt_db
+    except Exception:
+        bot.logger.error("failed to connect to database...")
+        bot.ntdb = None
+    if bot.fsdb is not None:
+        bot.logger.info("restarting fansubdb connection")
+        _, fsdb_conn = await initialize_fsdb(new_config)
+        if fsdb_conn is not None:
+            await bot.fsdb.close()
+            bot.fsdb = fsdb_conn
+    if bot.vndb_socket is not None:
+        bot.logger.info("restarting vndb connection")
+        _, vndb_io = await initialize_vndb(new_config, bot.loop)
+        if vndb_io is not None:
+            await bot.vndb_socket.close()
+            bot.vndb_socket = vndb_io
+    if bot.kbbi.terautentikasi:
+        bot.logger.info("restarting kbbi connection")
+        _, kbbi_conn = await initialize_kbbi(new_config)
+        if kbbi_conn is not None:
+            await bot.kbbi.tutup()
+            bot.kbbi = kbbi_conn
     bot.command_prefix = partial(prefixes_with_data, prefixes_data=srv_prefixes, default=default_prefix)
     bot.jsdb_streams = streams_list
     bot.jsdb_currency = currency_data
@@ -725,6 +758,11 @@ async def reloadconf(ctx):
         bot.prefix = prefix[0]
     else:
         bot.prefix = prefix
+
+    if "error_logger" in new_config and new_config["error_logger"] is not None:
+        channel_data = bot.get_channel(new_config["error_logger"])
+        if channel_data is not None:
+            bot.error_logger = new_config["error_logger"]
 
     await msg.edit(content="Reloading all cogs...")
     bot.logger.info("reloading cogs...")
@@ -757,6 +795,82 @@ async def reloadconf(ctx):
         msg_final += "\n{}".format(ext_msg)
 
     await msg.edit(content=msg_final)
+
+
+@bot.command()
+@commands.is_owner()
+async def status(ctx):
+    """Check bot status.
+    This would check loaded cogs, unloaded cogs.
+    status of kbbi/vndb/fsdb connection.
+
+    Parameters
+    ----------
+    ctx : Context
+        Bot context that are passed
+
+    Returns
+    -------
+    None
+    """
+    bot.logger.info("checking loaded extensions...")
+    loaded_extensions = list(dict(bot.extensions).keys())
+    bot.logger.info("checking unloaded extensions...")
+    unloaded_extensions = []
+    for cl in cogs_list:
+        if cl not in loaded_extensions:
+            unloaded_extensions.append(cl)
+
+    def yn_conn_stat(stat: bool) -> str:
+        if stat:
+            return "Connected"
+        return "Not connected"
+
+    loaded_extensions = [f"- {cogs}" for cogs in loaded_extensions]
+    if unloaded_extensions:
+        unloaded_extensions = [f"- {cogs}" for cogs in unloaded_extensions]
+
+    bot.logger.info("checking kbbi/fsdb/vndb/ntdb connection...")
+    if bot.kbbi is not None:
+        is_kbbi_auth = bot.kbbi.terautentikasi
+    else:
+        is_kbbi_auth = False
+    is_fsdb_loaded = True if bot.fsdb is not None else False
+    is_vndb_loaded = True if bot.vndb_socket is not None else False
+    is_db_loaded = True if bot.ntdb is not None else False
+
+    bot_location = bot.get_hostdata["location"]
+
+    bot.logger.info("generating status...")
+    embed = discord.Embed(
+        title="Bot Statuses", description=f"Bot Location: {bot_location}\nPrefix: {bot.prefix}"
+    )
+    embed.add_field(name="Loaded Cogs", value="```\n" + "\n".join(loaded_extensions) + "\n```", inline=False)
+    if unloaded_extensions:
+        embed.add_field(
+            name="Unloaded Cogs", value="```\n" + "\n".join(unloaded_extensions) + "\n```", inline=False
+        )
+    con_stat_test = []
+    if is_kbbi_auth:
+        con_stat_test.append("**KBBI**: Authenticated.")
+    else:
+        con_stat_test.append("**KBBI**: Not authenticated.")
+    con_stat_test.append(f"**VNDB**: {yn_conn_stat(is_vndb_loaded)}")
+    if is_db_loaded:
+        ntdb_text = "**naoTimesDB**: Connected [`"
+        ip_ntdb = bot.botconf["mongodb"]["ip_hostname"].split(".")
+        port_ntdb = bot.botconf["mongodb"]["port"]
+        ip_masked = ["*" * len(ip) for ip in ip_ntdb[:3]]  # noqa: W605
+        ip_masked.append(ip_ntdb[-1])
+        ntdb_text += ".".join(ip_masked)
+        ntdb_text += f":{port_ntdb}`]"
+        con_stat_test.append(ntdb_text)
+    else:
+        con_stat_test.append("**naoTimesDB**: Not connected.")
+    con_stat_test.append(f"**FansubDB**: {yn_conn_stat(is_fsdb_loaded)}")
+    embed.add_field(name="Connection Status", value="\n".join(con_stat_test), inline=False)
+    embed.set_footer(text=f"Versi {bot.semver}")
+    await ctx.send(embed=embed)
 
 
 @bot.command()
@@ -1059,7 +1173,7 @@ async def prefix(ctx, *, msg=None):
 
 
 @prefix.error
-async def prefix_error(self, error, ctx):
+async def prefix_error(error, ctx):
     if isinstance(error, commands.errors.CheckFailure):
         server_message = str(ctx.message.guild.id)
         if not os.path.isfile("prefixes.json"):
