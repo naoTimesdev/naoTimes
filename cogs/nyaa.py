@@ -267,7 +267,7 @@ async def fetch_nyaa(
                 if r.status != 200:
                     if r.status == 404:
                         return "Tidak ada hasil"
-                    elif r.status == 500:
+                    if r.status == 500:
                         return "Terjadi kesalahan Internal dari server"
         except aiohttp.ClientError:
             return "Koneksi error"

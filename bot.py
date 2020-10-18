@@ -443,9 +443,9 @@ async def on_command_error(ctx, error):
     if isinstance(error, ignored):
         bot.echo_error(error)
         return
-    elif isinstance(error, commands.DisabledCommand):
+    if isinstance(error, commands.DisabledCommand):
         return await ctx.send(f"`{ctx.command}`` dinon-aktifkan.")
-    elif isinstance(error, commands.NoPrivateMessage):
+    if isinstance(error, commands.NoPrivateMessage):
         try:
             return await ctx.author.send(f"`{ctx.command}`` tidak bisa dipakai di Private Messages.")
         except Exception:
@@ -653,17 +653,16 @@ def create_uptime():
 async def creator_info(ctx):
     if not bot.is_team_bot:
         return bot.is_mentionable(ctx, bot.owner)
-    else:
-        res = f"{bot.team_name} | "
-        member_data = []
-        member_data.append(bot.is_mentionable(ctx, bot.owner))
-        if bot.team_members:
-            for member in bot.team_members:
-                if member.id == bot.owner.id:
-                    continue
-                member_data.append(bot.is_mentionable(ctx, member))
-        res += " ".join(member_data)
-        return res
+    res = f"{bot.team_name} | "
+    member_data = []
+    member_data.append(bot.is_mentionable(ctx, bot.owner))
+    if bot.team_members:
+        for member in bot.team_members:
+            if member.id == bot.owner.id:
+                continue
+            member_data.append(bot.is_mentionable(ctx, member))
+    res += " ".join(member_data)
+    return res
 
 
 @bot.command()

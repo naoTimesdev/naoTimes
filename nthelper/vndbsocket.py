@@ -115,5 +115,4 @@ class VNDBSockIOManager:
         # self._sock_writer.close()
         if "ok" in temp.lower():  # because login
             return temp
-        else:
-            return ujson.loads(temp.split(" ", 1)[1])
+        return ujson.loads(temp.split(" ", 1)[1])

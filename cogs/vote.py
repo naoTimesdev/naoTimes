@@ -402,8 +402,7 @@ class VoteApp(commands.Cog):
             return f"Tidak dapat nge{kb_type} user, user adalah owner server."
         elif reason == "admin":
             return f"Tidak dapat nge{kb_type} user, user adalah admin server."
-        else:
-            return f"Tidak dapat nge{kb_type} user."
+        return f"Tidak dapat nge{kb_type} user."
 
     @commands.command()
     async def vote(self, ctx, *, args: vote_converter = vote_converter.show_help()):  # type: ignore

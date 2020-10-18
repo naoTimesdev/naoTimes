@@ -207,7 +207,7 @@ async def fetch_anilist(
                 if resp.status != 200:
                     if resp.status == 404:
                         return "Anilist tidak dapat menemukan anime tersebut."
-                    elif resp.status == 500:
+                    if resp.status == 500:
                         return "Anilist mengalami kesalahan internal, mohon coba sesaat lagi."
                 try:
                     entry = data["data"]["Media"]
@@ -522,7 +522,7 @@ class ShowtimesBase:
         match_data = to_int(mid_data[needed_id])
         if match_data == matching_id:
             return mid_data
-        elif match_data > matching_id:
+        if match_data > matching_id:
             for data in dataset[:mid_num]:
                 if to_int(data[needed_id]) == matching_id:
                     return data

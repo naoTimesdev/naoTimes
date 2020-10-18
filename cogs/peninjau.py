@@ -506,12 +506,11 @@ async def persamaankata(cari: str, mode: str = "sinonim") -> Union[List[str], st
 
     if mode == "antonim" and len(tesaurus) < 2:
         return "Tidak ada hasil."
-    elif mode == "antonim" and len(tesaurus) > 1:
+    if mode == "antonim" and len(tesaurus) > 1:
         result = tesaurus[1].text.strip().splitlines()[1:]
         return list(filter(None, result))
-    else:
-        result = tesaurus[0].text.strip().splitlines()[1:]
-        return list(filter(None, result))
+    result = tesaurus[0].text.strip().splitlines()[1:]
+    return list(filter(None, result))
     return "Tidak ada hasil."
 
 
@@ -526,7 +525,7 @@ async def fetch_jisho(query: str) -> Union[dict, str]:
                 if r.status != 200:
                     if r.status == 404:
                         return "ERROR: Tidak dapat menemukan kata tersebut"
-                    elif r.status == 500:
+                    if r.status == 500:
                         return "ERROR: Internal Error :/"
                 try:
                     query_result = data["data"]

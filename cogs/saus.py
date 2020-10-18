@@ -123,7 +123,7 @@ class SausTomat(commands.Cog):
             reactmoji = []
             if max_page == 1 and num == 1:
                 return
-            elif num == 1:
+            if num == 1:
                 reactmoji.append("⏩")
             elif num == max_page:
                 reactmoji.append("⏪")
@@ -305,7 +305,7 @@ class SausTomat(commands.Cog):
             reactmoji = []
             if max_page == 1 and num == 1:
                 return
-            elif num == 1:
+            if num == 1:
                 reactmoji.append("⏩")
             elif num == max_page:
                 reactmoji.append("⏪")

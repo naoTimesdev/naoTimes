@@ -203,7 +203,7 @@ async def current_season_streams():
                 if r.status != 200:
                     if r.status == 404:
                         return "Tidak ada hasil."
-                    elif r.status == 500:
+                    if r.status == 500:
                         return "Internal Error :/"
                     return "Terjadi kesalahan ketika komunikasi dengan server"
         except aiohttp.ClientError:
@@ -458,7 +458,7 @@ async def fetch_anichart():
                     if r.status != 200:
                         if r.status == 404:
                             return "Tidak ada hasil."
-                        elif r.status == 500:
+                        if r.status == 500:
                             return "ERROR: Internal Error :/"
                     try:
                         return data["data"]["Page"]

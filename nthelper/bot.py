@@ -124,8 +124,7 @@ class naoTimesBot(commands.Bot):
         member = ctx.message.guild.get_member(user_data.id)
         if member is None:
             return f"{user_data.name}#{user_data.discriminator}"
-        else:
-            return f"<@{user_data.id}>"
+        return f"<@{user_data.id}>"
 
     def teams_to_user(self, user_data):
         member_data = self.get_user(user_data.id)
