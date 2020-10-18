@@ -115,12 +115,11 @@ class KBBI:
         if req.status != 200:
             if req.status == 500:
                 raise TerjadiKesalahan()
-            elif req.status == 404:
+            if req.status == 404:
                 raise TidakDitemukan(self.nama)
-            else:
-                raise kbbi.Galat(
-                    f"Terjadi kesalahan ketika berkomunikasi dengan KBBI, status code: {req.status}"
-                )
+            raise kbbi.Galat(
+                f"Terjadi kesalahan ketika berkomunikasi dengan KBBI, status code: {req.status}"
+            )
         await self._cek_autentikasi(laman)
         await self._cek_galat(req, laman)
         await self._init_entri(laman)
