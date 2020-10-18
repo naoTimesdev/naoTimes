@@ -187,9 +187,8 @@ class KBBICog(commands.Cog):
         if self._use_auth:
             self._use_auth = False
             return await ctx.send("Perintah kbbi **tidak akan** menggunakan autentikasi!")
-        else:
-            self._use_auth = True
-            return await ctx.send("Perintah kbbi **akan** menggunakan autentikasi!")
+        self._use_auth = True
+        return await ctx.send("Perintah kbbi **akan** menggunakan autentikasi!")
 
     @commands.command()
     @commands.is_owner()

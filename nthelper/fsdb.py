@@ -113,7 +113,7 @@ class FansubDBBridge:
         mid_data = dataset[mid_num]
         if mid_data["mal_id"] == mal_id:
             return mid_data["id"]
-        elif mid_data["mal_id"] > mal_id:
+        if mid_data["mal_id"] > mal_id:
             for data in dataset[:mid_num]:
                 if data["mal_id"] == mal_id:
                     return data["id"]
@@ -129,7 +129,7 @@ class FansubDBBridge:
         mid_data = dataset[mid_num]
         if mid_data["anime"]["id"] == anime_id:
             return mid_data["id"]
-        elif mid_data["anime"]["id"] > anime_id:
+        if mid_data["anime"]["id"] > anime_id:
             for data in dataset[:mid_num]:
                 if data["anime"]["id"] == anime_id:
                     return data["id"]

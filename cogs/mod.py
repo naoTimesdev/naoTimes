@@ -315,7 +315,7 @@ class AutoMod(commands.Cog):
     async def automod_error(self, ctx, error):
         if isinstance(error, BotMissingPermissions):
             return await ctx.send("Bot tidak memiliki hak `Manage Message`.")
-        elif isinstance(error, MissingPermissions):
+        if isinstance(error, MissingPermissions):
             return await ctx.send("Bukan admin.")
 
     @commands.command()
@@ -884,23 +884,22 @@ class AutoMod(commands.Cog):
                 channel_mentions_data = channel_input.channel_mentions
                 if channel_text_data == ("cancel"):
                     return await ctx.send("Dibatalkan.")
-                else:
-                    if channel_mentions_data:
-                        new_channel_id = channel_mentions_data[0].id
+                if channel_mentions_data:
+                    new_channel_id = channel_mentions_data[0].id
+                    metadata_srvlog["id"] = new_channel_id
+                    await send_timed_msg(ctx, f"Channel berhasil diubah ke: <#{new_channel_id}>", 2)
+                    break
+                elif channel_text_data.isdigit():
+                    new_channel_id = int(channel_text_data)
+                    if self.bot.get_channel(new_channel_id) is not None:
                         metadata_srvlog["id"] = new_channel_id
                         await send_timed_msg(ctx, f"Channel berhasil diubah ke: <#{new_channel_id}>", 2)
+                        await channel_input.delete()
                         break
-                    elif channel_text_data.isdigit():
-                        new_channel_id = int(channel_text_data)
-                        if self.bot.get_channel(new_channel_id) is not None:
-                            metadata_srvlog["id"] = new_channel_id
-                            await send_timed_msg(ctx, f"Channel berhasil diubah ke: <#{new_channel_id}>", 2)
-                            await channel_input.delete()
-                            break
-                        else:
-                            await send_timed_msg(ctx, "Tidak dapat menemukan channel tersebut.", 2)
                     else:
-                        await send_timed_msg(ctx, "Channel yang diberikan tidak valid.", 2)
+                        await send_timed_msg(ctx, "Tidak dapat menemukan channel tersebut.", 2)
+                else:
+                    await send_timed_msg(ctx, "Channel yang diberikan tidak valid.", 2)
                 await channel_input.delete()
             await channel_msg.delete()
         else:

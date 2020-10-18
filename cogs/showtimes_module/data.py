@@ -68,7 +68,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
         if not matches:
             self.logger.warning(f"{server_message}: no matches.")
             return await ctx.send("Tidak dapat menemukan judul tersebut di database")
-        elif len(matches) > 1:
+        if len(matches) > 1:
             self.logger.info(f"{server_message}: multiple matches!")
             matches = await self.choose_anime(bot=self.bot, ctx=ctx, matches=matches)
             if not matches:

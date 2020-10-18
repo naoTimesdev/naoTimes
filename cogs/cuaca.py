@@ -238,8 +238,7 @@ async def fetch_owm(location: str, bot_conf: dict) -> Union[dict, str]:
     if "cod" in weather_res:
         if weather_res["cod"] == 401:
             return "API key bot owner belum terautentikasi. Mohon kontak Bot Owner atau tunggu beberapa jam kemudian."  # noqa: E501
-        else:
-            return weather_res["message"]
+        return weather_res["message"]
 
     wlogger.info("Parsing current weather data...")
     tz_off = weather_res["timezone_offset"]

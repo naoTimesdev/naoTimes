@@ -40,7 +40,7 @@ class AnilistBucket:
                     if resp.status != 200:
                         if resp.status == 404:
                             return "Anilist tidak dapat menemukan anime tersebut."
-                        elif resp.status == 500:
+                        if resp.status == 500:
                             return "Anilist mengalami kesalahan internal, mohon coba sesaat lagi."
                     try:
                         _ = data["data"]
