@@ -265,7 +265,7 @@ logger.info("Setting up loop")
 async_loop = asyncio.get_event_loop()
 bot: naoTimesBot = async_loop.run_until_complete(init_bot(async_loop))
 if bot is None:
-    exit(1)
+    sys.exit(1)
 presence_status = [
     "Mengamati rilisan fansub | !help",
     "Membantu Fansub | !help",
