@@ -88,7 +88,8 @@ class nHController(commands.Cog):
             helpmain.set_footer(text="Dibawakan oleh naoTimes " "|| Dibuat oleh N4O#8868 versi 2.0.0")
             await ctx.send(embed=helpmain)
 
-    def cek_translasi(self, tags: List[dict]) -> str:
+    @staticmethod
+    def cek_translasi(tags: List[dict]) -> str:
         lang: List[str] = [i[0].capitalize() for i in tags["languages"]]  # type: ignore
         if "Translated" in lang:
             lang.remove("Translated")

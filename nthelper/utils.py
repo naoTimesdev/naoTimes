@@ -373,7 +373,8 @@ class HelpGenerator:
         self.logger.info("sending embed results")
         return self.embed
 
-    def __encapsule(self, name: str, t: str) -> str:
+    @staticmethod
+    def __encapsule(name: str, t: str) -> str:
         """Encapsulate the command name with <> or []
         -----
 

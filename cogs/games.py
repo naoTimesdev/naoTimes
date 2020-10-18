@@ -185,7 +185,8 @@ class GamesAPI(commands.Cog):
             perintah += "- `!steam dbcari -h` (cari game di steam via steamdb)"
             await ctx.send(perintah)
 
-    def clean_description(self, desc: str) -> str:
+    @staticmethod
+    def clean_description(desc: str) -> str:
         mappings = {
             "&quot;": '"',
             "&amp;": "&",

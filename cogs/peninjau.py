@@ -374,7 +374,8 @@ class AsyncTranslator:
         self.session = aiohttp.ClientSession(headers=headers)
         # await self.detect_language()
 
-    def _calculate_tk(self, source):
+    @staticmethod
+    def _calculate_tk(source):
         """Reverse engineered cross-site request protection."""
         # Source: http://www.liuxiatool.com/t.php
 

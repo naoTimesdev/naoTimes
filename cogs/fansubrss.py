@@ -347,14 +347,16 @@ class FansubRSS(commands.Cog):
         self.premium_rss_checks.cancel()
         self._bgtasks.cancel()
 
-    def is_msg_empty(self, msg: str, thr: int = 3) -> bool:
+    @staticmethod
+    def is_msg_empty(msg: str, thr: int = 3) -> bool:
         split_msg: List[str] = msg.split(" ")
         split_msg = [m for m in split_msg if m != ""]
         if len(split_msg) < thr:
             return True
         return False
 
-    def generate_random(self, srv_id: Union[str, int]):
+    @staticmethod
+    def generate_random(srv_id: Union[str, int]):
         srv_hash = str(srv_id)[5:]
         gen_id = generate_custom_code(10, True) + srv_hash  # nosec
         return gen_id
@@ -411,7 +413,8 @@ class FansubRSS(commands.Cog):
         self.logger.info(f"Checking if {original_author} is the same as {message.author.id}")
         return message.author.id == original_author and message.channel.id == channel_id
 
-    def base_check_react(self, reaction, user, ctx, message, emotes_set):
+    @staticmethod
+    def base_check_react(reaction, user, ctx, message, emotes_set):
         if reaction.message.id != message.id:
             return False
         if user != ctx.message.author:

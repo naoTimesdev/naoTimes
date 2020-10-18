@@ -120,7 +120,8 @@ class naoTimesBot(commands.Bot):
             final_pre = prefix
         return final_pre
 
-    def is_mentionable(self, ctx, user_data):
+    @staticmethod
+    def is_mentionable(ctx, user_data):
         member = ctx.message.guild.get_member(user_data.id)
         if member is None:
             return f"{user_data.name}#{user_data.discriminator}"

@@ -535,7 +535,8 @@ class ShowtimesBase:
                 return data
         return None
 
-    def parse_status(self, status: dict) -> str:
+    @staticmethod
+    def parse_status(status: dict) -> str:
         """
         Parse status and return a formatted text
         """
@@ -548,7 +549,8 @@ class ShowtimesBase:
 
         return " ".join(status_list)
 
-    def get_current_ep(self, status_list: dict) -> Union[str, None]:
+    @staticmethod
+    def get_current_ep(status_list: dict) -> Union[str, None]:
         """
         Find episode `not_released` status in showtimes database
         If not exist return None
@@ -558,7 +560,8 @@ class ShowtimesBase:
                 return ep
         return None
 
-    def get_not_released_ep(self, status_list: dict) -> list:
+    @staticmethod
+    def get_not_released_ep(status_list: dict) -> list:
         """
         Find all episode `not_released` status in showtimes database
         If not exist return None/False
@@ -569,7 +572,8 @@ class ShowtimesBase:
                 ep_list.append(ep)
         return ep_list
 
-    def get_close_matches(self, target: str, lists: list) -> list:
+    @staticmethod
+    def get_close_matches(target: str, lists: list) -> list:
         """
         Find close matches from input target
         Sort everything if there's more than 2 results
@@ -577,7 +581,8 @@ class ShowtimesBase:
         target_compiler = re.compile("({})".format(target), re.IGNORECASE)
         return sorted(list(filter(target_compiler.search, lists)))
 
-    def check_role(self, needed_role, user_roles: list) -> bool:
+    @staticmethod
+    def check_role(needed_role, user_roles: list) -> bool:
         """
         Check if there's needed role for the anime
         """
@@ -586,7 +591,8 @@ class ShowtimesBase:
                 return True
         return False
 
-    def find_alias_anime(self, key: str, alias_list: dict) -> Union[str, None]:
+    @staticmethod
+    def find_alias_anime(key: str, alias_list: dict) -> Union[str, None]:
         """
         Return a target_anime value for alias provided
         """
@@ -595,7 +601,8 @@ class ShowtimesBase:
                 return v
         return None
 
-    def make_numbered_alias(self, alias_list: list) -> str:
+    @staticmethod
+    def make_numbered_alias(alias_list: list) -> str:
         """
         Create a numbered text for alias_list
         """
@@ -604,7 +611,8 @@ class ShowtimesBase:
             t.append("**{}**. {}".format(n + 1, i))
         return "\n".join(t)
 
-    def any_progress(self, status: dict) -> bool:
+    @staticmethod
+    def any_progress(status: dict) -> bool:
         """
         Check if there's any progress to the project
         """
@@ -613,7 +621,8 @@ class ShowtimesBase:
                 return False
         return True
 
-    def get_role_name(self, role_id, roles) -> str:
+    @staticmethod
+    def get_role_name(role_id, roles) -> str:
         """
         Get role name by comparing the role id
         """
@@ -648,7 +657,8 @@ class ShowtimesBase:
             picked_roles = picked_roles.upper()
         return picked_roles, posisi
 
-    def split_until_less_than(self, dataset: list) -> list:
+    @staticmethod
+    def split_until_less_than(dataset: list) -> list:
         """
         Split the !tagih shit into chunked text because discord
         max 2000 characters limit

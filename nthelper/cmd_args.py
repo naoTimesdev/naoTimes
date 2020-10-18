@@ -52,7 +52,8 @@ class CommandArgParse(commands.Converter):
         self._any_kw = False
         self._init_args()
 
-    def _parse_error(self, err_str: str) -> str:
+    @staticmethod
+    def _parse_error(err_str: str) -> str:
         if err_str.startswith("unrecognized arguments"):
             err_str = err_str.replace("unrecognized arguments", "Argumen tidak diketahui")
         elif err_str.startswith("the following arguments are required"):

@@ -190,7 +190,8 @@ class Helper(commands.Cog):
         self._pre: str = bot.prefix
         self.logger = logging.getLogger("cogs.helpcmd.Helper")
 
-    def is_msg_empty(self, msg: str, thr: int = 3) -> bool:
+    @staticmethod
+    def is_msg_empty(msg: str, thr: int = 3) -> bool:
         split_msg: List[str] = msg.split(" ")
         split_msg = [m for m in split_msg if m != ""]
         if len(split_msg) < thr:
@@ -716,7 +717,8 @@ class Helper(commands.Cog):
             await helpcmd.generate_aliases()
             await ctx.send(embed=helpcmd.get())
 
-    def get_text(self, switch):
+    @staticmethod
+    def get_text(switch):
         judul_info = "`<judul>` adalah garapan yang "
         judul_info += "terdaftar di database naoTimes."
         judul_info += "\n`<judul>` dapat disingkat sesingkat mungkin."

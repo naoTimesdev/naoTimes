@@ -48,7 +48,8 @@ class FansubDBBridge:
         self._token = token
         self._expire = expires
 
-    def get_close_matches(self, target: str, lists: list) -> list:
+    @staticmethod
+    def get_close_matches(target: str, lists: list) -> list:
         """
         Find close matches from input target
         Sort everything if there's more than 2 results
