@@ -19,7 +19,7 @@ import ujson
 from discord import __version__ as discord_ver
 from discord.ext import commands
 
-__version__ = "2.0.1a"
+__version__ = "2.0.1"
 
 main_log = logging.getLogger("nthelper.utils")
 __CHROME_UA__ = ""
@@ -143,7 +143,11 @@ async def write_files(data: Any, fpath: str):
     """
     if isinstance(data, (dict, list, tuple)):
         data = ujson.dumps(
-            data, ensure_ascii=False, encode_html_chars=False, escape_forward_slashes=False, indent=4,
+            data,
+            ensure_ascii=False,
+            encode_html_chars=False,
+            escape_forward_slashes=False,
+            indent=4,
         )
     elif isinstance(data, int):
         data = str(data)
@@ -186,7 +190,11 @@ def blocking_write_files(data: Any, fpath: str):
     """
     if isinstance(data, (dict, list, tuple)):
         data = ujson.dumps(
-            data, ensure_ascii=False, encode_html_chars=False, escape_forward_slashes=False, indent=4,
+            data,
+            ensure_ascii=False,
+            encode_html_chars=False,
+            escape_forward_slashes=False,
+            indent=4,
         )
     elif isinstance(data, int):
         data = str(data)
@@ -382,14 +390,14 @@ class HelpGenerator:
 
         :param name: command name
         :type name: str
-        :param t: command type (`r` or `o`)
+        :param t: command type (`r` or `o`, or `c`)
                   `r` for required command.
                   `o` for optional command.
         :type t: str
         :return: encapsuled command name
         :rtype: str
         """
-        tt = {"r": ["`<", ">`"], "o": ["`[", "]`"]}
+        tt = {"r": ["`<", ">`"], "o": ["`[", "]`"], "c": ["`[", "]`"]}
         pre, end = tt.get(t, ["`", "`"])
         return pre + name + end
 
@@ -400,7 +408,8 @@ class HelpGenerator:
         self.logger.info(f"start generating embed for: {self.cmd_name}")
         embed = discord.Embed(color=self.color)
         embed.set_author(
-            name=self.bot.user.display_name, icon_url=self.bot.user.avatar_url,
+            name=self.bot.user.display_name,
+            icon_url=self.bot.user.avatar_url,
         )
         embed.set_footer(text=f"Dibuat oleh N4O#8868 | Versi {self._ver}")
         title = "Bantuan Perintah"
@@ -475,12 +484,16 @@ class HelpGenerator:
             final_desc = "```\n" + final_desc + "\n```"
 
         self.embed.add_field(
-            name=gen_name, value=final_desc, inline=inline,
+            name=gen_name,
+            value=final_desc,
+            inline=inline,
         )
         if examples:
             examples = [f"- **{self._pre}{cmd_name}** {ex}" for ex in examples]
             self.embed.add_field(
-                name="Contoh", value="\n".join(examples), inline=False,
+                name="Contoh",
+                value="\n".join(examples),
+                inline=False,
             )
 
     async def generate_aliases(self, aliases: List[str] = [], add_note: bool = True):
@@ -503,3 +516,103 @@ class HelpGenerator:
                 f"Gunakan `{self._pre}help [nama perintah]` untuk melihatnya!",
                 inline=False,
             )
+
+
+class StealedEmote(commands.Converter):
+    """
+    A Converter Class that will magically convert the input emote to ready to steal
+    Emoji data.
+    ---
+
+    Example Usage:
+    ```py
+        async def steal_emote(self, ctx, stealed_emote: StealedEmote):
+            print(stealed_emote.name)
+    ```
+    """
+
+    def __init__(self, **kwargs):
+        self.id: int = kwargs.get("id")
+        self.name: str = kwargs.get("name")
+        self.animated: bool = kwargs.get("animated", False)
+        self._cached_emote_data: bytes
+
+    def __str__(self):
+        if self.animated:
+            return "<a:{0.name}:{0.id}>".format(self)
+        return "<:{0.name}:{0.id}>".format(self)
+
+    def __repr__(self):
+        return "<StealedEmote id={0.id} name={0.name!r} animated={0.animated}>".format(self)
+
+    def __hash__(self):
+        return self.id >> 22
+
+    async def convert(self, ctx, message: str):
+        if message.startswith("<:") and message.endswith(">"):
+            message = message[2:-1]
+            try:
+                emote_name, emote_id = message.split(":")
+            except ValueError as err:
+                raise commands.ConversionError(
+                    f'Failed to convert "{message}" to Stealed Emoji Data.', err.__cause__
+                )
+            self.name = emote_name
+            try:
+                self.id = int(emote_id)
+            except ValueError as err:
+                raise commands.ConversionError(
+                    f'Failed to convert "{message}" to Stealed Emoji Data.', err.__cause__
+                )
+            return self
+        elif message.startswith("<a:") and message.endswith(">"):
+            message = message[1:-1]
+            try:
+                _, emote_name, emote_id = message.split(":")
+            except ValueError as err:
+                raise commands.ConversionError(
+                    f'Failed to convert "{message}" to Stealed Emoji Data.', err.__cause__
+                )
+            self.name = emote_name
+            try:
+                self.id = int(emote_id)
+            except ValueError as err:
+                raise commands.ConversionError(
+                    f'Failed to convert "{message}" to Stealed Emoji Data.', err.__cause__
+                )
+            self.animated = True
+            return self
+        else:
+            raise commands.ConversionError(
+                f'Failed to convert "{message}" to Stealed Emoji Data.', "Missing emote"
+            )
+
+    @property
+    def url(self) -> str:
+        """Return URL formatted data for the Stealed Emote"""
+        _fmt = "gif" if self.animated else "png"
+        return f"https://cdn.discordapp.com/emojis/{self.id}.{_fmt}"
+
+    async def read(self) -> bytes:
+        """Read from URL to bytes data.
+
+        :raises ValueError: If ID not set
+        :return: Emoji data in bytes
+        :rtype: bytes
+        """
+        if self.id is None:
+            raise ValueError("Failed to read since there's no data to read.")
+        if hasattr(self, "_cached_emote_data") and self._cached_emote_data is not None:
+            return self._cached_emote_data
+
+        async with aiohttp.ClientSession(
+            headers={"User-Agent": f"naoTimes/{__version__} (https://github.com/noaione/naoTimes)"}
+        ) as session:
+            async with session.get(self.url) as resp:
+                if resp.status != 200:
+                    if resp.status == 404:
+                        raise FileNotFoundError("Failed to read data from URL, emote possibly deleted.")
+                    raise ConnectionError(f"Failed to read data from URL, got status: {resp.status}")
+                results = await resp.read()
+        self._cached_emote_data = results
+        return results
