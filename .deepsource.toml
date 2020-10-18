@@ -1,6 +1,6 @@
 version = 1
 
-exclude_patterns = ["*.json"]
+exclude_patterns = ["*.json", "nthelper/romkan.py"]
 
 [[analyzers]]
 name = "python"
