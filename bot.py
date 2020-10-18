@@ -56,11 +56,11 @@ logger.addHandler(console)
 
 # Handle the new Intents.
 discord_ver_tuple = tuple([int(ver) for ver in discord.__version__.split(".")])
-discord_intents = None
+DISCORD_INTENTS = None
 if discord_ver_tuple >= (1, 5, 0):
     logger.info("Detected discord.py version 1.5.0, using the new Intents system...")
     # Enable all except Presences.
-    discord_intents = discord.Intents.all()
+    DISCORD_INTENTS = discord.Intents.all()
 
 parser = argparse.ArgumentParser("naotimesbot")
 parser.add_argument("-dcog", "--disable-cogs", default=[], action="append", dest="cogs_skip")
@@ -71,7 +71,7 @@ args_parsed = parser.parse_args()
 
 def announce_error(error):
     tb = traceback.format_exception(type(error), error, error.__traceback__)
-    logger.error("Exception occured\n" + "".join(tb))
+    logger.error("Exception occured\n%s", tb)
 
 
 async def initialize_kbbi(config_data: dict) -> KBBI:
@@ -223,7 +223,7 @@ async def init_bot(loop) -> naoTimesBot:
         if discord_ver_tuple >= (1, 5, 0):
             # Insert intents
             bot = naoTimesBot(
-                command_prefix=prefixes, description=description, intents=discord_intents, loop=loop
+                command_prefix=prefixes, description=description, intents=DISCORD_INTENTS, loop=loop
             )
         else:
             bot = naoTimesBot(command_prefix=prefixes, description=description, loop=loop)
@@ -287,7 +287,8 @@ presence_status = [
     "Mencatat Delayan Fansub | !help",
     "Mengintai waifu orang | !help",
     "Waifu kalian sampah | !help",
-    "Membeli waifu di toko terdekat | !help", "Reinkarnasi Fansub mati | !help",
+    "Membeli waifu di toko terdekat | !help",
+    "Reinkarnasi Fansub mati | !help",
     "Menuju Isekai | !help",
     "Leecher harap menagih dalam 120x24 jam | !help",
     "Membuka donasi | !help",
@@ -317,21 +318,24 @@ async def on_ready():
     await bot.detect_teams_bot()
     await bot.populate_data()
     bot.logger.info("---------------------------------------------------------------")
-    prefix = bot.command_prefix
-    if callable(prefix):
-        prefix = prefix(bot, "[]")
-    if isinstance(prefix, (list, tuple)):
-        bot.prefix = prefix[0]
+    precall = bot.command_prefix
+    if callable(precall):
+        precall = precall(bot, "[]")
+    if isinstance(precall, (list, tuple)):
+        bot.prefix = precall[0]
     else:
-        bot.prefix = prefix
+        bot.prefix = precall
     if "mongodb" in bot.botconf:
         mongos = bot.botconf["mongodb"]
-        bot.ntdb = naoTimesDB(mongos["ip_hostname"], mongos["port"], mongos["dbname"])
+        bot.ntdb = naoTimesDB(
+            mongos["ip_hostname"], mongos["port"], mongos["dbname"], mongos["auth"], mongos["tls"]
+        )
         try:
+            bot.logger.info(f"Connecting to: {bot.ntdb.url}...")
             await bot.ntdb.validate_connection()
-            bot.logger.info("Connected to naoTimes Database:")
-            bot.logger.info("IP:Port: {}:{}".format(mongos["ip_hostname"], mongos["port"]))
-            bot.logger.info("Database: {}".format(mongos["dbname"]))
+            bot.logger.info("Connected to Database:")
+            bot.logger.info("Connection URL: {}".format(bot.ntdb.url))
+            bot.logger.info("Database Name: {}".format(bot.ntdb.dbname))
             bot.logger.info("---------------------------------------------------------------")
             if not args_parsed.showtimes_fetch:
                 bot.logger.info("Fetching nao_showtimes from server db to local json")
@@ -475,7 +479,9 @@ async def on_command_error(ctx, error):
         timestamp=datetime.utcfromtimestamp(current_time),
     )
     embed.add_field(
-        name="Cogs", value="[nT!] {0.cog_name}".format(ctx.command), inline=False,
+        name="Cogs",
+        value="[nT!] {0.cog_name}".format(ctx.command),
+        inline=False,
     )
     embed.add_field(
         name="Perintah yang dipakai",
@@ -493,7 +499,9 @@ async def on_command_error(ctx, error):
         inline=False,
     )
     embed.add_field(
-        name="Traceback", value="```py\n{}\n```".format("".join(tb)), inline=True,
+        name="Traceback",
+        value="```py\n{}\n```".format("".join(tb)),
+        inline=True,
     )
     embed.set_thumbnail(url="http://p.ihateani.me/1bnBuV9C")
     try:
@@ -671,7 +679,9 @@ async def info(ctx):
     Melihat Informasi bot
     """
     infog = discord.Embed(
-        title="naoTimes", description="Sang penagih utang fansub agar fansubnya mau gerak", color=0xDE8730,
+        title="naoTimes",
+        description="Sang penagih utang fansub agar fansubnya mau gerak",
+        color=0xDE8730,
     )
     infog.set_author(
         name="naoTimes",
@@ -694,8 +704,8 @@ async def info(ctx):
 
 @bot.command()
 async def uptime(ctx):
-    uptime = create_uptime()
-    await ctx.send(f":alarm_clock: {uptime}")
+    up = create_uptime()
+    await ctx.send(f":alarm_clock: {up}")
 
 
 @bot.command()
@@ -838,7 +848,7 @@ async def status(ctx):
     is_vndb_loaded = bot.vndb_socket is not None
     is_db_loaded = bot.ntdb is not None
 
-    bot_location = bot.get_hostdata["location"]
+    bot_location = bot.get_hostdata.location
 
     bot.logger.info("generating status...")
     embed = discord.Embed(
@@ -879,9 +889,15 @@ async def reload(ctx, *, cogs=None):
     Restart salah satu module bot, owner only
     """
     if not cogs:
-        helpcmd = HelpGenerator(bot, "Reload", desc="Reload module bot.",)
+        helpcmd = HelpGenerator(
+            bot,
+            "Reload",
+            desc="Reload module bot.",
+        )
         helpcmd.embed.add_field(
-            name="Module/Cogs List", value="\n".join(["- " + cl for cl in cogs_list]), inline=False,
+            name="Module/Cogs List",
+            value="\n".join(["- " + cl for cl in cogs_list]),
+            inline=False,
         )
         return await ctx.send(embed=helpcmd.get())
     if not cogs.startswith("cogs."):
@@ -924,9 +940,15 @@ async def load(ctx, *, cogs=None):
     Load salah satu module bot, owner only
     """
     if not cogs:
-        helpcmd = HelpGenerator(bot, "Load", desc="Load module bot.",)
+        helpcmd = HelpGenerator(
+            bot,
+            "Load",
+            desc="Load module bot.",
+        )
         helpcmd.embed.add_field(
-            name="Module/Cogs List", value="\n".join(["- " + cl for cl in cogs_list]), inline=False,
+            name="Module/Cogs List",
+            value="\n".join(["- " + cl for cl in cogs_list]),
+            inline=False,
         )
         return await ctx.send(embed=helpcmd.get())
     if not cogs.startswith("cogs."):
@@ -958,9 +980,15 @@ async def unload(ctx, *, cogs=None):
     Unload salah satu module bot, owner only
     """
     if not cogs:
-        helpcmd = HelpGenerator(bot, "Unload", desc="Unload module bot.",)
+        helpcmd = HelpGenerator(
+            bot,
+            "Unload",
+            desc="Unload module bot.",
+        )
         helpcmd.embed.add_field(
-            name="Module/Cogs List", value="\n".join(["- " + cl for cl in cogs_list]), inline=False,
+            name="Module/Cogs List",
+            value="\n".join(["- " + cl for cl in cogs_list]),
+            inline=False,
         )
         return await ctx.send(embed=helpcmd.get())
     if not cogs.startswith("cogs."):
@@ -1108,7 +1136,9 @@ async def prefix(ctx, *, msg=None):
     if not msg:
         helpcmd = HelpGenerator(bot, "Prefix", color=0x00AAAA)
         helpcmd.embed.add_field(
-            name="Prefix Server", value=prefix_data.get(server_message, "Tidak ada"), inline=False,
+            name="Prefix Server",
+            value=prefix_data.get(server_message, "Tidak ada"),
+            inline=False,
         )
         await helpcmd.generate_aliases()
         return await ctx.send(embed=helpcmd.get())
@@ -1132,7 +1162,9 @@ async def prefix(ctx, *, msg=None):
 
     await write_files(prefix_data, "server_prefixes.json")
     bot.command_prefix = partial(
-        prefixes_with_data, prefixes_data=prefix_data, default=bot.botconf["default_prefix"],
+        prefixes_with_data,
+        prefixes_data=prefix_data,
+        default=bot.botconf["default_prefix"],
     )
     prefix = bot.command_prefix
     if callable(prefix):
@@ -1183,7 +1215,9 @@ async def prefix_error(error, ctx):
             prefix_data = await read_files("server_prefixes.json")
         helpcmd = HelpGenerator(bot, "Load", desc="Load module bot.", color=0x00AAAA)
         helpcmd.embed.add_field(
-            name="Prefix Server", value=prefix_data.get(server_message, "Tidak ada"), inline=False,
+            name="Prefix Server",
+            value=prefix_data.get(server_message, "Tidak ada"),
+            inline=False,
         )
         await helpcmd.generate_aliases()
         await ctx.send(embed=helpcmd.get())
@@ -1198,7 +1232,7 @@ async def run_bot(*args, **kwargs):
         await bot.close()
 
 
-def stop_stuff_on_completion(f):
+def stop_stuff_on_completion(_):
     bot.logger.info("Closing queue loop.")
     async_loop.run_until_complete(bot.showqueue.shutdown())
     bot.logger.info("Shutting down fsdb connection...")
