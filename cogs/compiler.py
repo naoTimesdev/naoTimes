@@ -142,11 +142,10 @@ class CPPCompiler(commands.Cog):
                     table["code_input"] = []
                     await await_msg.delete()
                     break
-                else:
-                    input_data = [ind.rstrip() for ind in input_data.split("\n") if ind]
-                    table["code_input"] = input_data
-                    await await_msg.delete()
-                    break
+                input_data = [ind.rstrip() for ind in input_data.split("\n") if ind]
+                table["code_input"] = input_data
+                await await_msg.delete()
+                break
             return table, emb_msg
 
         c_table, emb_msg = await process_code_blocks(c_table, emb_msg)

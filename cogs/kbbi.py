@@ -408,7 +408,7 @@ class KBBICog(commands.Cog):
             if dataset_total < 2:
                 self.logger.warn(f"{kata_pencarian}: no other results.")
                 break
-            elif pos == 1:
+            if pos == 1:
                 to_react = ["⏩", "✅"]
             elif dataset_total == pos:
                 to_react = ["⏪", "✅"]

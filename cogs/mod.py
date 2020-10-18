@@ -719,8 +719,7 @@ class AutoMod(commands.Cog):
                     if audit.user.bot:
                         deleted_by_bot = True
                         break
-                    else:
-                        deleted_by_bot = False
+                    deleted_by_bot = False
                 except discord.NotFound:
                     continue
                 except AttributeError:
@@ -892,15 +891,14 @@ class AutoMod(commands.Cog):
                     metadata_srvlog["id"] = new_channel_id
                     await send_timed_msg(ctx, f"Channel berhasil diubah ke: <#{new_channel_id}>", 2)
                     break
-                elif channel_text_data.isdigit():
+                if channel_text_data.isdigit():
                     new_channel_id = int(channel_text_data)
                     if self.bot.get_channel(new_channel_id) is not None:
                         metadata_srvlog["id"] = new_channel_id
                         await send_timed_msg(ctx, f"Channel berhasil diubah ke: <#{new_channel_id}>", 2)
                         await channel_input.delete()
                         break
-                    else:
-                        await send_timed_msg(ctx, "Tidak dapat menemukan channel tersebut.", 2)
+                    await send_timed_msg(ctx, "Tidak dapat menemukan channel tersebut.", 2)
                 else:
                     await send_timed_msg(ctx, "Channel yang diberikan tidak valid.", 2)
                 await channel_input.delete()
