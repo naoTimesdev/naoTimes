@@ -304,7 +304,7 @@ async def fetch_perpus(
                 information = test_remake.find("span").text.rstrip().strip("\n")
                 is_remake = True
 
-            dl_links = dict()
+            dl_links = {}
             for dl in soup.find_all("a", {"class": "btnDownload"}):
                 dl_links[dl.text.rstrip().strip("\n")] = dl["href"]
 
