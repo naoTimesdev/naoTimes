@@ -834,9 +834,9 @@ async def status(ctx):
         is_kbbi_auth = bot.kbbi.terautentikasi
     else:
         is_kbbi_auth = False
-    is_fsdb_loaded = True if bot.fsdb is not None else False
-    is_vndb_loaded = True if bot.vndb_socket is not None else False
-    is_db_loaded = True if bot.ntdb is not None else False
+    is_fsdb_loaded = bot.fsdb is not None
+    is_vndb_loaded = bot.vndb_socket is not None
+    is_db_loaded = bot.ntdb is not None
 
     bot_location = bot.get_hostdata["location"]
 
