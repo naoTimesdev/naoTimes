@@ -132,7 +132,7 @@ class GamesAPI(commands.Cog):
             if dataset_total < 2:
                 self.logger.info(f"{game_name}: only 1 results, exiting...")
                 break
-            elif pos == 1:
+            if pos == 1:
                 to_react = ["⏩", "✅"]
             elif dataset_total == pos:
                 to_react = ["⏪", "✅"]
@@ -256,7 +256,7 @@ class GamesAPI(commands.Cog):
             if dataset_total < 2:
                 self.logger.info(f"{pencarian}: no other results, exiting...")
                 break
-            elif pos == 1:
+            if pos == 1:
                 to_react = ["⏩", "✅"]
             elif dataset_total == pos:
                 to_react = ["⏪", "✅"]
@@ -462,7 +462,7 @@ class GamesAPI(commands.Cog):
             if dataset_total < 2:
                 self.logger.warn(f"{args.kueri}: no other results, exiting...")
                 break
-            elif pos == 1:
+            if pos == 1:
                 to_react = ["⏩", "✅"]
             elif dataset_total == pos:
                 to_react = ["⏪", "✅"]

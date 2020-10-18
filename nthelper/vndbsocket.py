@@ -108,9 +108,8 @@ class VNDBSockIOManager:
             if "\x04" in self.data_buffer.decode("utf-8", "ignore"):
                 temp += self.data_buffer.decode("utf-8", "ignore")
                 break
-            else:
-                temp += self.data_buffer.decode("utf-8", "ignore")
-                self.data_buffer = bytes(1024)
+            temp += self.data_buffer.decode("utf-8", "ignore")
+            self.data_buffer = bytes(1024)
         temp = temp.replace("\x04", "")
         # self._sock_writer.close()
         if "ok" in temp.lower():  # because login

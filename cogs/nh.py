@@ -277,11 +277,10 @@ class nHController(commands.Cog):
 
                             await msg.edit(embed=embed)
                             break
-                        else:
-                            self.logger.debug(f"{data['id']}: going back to info")
-                            embed = await self.format_embed_info(data)
-                            await msg.edit(embed=embed)
-                            download_text_open = False
+                        self.logger.debug(f"{data['id']}: going back to info")
+                        embed = await self.format_embed_info(data)
+                        await msg.edit(embed=embed)
+                        download_text_open = False
                     elif "\N{INBOX TRAY}" in str(res2.emoji):  # Download
                         self.logger.info(f"{data['id']}: showing download link...")
                         embed = discord.Embed(
@@ -318,7 +317,7 @@ class nHController(commands.Cog):
                             reactmoji3 = []
                             if dataset_total < 2:
                                 break
-                            elif pospos == 1:
+                            if pospos == 1:
                                 reactmoji3 = ["⏩"]
                             elif dataset_total == pospos:
                                 reactmoji3 = ["⏪"]
@@ -346,7 +345,7 @@ class nHController(commands.Cog):
                                 await msg.clear_reactions()
                                 await msg.edit(embed=embed)
                                 break
-                            elif "⏪" in str(res3.emoji):
+                            if "⏪" in str(res3.emoji):
                                 self.logger.debug(f"{data['id']}: reader: " "previous image...")
                                 pospos = pospos - 1
                                 img_link = dataset_img[pospos - 1]
@@ -459,7 +458,7 @@ class nHController(commands.Cog):
                     reactmoji3 = []
                     if dataset_total < 2:
                         break
-                    elif pospos == 1:
+                    if pospos == 1:
                         reactmoji3 = ["⏩"]
                     elif dataset_total == pospos:
                         reactmoji3 = ["⏪"]
@@ -597,7 +596,7 @@ class nHController(commands.Cog):
             reactmoji3 = []
             if dataset_total < 2:
                 break
-            elif pospos == 1:
+            if pospos == 1:
                 reactmoji3 = ["⏩"]
             elif dataset_total == pospos:
                 reactmoji3 = ["⏪"]

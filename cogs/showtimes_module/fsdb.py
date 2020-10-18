@@ -469,7 +469,7 @@ class ShowtimesFansubDB(commands.Cog, ShowtimesBase):
             reactmoji = []
             if max_page == 1 and num == 1:
                 break
-            elif num == 1:
+            if num == 1:
                 reactmoji.append("⏩")
             elif num == max_page:
                 reactmoji.append("⏪")

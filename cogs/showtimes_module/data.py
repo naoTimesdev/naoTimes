@@ -227,7 +227,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                         srv_data["anime"][matches[0]]["role_id"] = await_msg.content
                         await await_msg.delete()
                         break
-                    elif await_msg.content.startswith("auto"):
+                    if await_msg.content.startswith("auto"):
                         c_role = await ctx.message.guild.create_role(
                             name=matches[0], colour=discord.Colour(0xDF2705), mentionable=True,
                         )

@@ -946,7 +946,7 @@ class PeninjauWeb(commands.Cog):
             reactmoji = []
             if dataset_total < 2:
                 break
-            elif pos == 1:
+            if pos == 1:
                 reactmoji = ["⏩"]
             elif dataset_total == pos:
                 reactmoji = ["⏪"]
