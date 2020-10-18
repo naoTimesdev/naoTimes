@@ -20,8 +20,7 @@ class CPPTestSanitizeError(CPPTestError):
 
 
 class CPPTestCompileError(CPPTestError):
-    def __init__(self, err_out):
-        super().__init__(err_out)
+    pass
 
 
 class CPPTestTimeoutError(CPPTestError):
@@ -30,8 +29,7 @@ class CPPTestTimeoutError(CPPTestError):
 
 
 class CPPTestRuntimeError(CPPTestError):
-    def __init__(self, msg):
-        super().__init__(msg)
+    pass
 
 
 class CPPUnitTester:
