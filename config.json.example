@@ -12,7 +12,9 @@
 	"mongodb": {
 		"ip_hostname": "localhost",
 		"port": 13307,
-		"dbname": "naotimesdb",
+        "dbname": "naotimesdb",
+        "tls": false,
+        "auth": null
 	},
     "kbbi": {
         "email": "",
