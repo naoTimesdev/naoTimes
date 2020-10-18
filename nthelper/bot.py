@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import platform
@@ -83,6 +84,7 @@ class naoTimesBot(commands.Bot):
 
         self.fcwd: str
         self.error_logger: int = None
+        self._bot_log_data: asyncio.Queue = asyncio.Queue()
 
         self.fsdb: FansubDBBridge = None
         self.showqueue: ShowtimesQueue
@@ -228,3 +230,9 @@ class naoTimesBot(commands.Bot):
             A collection of dictionary that contains ip/country/region/tz.
         """
         return HostingData(self._ip_hostname, f"{self._host_region}, {self._host_country}", self._host_tz)
+
+    def bot_log(self, logging_data: dict):
+        self._bot_log_data.put_nowait(logging_data)
+
+    async def read_bot_log(self) -> dict:
+        return await self._bot_log_data.get()
