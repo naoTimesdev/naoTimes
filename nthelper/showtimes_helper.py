@@ -60,15 +60,62 @@ class naoTimesDB:
     Modul ini dibuat untuk kebutuhan khusus naoTimes dan sebagainya.
     """
 
-    def __init__(self, ip_hostname, port, dbname="naotimesdb"):
+    def __init__(self, ip_hostname, port, dbname="naotimesdb", auth_string=None, tls=False):
         self.logger = logging.getLogger("naotimesdb")
-        self.client = motor.motor_asyncio.AsyncIOMotorClient("mongodb://{}:{}".format(ip_hostname, port))
+        self._ip_hostname = ip_hostname
+        self._port = port
+        self._auth_string = auth_string
+        self._tls = tls
+        self._dbname = dbname
+
+        self._url = ""
+        self.generate_url()
+
+        self.client = motor.motor_asyncio.AsyncIOMotorClient(self._url)
         self.db = self.client[dbname]
 
-        self.clientsync = pymongo.MongoClient("mongodb://{}:{}".format(ip_hostname, port))
+        self.clientsync = pymongo.MongoClient(self._url)
         self.dbsync = self.clientsync[dbname]
         self.srv_re = {"name": {"$regex": r"^srv"}}
         self.__locked = False
+
+    def generate_url(self):
+        self._url = "mongodb"
+        if self._tls:
+            self._url += "+srv"
+        self._url += "://"
+        if self._auth_string:
+            self._url += self._auth_string + "@"
+        self._url += f"{self._ip_hostname}"
+        if not self._tls:
+            self._url += f":{self._port}"
+        self._url += "/"
+        if self._tls:
+            self._url += "?retryWrites=true&w=majority"
+
+    @property
+    def dbname(self):
+        return self._dbname
+
+    @property
+    def url(self):
+        _url = "mongodb"
+        if self._tls:
+            _url += "+srv"
+        _url += "://"
+        if self._auth_string:
+            try:
+                user, pass_ = self._auth_string.split(":")
+                pass_ = "*" * len(pass_)
+                secured_auth = f"{user}:{pass_}"
+            except Exception:
+                secured_auth = self._auth_string
+            _url += secured_auth + "@"
+        _url += f"{self._ip_hostname}"
+        if not self._tls:
+            _url += f":{self._port}"
+        _url += "/"
+        return _url
 
     @property
     def is_locked(self):
@@ -261,7 +308,7 @@ class naoTimesDB:
             self.logger.warn(f"cant find {server} on database.")
             return (
                 False,
-                "Server tidak terdaftar di database, " "gunakan metode `new_server`",
+                "Server tidak terdaftar di database, gunakan metode `new_server`",
             )
 
         res = await self.update_data(server, dataset)
@@ -307,7 +354,7 @@ class naoTimesDB:
             self.logger.warn(f"{server} already exists on database.")
             return (
                 False,
-                "Server terdaftar di database, " "gunakan metode `update_data_server`",
+                "Server terdaftar di database, gunakan metode `update_data_server`",
             )
 
         dataset = {
@@ -342,7 +389,7 @@ class naoTimesDB:
             res, msg = await self.remove_top_admin(admin_id)
             self.logger.info(f"{server} yeeted from database.")
             return res, msg if not res else "Success."
-        self.logger.warn("server doesn't exist on " "database when dropping, ignoring...")
+        self.logger.warn("server doesn't exist on database when dropping, ignoring...")
         return True, "Success anyway"
 
     """
