@@ -78,7 +78,8 @@ class VoteApp(commands.Cog):
 
         self._task_handler: asyncio.Task = asyncio.Task(self._voting_over_handler())
 
-    def sec_to_left(self, seconds):
+    @staticmethod
+    def sec_to_left(seconds):
         if seconds >= 3600:
             return f"{int(seconds // 3600)} Jam"
         elif seconds < 3600 and seconds >= 60:
@@ -395,7 +396,8 @@ class VoteApp(commands.Cog):
             return False, "higher"
         return True, "can"
 
-    def hierarcy_error(self, reason: str, kb_type: str):
+    @staticmethod
+    def hierarcy_error(reason: str, kb_type: str):
         if reason == "higher":
             return f"Tidak dapat nge{kb_type} user, posisi hirarki lebih tinggi dari bot."
         elif reason == "owner":

@@ -283,7 +283,8 @@ class VoteWatcher:
             save_path = os.path.join(self._fcwd, "vote_data", f"{msg_id}.votedata")
             blocking_write_files(vote_handler.export_data(), save_path)
 
-    def generate_answers(self, answers_options: list, two_choice_type=False):
+    @staticmethod
+    def generate_answers(answers_options: list, two_choice_type=False):
         final_data = []
         if not two_choice_type:
             for n, opts in enumerate(answers_options):

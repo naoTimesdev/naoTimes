@@ -441,16 +441,19 @@ class AutoMod(commands.Cog):
         await ctx.send("User successfully muted.")
 
     # Server logging part
-    def ctime(self) -> datetime:
+    @staticmethod
+    def ctime() -> datetime:
         return datetime.now(timezone.utc)
 
-    def truncate(self, msg: str, limit: int) -> str:
+    @staticmethod
+    def truncate(msg: str, limit: int) -> str:
         if len(msg) <= limit:
             return msg
         msg = msg[: limit - 8] + " [...]"
         return msg
 
-    def strftime(self, dt_time: datetime) -> str:
+    @staticmethod
+    def strftime(dt_time: datetime) -> str:
         month_en = dt_time.strftime("%B")
         tl_map = {
             "January": "Januari",
