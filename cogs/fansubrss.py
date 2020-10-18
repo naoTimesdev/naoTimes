@@ -6,6 +6,7 @@ import os
 import re
 import time
 from datetime import datetime, timezone
+from shutil import rmtree as remove_dir
 from typing import List, Optional, Tuple, Union
 
 import aiohttp
@@ -13,6 +14,7 @@ import discord
 import feedparser
 from discord.ext import commands, tasks
 from markdownify import markdownify as mdparse
+
 from nthelper.bot import naoTimesBot
 from nthelper.utils import (
     HelpGenerator,
@@ -578,13 +580,16 @@ class FansubRSS(commands.Cog):
                 return await ctx.send("Tidak dapat menemukan bantuan perintah tersebut.")
             helpcmd = HelpGenerator(self.bot, "fansubrss", desc="Pemantau RSS Fansub.")
             await helpcmd.generate_field(
-                "fansubrss", desc="Memunculkan bantuan perintah ini.",
+                "fansubrss",
+                desc="Memunculkan bantuan perintah ini.",
             )
             await helpcmd.generate_field(
-                "fansubrss aktifkan", desc="Mengaktifkan RSS announcer di channel tertentu.",
+                "fansubrss aktifkan",
+                desc="Mengaktifkan RSS announcer di channel tertentu.",
             )
             await helpcmd.generate_field(
-                "fansubrss ubah", desc="Mengatur settingan RSS di server ini.",
+                "fansubrss ubah",
+                desc="Mengatur settingan RSS di server ini.",
             )
             await helpcmd.generate_field("fansubrss format", desc="Format bagaimana RSS akan dikirim.")
             await helpcmd.generate_field(
@@ -667,6 +672,48 @@ class FansubRSS(commands.Cog):
         await self.write_rss_feeds(server_id, gen_hash, skip_fetch_url)
         self.logger.info(f"{server_id}: FansubRSS activated.")
         await ctx.send("FansubRSS berhasil diaktifkan, silakan atur formatting dengan !fansubrss format")
+
+    @fansubrss.command(name="deaktivasi", aliases=["deactivate"])
+    async def fansubrss_deaktivasi(self, ctx):
+        server_id = str(ctx.message.guild.id)
+        full_rss_metadata = await self.read_rss(server_id)
+        self.logger.info(f"fetching {server_id} metadata...")
+        if not full_rss_metadata:
+            self.logger.error(f"{server_id}: cannot find metadata...")
+            return await ctx.send("FansubRSS belum diaktifkan.")
+
+        self.logger.info(f"{server_id}: asking for confirmation...")
+        res = await confirmation_dialog(
+            self.bot, ctx, "Apakah anda yakin ingin menonaktifkan FansubRSS (Akan dihapus dari database)"
+        )
+        if not res:
+            self.logger.info(f"{server_id}: cancelled.")
+            return await ctx.send("Dibatalkan.")
+
+        self.logger.info(f"{server_id}: start deletion...")
+        feeds_data_path = os.path.join(self.bot.fcwd, "fansubrss_data", f"{server_id}.fsrss")
+        feeds_data_folder_path = os.path.join(self.bot.fcwd, "fansubrss_data", f"{server_id}_data")
+        try:
+            os.remove(feeds_data_path)
+        except FileNotFoundError:
+            self.logger.warning(f"{server_id}: server not found.")
+        try:
+            remove_dir(feeds_data_folder_path)
+        except OSError:
+            self.logger.warning(f"{server_id}: failed to remove rss data.")
+        self.logger.info(f"{server_id}: removing from rss checker...")
+        try:
+            self._server_normal.remove(str(server_id))
+        except ValueError:
+            pass
+        try:
+            self._server_premium.remove(str(server_id))
+        except KeyError:
+            pass
+        self.logger.info(f"{server_id}: server rss deactivated...")
+        await ctx.send(
+            f"Berhasil menonaktifkan, silakan aktifkan kembali via `{self.bot.prefix}fansubrss aktifkan`"
+        )
 
     @fansubrss.command(name="tambah", aliases=["add"])
     async def fansubrss_tambah(self, ctx, *, channel_id: int = 0):
@@ -855,7 +902,8 @@ class FansubRSS(commands.Cog):
             embed.add_field(name="✅ Simpan", value="Simpan perubahan.", inline=True)
             embed.add_field(name="❌ Batalkan", value="Batalkan perubahan.", inline=True)
             embed.set_footer(
-                text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
+                text="Dibawakan oleh naoTimes™®",
+                icon_url="https://p.n4o.xyz/i/nao250px.png",
             )
             if first_run:
                 first_run = False
@@ -1137,12 +1185,15 @@ class FansubRSS(commands.Cog):
             embed = discord.Embed(title="FansubRSS")
             embed.add_field(name="1️⃣ Atur URL", value=f"`{rss_metadata['feedUrl']}`", inline=False)
             embed.add_field(
-                name="2️⃣ Atur Channel", value=f"Sekarang: <#{rss_metadata['channel']}>", inline=False,
+                name="2️⃣ Atur Channel",
+                value=f"Sekarang: <#{rss_metadata['channel']}>",
+                inline=False,
             )
             embed.add_field(name="✅ Simpan", value="Simpan perubahan.", inline=True)
             embed.add_field(name="❌ Batalkan", value="Batalkan perubahan.", inline=True)
             embed.set_footer(
-                text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
+                text="Dibawakan oleh naoTimes™®",
+                icon_url="https://p.n4o.xyz/i/nao250px.png",
             )
             if first_run:
                 first_run = False
