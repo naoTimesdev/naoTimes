@@ -287,7 +287,7 @@ presence_status = [
     "Mencatat Delayan Fansub | !help",
     "Mengintai waifu orang | !help",
     "Waifu kalian sampah | !help",
-    "Membeli waifu di toko terdekat | !help" "Reinkarnasi Fansub mati | !help",
+    "Membeli waifu di toko terdekat | !help", "Reinkarnasi Fansub mati | !help",
     "Menuju Isekai | !help",
     "Leecher harap menagih dalam 120x24 jam | !help",
     "Membuka donasi | !help",
