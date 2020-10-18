@@ -113,7 +113,7 @@ def parse_anilist_date(start_date: dict) -> int:
 def get_episode_airing(nodes: dict, episode: str) -> tuple:
     """Get total episode of airing anime (using anilist data)"""
     if not nodes:
-        return None, "1"  # No data
+        return None, 1  # No data
     if len(nodes) == 1:
         return (
             nodes[0]["airingAt"],
@@ -469,7 +469,8 @@ class ShowtimesBase:
                 embed.description = "\n".join(format_value)
 
                 embed.set_footer(
-                    text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
+                    text="Dibawakan oleh naoTimes™®",
+                    icon_url="https://p.n4o.xyz/i/nao250px.png",
                 )
 
                 first_run = False

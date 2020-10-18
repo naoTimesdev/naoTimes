@@ -2,9 +2,8 @@ import asyncio
 
 import aiohttp
 import discord
-from discord.ext import commands
-
 import magic
+from discord.ext import commands
 
 
 def truncate(x: str, n: int):
@@ -68,12 +67,15 @@ class SausTomat(commands.Cog):
                     return await ctx.send(content=msggg)
                 if not r_data["results"]:
                     await temp_msg.edit(content="Gagal memproses gambar (1/2)..." "\nMengontak API IQDB.")
-                    async with session.post("https://api.ihateani.me/sauce/iqdb", data={"url": url},) as r2:
+                    async with session.post(
+                        "https://api.ihateani.me/sauce/iqdb",
+                        data={"url": url},
+                    ) as r2:
                         try:
                             r_data = await r2.json()
                         except aiohttp.client_exceptions.ContentTypeError:
                             await temp_msg.edit(content="Gagal memproses gambar...")
-                            return await ctx.send("Tidak dapat menghubungi " "endpoint API naoTimes.")
+                            return await ctx.send("Tidak dapat menghubungi endpoint API naoTimes.")
                         if r2.status != 200:
                             await temp_msg.edit(content="Gagal memproses gambar...")
                             msggg = "Terjadi kesalahan dengan request ke API."
@@ -89,7 +91,7 @@ class SausTomat(commands.Cog):
                         if not r_data["results"]:
                             await temp_msg.edit(content="Gagal memproses gambar (2/2)...")
                             return await ctx.send(
-                                "Tidak dapat menemukan hasil yang " "cukup yakin untuk gambar anda."
+                                "Tidak dapat menemukan hasil yang cukup yakin untuk gambar anda."
                             )
 
         resdata = r_data["results"]
@@ -227,7 +229,8 @@ class SausTomat(commands.Cog):
         temp_msg = await ctx.send("Memproses gambar dari pesan: <{}>\nMohon tunggu...".format(message_url))
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                "https://api.ihateani.me/sauce/saucenao", data={"url": final_img_url},
+                "https://api.ihateani.me/sauce/saucenao",
+                data={"url": final_img_url},
             ) as r:
                 try:
                     r_data = await r.json()
@@ -249,13 +252,14 @@ class SausTomat(commands.Cog):
                 if not r_data["results"]:
                     await temp_msg.edit(content="Gagal memproses gambar (1/2)..." "\nMengontak API IQDB.")
                     async with session.post(
-                        "https://api.ihateani.me/sauce/iqdb", data={"url": final_img_url},
+                        "https://api.ihateani.me/sauce/iqdb",
+                        data={"url": final_img_url},
                     ) as r2:
                         try:
                             r_data = await r2.json()
                         except aiohttp.client_exceptions.ContentTypeError:
                             await temp_msg.edit(content="Gagal memproses gambar...")
-                            return await ctx.send("Tidak dapat menghubungi " "endpoint API naoTimes.")
+                            return await ctx.send("Tidak dapat menghubungi endpoint API naoTimes.")
                         if r2.status != 200:
                             await temp_msg.edit(content="Gagal memproses gambar...")
                             msggg = "Terjadi kesalahan dengan request ke API."
@@ -271,7 +275,7 @@ class SausTomat(commands.Cog):
                         if not r_data["results"]:
                             await temp_msg.edit(content="Gagal memproses gambar (2/2)...")
                             return await ctx.send(
-                                "Tidak dapat menemukan hasil yang " "cukup yakin untuk gambar anda."
+                                "Tidak dapat menemukan hasil yang cukup yakin untuk gambar anda."
                             )
 
         resdata = r_data["results"]

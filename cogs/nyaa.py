@@ -7,9 +7,8 @@ import shlex
 import aiohttp
 import discord
 import discord.ext.commands as commands
-from bs4 import BeautifulSoup
-
 import ujson
+from bs4 import BeautifulSoup
 
 with open("config.json", "r") as fp:
     bot_config = ujson.load(fp)
@@ -69,13 +68,19 @@ def parse_error(err_str):
     if err_str.startswith("unrecognized arguments"):
         err_str = err_str.replace("unrecognized arguments", "Argumen tidak diketahui")
     elif err_str.startswith("the following arguments are required"):
-        err_str = err_str.replace("the following arguments are required", "Argumen berikut wajib diberikan",)
+        err_str = err_str.replace(
+            "the following arguments are required",
+            "Argumen berikut wajib diberikan",
+        )
     if "usage" in err_str:
         err_str = (
             err_str.replace("usage", "Gunakan")
             .replace("positional arguments", "Argumen yang diwajibkan")
             .replace("optional arguments", "Argumen opsional")
-            .replace("show this help message and exit", "Perlihatkan bantuan perintah",)
+            .replace(
+                "show this help message and exit",
+                "Perlihatkan bantuan perintah",
+            )
         )
     return err_str
 
@@ -83,7 +88,9 @@ def parse_error(err_str):
 def parse_args(str_txt: str, s: str, search_mode=True):
     """parse an argument that passed"""
     parser = BotArgumentParser(
-        prog="!nyaa " + s, usage="!nyaa " + s, formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        prog="!nyaa " + s,
+        usage="!nyaa " + s,
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     if search_mode:
         parser.add_argument("input", help="Apa yang mau dicari")
@@ -106,7 +113,12 @@ def parse_args(str_txt: str, s: str, search_mode=True):
         help="Cari torrent hanya pada user yang diberikan",
     )
     parser.add_argument(
-        "--sukebei", "-nsfw", required=False, dest="sukebei", action="store_true", help="Mode Sukebei",
+        "--sukebei",
+        "-nsfw",
+        required=False,
+        dest="sukebei",
+        action="store_true",
+        help="Mode Sukebei",
     )
     parser.add_argument(
         "--trusted",
@@ -217,7 +229,10 @@ async def parse_querylist(querylist):
 
 async def check_user(user, sukebei=False):
     _NYAA_URL, _NYAA_API_URL = api_url(sukebei)
-    url_search = "{base}user/{user_}".format(base=_NYAA_URL, user_=user,)
+    url_search = "{base}user/{user_}".format(
+        base=_NYAA_URL,
+        user_=user,
+    )
     async with aiohttp.ClientSession() as sesi:
         async with sesi.get(url_search) as r:
             await r.text()
@@ -227,7 +242,12 @@ async def check_user(user, sukebei=False):
 
 
 async def fetch_nyaa(
-    keyword=None, category="all", trusted=False, nr=False, user=None, sukebei=False,
+    keyword=None,
+    category="all",
+    trusted=False,
+    nr=False,
+    user=None,
+    sukebei=False,
 ):
     """
     Search and parse info from Nyaa.si
@@ -363,23 +383,28 @@ class NyaaTorrentsV2(commands.Cog):
     async def nyaa(self, ctx):
         if not ctx.invoked_subcommand:
             helpmain = discord.Embed(
-                title="Bantuan Perintah (!nyaa)", description="versi 2.0.0", color=0x00AAAA,
+                title="Bantuan Perintah (!nyaa)",
+                description="versi 2.0.0",
+                color=0x00AAAA,
             )
             helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
             helpmain.set_author(
-                name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png",
+                name="naoTimes",
+                icon_url="https://p.n4o.xyz/i/naotimes_ava.png",
             )
             helpmain.add_field(
-                name="!nyaa", value="```Memunculkan bantuan perintah```", inline=False,
+                name="!nyaa",
+                value="```Memunculkan bantuan perintah```",
+                inline=False,
             )
             helpmain.add_field(
                 name="!nyaa cari <argumen>",
-                value="```Mencari torrent di nyaa.si " "(gunakan argumen -h untuk melihat bantuan)```",
+                value="```Mencari torrent di nyaa.si (gunakan argumen -h untuk melihat bantuan)```",
                 inline=False,
             )
             helpmain.add_field(
                 name="!nyaa terbaru <argumen>",
-                value="```Melihat 10 torrents terbaru " "(gunakan argumen -h untuk melihat bantuan)```",
+                value="```Melihat 10 torrents terbaru (gunakan argumen -h untuk melihat bantuan)```",
                 inline=False,
             )
             helpmain.add_field(
@@ -389,7 +414,7 @@ class NyaaTorrentsV2(commands.Cog):
                 inline=False,
             )
             helpmain.add_field(name="Aliases", value="Tidak ada", inline=False)
-            helpmain.set_footer(text="Dibawakan oleh naoTimes " "|| Dibuat oleh N4O#8868 versi 2.0.0")
+            helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
             await ctx.send(embed=helpmain)
 
     @nyaa.command(aliases=["category"])
@@ -473,7 +498,12 @@ class NyaaTorrentsV2(commands.Cog):
         if isinstance(args, str):
             return await ctx.send(parse_error(args))
         nqres = await fetch_nyaa(
-            args.input, args.kategori, args.trust_only, args.no_remake, args.user, args.sukebei,
+            args.input,
+            args.kategori,
+            args.trust_only,
+            args.no_remake,
+            args.user,
+            args.sukebei,
         )
         if isinstance(nqres, str):
             return await ctx.send(nqres)
@@ -628,7 +658,12 @@ class NyaaTorrentsV2(commands.Cog):
         if isinstance(args, str):
             return await ctx.send(parse_error(args))
         nqres = await fetch_nyaa(
-            None, args.kategori, args.trust_only, args.no_remake, args.user, args.sukebei,
+            None,
+            args.kategori,
+            args.trust_only,
+            args.no_remake,
+            args.user,
+            args.sukebei,
         )
         if isinstance(nqres, str):
             return await ctx.send(nqres)
@@ -654,7 +689,8 @@ class NyaaTorrentsV2(commands.Cog):
                     data["leechers"],
                     data["completed"],
                 )
-                dl_link_fmt = "📥 \|| **[Torrent]({t})**".format(t=data["download_link"])  # noqa: w605
+                dl_link_fmt = r"📥 \|| "
+                dl_link_fmt += "**[Torrent]({t})**".format(t=data["download_link"])
 
                 embed.add_field(name="Uploader", value=data["submitter"], inline=True)
                 embed.add_field(

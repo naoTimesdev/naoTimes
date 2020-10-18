@@ -8,12 +8,7 @@ from urllib.parse import quote
 import aiohttp
 import kbbi
 from bs4 import BeautifulSoup
-from kbbi import (  # noqa: F401
-    BatasSehari,
-    GagalAutentikasi,
-    TerjadiKesalahan,
-    TidakDitemukan,
-)
+from kbbi import BatasSehari, GagalAutentikasi, TerjadiKesalahan, TidakDitemukan  # noqa: F401
 
 from .utils import sync_wrap
 
@@ -45,7 +40,10 @@ class AutentikasiKBBI:
     async def __ambil_token(self):
         async with self.sesi.get(f"{self.host}/{self.lokasi}") as resp:
             laman = await resp.text()
-        token = re.search(r"<input name=\"__RequestVerificationToken\".*value=\"(.*)\" />", laman,)
+        token = re.search(
+            r"<input name=\"__RequestVerificationToken\".*value=\"(.*)\" />",
+            laman,
+        )
         if not token:
             raise kbbi.TerjadiKesalahan()
         return token.group(1)
@@ -117,9 +115,7 @@ class KBBI:
                 raise TerjadiKesalahan()
             if req.status == 404:
                 raise TidakDitemukan(self.nama)
-            raise kbbi.Galat(
-                f"Terjadi kesalahan ketika berkomunikasi dengan KBBI, status code: {req.status}"
-            )
+            raise kbbi.Galat(f"Terjadi kesalahan ketika berkomunikasi dengan KBBI, status code: {req.status}")
         await self._cek_autentikasi(laman)
         await self._cek_galat(req, laman)
         await self._init_entri(laman)

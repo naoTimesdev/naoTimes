@@ -1,10 +1,11 @@
 import logging
 from datetime import datetime, timezone
-from typing import Dict, Optional, Any, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import aiohttp
 import discord
 from discord.ext import commands
+
 from nthelper.bot import naoTimesBot
 
 wlogger = logging.getLogger("cogs.cuaca")

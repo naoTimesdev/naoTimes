@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 
 import logging
+from datetime import datetime
 from typing import List, Union
+from urllib.parse import quote_plus
 
 import aiohttp
 import discord
 import discord.ext.commands as commands
-from urllib.parse import quote_plus
-from datetime import datetime
 
 
 def setup(bot):
@@ -60,23 +60,34 @@ class nHController(commands.Cog):
     async def nhi(self, ctx):
         if not ctx.invoked_subcommand:
             helpmain = discord.Embed(
-                title="Bantuan Perintah (!nh)", description="versi 2.0.0", color=0x00AAAA,
+                title="Bantuan Perintah (!nh)",
+                description="versi 2.0.0",
+                color=0x00AAAA,
             )
             helpmain.set_thumbnail(url="https://image.ibb.co/darSzH/question_mark_1750942_640.png")
             helpmain.set_author(
-                name="naoTimes", icon_url="https://p.n4o.xyz/i/naotimes_ava.png",
+                name="naoTimes",
+                icon_url="https://p.n4o.xyz/i/naotimes_ava.png",
             )
             helpmain.add_field(
-                name="!nh", value="```Memunculkan bantuan perintah```", inline=False,
+                name="!nh",
+                value="```Memunculkan bantuan perintah```",
+                inline=False,
             )
             helpmain.add_field(
-                name="!nh cari <query>", value="```Mencari kode nuklir.```", inline=False,
+                name="!nh cari <query>",
+                value="```Mencari kode nuklir.```",
+                inline=False,
             )
             helpmain.add_field(
-                name="!nh info <kode>", value="```Melihat informasi kode nuklir.```", inline=False,
+                name="!nh info <kode>",
+                value="```Melihat informasi kode nuklir.```",
+                inline=False,
             )
             helpmain.add_field(
-                name="!nh baca <kode>", value="```Membaca langsung kode nuklir.```", inline=False,
+                name="!nh baca <kode>",
+                value="```Membaca langsung kode nuklir.```",
+                inline=False,
             )
             helpmain.add_field(
                 name="!nh unduh <kode>",
@@ -85,7 +96,7 @@ class nHController(commands.Cog):
                 inline=False,
             )
             helpmain.add_field(name="Aliases", value="Tidak ada", inline=False)
-            helpmain.set_footer(text="Dibawakan oleh naoTimes " "|| Dibuat oleh N4O#8868 versi 2.0.0")
+            helpmain.set_footer(text="Dibawakan oleh naoTimes || Dibuat oleh N4O#8868 versi 2.0.0")
             await ctx.send(embed=helpmain)
 
     @staticmethod
@@ -93,12 +104,16 @@ class nHController(commands.Cog):
         lang: List[str] = [i[0].capitalize() for i in tags["languages"]]  # type: ignore
         if "Translated" in lang:
             lang.remove("Translated")
-            lang = [TRANSLASI_BAHASA.get(l, l) for l in lang]
+            lang = [TRANSLASI_BAHASA.get(la, la) for la in lang]
             return "Terjemahan: " + ", ".join(lang)
         return "RAW ({})".format(TRANSLASI_BAHASA.get(lang[0], lang[0]))
 
     async def format_embed_search(self, data: dict, query: str) -> discord.Embed:
-        embed = discord.Embed(title="Pencarian: {}".format(query), color=0x1F1F1F, url=data["url"],)
+        embed = discord.Embed(
+            title="Pencarian: {}".format(query),
+            color=0x1F1F1F,
+            url=data["url"],
+        )
         embed.set_footer(text="Kode: {} | Diprakasai oleh api.ihateani.me".format(data["id"]))
         embed.description = "**{}**\n{}".format(data["title"], self.cek_translasi(data["tags"]))
         embed.set_image(url=data["cover"])
@@ -118,16 +133,19 @@ class nHController(commands.Cog):
             timestamp=datetime.fromtimestamp(data["posted_time"]),
         )
         embed.description = "{}\n{}".format(
-            data["original_title"]["japanese"], data["original_title"]["other"],
+            data["original_title"]["japanese"],
+            data["original_title"]["other"],
         )
         for tag in data["tags"].keys():
             if data["tags"][tag]:
                 tag_parsed = [aaa[0].capitalize() for aaa in data["tags"][tag]]
                 embed.add_field(
-                    name=TAG_TRANSLATION[tag], value=", ".join(tag_parsed),
+                    name=TAG_TRANSLATION[tag],
+                    value=", ".join(tag_parsed),
                 )
         embed.add_field(
-            name=":nut_and_bolt: Total Halaman", value="{} halaman".format(data["total_pages"]),
+            name=":nut_and_bolt: Total Halaman",
+            value="{} halaman".format(data["total_pages"]),
         )
         embed.set_footer(text="Favorit: {} | Diprakasai oleh api.ihateani.me".format(data["favorites"]))
         embed.set_image(url=data["cover"])
@@ -272,7 +290,7 @@ class nHController(commands.Cog):
                     elif "✅" in str(res2.emoji):
                         await msg.clear_reactions()
                         if not download_text_open:
-                            self.logger.warn(f"{data['id']}: going back to" " search results...")
+                            self.logger.warn(f"{data['id']}: going back to search results...")
                             embed = await self.format_embed_search(data, query)
 
                             await msg.edit(embed=embed)
@@ -345,8 +363,8 @@ class nHController(commands.Cog):
                                 await msg.clear_reactions()
                                 await msg.edit(embed=embed)
                                 break
-                            if "⏪" in str(res3.emoji):
-                                self.logger.debug(f"{data['id']}: reader: " "previous image...")
+                            elif "⏪" in str(res3.emoji):
+                                self.logger.debug(f"{data['id']}: reader: previous image...")
                                 pospos = pospos - 1
                                 img_link = dataset_img[pospos - 1]
 
@@ -354,7 +372,7 @@ class nHController(commands.Cog):
                                 await msg.clear_reactions()
                                 await msg.edit(embed=embed)
                             elif "⏩" in str(res3.emoji):
-                                self.logger.debug(f"{data['id']}: reader: " "next image...")
+                                self.logger.debug(f"{data['id']}: reader: next image...")
                                 pospos = pospos + 1
                                 img_link = dataset_img[pospos - 1]
 
@@ -645,6 +663,5 @@ class nHController(commands.Cog):
         if isinstance(error, commands.CheckFailure):
             self.logger.error("need NSFW channel.")
             await ctx.send(
-                "Untuk menggunakan perintah ini, dibutuhkan channel" " yang sudah diaktifkan mode NSFW-nya."
+                "Untuk menggunakan perintah ini, dibutuhkan channel yang sudah diaktifkan mode NSFW-nya."
             )
-

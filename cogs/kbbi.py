@@ -9,14 +9,8 @@ import discord
 from discord.ext import commands, tasks
 
 from nthelper.bot import naoTimesBot
+from nthelper.kbbiasync import KBBI, BatasSehari, GagalKoneksi, TerjadiKesalahan, TidakDitemukan
 from nthelper.utils import write_files
-from nthelper.kbbiasync import (
-    KBBI,
-    BatasSehari,
-    GagalKoneksi,
-    TerjadiKesalahan,
-    TidakDitemukan,
-)
 
 kbbilog = logging.getLogger("cogs.kbbi")
 
@@ -348,7 +342,9 @@ class KBBICog(commands.Cog):
         async def _design_embed(entri):
             embed = discord.Embed(color=0x110063)
             embed.set_author(
-                name=entri["nama"], url=pranala, icon_url="https://p.n4o.xyz/i/kbbi192.png",
+                name=entri["nama"],
+                url=pranala,
+                icon_url="https://p.n4o.xyz/i/kbbi192.png",
             )
             deskripsi = ""
             btb_varian = ""
@@ -378,15 +374,21 @@ class KBBICog(commands.Cog):
                 entri_terkait += "**Idiom**: {}\n".format(idiom_hi)
             embed.add_field(name="Makna", value=strunct(entri["makna"], 1024), inline=False)
             embed.add_field(
-                name="Contoh", value=strunct(entri["contoh"], 1024), inline=False,
+                name="Contoh",
+                value=strunct(entri["contoh"], 1024),
+                inline=False,
             )
             if entri_terkait:
                 embed.add_field(
-                    name="Entri Terkait", value=strunct(entri_terkait, 1024), inline=False,
+                    name="Entri Terkait",
+                    value=strunct(entri_terkait, 1024),
+                    inline=False,
                 )
             if btb_varian:
                 embed.add_field(
-                    name="Bentuk tak baku/Varian", value=strunct(btb_varian, 1024), inline=False,
+                    name="Bentuk tak baku/Varian",
+                    value=strunct(btb_varian, 1024),
+                    inline=False,
                 )
             embed.set_footer(text="Menggunakan KBBI Daring versi 3.0.0")
             return embed

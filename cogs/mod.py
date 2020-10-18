@@ -12,6 +12,7 @@ import discord
 import ujson
 from discord.ext import commands, tasks
 from discord.ext.commands.errors import BotMissingPermissions, MissingPermissions
+
 from nthelper.bot import naoTimesBot
 from nthelper.utils import send_timed_msg
 
@@ -338,7 +339,7 @@ class AutoMod(commands.Cog):
             await channel.edit(slowmode_delay=amount)
         except discord.Forbidden:
             return await ctx.send(
-                "Please give bot `Manage Message` and `Manage Channels` " "permission for this channel."
+                "Please give bot `Manage Message` and `Manage Channels` permission for this channel."
             )
         await ctx.send("⚙️ Slowmode Activated!\n" f"User can sent message every: {amount} seconds")
 
@@ -679,6 +680,13 @@ class AutoMod(commands.Cog):
             return False, server_data, srvlog_settings
         return True, server_data, srvlog_settings
 
+    @commands.Cog.listener("on_message")
+    async def log_server_ignore_bot(self, message: discord.Message):
+        if not message.guild:
+            return
+        if not message.author.bot:
+            return
+
     @commands.Cog.listener("on_message_edit")
     async def log_server_message_edit(self, before: discord.Message, after: discord.Message):
         is_gucci, server_data, srvlog_settings = self.check_if_gucci(before, "edit_msg")
@@ -944,7 +952,9 @@ class AutoMod(commands.Cog):
                 inline=False,
             )
             embed.add_field(
-                name="5️⃣ Roles", value="Aktif" if datasete["role_update"] else "Tidak aktif", inline=False,
+                name="5️⃣ Roles",
+                value="Aktif" if datasete["role_update"] else "Tidak aktif",
+                inline=False,
             )
             embed.add_field(name="🗑️ Matikan", value="Matikan Pencatatan Peladen", inline=False)
             embed.add_field(name="📜 Aktifkan Semua", value="Aktifkan Semua Pencatatan Peladen", inline=True)

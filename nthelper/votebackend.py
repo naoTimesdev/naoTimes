@@ -154,8 +154,7 @@ class VotingData(VotingBase):
         }
 
     def refresh(self):
-        """Refresh voting data, check with the timeout limit.
-        """
+        """Refresh voting data, check with the timeout limit."""
         current = utc_time()
         if current >= self._timeout:
             self._is_done = True

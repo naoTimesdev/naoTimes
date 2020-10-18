@@ -128,7 +128,7 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                 if str(ctx.message.author.id) not in srv_owner:
                     self.logger.warning(f"{matches[0]}: user not allowed.")
                     return await ctx.send(
-                        "**Tidak secepat itu ferguso, " "yang bisa rilis cuma admin atau QCer**"
+                        "**Tidak secepat itu ferguso, yang bisa rilis cuma admin atau QCer**"
                     )
 
             if koleb_list:
@@ -193,7 +193,7 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                 if str(ctx.message.author.id) not in srv_owner:
                     self.logger.warning(f"{matches[0]}: user not allowed.")
                     return await ctx.send(
-                        "**Tidak secepat itu ferguso, " "yang bisa rilis cuma admin atau QCer**"
+                        "**Tidak secepat itu ferguso, yang bisa rilis cuma admin atau QCer**"
                     )
 
             if koleb_list:
@@ -261,14 +261,14 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
 
             all_status = self.get_not_released_ep(status_list)
             if not all_status:
-                self.logger.warning(f"{matches[0]}: no episode left " "to be worked on.")
+                self.logger.warning(f"{matches[0]}: no episode left to be worked on.")
                 return await ctx.send("**Sudah beres digarap!**")
 
             if str(ctx.message.author.id) != program_info["staff_assignment"]["QC"]:
                 if str(ctx.message.author.id) not in srv_owner:
                     self.logger.warning(f"{matches[0]}: user not allowed.")
                     return await ctx.send(
-                        "**Tidak secepat itu ferguso, " "yang bisa rilis cuma admin atau QCer**"
+                        "**Tidak secepat itu ferguso, yang bisa rilis cuma admin atau QCer**"
                     )
 
             if koleb_list:
@@ -402,10 +402,14 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                         continue
                     koleb_list.append(ko_data)
 
-        if not self.check_role(program_info["role_id"], ctx.message.author.roles):
-            if str(ctx.message.author.id) not in srv_owner:
-                return
-            pass
+        try:
+            if not self.check_role(program_info["role_id"], ctx.message.author.roles):
+                if str(ctx.message.author.id) not in srv_owner:
+                    return
+        except ValueError:
+            return await ctx.send(
+                f"Gagal memeriksa role, mohon ubah dengan {self.bot.prefix}ubahdata {matches[0]}"
+            )
 
         current = self.get_current_ep(status_list)
         if not current:
@@ -415,7 +419,7 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
         current_stat = status_list[current]["staff_status"][posisi]
         if current_stat == "y":
             self.logger.warning(f"{matches[0]}: position already set to done.")
-            return await ctx.send(f"**{posisi_asli}** sudah ditandakan " "sebagai beres.")
+            return await ctx.send(f"**{posisi_asli}** sudah ditandakan sebagai beres.")
 
         poster_data = program_info["poster_data"]
         poster_image = poster_data["url"]
@@ -475,15 +479,22 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                     if not target_chan:
                         self.logger.warning(f"{announce_chan}: unknown channel.")
                         continue
-                    embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=0x1EB5A6,)
+                    embed = discord.Embed(
+                        title="{} - #{}".format(matches[0], current),
+                        color=0x1EB5A6,
+                    )
                     embed.add_field(
-                        name="Status", value=self.parse_status(current_ep_status), inline=False,
+                        name="Status",
+                        value=self.parse_status(current_ep_status),
+                        inline=False,
                     )
                     embed.set_footer(text=f"Pada: {get_current_time()}")
                     await target_chan.send(embed=embed)
         embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=0x1EB5A6)
         embed.add_field(
-            name="Status", value=self.parse_status(current_ep_status), inline=False,
+            name="Status",
+            value=self.parse_status(current_ep_status),
+            inline=False,
         )
         if "announce_channel" in srv_data:
             announce_chan = srv_data["announce_channel"]
@@ -494,7 +505,8 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                 await target_chan.send(embed=embed)
         embed.add_field(name="Update Terakhir", value="Baru saja", inline=False)
         embed.set_footer(
-            text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
+            text="Dibawakan oleh naoTimes™®",
+            icon_url="https://p.n4o.xyz/i/nao250px.png",
         )
         embed.set_thumbnail(url=poster_image)
         return await ctx.send(embed=embed)
@@ -539,7 +551,7 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
         if str(ctx.message.author.id) != program_info["staff_assignment"]["QC"]:
             if str(ctx.message.author.id) not in srv_owner:
                 return await ctx.send(
-                    "**Tidak secepat itu ferguso, yang bisa " "membatalkan rilisan cuma admin atau QCer**"
+                    "**Tidak secepat itu ferguso, yang bisa membatalkan rilisan cuma admin atau QCer**"
                 )
 
         current = self.get_current_ep(status_list)
@@ -609,10 +621,13 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
         for osrv, osrv_data in osrv_dumped.items():
             if osrv == server_message:
                 continue
-            if "announce_channel" in osrv_data:
+            if "announce_channel" in osrv_data and osrv_data["announce_channel"]:
                 self.logger.info(f"{osrv}: sending progress to everyone...")
                 announce_chan = osrv_data["announce_channel"]
-                target_chan = self.bot.get_channel(int(announce_chan))
+                try:
+                    target_chan = self.bot.get_channel(int(announce_chan))
+                except ValueError:
+                    continue
                 if not target_chan:
                     self.logger.warning(f"{announce_chan}: unknown channel.")
                     continue
@@ -626,7 +641,7 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                 )
                 embed.set_footer(text=f"Pada: {get_current_time()}")
                 await target_chan.send(embed=embed)
-        if "announce_channel" in srv_data:
+        if "announce_channel" in srv_data and srv_data["announce_channel"]:
             announce_chan = srv_data["announce_channel"]
             target_chan = self.bot.get_channel(int(announce_chan))
             embed = discord.Embed(title="{}".format(matches[0]), color=0xB51E1E)
@@ -637,7 +652,7 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                 ),
                 inline=False,
             )
-            self.logger.info(f"{server_message}: sending " "progress to everyone...")
+            self.logger.info(f"{server_message}: sending progress to everyone...")
             embed.set_footer(text=f"Pada: {get_current_time()}")
             if target_chan:
                 await target_chan.send(embed=embed)
@@ -700,10 +715,14 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                         continue
                     koleb_list.append(ko_data)
 
-        if not self.check_role(program_info["role_id"], ctx.message.author.roles):
-            if str(ctx.message.author.id) not in srv_owner:
-                return
-            pass
+        try:
+            if not self.check_role(program_info["role_id"], ctx.message.author.roles):
+                if str(ctx.message.author.id) not in srv_owner:
+                    return
+        except ValueError:
+            return await ctx.send(
+                f"Gagal memeriksa role, mohon ubah dengan {self.bot.prefix}ubahdata {matches[0]}"
+            )
 
         current = self.get_current_ep(status_list)
         if not current:
@@ -713,7 +732,7 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
         current_stat = status_list[current]["staff_status"][posisi]
         if current_stat == "x":
             self.logger.warning(f"{matches[0]}: position already set to undone.")
-            return await ctx.send(f"**{posisi_asli}** sudah ditandakan " "sebagai tidak beres.")
+            return await ctx.send(f"**{posisi_asli}** sudah ditandakan sebagai tidak beres.")
 
         poster_data = program_info["poster_data"]
         poster_image = poster_data["url"]
@@ -765,24 +784,34 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
         for osrv, osrv_data in osrv_dumped.items():
             if osrv == server_message:
                 continue
-            if "announce_channel" in osrv_data:
+            if "announce_channel" in osrv_data and osrv_data["announce_channel"]:
                 self.logger.info(f"{osrv}: sending progress to everyone...")
                 announce_chan = osrv_data["announce_channel"]
-                target_chan = self.bot.get_channel(int(announce_chan))
+                try:
+                    target_chan = self.bot.get_channel(int(announce_chan))
+                except ValueError:
+                    continue
                 if not target_chan:
                     self.logger.warning(f"{announce_chan}: unknown channel.")
                     continue
-                embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=0xB51E1E,)
+                embed = discord.Embed(
+                    title="{} - #{}".format(matches[0], current),
+                    color=0xB51E1E,
+                )
                 embed.add_field(
-                    name="Status", value=self.parse_status(current_ep_status), inline=False,
+                    name="Status",
+                    value=self.parse_status(current_ep_status),
+                    inline=False,
                 )
                 embed.set_footer(text=f"Pada: {get_current_time()}")
                 await target_chan.send(embed=embed)
         embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=0xB51E1E)
         embed.add_field(
-            name="Status", value=self.parse_status(current_ep_status), inline=False,
+            name="Status",
+            value=self.parse_status(current_ep_status),
+            inline=False,
         )
-        if "announce_channel" in srv_data:
+        if "announce_channel" in srv_data and srv_data["announce_channel"]:
             announce_chan = srv_data["announce_channel"]
             target_chan = self.bot.get_channel(int(announce_chan))
             embed.set_footer(text=f"Pada: {get_current_time()}")
@@ -791,7 +820,8 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                 await target_chan.send(embed=embed)
         embed.add_field(name="Update Terakhir", value="Baru saja", inline=False)
         embed.set_footer(
-            text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
+            text="Dibawakan oleh naoTimes™®",
+            icon_url="https://p.n4o.xyz/i/nao250px.png",
         )
         embed.set_thumbnail(url=poster_image)
         await ctx.send(embed=embed)

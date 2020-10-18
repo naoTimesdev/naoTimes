@@ -7,6 +7,7 @@ from typing import List, Union
 import discord
 import numpy as np
 from discord.ext import commands
+
 from nthelper.bot import naoTimesBot
 
 logger = logging.getLogger("cogs.fun")
@@ -244,18 +245,15 @@ class Fun(commands.Cog):
             await ctx.send(embed=em)
         except discord.errors.HTTPException:
             if isinstance(user, discord.Member):
-                msg = (
-                    "**User Info:** ```User ID: %s\nNick: %s\nStatus: %s\nGame: %s\nHighest Role: %s\nAccount Created: %s\nJoin Date: %s\nAvatar url:%s```"  # noqa: E501
-                    % (
-                        user.id,
-                        user.nick,
-                        user.status,
-                        user.activity,
-                        role,
-                        translate_date(user.created_at.__format__("%A, %d. %B %Y @ %H:%M:%S")),
-                        translate_date(user.joined_at.__format__("%A, %d. %B %Y @ %H:%M:%S")),
-                        avi,
-                    )
+                msg = "**User Info:** ```User ID: %s\nNick: %s\nStatus: %s\nGame: %s\nHighest Role: %s\nAccount Created: %s\nJoin Date: %s\nAvatar url:%s```" % (  # noqa: E501
+                    user.id,
+                    user.nick,
+                    user.status,
+                    user.activity,
+                    role,
+                    translate_date(user.created_at.__format__("%A, %d. %B %Y @ %H:%M:%S")),
+                    translate_date(user.joined_at.__format__("%A, %d. %B %Y @ %H:%M:%S")),
+                    avi,
                 )
             else:
                 msg = "**User Info:** ```User ID: %s\nAccount Created: %s\nAvatar url:%s```" % (  # noqa: E501
@@ -470,7 +468,11 @@ class Fun(commands.Cog):
         avi = user.avatar_url
 
         try:
-            em = discord.Embed(title="Ini dia", timestamp=ctx.message.created_at, color=0x708DD0,)
+            em = discord.Embed(
+                title="Ini dia",
+                timestamp=ctx.message.created_at,
+                color=0x708DD0,
+            )
             em.set_image(url=avi)
             await ctx.send(embed=em)
         except discord.errors.HTTPException:
@@ -502,7 +504,11 @@ class Fun(commands.Cog):
         useravatar = str(ctx.message.author.avatar_url)
         textasker = "Ditanyakan oleh: " + userasking
         pertanyaan = pertanyaan[0].upper() + pertanyaan[1:]
-        rel1 = discord.Embed(title="Kerang Ajaib", timestamp=ctx.message.created_at, color=0x8CEEFF,)
+        rel1 = discord.Embed(
+            title="Kerang Ajaib",
+            timestamp=ctx.message.created_at,
+            color=0x8CEEFF,
+        )
         rel1.set_thumbnail(url="https://www.shodor.org/~alexc/pics/MagicConch.png")
         rel1.add_field(name=pertanyaan, value=["Ya", "Tidak"][rand], inline=False)
         rel1.set_footer(text=textasker, icon_url=useravatar)

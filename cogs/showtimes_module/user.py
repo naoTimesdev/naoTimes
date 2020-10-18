@@ -97,7 +97,8 @@ class ShowtimesUser(commands.Cog, ShowtimesBase):
         embed.add_field(name="Status", value=current_ep_status, inline=False)
         embed.add_field(name=last_text, value=last_status, inline=False)
         embed.set_footer(
-            text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
+            text="Dibawakan oleh naoTimes™®",
+            icon_url="https://p.n4o.xyz/i/nao250px.png",
         )
         await ctx.send(embed=embed)
 
@@ -256,7 +257,10 @@ class ShowtimesUser(commands.Cog, ShowtimesBase):
         rtext += ", ".join(new_srv_owner)
 
         rtext += "\n**Role**: {}".format(
-            self.get_role_name(srv_data["anime"][matches[0]]["role_id"], ctx.message.guild.roles,)
+            self.get_role_name(
+                srv_data["anime"][matches[0]]["role_id"],
+                ctx.message.guild.roles,
+            )
         )
 
         if "kolaborasi" in srv_data["anime"][matches[0]]:

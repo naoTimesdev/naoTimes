@@ -573,7 +573,10 @@ async def yahoo_finance(from_, to_):
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.97 Safari/537.36",  # noqa: E501
     }
     async with aiohttp.ClientSession(headers=base_head) as sesi:
-        async with sesi.post("https://adsynth-ofx-quotewidget-prod.herokuapp.com/api/1", json=data_,) as resp:
+        async with sesi.post(
+            "https://adsynth-ofx-quotewidget-prod.herokuapp.com/api/1",
+            json=data_,
+        ) as resp:
             try:
                 response = await resp.json()
                 if response["data"]["HistoricalPoints"]:
@@ -660,7 +663,11 @@ class PeninjauWeb(commands.Cog):
         self.logger.info(f"requested !anibin at {server_message}")
 
         self.logger.info("querying...")
-        (search_title, search_native, search_studio,) = await query_take_first_result(query)
+        (
+            search_title,
+            search_native,
+            search_studio,
+        ) = await query_take_first_result(query)
 
         if not search_title:
             self.logger.warn("no results.")
@@ -755,7 +762,7 @@ class PeninjauWeb(commands.Cog):
             try:
                 total = float(total)
             except ValueError:
-                return await ctx.send("Bukan jumlah uang yang valid " "(jangan memakai koma, pakai titik)")
+                return await ctx.send("Bukan jumlah uang yang valid (jangan memakai koma, pakai titik)")
 
         mode = "normal"
 
@@ -764,7 +771,7 @@ class PeninjauWeb(commands.Cog):
                 "source": "CoinMarketCap dan yahoo!finance",
                 "logo": "https://p.ihateani.me/PoEnh1XN.png",
             },
-            "normal": {"source": "yahoo!finance", "logo": "https://ihateani.me/o/y!.png",},
+            "normal": {"source": "yahoo!finance", "logo": "https://ihateani.me/o/y!.png"},
         }
 
         from_, to_ = from_.upper(), to_.upper()
@@ -863,7 +870,8 @@ class PeninjauWeb(commands.Cog):
             timestamp=datetime.now(),
         )
         embed.set_footer(
-            text="Diprakasai dengan {}".format(mode_list[mode]["source"]), icon_url=mode_list[mode]["logo"],
+            text="Diprakasai dengan {}".format(mode_list[mode]["source"]),
+            icon_url=mode_list[mode]["logo"],
         )
 
         await ctx.send(embed=embed)

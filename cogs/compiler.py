@@ -90,7 +90,9 @@ class CPPCompiler(commands.Cog):
             embed = discord.Embed(title="C++ Compiler", color=0x82B5F1)
             embed.description = "Compile C++ code at your own comfy discord server."
             embed.add_field(
-                name="Is this correct?", value=f"```cpp\n{code_blocks}\n```", inline=False,
+                name="Is this correct?",
+                value=f"```cpp\n{code_blocks}\n```",
+                inline=False,
             )
             embed.set_footer(text="C++@Discord")
 
@@ -159,10 +161,14 @@ class CPPCompiler(commands.Cog):
         cancel_toggled = False
         while True:
             embed = discord.Embed(
-                title="C++ Compiler", description="Periksa data!\nReact jika ingin diubah.", color=0xCB82F1,
+                title="C++ Compiler",
+                description="Periksa data!\nReact jika ingin diubah.",
+                color=0xCB82F1,
             )
             embed.add_field(
-                name="1⃣ Codes", value="```cpp\n{}\n```".format(c_table["code_blocks"]), inline=False,
+                name="1⃣ Codes",
+                value="```cpp\n{}\n```".format(c_table["code_blocks"]),
+                inline=False,
             )
             embed.add_field(
                 name="2⃣ Input Data",

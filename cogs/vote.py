@@ -8,6 +8,7 @@ from typing import List, Union
 
 import discord
 from discord.ext import commands, tasks
+
 from nthelper.bot import naoTimesBot
 from nthelper.cmd_args import Arguments, CommandArgParse
 from nthelper.utils import read_files
@@ -327,10 +328,16 @@ class VoteApp(commands.Cog):
                     y_ans = exported_data["answers"][0]
                     x_ans = exported_data["answers"][1]
                     embed.set_field_at(
-                        0, name="✅ Ya", value=f"**Total**: {y_ans['tally']}", inline=True,
+                        0,
+                        name="✅ Ya",
+                        value=f"**Total**: {y_ans['tally']}",
+                        inline=True,
                     )
                     embed.set_field_at(
-                        1, name="❎ Tidak", value=f"**Total**: {x_ans['tally']}", inline=True,
+                        1,
+                        name="❎ Tidak",
+                        value=f"**Total**: {x_ans['tally']}",
+                        inline=True,
                     )
                 else:
                     for i in range(len(exported_data["answers"])):
@@ -505,7 +512,9 @@ class VoteApp(commands.Cog):
             color=0x3F0A16,
         )
         embed.add_field(
-            name=f"Jumlah vote (Dibutuhkan: {vote_limit})", value="0 votes", inline=False,
+            name=f"Jumlah vote (Dibutuhkan: {vote_limit})",
+            value="0 votes",
+            inline=False,
         )
 
         time_limit = args.detik
@@ -577,7 +586,9 @@ class VoteApp(commands.Cog):
             color=0x3F0A16,
         )
         embed.add_field(
-            name=f"Jumlah vote (Dibutuhkan: {vote_limit})", value="0 votes", inline=False,
+            name=f"Jumlah vote (Dibutuhkan: {vote_limit})",
+            value="0 votes",
+            inline=False,
         )
 
         time_limit = args.detik

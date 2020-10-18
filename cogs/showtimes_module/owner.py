@@ -8,12 +8,12 @@ from functools import partial
 
 import aiohttp
 import discord
+import ujson
 from discord.ext import commands
 
-import ujson
-from nthelper.utils import HelpGenerator, write_files
-from nthelper.showtimes_helper import ShowtimesQueueData
 from nthelper.bot import naoTimesBot
+from nthelper.showtimes_helper import ShowtimesQueueData
+from nthelper.utils import HelpGenerator, write_files
 
 from .base import ShowtimesBase, fetch_anilist
 
@@ -43,9 +43,14 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
     @commands.guild_only()
     async def ntadmin(self, ctx):  # noqa: D102
         if ctx.invoked_subcommand is None:
-            helpcmd = HelpGenerator(self.bot, "ntadmin", desc=f"Versi {self.bot.semver}",)
+            helpcmd = HelpGenerator(
+                self.bot,
+                "ntadmin",
+                desc=f"Versi {self.bot.semver}",
+            )
             await helpcmd.generate_field(
-                "ntadmin", desc="Memunculkan bantuan perintah ini.",
+                "ntadmin",
+                desc="Memunculkan bantuan perintah ini.",
             )
             await helpcmd.generate_field(
                 "ntadmin tambah",
@@ -63,22 +68,25 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
             )
             await helpcmd.generate_field(
                 "ntadmin tambahadmin",
-                desc="Menambah admin ke server baru " "yang terdaftar di database.",
+                desc="Menambah admin ke server baru yang terdaftar di database.",
                 opts=[{"name": "server id", "type": "r"}, {"name": "admin id", "type": "r"}],
             )
             await helpcmd.generate_field(
                 "ntadmin hapusadmin",
-                desc="Menghapus admin dari server baru yang" " terdaftar di database.",
+                desc="Menghapus admin dari server baru yang terdaftar di database.",
                 opts=[{"name": "server id", "type": "r"}, {"name": "admin id", "type": "r"}],
             )
             await helpcmd.generate_field(
-                "ntadmin fetchdb", desc="Mengambil database lokal dan kirim ke Discord.",
+                "ntadmin fetchdb",
+                desc="Mengambil database lokal dan kirim ke Discord.",
             )
             await helpcmd.generate_field(
-                "ntadmin patchdb", desc="Update database dengan file yang dikirim user.",
+                "ntadmin patchdb",
+                desc="Update database dengan file yang dikirim user.",
             )
             await helpcmd.generate_field(
-                "ntadmin forcepull", desc="Update paksa database lokal dengan database utama.",
+                "ntadmin forcepull",
+                desc="Update paksa database lokal dengan database utama.",
             )
             await helpcmd.generate_aliases(["naotimesadmin", "naoadmin"])
             await ctx.send(embed=helpcmd.get())
@@ -189,7 +197,7 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
         if ctx.message.attachments == []:
             await ctx.message.delete()
             return await ctx.send(
-                "Please provide a valid .json file by uploading " "and add `!!ntadmin patchdb` command"
+                "Please provide a valid .json file by uploading and add `!!ntadmin patchdb` command"
             )
 
         self.logger.info("Fetching attachments...")
@@ -200,7 +208,7 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
         if filename[filename.rfind(".") :] != ".json":
             await ctx.message.delete()
             return await ctx.send(
-                "Please provide a valid .json file by uploading " "and add `!!ntadmin patchdb` command"
+                "Please provide a valid .json file by uploading and add `!!ntadmin patchdb` command"
             )
 
         # Start downloading .json file
@@ -213,7 +221,7 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
 
         self.logger.info("Making sure...")
         preview_msg = await ctx.send(
-            "**Are you sure you want to patch " "the database with provided .json file?**"
+            "**Are you sure you want to patch the database with provided .json file?**"
         )
         to_react = ["✅", "❌"]
         for react in to_react:
@@ -278,6 +286,9 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
             new_srv_data["announce_channel"] = str(prog_chan)
         new_srv_data["anime"] = {}
         new_srv_data["alias"] = {}
+
+        if "announce_channel" in new_srv_data and new_srv_data["announce_channel"] == "":
+            del new_srv_data["announce_channel"]
 
         supermod_lists = await self.fetch_super_admins(self.bot.fcwd)
         if str(adm_id) not in supermod_lists:

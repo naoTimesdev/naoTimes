@@ -39,7 +39,8 @@ class ShowtimesFansubDB(commands.Cog, ShowtimesBase):
             helpcmd = HelpGenerator(self.bot, "fsdb", f"Versi {self.bot.semver}")
             await helpcmd.generate_field("fsdb", desc="Memunculkan bantuan perintah")
             await helpcmd.generate_field(
-                "fsdb integrasi", desc="Memulai proses integrasi fansubdb.",
+                "fsdb integrasi",
+                desc="Memulai proses integrasi fansubdb.",
             )
             await helpcmd.generate_field(
                 "fsdb bind",
@@ -84,7 +85,8 @@ class ShowtimesFansubDB(commands.Cog, ShowtimesBase):
         embed = discord.Embed(title="Integrasi FansubDB", color=0x56ACF3)
         embed.add_field(name="Memulai Proses!", value="Mempersiapkan...", inline=False)
         embed.set_footer(
-            text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
+            text="Dibawakan oleh naoTimes™®",
+            icon_url="https://p.n4o.xyz/i/nao250px.png",
         )
         emb_msg = await ctx.send(embed=embed)
         msg_author = ctx.message.author
@@ -108,7 +110,8 @@ class ShowtimesFansubDB(commands.Cog, ShowtimesBase):
                 inline=False,
             )
             embed.set_footer(
-                text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
+                text="Dibawakan oleh naoTimes™®",
+                icon_url="https://p.n4o.xyz/i/nao250px.png",
             )
             await emb_msg.edit(embed=embed)
 
@@ -149,13 +152,18 @@ class ShowtimesFansubDB(commands.Cog, ShowtimesBase):
                 color=0xE7E363,
             )
             embed.add_field(
-                name="1⃣ ID Fansub", value="{} ({})".format(fs_name, json_tables["fs_id"]), inline=False,
+                name="1⃣ ID Fansub",
+                value="{} ({})".format(fs_name, json_tables["fs_id"]),
+                inline=False,
             )
             embed.add_field(
-                name="Lain-Lain", value="✅ Tambahkan!\n❌ Batalkan!", inline=False,
+                name="Lain-Lain",
+                value="✅ Tambahkan!\n❌ Batalkan!",
+                inline=False,
             )
             embed.set_footer(
-                text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
+                text="Dibawakan oleh naoTimes™®",
+                icon_url="https://p.n4o.xyz/i/nao250px.png",
             )
             if first_time:
                 await emb_msg.delete()
@@ -203,7 +211,8 @@ class ShowtimesFansubDB(commands.Cog, ShowtimesBase):
         embed = discord.Embed(title="Integrasi FansubDB", color=0x56ACF3)
         embed.add_field(name="Memproses!", value="Memproses Koneksi Anime...", inline=True)
         embed.set_footer(
-            text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
+            text="Dibawakan oleh naoTimes™®",
+            icon_url="https://p.n4o.xyz/i/nao250px.png",
         )
         await emb_msg.edit(embed=embed)
         collect_anime_dataset = await self.fsdb_conn.fetch_animes()
@@ -280,7 +289,8 @@ class ShowtimesFansubDB(commands.Cog, ShowtimesBase):
         embed = discord.Embed(title="Integrasi FansubDB", color=0x56ACF3)
         embed.add_field(name="Memproses!", value="Membuat data akhir...", inline=True)
         embed.set_footer(
-            text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
+            text="Dibawakan oleh naoTimes™®",
+            icon_url="https://p.n4o.xyz/i/nao250px.png",
         )
         srv_data["fsdb_id"] = json_tables["fs_id"]
 
@@ -288,10 +298,13 @@ class ShowtimesFansubDB(commands.Cog, ShowtimesBase):
         await self.showqueue.add_job(ShowtimesQueueData(srv_data, server_message))
         embed = discord.Embed(title="Integrasi FansubDB", color=0x96DF6A)
         embed.add_field(
-            name="Sukses!", value="Server sukses terintegrasi dengan FansubDB", inline=True,
+            name="Sukses!",
+            value="Server sukses terintegrasi dengan FansubDB",
+            inline=True,
         )
         embed.set_footer(
-            text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
+            text="Dibawakan oleh naoTimes™®",
+            icon_url="https://p.n4o.xyz/i/nao250px.png",
         )
         await ctx.send(embed=embed)
 

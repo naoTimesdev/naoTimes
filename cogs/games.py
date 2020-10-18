@@ -4,6 +4,7 @@ import logging
 import aiohttp
 import discord
 from discord.ext import commands
+
 from nthelper.cmd_args import Arguments, CommandArgParse
 
 logger = logging.getLogger("cogs.games")
@@ -86,7 +87,11 @@ class GamesAPI(commands.Cog):
         hltb_results = results["results"]
 
         async def _construct_embed(hltb_data: dict):
-            embed = discord.Embed(title=hltb_data["title"], url=hltb_data["url"], color=hltb_data["color"],)
+            embed = discord.Embed(
+                title=hltb_data["title"],
+                url=hltb_data["url"],
+                color=hltb_data["color"],
+            )
             embed.set_thumbnail(url=hltb_data["image"])
             hltbs = hltb_data["hltb"]
             hltb_text = ""
@@ -100,7 +105,9 @@ class GamesAPI(commands.Cog):
             hltb_text += f"\n\n*(Info lebih lanjut? [Klik Di sini]({hltb_data['url']}))*"  # noqa: E501
 
             embed.add_field(
-                name="Seberapa lama untuk diselesaikan?", value=hltb_text, inline=False,
+                name="Seberapa lama untuk diselesaikan?",
+                value=hltb_text,
+                inline=False,
             )
             stats_data = []
             if hltb_data["stats"]:
@@ -350,7 +357,8 @@ class GamesAPI(commands.Cog):
         embed.add_field(
             name="Developer",
             value="**Developer**: {}\n**Publisher**: {}".format(
-                ", ".join(sdb_data["developer"]), ", ".join(sdb_data["publisher"]),
+                ", ".join(sdb_data["developer"]),
+                ", ".join(sdb_data["publisher"]),
             ),
             inline=False,
         )
@@ -434,12 +442,16 @@ class GamesAPI(commands.Cog):
                 inline=False,
             )
             embed.add_field(
-                name="Kategori", value=", ".join(sdb_data["categories"]), inline=False,
+                name="Kategori",
+                value=", ".join(sdb_data["categories"]),
+                inline=False,
             )
             embed.add_field(name="Label", value=", ".join(sdb_data["tags"]), inline=False)
             embed.set_footer(
                 text="Rilis: {} | {}-{} | Diprakasai oleh SteamDB".format(
-                    sdb_data["released"], sdb_data["type"].capitalize(), sdb_data["id"],
+                    sdb_data["released"],
+                    sdb_data["type"].capitalize(),
+                    sdb_data["id"],
                 ),
                 icon_url="https://steamdb.info/static/logos/512px.png",
             )
