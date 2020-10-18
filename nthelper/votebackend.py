@@ -276,7 +276,7 @@ class VoteWatcher:
         self._clock_task.cancel()
         self._voter_task.cancel()
         self.logger.info("saving all vote data to file...")
-        all_vote_data = [int(msg_id) for msg_id in self.vote_holding.keys()]
+        all_vote_data = [int(msg_id) for msg_id in self.vote_holding]
         self._vote_lock.extend(all_vote_data)
 
         for msg_id, vote_handler in self.vote_holding.items():
