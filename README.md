@@ -18,7 +18,7 @@
 ## Invite bot
 Males setup sendiri? Mau simple dan cepet?
 
-1. Invite bot dengan klik link ini: https://discord.com/oauth2/authorize?client_id=558256913926848537&permissions=805829750&scope=bot
+1. Invite bot dengan klik link ini: https://naoti.me/invite
 
 2. Tambah `N4O#8868` sebagai teman dan kirim pesan dengan list berikut:
 ```
