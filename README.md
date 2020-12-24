@@ -10,7 +10,7 @@
     <a href="#requirements">Requirements</a> •
     <a href="#setting-up">Setup</a> •
     <a href="#webscript">WebScript</a> •
-    <a href="https://naotimes.n4o.xyz">Dokumentasi</a>
+    <a href="https://naoti.me">Dokumentasi</a>
 </p>
 
 <p align="center">:warning: <b>Laporkan kesalahan di <a href="https://github.com/noaione/naoTimes/issues">Issues</a></b> :warning:</p>
