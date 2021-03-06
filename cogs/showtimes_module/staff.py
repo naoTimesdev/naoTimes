@@ -124,7 +124,7 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                 should_update_fsdb = True
                 fsdb_update_to = "Jalan"
 
-            if str(ctx.message.author.id) != program_info["staff_assignment"]["QC"]:
+            if str(ctx.message.author.id) != program_info["staff_assignment"]["QC"]["id"]:
                 if str(ctx.message.author.id) not in srv_owner:
                     self.logger.warning(f"{matches[0]}: user not allowed.")
                     return await ctx.send(
@@ -189,7 +189,7 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                 self.logger.warning(f"{matches[0]}: no episode left to be worked on.")
                 return await ctx.send("**Sudah beres digarap!**")
 
-            if str(ctx.message.author.id) != program_info["staff_assignment"]["QC"]:
+            if str(ctx.message.author.id) != program_info["staff_assignment"]["QC"]["id"]:
                 if str(ctx.message.author.id) not in srv_owner:
                     self.logger.warning(f"{matches[0]}: user not allowed.")
                     return await ctx.send(
@@ -264,7 +264,7 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                 self.logger.warning(f"{matches[0]}: no episode left to be worked on.")
                 return await ctx.send("**Sudah beres digarap!**")
 
-            if str(ctx.message.author.id) != program_info["staff_assignment"]["QC"]:
+            if str(ctx.message.author.id) != program_info["staff_assignment"]["QC"]["id"]:
                 if str(ctx.message.author.id) not in srv_owner:
                     self.logger.warning(f"{matches[0]}: user not allowed.")
                     return await ctx.send(
@@ -304,7 +304,8 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
         if "fsdb_data" in program_info and should_update_fsdb and self.fsdb is not None:
             self.logger.info("Re-Updating back FSDB project to Not done.")
             fsdb_data = program_info["fsdb_data"]
-            await self.fsdb.update_project(fsdb_data["id"], "status", fsdb_update_to)
+            if "id" in fsdb_data and fsdb_data["id"] is not None:
+                await self.fsdb.update_project(fsdb_data["id"], "status", fsdb_update_to)
 
         self.logger.info(f"{server_message}: updating database...")
         success, msg = await self.ntdb.update_data_server(server_message, srv_data)
@@ -327,7 +328,12 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
             if "announce_channel" in osrv_data:
                 self.logger.info(f"{osrv}: sending progress to everyone...")
                 announce_chan = osrv_data["announce_channel"]
-                target_chan = self.bot.get_channel(int(announce_chan))
+                try:
+                    announce_chan = int(announce_chan)
+                except ValueError:
+                    self.logger.warn(f"{osrv}: failed to convert announce channel to integer, ignoring...")
+                    continue
+                target_chan = self.bot.get_channel(announce_chan)
                 if not target_chan:
                     self.logger.warning(f"{announce_chan}: unknown channel.")
                     continue
@@ -338,7 +344,14 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
         if "announce_channel" in srv_data:
             self.logger.info(f"{server_message}: sending progress to everyone...")
             announce_chan = srv_data["announce_channel"]
-            target_chan = self.bot.get_channel(int(announce_chan))
+            try:
+                announce_chan = int(announce_chan)
+            except ValueError:
+                self.logger.warn(
+                    f"{server_message}: failed to convert announce channel to integer, ignoring..."
+                )
+                return
+            target_chan = self.bot.get_channel(announce_chan)
             embed = discord.Embed(title="{}".format(matches[0]), color=0x1EB5A6)
             embed.add_field(name="Rilis!", value=embed_text_data, inline=False)
             embed.set_footer(text=f"Pada: {get_current_time()}")
@@ -424,7 +437,7 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
         poster_data = program_info["poster_data"]
         poster_image = poster_data["url"]
 
-        if str(ctx.message.author.id) != program_info["staff_assignment"][posisi]:
+        if str(ctx.message.author.id) != program_info["staff_assignment"][posisi]["id"]:
             if str(ctx.message.author.id) not in srv_owner:
                 self.logger.warning(f"{matches[0]}: no access to set to done.")
                 return await ctx.send("**Bukan posisi situ untuk mengubahnya!**")
@@ -475,38 +488,44 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                 if "announce_channel" in osrv_data:
                     self.logger.info(f"{osrv}: sending progress to everyone...")
                     announce_chan = osrv_data["announce_channel"]
-                    target_chan = self.bot.get_channel(int(announce_chan))
+                    try:
+                        announce_chan = int(announce_chan)
+                    except ValueError:
+                        self.logger.warn(
+                            f"{osrv}: failed to convert announce channel to integer, ignoring..."
+                        )
+                        continue
+                    target_chan = self.bot.get_channel(announce_chan)
                     if not target_chan:
                         self.logger.warning(f"{announce_chan}: unknown channel.")
                         continue
-                    embed = discord.Embed(
-                        title="{} - #{}".format(matches[0], current),
-                        color=0x1EB5A6,
-                    )
+                    embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=0x1EB5A6,)
                     embed.add_field(
-                        name="Status",
-                        value=self.parse_status(current_ep_status),
-                        inline=False,
+                        name="Status", value=self.parse_status(current_ep_status), inline=False,
                     )
                     embed.set_footer(text=f"Pada: {get_current_time()}")
                     await target_chan.send(embed=embed)
         embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=0x1EB5A6)
         embed.add_field(
-            name="Status",
-            value=self.parse_status(current_ep_status),
-            inline=False,
+            name="Status", value=self.parse_status(current_ep_status), inline=False,
         )
         if "announce_channel" in srv_data:
             announce_chan = srv_data["announce_channel"]
-            target_chan = self.bot.get_channel(int(announce_chan))
+            try:
+                announce_chan = int(announce_chan)
+            except ValueError:
+                self.logger.warn(
+                    f"{server_message}: failed to convert announce channel to integer, ignoring..."
+                )
+                announce_chan = -1
+            target_chan = self.bot.get_channel(announce_chan)
             embed.set_footer(text=f"Pada: {get_current_time()}")
             self.logger.info(f"{server_message}: sending progress to everyone...")
             if target_chan:
                 await target_chan.send(embed=embed)
         embed.add_field(name="Update Terakhir", value="Baru saja", inline=False)
         embed.set_footer(
-            text="Dibawakan oleh naoTimes™®",
-            icon_url="https://p.n4o.xyz/i/nao250px.png",
+            text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
         )
         embed.set_thumbnail(url=poster_image)
         return await ctx.send(embed=embed)
@@ -548,7 +567,7 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
         status_list = program_info["status"]
         srv_owner = srv_data["serverowner"]
 
-        if str(ctx.message.author.id) != program_info["staff_assignment"]["QC"]:
+        if str(ctx.message.author.id) != program_info["staff_assignment"]["QC"]["id"]:
             if str(ctx.message.author.id) not in srv_owner:
                 return await ctx.send(
                     "**Tidak secepat itu ferguso, yang bisa membatalkan rilisan cuma admin atau QCer**"
@@ -599,7 +618,9 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
 
         if "fsdb_data" in program_info and reset_fsdb and self.fsdb is not None:
             self.logger.info("Re-Updating back FSDB project to Not done.")
-            await self.fsdb.update_project(program_info["fsdb_data"]["id"], "status", "Jalan")
+            fsdb_data = program_info["fsdb_data"]
+            if "id" in fsdb_data and fsdb_data["id"] is not None:
+                await self.fsdb.update_project(fsdb_data["id"], "status", "Jalan")
 
         self.logger.info(f"{server_message}: updating database...")
         success, msg = await self.ntdb.update_data_server(server_message, srv_data)
@@ -643,7 +664,14 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                 await target_chan.send(embed=embed)
         if "announce_channel" in srv_data and srv_data["announce_channel"]:
             announce_chan = srv_data["announce_channel"]
-            target_chan = self.bot.get_channel(int(announce_chan))
+            try:
+                announce_chan = int(announce_chan)
+            except ValueError:
+                self.logger.warn(
+                    f"{server_message}: failed to convert announce channel to integer, ignoring..."
+                )
+                return
+            target_chan = self.bot.get_channel(announce_chan)
             embed = discord.Embed(title="{}".format(matches[0]), color=0xB51E1E)
             embed.add_field(
                 name="Batal rilis...",
@@ -737,7 +765,7 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
         poster_data = program_info["poster_data"]
         poster_image = poster_data["url"]
 
-        if str(ctx.message.author.id) != program_info["staff_assignment"][posisi]:
+        if str(ctx.message.author.id) != program_info["staff_assignment"][posisi]["id"]:
             if str(ctx.message.author.id) not in srv_owner:
                 self.logger.warning(f"{matches[0]}: no access to set to undone.")
                 return await ctx.send("**Bukan posisi situ untuk mengubahnya!**")
@@ -788,40 +816,44 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                 self.logger.info(f"{osrv}: sending progress to everyone...")
                 announce_chan = osrv_data["announce_channel"]
                 try:
-                    target_chan = self.bot.get_channel(int(announce_chan))
+                    announce_chan = int(announce_chan)
+                except ValueError:
+                    self.logger.warn(f"{osrv}: failed to convert announce channel to integer, ignoring...")
+                    continue
+                try:
+                    target_chan = self.bot.get_channel(announce_chan)
                 except ValueError:
                     continue
                 if not target_chan:
                     self.logger.warning(f"{announce_chan}: unknown channel.")
                     continue
-                embed = discord.Embed(
-                    title="{} - #{}".format(matches[0], current),
-                    color=0xB51E1E,
-                )
+                embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=0xB51E1E,)
                 embed.add_field(
-                    name="Status",
-                    value=self.parse_status(current_ep_status),
-                    inline=False,
+                    name="Status", value=self.parse_status(current_ep_status), inline=False,
                 )
                 embed.set_footer(text=f"Pada: {get_current_time()}")
                 await target_chan.send(embed=embed)
         embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=0xB51E1E)
         embed.add_field(
-            name="Status",
-            value=self.parse_status(current_ep_status),
-            inline=False,
+            name="Status", value=self.parse_status(current_ep_status), inline=False,
         )
         if "announce_channel" in srv_data and srv_data["announce_channel"]:
             announce_chan = srv_data["announce_channel"]
-            target_chan = self.bot.get_channel(int(announce_chan))
+            try:
+                announce_chan = int(announce_chan)
+            except ValueError:
+                self.logger.warn(
+                    f"{server_message}: failed to convert announce channel to integer, ignoring..."
+                )
+                announce_chan = -1
+            target_chan = self.bot.get_channel(announce_chan)
             embed.set_footer(text=f"Pada: {get_current_time()}")
             self.logger.info(f"{server_message}: sending progress to everyone...")
             if target_chan:
                 await target_chan.send(embed=embed)
         embed.add_field(name="Update Terakhir", value="Baru saja", inline=False)
         embed.set_footer(
-            text="Dibawakan oleh naoTimes™®",
-            icon_url="https://p.n4o.xyz/i/nao250px.png",
+            text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
         )
         embed.set_thumbnail(url=poster_image)
         await ctx.send(embed=embed)
@@ -893,7 +925,7 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                     koleb_list.append(ko_data)
 
         # Toggle status section
-        if str(ctx.message.author.id) != program_info["staff_assignment"][posisi]:
+        if str(ctx.message.author.id) != program_info["staff_assignment"][posisi]["id"]:
             if str(ctx.message.author.id) not in srv_owner:
                 self.logger.warning(f"{matches[0]}: no access to set to mark it.")
                 return await ctx.send("**Bukan posisi situ untuk mengubahnya!**")

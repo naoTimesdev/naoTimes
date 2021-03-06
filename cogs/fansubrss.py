@@ -1,6 +1,5 @@
 import asyncio
 import functools
-import glob
 import logging
 import os
 import re
@@ -12,22 +11,50 @@ from typing import List, Optional, Tuple, Union
 import aiohttp
 import discord
 import feedparser
+import schema as sc
 from discord.ext import commands, tasks
 from markdownify import markdownify as mdparse
-
 from nthelper.bot import naoTimesBot
 from nthelper.utils import (
     HelpGenerator,
     confirmation_dialog,
     generate_custom_code,
-    read_files,
     send_timed_msg,
     sync_wrap,
-    write_files,
 )
 
 asyncfeed = sync_wrap(feedparser.parse)
 fsrsslog = logging.getLogger("cogs.fansubrss")
+NoneStr = sc.Or(str, None)
+
+# Schemas
+fansubRSSSchemas = sc.Schema(
+    {
+        "feeds": [
+            {
+                "id": sc.And(str, int),
+                "channel": sc.And(str, int),
+                "feedUrl": str,
+                sc.Optional("message"): NoneStr,
+                sc.Optional("lastEtag"): str,
+                sc.Optional("lastModified"): str,
+                "embed": {
+                    "title": NoneStr,
+                    "description": NoneStr,
+                    "url": NoneStr,
+                    "thumbnail": NoneStr,
+                    "image": NoneStr,
+                    "footer": NoneStr,
+                    "footer_img": NoneStr,
+                    "color": sc.Or(str, int, None),
+                    "timestamp": bool,
+                },
+            }
+        ]
+    }
+)
+
+fetchedUrlSchemas = sc.Schema({"fetchedURL": [str]})
 
 
 def clean_text(text_data: str) -> str:
@@ -364,42 +391,37 @@ class FansubRSS(commands.Cog):
         return gen_id
 
     async def read_rss(self, server_id: Union[str, int]) -> dict:
-        full_path = os.path.join(self.bot.fcwd, "fansubrss_data", f"{server_id}.fsrss")
-        if not os.path.isfile(full_path):
+        rss_metadata = await self.bot.redisdb.get(f"ntfsrss_{server_id}")
+        if rss_metadata is None:
             return {}
-        rss_metadata = await read_files(full_path)
+        try:
+            fansubRSSSchemas.validate(rss_metadata)
+        except sc.SchemaError:
+            self.logger.error(f"Failed to validate feeds meta for {server_id}")
+            return {}
         return rss_metadata
 
     async def read_rss_feeds(self, server_id: Union[str, int], hash_ids: str) -> dict:
-        full_path = os.path.join(self.bot.fcwd, "fansubrss_data", f"{server_id}_data")
-        if not os.path.isdir(full_path):
-            os.makedirs(full_path)
-        full_path = os.path.join(full_path, f"{hash_ids}.fsdata")
-        if not os.path.isfile(full_path):
-            return {"fetchedURL": []}
-        rss_metadata = await read_files(full_path)
+        try:
+            rss_metadata = await self.bot.redisdb.get(f"ntfsrssd_{server_id}_{hash_ids}")
+            if rss_metadata is None:
+                return {"fetchedURL": []}
+            fetchedUrlSchemas.validate(rss_metadata)
+        except sc.SchemaError:
+            self.logger.error(f"Failed to validate feeds data for {server_id}/{hash_ids}")
+            rss_metadata = {"fetchedURL": []}
         return rss_metadata
 
     async def write_rss(self, server_id: Union[str, int], data: dict):
-        full_path = os.path.join(self.bot.fcwd, "fansubrss_data", f"{server_id}.fsrss")
-        await write_files(data, full_path)
+        await self.bot.redisdb.set(f"ntfsrss_{server_id}", data)
 
     async def write_rss_feeds(self, server_id: Union[str, int], hash_ids: str, feeds_data: list):
         save_data = {"fetchedURL": feeds_data}
-        full_path = os.path.join(self.bot.fcwd, "fansubrss_data", f"{server_id}_data")
-        if not os.path.isdir(full_path):
-            os.makedirs(full_path)
-        full_path = os.path.join(full_path, f"{hash_ids}.fsdata")
-        await write_files(save_data, full_path)
-
-    async def server_rss(self) -> list:
-        full_path = os.path.join(self.bot.fcwd, "fansubrss_data", "*.fsrss")
-        all_rss = [self.splitbase(path)[0] for path in glob.glob(full_path)]
-        return all_rss
+        await self.bot.redisdb.set(f"ntfsrssd_{server_id}_{hash_ids}", save_data)
 
     @tasks.loop(seconds=1, count=1)
     async def _precheck_server_type(self):
-        fetch_all_servers = await self.server_rss()
+        fetch_all_servers = await self.bot.redisdb.getall("ntfsrss_*")
         self.logger.info("Prechecking server type...")
         for srv in fetch_all_servers:
             rss_meta = await self.read_rss(srv)
@@ -508,6 +530,7 @@ class FansubRSS(commands.Cog):
                 metadatas_to_fetch.extend(full_metadata["feeds"])
             for metadata in metadatas_to_fetch:
                 fetched_feeds = await self.read_rss_feeds(server_id, metadata["id"])
+                print(metadata, fetched_feeds)
                 feed_res, etag, modified = await recursive_check_feed(
                     metadata["feedUrl"], metadata, fetched_feeds["fetchedURL"]
                 )
@@ -580,16 +603,13 @@ class FansubRSS(commands.Cog):
                 return await ctx.send("Tidak dapat menemukan bantuan perintah tersebut.")
             helpcmd = HelpGenerator(self.bot, "fansubrss", desc="Pemantau RSS Fansub.")
             await helpcmd.generate_field(
-                "fansubrss",
-                desc="Memunculkan bantuan perintah ini.",
+                "fansubrss", desc="Memunculkan bantuan perintah ini.",
             )
             await helpcmd.generate_field(
-                "fansubrss aktifkan",
-                desc="Mengaktifkan RSS announcer di channel tertentu.",
+                "fansubrss aktifkan", desc="Mengaktifkan RSS announcer di channel tertentu.",
             )
             await helpcmd.generate_field(
-                "fansubrss ubah",
-                desc="Mengatur settingan RSS di server ini.",
+                "fansubrss ubah", desc="Mengatur settingan RSS di server ini.",
             )
             await helpcmd.generate_field("fansubrss format", desc="Format bagaimana RSS akan dikirim.")
             await helpcmd.generate_field(
@@ -902,8 +922,7 @@ class FansubRSS(commands.Cog):
             embed.add_field(name="✅ Simpan", value="Simpan perubahan.", inline=True)
             embed.add_field(name="❌ Batalkan", value="Batalkan perubahan.", inline=True)
             embed.set_footer(
-                text="Dibawakan oleh naoTimes™®",
-                icon_url="https://p.n4o.xyz/i/nao250px.png",
+                text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
             )
             if first_run:
                 first_run = False
@@ -1185,15 +1204,12 @@ class FansubRSS(commands.Cog):
             embed = discord.Embed(title="FansubRSS")
             embed.add_field(name="1️⃣ Atur URL", value=f"`{rss_metadata['feedUrl']}`", inline=False)
             embed.add_field(
-                name="2️⃣ Atur Channel",
-                value=f"Sekarang: <#{rss_metadata['channel']}>",
-                inline=False,
+                name="2️⃣ Atur Channel", value=f"Sekarang: <#{rss_metadata['channel']}>", inline=False,
             )
             embed.add_field(name="✅ Simpan", value="Simpan perubahan.", inline=True)
             embed.add_field(name="❌ Batalkan", value="Batalkan perubahan.", inline=True)
             embed.set_footer(
-                text="Dibawakan oleh naoTimes™®",
-                icon_url="https://p.n4o.xyz/i/nao250px.png",
+                text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
             )
             if first_run:
                 first_run = False
@@ -1307,8 +1323,7 @@ class FansubRSS(commands.Cog):
             self.logger.error(f"{server_id}: cannot find metadata...")
             return await ctx.send("FansubRSS belum diaktifkan.")
 
-        activation_code_path = os.path.join(self.bot.fcwd, "premium_code", activation_code)
-        premium_data = await read_files(activation_code_path)
+        premium_data = await self.bot.redisdb.get(f"ntpremium_{activation_code}")
         if premium_data is None:
             self.logger.error(f"{server_id}-{activation_code}: unknown activation code...")
             return await ctx.send("Kode aktivasi tidak diketahui.")
@@ -1338,7 +1353,7 @@ class FansubRSS(commands.Cog):
             self._server_normal.append(server_id)
             msg_to_send = f"🕸️ | Fitur premium server `{server_id}` telah dinonaktifkan!"
         await self.write_rss(server_id, rss_metadata)
-        os.remove(activation_code_path)
+        await self.bot.redisdb.rm(f"ntpremium_{activation_code}")
         await ctx.send(msg_to_send)
 
 

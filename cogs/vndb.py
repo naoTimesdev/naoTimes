@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
 
 import asyncio
+from functools import partial
 import logging
+
+from nthelper.utils import DiscordPaginator
 import random
 import re
 from typing import Union
@@ -9,7 +12,6 @@ from typing import Union
 import discord
 import discord.ext.commands as commands
 import ujson
-
 from nthelper.bot import naoTimesBot
 from nthelper.vndbsocket import VNDBSockIOManager
 
@@ -219,8 +221,41 @@ class VNDB(commands.Cog):
 
         self.vnconn = bot.vndb_socket
 
+    def _design_embed(self, data) -> discord.Embed:
+        embed = discord.Embed(color=0x225588)
+
+        embed.set_thumbnail(url=data["poster_img"])
+        embed.set_author(
+            name=data["title"], url=data["link"], icon_url="https://ihateani.me/o/vndbico.png",
+        )
+        embed.set_footer(text=data["footer"])
+
+        embed.add_field(name="Nama Lain", value=data["title_other"], inline=True)
+        embed.add_field(name="Durasi", value=data["duration"], inline=True)
+        embed.add_field(name="Bahasa", value=data["languages"], inline=True)
+        embed.add_field(name="Platform", value=data["platforms"], inline=True)
+        embed.add_field(name="Rilis", value=data["released"], inline=True)
+        embed.add_field(name="Skor", value=data["score"], inline=True)
+        embed.add_field(name="Relasi (VNID)", value=data["relations"], inline=True)
+        embed.add_field(name="Adaptasi Anime?", value=data["anime?"], inline=True)
+        embed.add_field(name="Sinopsis", value=data["synopsis"], inline=False)
+        return embed
+
+    def _design_screenies(self, data, pos, real_data, total_screenshot) -> discord.Embed:
+        embed = discord.Embed(color=0x225588, description="<{}>".format(data))
+        embed.set_author(
+            name=real_data["title"] + " ({}/{})".format(pos + 1, total_screenshot),
+            url=real_data["link"],
+            icon_url="https://ihateani.me/o/vndbico.png",
+        )
+        embed.set_image(url=data)
+        return embed
+
     @commands.command(aliases=["visualnovel", "eroge", "vndb"])
     @commands.guild_only()
+    @commands.bot_has_guild_permissions(
+        manage_messages=True, embed_links=True, read_message_history=True, add_reactions=True,
+    )
     async def vn(self, ctx, *, judul):
         if self.vnconn is None:
             return await ctx.send(
@@ -230,197 +265,28 @@ class VNDB(commands.Cog):
         if isinstance(vnqres, str):
             return await ctx.send(vnqres)
 
-        max_page = vnqres["data_total"]
         resdata = vnqres["result"]
 
-        first_run = True
-        screen_table = False
-        num = 1
-        num_ = 1
-        while True:
-            if first_run:
-                data = resdata[num - 1]
-                embed = discord.Embed(color=0x225588)
+        async def wrap_start_image(datasets, position, message):
+            await message.clear_reactions()
+            dataset = datasets[position]
+            total_img = len(dataset["screenshot"])
+            img_embed_gen = partial(self._design_screenies, total_screenshot=total_img, real_data=dataset)
+            screen_gen = DiscordPaginator(self.bot, ctx)
+            screen_gen.checker()
+            screen_gen.set_generator(img_embed_gen, True)
+            timeout = await screen_gen.start(dataset["screenshot"], 30.0, message)
+            return None, message, timeout
 
-                embed.set_thumbnail(url=data["poster_img"])
-                embed.set_author(
-                    name=data["title"],
-                    url=data["link"],
-                    icon_url="https://ihateani.me/o/vndbico.png",
-                )
-                embed.set_footer(text=data["footer"])
-
-                embed.add_field(name="Nama Lain", value=data["title_other"], inline=True)
-                embed.add_field(name="Durasi", value=data["duration"], inline=True)
-                embed.add_field(name="Bahasa", value=data["languages"], inline=True)
-                embed.add_field(name="Platform", value=data["platforms"], inline=True)
-                embed.add_field(name="Rilis", value=data["released"], inline=True)
-                embed.add_field(name="Skor", value=data["score"], inline=True)
-                embed.add_field(name="Relasi (VNID)", value=data["relations"], inline=True)
-                embed.add_field(name="Adaptasi Anime?", value=data["anime?"], inline=True)
-                embed.add_field(name="Sinopsis", value=data["synopsis"], inline=False)
-
-                first_run = False
-                msg = await ctx.send(embed=embed)
-
-            reactmoji = []
-            num__ = len(data["screenshot"])
-
-            if screen_table:
-                if num__ == 1 and num_ == 1:
-                    pass
-                elif num_ == 1:
-                    reactmoji.append("⏩")
-                elif num_ == num__:
-                    reactmoji.append("⏪")
-                elif num_ > 1 and num_ < num__:
-                    reactmoji.extend(["⏪", "⏩"])
-                reactmoji.append("✅")
-            else:
-                if max_page == 1 and num == 1:
-                    pass
-                elif num == 1:
-                    reactmoji.append("⏩")
-                elif num == max_page:
-                    reactmoji.append("⏪")
-                elif num > 1 and num < max_page:
-                    reactmoji.extend(["⏪", "⏩"])
-                if data["screenshot"]:
-                    reactmoji.append("📸")
-
-            for react in reactmoji:
-                await msg.add_reaction(react)
-
-            def check_react(reaction, user):
-                if reaction.message.id != msg.id:
-                    return False
-                if user != ctx.message.author:
-                    return False
-                if str(reaction.emoji) not in reactmoji:
-                    return False
-                return True
-
-            try:
-                res, user = await self.bot.wait_for("reaction_add", timeout=30, check=check_react)
-            except asyncio.TimeoutError:
-                return await msg.clear_reactions()
-            if user != ctx.message.author:
-                pass
-            elif "⏪" in str(res.emoji):
-                if not screen_table:
-                    num = num - 1
-                data = resdata[num - 1]
-                embed = discord.Embed(color=0x225588)
-
-                embed.set_thumbnail(url=data["poster_img"])
-                embed.set_author(
-                    name=data["title"],
-                    url=data["link"],
-                    icon_url="https://ihateani.me/o/vndbico.png",
-                )
-                embed.set_footer(text=data["footer"])
-
-                embed.add_field(name="Nama Lain", value=data["title_other"], inline=True)
-                embed.add_field(name="Durasi", value=data["duration"], inline=True)
-                embed.add_field(name="Bahasa", value=data["languages"], inline=True)
-                embed.add_field(name="Platform", value=data["platforms"], inline=True)
-                embed.add_field(name="Rilis", value=data["released"], inline=True)
-                embed.add_field(name="Skor", value=data["score"], inline=True)
-                embed.add_field(name="Relasi (VNID)", value=data["relations"], inline=True)
-                embed.add_field(name="Adaptasi Anime?", value=data["anime?"], inline=True)
-                embed.add_field(name="Sinopsis", value=data["synopsis"], inline=False)
-
-                if screen_table:
-                    # Reset embed
-                    num_ = num_ - 1
-                    data_ss = data["screenshot"][num_ - 1]
-                    embed = discord.Embed(color=0x225588, description="<{}>".format(data_ss))
-                    embed.set_author(
-                        name=data["title"] + " ({}/{})".format(num_, num__),
-                        url=data["link"],
-                        icon_url="https://ihateani.me/o/vndbico.png",
-                    )
-                    embed.set_image(url=data_ss)
-
-                await msg.clear_reactions()
-                await msg.edit(embed=embed)
-            elif "⏩" in str(res.emoji):
-                if not screen_table:
-                    num = num + 1
-                data = resdata[num - 1]
-                embed = discord.Embed(color=0x225588)
-
-                embed.set_thumbnail(url=data["poster_img"])
-                embed.set_author(
-                    name=data["title"],
-                    url=data["link"],
-                    icon_url="https://ihateani.me/o/vndbico.png",
-                )
-                embed.set_footer(text=data["footer"])
-
-                embed.add_field(name="Nama Lain", value=data["title_other"], inline=True)
-                embed.add_field(name="Durasi", value=data["duration"], inline=True)
-                embed.add_field(name="Bahasa", value=data["languages"], inline=True)
-                embed.add_field(name="Platform", value=data["platforms"], inline=True)
-                embed.add_field(name="Rilis", value=data["released"], inline=True)
-                embed.add_field(name="Skor", value=data["score"], inline=True)
-                embed.add_field(name="Relasi (VNID)", value=data["relations"], inline=True)
-                embed.add_field(name="Adaptasi Anime?", value=data["anime?"], inline=True)
-                embed.add_field(name="Sinopsis", value=data["synopsis"], inline=False)
-
-                if screen_table:
-                    # Reset embed
-                    num_ = num_ + 1
-                    data_ss = data["screenshot"][num_ - 1]
-                    embed = discord.Embed(color=0x225588, description="<{}>".format(data_ss))
-                    embed.set_author(
-                        name=data["title"] + " ({}/{})".format(num_, num__),
-                        url=data["link"],
-                        icon_url="https://ihateani.me/o/vndbico.png",
-                    )
-                    embed.set_image(url=data_ss)
-
-                await msg.clear_reactions()
-                await msg.edit(embed=embed)
-            elif "✅" in str(res.emoji):
-                embed = discord.Embed(color=0x225588)
-
-                embed.set_thumbnail(url=data["poster_img"])
-                embed.set_author(
-                    name=data["title"],
-                    url=data["link"],
-                    icon_url="https://ihateani.me/o/vndbico.png",
-                )
-                embed.set_footer(text=data["footer"])
-
-                embed.add_field(name="Nama Lain", value=data["title_other"], inline=True)
-                embed.add_field(name="Durasi", value=data["duration"], inline=True)
-                embed.add_field(name="Bahasa", value=data["languages"], inline=True)
-                embed.add_field(name="Platform", value=data["platforms"], inline=True)
-                embed.add_field(name="Rilis", value=data["released"], inline=True)
-                embed.add_field(name="Skor", value=data["score"], inline=True)
-                embed.add_field(name="Relasi (VNID)", value=data["relations"], inline=True)
-                embed.add_field(name="Adaptasi Anime?", value=data["anime?"], inline=True)
-                embed.add_field(name="Sinopsis", value=data["synopsis"], inline=False)
-
-                screen_table = False
-                await msg.clear_reactions()
-                await msg.edit(embed=embed)
-            elif "📸" in str(res.emoji):
-                data_ss = data["screenshot"][num_ - 1]
-                embed = discord.Embed(color=0x225588, description="<{}>".format(data_ss))
-                embed.set_author(
-                    name=data["title"] + " ({}/{})".format(num_, num__),
-                    url=data["link"],
-                    icon_url="https://ihateani.me/o/vndbico.png",
-                )
-                embed.set_image(url=data_ss)
-
-                screen_table = True
-                await msg.clear_reactions()
-                await msg.edit(embed=embed)
+        main_gen = DiscordPaginator(self.bot, ctx, extra_emotes=["📸"])
+        main_gen.add_handler(lambda pos, data: len(data[pos]["screenshot"]) > 0, wrap_start_image)
+        main_gen.set_generator(self._design_embed)
+        await main_gen.start(resdata, 30.0)
 
     @commands.command(aliases=["randomvisualnovel", "randomeroge", "vnrandom"])
+    @commands.bot_has_guild_permissions(
+        manage_messages=True, embed_links=True, read_message_history=True, add_reactions=True,
+    )
     async def randomvn(self, ctx):
         if self.vnconn is None:
             return await ctx.send(
@@ -430,192 +296,29 @@ class VNDB(commands.Cog):
         if isinstance(vnqres, str):
             return await ctx.send(vnqres)
 
-        max_page = vnqres["data_total"]
         resdata = vnqres["result"]
 
-        first_run = True
-        screen_table = False
-        num = 1
-        num_ = 1
-        while True:
-            if first_run:
-                data = resdata[num - 1]
-                embed = discord.Embed(color=0x225588)
+        async def wrap_start_image(datasets, position, message):
+            await message.clear_reactions()
+            dataset = datasets[position]
+            total_img = len(dataset["screenshot"])
+            img_embed_gen = partial(self._design_screenies, total_screenshot=total_img, real_data=dataset)
+            screen_gen = DiscordPaginator(self.bot, ctx)
+            screen_gen.checker()
+            screen_gen.set_generator(img_embed_gen, True)
+            timeout = await screen_gen.start(dataset["screenshot"], 30.0, message)
+            return None, message, timeout
 
-                embed.set_thumbnail(url=data["poster_img"])
-                embed.set_author(
-                    name=data["title"],
-                    url=data["link"],
-                    icon_url="https://ihateani.me/o/vndbico.png",
-                )
-                embed.set_footer(text=data["footer"])
+        main_gen = DiscordPaginator(self.bot, ctx, extra_emotes=["📸"])
+        main_gen.add_handler(lambda pos, data: len(data[pos]["screenshot"]) > 0, wrap_start_image)
+        main_gen.set_generator(self._design_embed)
+        await main_gen.start(resdata, 30.0)
 
-                embed.add_field(name="Nama Lain", value=data["title_other"], inline=True)
-                embed.add_field(name="Durasi", value=data["duration"], inline=True)
-                embed.add_field(name="Bahasa", value=data["languages"], inline=True)
-                embed.add_field(name="Platform", value=data["platforms"], inline=True)
-                embed.add_field(name="Rilis", value=data["released"], inline=True)
-                embed.add_field(name="Skor", value=data["score"], inline=True)
-                embed.add_field(name="Relasi (VNID)", value=data["relations"], inline=True)
-                embed.add_field(name="Adaptasi Anime?", value=data["anime?"], inline=True)
-                embed.add_field(name="Sinopsis", value=data["synopsis"], inline=False)
-
-                first_run = False
-                msg = await ctx.send(embed=embed)
-
-            reactmoji = []
-            num__ = len(data["screenshot"])
-
-            if screen_table:
-                if num__ == 1 and num_ == 1:
-                    pass
-                elif num_ == 1:
-                    reactmoji.append("⏩")
-                elif num_ == num__:
-                    reactmoji.append("⏪")
-                elif num_ > 1 and num_ < num__:
-                    reactmoji.extend(["⏪", "⏩"])
-                reactmoji.append("✅")
-            else:
-                if max_page == 1 and num == 1:
-                    pass
-                elif num == 1:
-                    reactmoji.append("⏩")
-                elif num == max_page:
-                    reactmoji.append("⏪")
-                elif num > 1 and num < max_page:
-                    reactmoji.extend(["⏪", "⏩"])
-                if data["screenshot"]:
-                    reactmoji.append("📸")
-
-            for react in reactmoji:
-                await msg.add_reaction(react)
-
-            def check_react(reaction, user):
-                if reaction.message.id != msg.id:
-                    return False
-                if user != ctx.message.author:
-                    return False
-                if str(reaction.emoji) not in reactmoji:
-                    return False
-                return True
-
-            try:
-                res, user = await self.bot.wait_for("reaction_add", timeout=30, check=check_react)
-            except asyncio.TimeoutError:
-                return await msg.clear_reactions()
-            if user != ctx.message.author:
-                pass
-            elif "⏪" in str(res.emoji):
-                if not screen_table:
-                    num = num - 1
-                data = resdata[num - 1]
-                embed = discord.Embed(color=0x225588)
-
-                embed.set_thumbnail(url=data["poster_img"])
-                embed.set_author(
-                    name=data["title"],
-                    url=data["link"],
-                    icon_url="https://ihateani.me/o/vndbico.png",
-                )
-                embed.set_footer(text=data["footer"])
-
-                embed.add_field(name="Nama Lain", value=data["title_other"], inline=True)
-                embed.add_field(name="Durasi", value=data["duration"], inline=True)
-                embed.add_field(name="Bahasa", value=data["languages"], inline=True)
-                embed.add_field(name="Platform", value=data["platforms"], inline=True)
-                embed.add_field(name="Rilis", value=data["released"], inline=True)
-                embed.add_field(name="Skor", value=data["score"], inline=True)
-                embed.add_field(name="Relasi (VNID)", value=data["relations"], inline=True)
-                embed.add_field(name="Adaptasi Anime?", value=data["anime?"], inline=True)
-                embed.add_field(name="Sinopsis", value=data["synopsis"], inline=False)
-
-                if screen_table:
-                    # Reset embed
-                    num_ = num_ - 1
-                    data_ss = data["screenshot"][num_ - 1]
-                    embed = discord.Embed(color=0x225588, description="<{}>".format(data_ss))
-                    embed.set_author(
-                        name=data["title"] + " ({}/{})".format(num_, num__),
-                        url=data["link"],
-                        icon_url="https://ihateani.me/o/vndbico.png",
-                    )
-                    embed.set_image(url=data_ss)
-
-                await msg.clear_reactions()
-                await msg.edit(embed=embed)
-            elif "⏩" in str(res.emoji):
-                if not screen_table:
-                    num = num + 1
-                data = resdata[num - 1]
-                embed = discord.Embed(color=0x225588)
-
-                embed.set_thumbnail(url=data["poster_img"])
-                embed.set_author(
-                    name=data["title"],
-                    url=data["link"],
-                    icon_url="https://ihateani.me/o/vndbico.png",
-                )
-                embed.set_footer(text=data["footer"])
-
-                embed.add_field(name="Nama Lain", value=data["title_other"], inline=True)
-                embed.add_field(name="Durasi", value=data["duration"], inline=True)
-                embed.add_field(name="Bahasa", value=data["languages"], inline=True)
-                embed.add_field(name="Platform", value=data["platforms"], inline=True)
-                embed.add_field(name="Rilis", value=data["released"], inline=True)
-                embed.add_field(name="Skor", value=data["score"], inline=True)
-                embed.add_field(name="Relasi (VNID)", value=data["relations"], inline=True)
-                embed.add_field(name="Adaptasi Anime?", value=data["anime?"], inline=True)
-                embed.add_field(name="Sinopsis", value=data["synopsis"], inline=False)
-
-                if screen_table:
-                    # Reset embed
-                    num_ = num_ + 1
-                    data_ss = data["screenshot"][num_ - 1]
-                    embed = discord.Embed(color=0x225588, description="<{}>".format(data_ss))
-                    embed.set_author(
-                        name=data["title"] + " ({}/{})".format(num_, num__),
-                        url=data["link"],
-                        icon_url="https://ihateani.me/o/vndbico.png",
-                    )
-                    embed.set_image(url=data_ss)
-
-                await msg.clear_reactions()
-                await msg.edit(embed=embed)
-            elif "✅" in str(res.emoji):
-                embed = discord.Embed(color=0x225588)
-
-                embed.set_thumbnail(url=data["poster_img"])
-                embed.set_author(
-                    name=data["title"],
-                    url=data["link"],
-                    icon_url="https://ihateani.me/o/vndbico.png",
-                )
-                embed.set_footer(text=data["footer"])
-
-                embed.add_field(name="Nama Lain", value=data["title_other"], inline=True)
-                embed.add_field(name="Durasi", value=data["duration"], inline=True)
-                embed.add_field(name="Bahasa", value=data["languages"], inline=True)
-                embed.add_field(name="Platform", value=data["platforms"], inline=True)
-                embed.add_field(name="Rilis", value=data["released"], inline=True)
-                embed.add_field(name="Skor", value=data["score"], inline=True)
-                embed.add_field(name="Relasi (VNID)", value=data["relations"], inline=True)
-                embed.add_field(name="Adaptasi Anime?", value=data["anime?"], inline=True)
-                embed.add_field(name="Sinopsis", value=data["synopsis"], inline=False)
-
-                screen_table = False
-                await msg.clear_reactions()
-                await msg.edit(embed=embed)
-            elif "📸" in str(res.emoji):
-                data_ss = data["screenshot"][num_ - 1]
-                embed = discord.Embed(color=0x225588, description="<{}>".format(data_ss))
-                embed.set_author(
-                    name=data["title"] + " ({}/{})".format(num_, num__),
-                    url=data["link"],
-                    icon_url="https://ihateani.me/o/vndbico.png",
-                )
-                embed.set_image(url=data_ss)
-
-                screen_table = True
-                await msg.clear_reactions()
-                await msg.edit(embed=embed)
+    @vn.error
+    @randomvn.error
+    async def vndb_error(self, ctx, error):
+        if isinstance(error, commands.BotMissingPermissions):
+            perms = ["Manage Messages", "Embed Links", "Read Message History", "Add Reactions"]
+            await ctx.send("Bot tidak memiliki salah satu dari perms ini:\n" + "\n".join(perms))
+        elif isinstance(error, commands.NoPrivateMessage):
+            await ctx.send("Perintah ini hanya bisa dijalankan di server.")

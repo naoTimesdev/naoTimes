@@ -2,7 +2,7 @@
 
 import argparse
 import asyncio
-import glob
+import gc
 import logging
 import os
 import pathlib
@@ -16,12 +16,14 @@ from typing import Optional
 
 import aiohttp
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
+from discord_slash import SlashCommand
 
 from nthelper.anibucket import AnilistBucket
 from nthelper.bot import naoTimesBot
 from nthelper.fsdb import FansubDBBridge
 from nthelper.kbbiasync import KBBI, AutentikasiKBBI
+from nthelper.redis import RedisBridge
 from nthelper.showtimes_helper import ShowtimesQueue, naoTimesDB
 from nthelper.utils import (
     HelpGenerator,
@@ -89,30 +91,35 @@ async def initialize_kbbi(config_data: dict) -> KBBI:
     kbbi_cls = KBBI()
     kbbi_cls.set_autentikasi(username=kbbi_conf["email"], password=kbbi_conf["password"])
 
-    if not kbbi_auth_f:
-        logger.info("authenticating to KBBI...")
-        kbbi_auth = AutentikasiKBBI(kbbi_conf["email"], kbbi_conf["password"])
-        await kbbi_auth.autentikasi()
-        cookie_baru = await kbbi_auth.ambil_cookies()
-        kbbi_cls.set_autentikasi(cookie=cookie_baru, expiry=round(current_dt + (15 * 24 * 60 * 60)))
-    else:
-        if current_dt >= kbbi_auth_f["expires"]:
-            logger.warning("kbbi cookie expired, generating new one...")
+    try:
+        if not kbbi_auth_f:
+            logger.info("authenticating to KBBI...")
             kbbi_auth = AutentikasiKBBI(kbbi_conf["email"], kbbi_conf["password"])
             await kbbi_auth.autentikasi()
             cookie_baru = await kbbi_auth.ambil_cookies()
             kbbi_cls.set_autentikasi(cookie=cookie_baru, expiry=round(current_dt + (15 * 24 * 60 * 60)))
         else:
-            kbbi_cls.set_autentikasi(cookie=kbbi_auth_f["cookie"], expiry=kbbi_auth_f["expires"])
-            await kbbi_cls.reset_connection()
-            is_kbbi_auth = await kbbi_cls.cek_auth()
-            if not is_kbbi_auth:
+            if current_dt >= kbbi_auth_f["expires"]:
                 logger.warning("kbbi cookie expired, generating new one...")
                 kbbi_auth = AutentikasiKBBI(kbbi_conf["email"], kbbi_conf["password"])
                 await kbbi_auth.autentikasi()
                 cookie_baru = await kbbi_auth.ambil_cookies()
                 kbbi_cls.set_autentikasi(cookie=cookie_baru, expiry=round(current_dt + (15 * 24 * 60 * 60)))
-    logger.info("kbbi auth restored, resetting connection.")
+            else:
+                kbbi_cls.set_autentikasi(cookie=kbbi_auth_f["cookie"], expiry=kbbi_auth_f["expires"])
+                await kbbi_cls.reset_connection()
+                is_kbbi_auth = await kbbi_cls.cek_auth()
+                if not is_kbbi_auth:
+                    logger.warning("kbbi cookie expired, generating new one...")
+                    kbbi_auth = AutentikasiKBBI(kbbi_conf["email"], kbbi_conf["password"])
+                    await kbbi_auth.autentikasi()
+                    cookie_baru = await kbbi_auth.ambil_cookies()
+                    kbbi_cls.set_autentikasi(
+                        cookie=cookie_baru, expiry=round(current_dt + (15 * 24 * 60 * 60))
+                    )
+        logger.info("kbbi auth restored, resetting connection.")
+    except Exception:
+        logger.error("Failed to authenticate, probably server down or something, ignoring for now...")
     await kbbi_cls.reset_connection()
     await write_files(kbbi_cls.get_cookies, "kbbi_auth.json")
     return kbbi_cls
@@ -188,30 +195,43 @@ async def init_bot(loop) -> naoTimesBot:
     currency_data = await read_files("currencydata.json")
     logger.info("Loading streaming lists data...")
     streams_list = await read_files("streaming_lists.json")
-    logger.info("Loading prefixes data...")
-    srv_prefixes = await read_files("server_prefixes.json")
 
     if not args_parsed.kbbi_check:
         kbbi_conn = await initialize_kbbi(config)
     else:
         kbbi_conn = KBBI()
 
+    if "redisdb" not in config:
+        logger.error("Redis DB is not setup, please setup Redis before continuing!")
+        return sys.exit(1)
+    if not config["redisdb"]:
+        logger.error("Redis DB is not setup, please setup Redis before continuing!")
+        return sys.exit(1)
+    redis_conf = config["redisdb"]
+    if "ip_hostname" not in redis_conf or "port" not in redis_conf:
+        logger.error("Redis DB is not setup, please setup Redis before continuing!")
+        return sys.exit(1)
+    if not redis_conf["ip_hostname"] or not redis_conf["port"]:
+        logger.error("Redis DB is not setup, please setup Redis before continuing!")
+        return sys.exit(1)
+
+    redis_conn = RedisBridge(
+        redis_conf["ip_hostname"], redis_conf["port"], redis_conf.get("password", None), loop
+    )
+    logger.info("Connecting to RedisDB...")
+    await redis_conn.connect()
+    logger.info("Connected to RedisDB!")
+
+    logger.info("Fetching prefixes data...")
+    srv_prefixes = await redis_conn.getalldict("ntprefix_*")
+    fmt_prefixes = {}
+    for srv, pre in srv_prefixes.items():
+        fmt_prefixes[srv[9:]] = pre
+
     use_fsdb, fsdb_bridge = await initialize_fsdb(config)
     use_vndb, vndb_conn = await initialize_vndb(config, loop)
 
     cwd = str(pathlib.Path(__file__).parent.absolute())
-    automod_folder = os.path.join(cwd, "automod")
-    if not os.path.isdir(automod_folder):
-        os.makedirs(automod_folder)
-    fsrss_folder = os.path.join(cwd, "fansubrss_data")
-    if not os.path.isdir(fsrss_folder):
-        os.makedirs(fsrss_folder)
-    showtimes_folder = os.path.join(cwd, "showtimes_folder")
-    if not os.path.isdir(showtimes_folder):
-        os.makedirs(showtimes_folder)
-    premium_code_folder = os.path.join(cwd, "premium_code")
-    if not os.path.isdir(premium_code_folder):
-        os.makedirs(premium_code_folder)
 
     default_prefix = config["default_prefix"]
 
@@ -219,7 +239,7 @@ async def init_bot(loop) -> naoTimesBot:
         logger.info("Initiating discord.py")
         description = "Penyuruh Fansub biar kerja cepat\n"
         description += f"versi {__version__} || Dibuat oleh: N4O#8868"
-        prefixes = partial(prefixes_with_data, prefixes_data=srv_prefixes, default=default_prefix)
+        prefixes = partial(prefixes_with_data, prefixes_data=fmt_prefixes, default=default_prefix)
         if discord_ver_tuple >= (1, 5, 0):
             # Insert intents
             bot = naoTimesBot(
@@ -232,7 +252,6 @@ async def init_bot(loop) -> naoTimesBot:
         # if not hasattr(bot, "logger"):
         #     bot.logger = logger
         bot.botconf = config
-        bot.automod_folder = automod_folder
         bot.semver = __version__
         bot.logger.info("Binding JSON dataset...")
         bot.jsdb_streams = streams_list
@@ -248,10 +267,14 @@ async def init_bot(loop) -> naoTimesBot:
             bot.logger.info("Binding VNDB Socket Connection...")
             bot.vndb_socket = vndb_conn
         bot.logger.info("Binding ShowtimesQueue...")
-        bot.showqueue = ShowtimesQueue(cwd)
+        bot.showqueue = ShowtimesQueue(redis_conn, loop)
         bot.logger.info("Binding AnilistBucket")
         bot.anibucket = AnilistBucket()
+        bot.logger.info("Binding Redis...")
+        bot.redisdb = redis_conn
         bot.logger.info("Success Loading Discord.py")
+        bot.logger.info("Binding interactions...")
+        bot.slash = SlashCommand(bot, override_type=True)
     except Exception as exc:
         bot.logger.error("Failed to load Discord.py")
         announce_error(exc)
@@ -344,11 +367,11 @@ async def on_ready():
                 if not os.path.isdir(showtimes_folder):
                     os.makedirs(showtimes_folder)
                 for fn, fdata in js_data.items():
-                    svfn = os.path.join(showtimes_folder, f"{fn}.showtimes")
+                    svfn = f"showtimes_{fn}"
                     bot.logger.info(f"showtimes: saving to file {fn}")
                     if fn == "supermod":
-                        svfn = os.path.join(showtimes_folder, "super_admin.json")
-                    await write_files(fdata, svfn)
+                        svfn = "showtimesadmin"
+                    await bot.redisdb.set(svfn, fdata)
                 bot.logger.info("File fetched and saved to local json")
                 bot.logger.info(
                     "---------------------------------------------------------------"
@@ -382,6 +405,8 @@ async def on_ready():
             bot.echo_error(e)
     bot_hostdata = bot.get_hostdata
     bot.logger.info("[#][@][!] All cogs/extensions loaded.")
+    bot.logger.info("Preparing command registration")
+    await bot.slash.register_all_commands()
     bot.logger.info("---------------------------------------------------------------")
     bot.logger.info("Bot Ready!")
     bot.logger.info("Using Python {}".format(sys.version))
@@ -401,6 +426,9 @@ async def on_ready():
         bot.logger.info("With team members: {}".format(parsed_member))
     bot.logger.info("Client ID: {}".format(bot.user.id))
     bot.logger.info("Running naoTimes version: {}".format(__version__))
+    commit_info = bot.get_commit
+    if commit_info["hash"] is not None:
+        bot.logger.info(f"With Commit Hash: {commit_info['full_hash']} ({commit_info['date']})")
     bot.logger.info("---------------------------------------------------------------")
 
 
@@ -416,13 +444,32 @@ async def change_bot_presence():
         await bot.change_presence(activity=activity)
 
 
+@tasks.loop(hours=12)
+async def garbage_collector():
+    bot.logger.info("running garbage collection...")
+    collected = gc.collect()
+    bot.logger.info(f"collected {collected} objects.")
+
+
 async def send_hastebin(info):
     async with aiohttp.ClientSession() as session:
-        async with session.post("https://hastebin.com/documents", data=str(info)) as resp:
+        current = str(datetime.now(tz=timezone.utc).timestamp())
+        form_data = aiohttp.FormData()
+        form_data.add_field(
+            name="file",
+            value=info.encode("utf-8"),
+            content_type="text/x-python",
+            filename=f"naoTimes_error_log_{current}.py",
+        )
+        async with session.post("https://p.ihateani.me/upload", data=form_data) as resp:
             if resp.status == 200:
-                return "Error Occured\nSince the log is way too long here's a hastebin logs.\nhttps://hastebin.com/{}.py".format(  # noqa: E501
-                    (await resp.json())["key"]
-                )
+                res = await resp.text()
+                finalized = "**Error Occured!**\n"
+                finalized += "But since the log it's way past Discord 2000 characters limit, "
+                finalized += f"the log file can be accessed here: <{res}>"
+
+                finalized += "\n\nThe log file are valid for around 2.5 months"
+                return finalized
 
 
 @bot.event
@@ -479,9 +526,7 @@ async def on_command_error(ctx, error):
         timestamp=datetime.utcfromtimestamp(current_time),
     )
     embed.add_field(
-        name="Cogs",
-        value="[nT!] {0.cog_name}".format(ctx.command),
-        inline=False,
+        name="Cogs", value="[nT!] {0.cog_name}".format(ctx.command), inline=False,
     )
     embed.add_field(
         name="Perintah yang dipakai",
@@ -499,11 +544,9 @@ async def on_command_error(ctx, error):
         inline=False,
     )
     embed.add_field(
-        name="Traceback",
-        value="```py\n{}\n```".format("".join(tb)),
-        inline=True,
+        name="Traceback", value="```py\n{}\n```".format("".join(tb)), inline=True,
     )
-    embed.set_thumbnail(url="http://p.ihateani.me/1bnBuV9C")
+    embed.set_thumbnail(url="https://p.ihateani.me/mccvpqgd.png")
     try:
         await bot.send_error_log(embed=embed)
     except Exception:
@@ -612,15 +655,7 @@ async def fetch_bot_count_data():
         total_server, total_channels, total_valid_users
     )
 
-    async def fetch_servers(cwd: str) -> list:
-        bot.logger.info("fetching with glob...")
-        glob_re = os.path.join(cwd, "showtimes_folder", "*.showtimes")
-        basename = os.path.basename
-        all_showtimes = glob.glob(glob_re)
-        all_showtimes = [os.path.splitext(basename(srv))[0] for srv in all_showtimes]
-        return all_showtimes
-
-    showtimes_servers = await fetch_servers(bot.fcwd)
+    showtimes_servers = await bot.redisdb.keys("showtimes_*")
     if showtimes_servers:
         text_fmt += f"\n\nJumlah Server Showtimes: {len(showtimes_servers)}"
 
@@ -679,15 +714,16 @@ async def info(ctx):
     Melihat Informasi bot
     """
     infog = discord.Embed(
-        title="naoTimes",
-        description="Sang penagih utang fansub agar fansubnya mau gerak",
-        color=0xDE8730,
+        title="naoTimes", description="Sang penagih utang fansub agar fansubnya mau gerak", color=0xDE8730,
     )
     infog.set_author(
-        name="naoTimes",
-        icon_url="https://slwordpress.rutgers.edu/wp-content/uploads/sites/98/2015/12/Info-I-Logo.png",  # noqa: E501
+        name="naoTimes", icon_url=bot.user.avatar_url,  # noqa: E501
     )
-    infog.set_thumbnail(url="https://puu.sh/D3x1l/7f97e14c74.png")
+    semver = bot.semver
+    commit = bot.get_commit
+    if commit["hash"] is not None:
+        semver += f" ({commit['hash']})"
+    infog.set_thumbnail(url=bot.user.avatar_url)
     infog.add_field(name="Server Info", value=get_server(), inline=False)
     infog.add_field(name="Statistik", value=(await fetch_bot_count_data()), inline=False)
     infog.add_field(name="Dibuat", value="Gak tau, tiba-tiba jadi.", inline=False)
@@ -696,8 +732,7 @@ async def info(ctx):
     infog.add_field(name="Fungsi", value="Menagih utang fansub (!help)", inline=False)
     infog.add_field(name="Uptime", value=create_uptime())
     infog.set_footer(
-        text=f"naoTimes versi {bot.semver} || Dibuat oleh N4O#8868",
-        icon_url="https://p.n4o.xyz/i/nao250px.png",
+        text=f"naoTimes versi {semver} || Dibuat oleh N4O#8868", icon_url="https://p.n4o.xyz/i/nao250px.png",
     )
     await ctx.send(embed=infog)
 
@@ -720,12 +755,40 @@ async def reloadconf(ctx):
     currency_data = await read_files("currencydata.json")
     bot.logger.info("Loading streaming lists data...")
     streams_list = await read_files("streaming_lists.json")
-    bot.logger.info("Loading prefixes data...")
-    srv_prefixes = await read_files("server_prefixes.json")
 
     default_prefix = new_config["default_prefix"]
 
     await msg.edit(content="Reassigning attributes")
+
+    if "redisdb" not in new_config:
+        bot.logger.error("Redis DB is not setup, please setup Redis before continuing!")
+        await ctx.send("Cannot reload config since the provided Redis Config is wrong! Stopping bot!")
+        raise SystemExit
+    if not new_config["redisdb"]:
+        bot.logger.error("Redis DB is not setup, please setup Redis before continuing!")
+        await ctx.send("Cannot reload config since the provided Redis Config is wrong! Stopping bot!")
+        raise SystemExit
+    redis_conf = new_config["redisdb"]
+    if "ip_hostname" not in redis_conf or "port" not in redis_conf:
+        bot.logger.error("Redis DB is not setup, please setup Redis before continuing!")
+        await ctx.send("Cannot reload config since the provided Redis Config is wrong! Stopping bot!")
+        raise SystemExit
+    if not redis_conf["ip_hostname"] or not redis_conf["port"]:
+        bot.logger.error("Redis DB is not setup, please setup Redis before continuing!")
+        await ctx.send("Cannot reload config since the provided Redis Config is wrong! Stopping bot!")
+        raise SystemExit
+
+    logger.info("Disconnecting old redis connection!")
+    await bot.redisdb.close()
+
+    redis_conn = RedisBridge(
+        redis_conf["ip_hostname"], redis_conf["port"], redis_conf.get("password", None), bot.loop
+    )
+    logger.info("Connecting to RedisDB...")
+    await redis_conn.connect()
+    logger.info("Connected to RedisDB!")
+    bot.redisdb = redis_conn
+
     bot.botconf = new_config
     try:
         mongo_conf = new_config["mongodb"]
@@ -755,7 +818,12 @@ async def reloadconf(ctx):
         if kbbi_conn is not None:
             await bot.kbbi.tutup()
             bot.kbbi = kbbi_conn
-    bot.command_prefix = partial(prefixes_with_data, prefixes_data=srv_prefixes, default=default_prefix)
+    logger.info("Refetching prefixes data...")
+    srv_prefixes = await redis_conn.getalldict("ntprefix_*")
+    fmt_prefixes = {}
+    for srv, pre in srv_prefixes.items():
+        fmt_prefixes[srv[9:]] = pre
+    bot.command_prefix = partial(prefixes_with_data, prefixes_data=fmt_prefixes, default=default_prefix)
     bot.jsdb_streams = streams_list
     bot.jsdb_currency = currency_data
     bot.jsdb_crypto = crypto_data
@@ -889,15 +957,9 @@ async def reload(ctx, *, cogs=None):
     Restart salah satu module bot, owner only
     """
     if not cogs:
-        helpcmd = HelpGenerator(
-            bot,
-            "Reload",
-            desc="Reload module bot.",
-        )
+        helpcmd = HelpGenerator(bot, "Reload", desc="Reload module bot.",)
         helpcmd.embed.add_field(
-            name="Module/Cogs List",
-            value="\n".join(["- " + cl for cl in cogs_list]),
-            inline=False,
+            name="Module/Cogs List", value="\n".join(["- " + cl for cl in cogs_list]), inline=False,
         )
         return await ctx.send(embed=helpcmd.get())
     if not cogs.startswith("cogs."):
@@ -940,15 +1002,9 @@ async def load(ctx, *, cogs=None):
     Load salah satu module bot, owner only
     """
     if not cogs:
-        helpcmd = HelpGenerator(
-            bot,
-            "Load",
-            desc="Load module bot.",
-        )
+        helpcmd = HelpGenerator(bot, "Load", desc="Load module bot.",)
         helpcmd.embed.add_field(
-            name="Module/Cogs List",
-            value="\n".join(["- " + cl for cl in cogs_list]),
-            inline=False,
+            name="Module/Cogs List", value="\n".join(["- " + cl for cl in cogs_list]), inline=False,
         )
         return await ctx.send(embed=helpcmd.get())
     if not cogs.startswith("cogs."):
@@ -980,15 +1036,9 @@ async def unload(ctx, *, cogs=None):
     Unload salah satu module bot, owner only
     """
     if not cogs:
-        helpcmd = HelpGenerator(
-            bot,
-            "Unload",
-            desc="Unload module bot.",
-        )
+        helpcmd = HelpGenerator(bot, "Unload", desc="Unload module bot.",)
         helpcmd.embed.add_field(
-            name="Module/Cogs List",
-            value="\n".join(["- " + cl for cl in cogs_list]),
-            inline=False,
+            name="Module/Cogs List", value="\n".join(["- " + cl for cl in cogs_list]), inline=False,
         )
         return await ctx.send(embed=helpcmd.get())
     if not cogs.startswith("cogs."):
@@ -1126,45 +1176,36 @@ async def enablecmd(ctx, *, cmd_name):
 async def prefix(ctx, *, msg=None):
     server_message = str(ctx.message.guild.id)
     bot.logger.info(f"requested at {server_message}")
-    if not os.path.isfile("server_prefixes.json"):
-        prefix_data = {}
-        bot.logger.warning(".json file doesn't exist, making one...")
-        await write_files({}, "server_prefixes.json")
-    else:
-        prefix_data = await read_files("server_prefixes.json")
-
+    srv_pre = await bot.redisdb.get(f"ntprefix_{server_message}")
     if not msg:
         helpcmd = HelpGenerator(bot, "Prefix", color=0x00AAAA)
         helpcmd.embed.add_field(
-            name="Prefix Server",
-            value=prefix_data.get(server_message, "Tidak ada"),
-            inline=False,
+            name="Prefix Server", value="Tidak ada" if srv_pre is None else srv_pre, inline=False,
         )
         await helpcmd.generate_aliases()
         return await ctx.send(embed=helpcmd.get())
 
     if msg in ["clear", "bersihkan", "hapus"]:
-        if server_message in prefix_data:
-            bot.logger.warning(f"{server_message}: deleting custom prefix...")
-            del prefix_data[server_message]
+        res = await bot.redisdb.rm(f"ntprefix_{server_message}")
+        if res:
+            return await ctx.send("Berhasil menghapus custom prefix dari server ini")
+        else:
+            return await ctx.send("Tidak ada prefix yang terdaftar untuk server ini, mengabaikan...")
 
-            await write_files(prefix_data, "server_prefixes.json")
-
-        return await ctx.send("Berhasil menghapus custom prefix dari server ini")
-
-    if server_message in prefix_data:
+    if srv_pre is not None:
         bot.logger.info(f"{server_message}: changing custom prefix...")
         send_txt = "Berhasil mengubah custom prefix ke `{pre_}` untuk server ini"
     else:
         bot.logger.info(f"{server_message}: adding custom prefix...")
         send_txt = "Berhasil menambah custom prefix `{pre_}` untuk server ini"
-    prefix_data[server_message] = msg
 
-    await write_files(prefix_data, "server_prefixes.json")
+    await bot.redisdb.set(f"ntprefix_{server_message}", msg)
+    prefix_data = await bot.redisdb.getalldict("ntprefix_*")
+    new_prefix_fmt = {}
+    for srv, pre in prefix_data.items():
+        new_prefix_fmt[srv[9:]] = pre
     bot.command_prefix = partial(
-        prefixes_with_data,
-        prefixes_data=prefix_data,
-        default=bot.botconf["default_prefix"],
+        prefixes_with_data, prefixes_data=new_prefix_fmt, default=bot.botconf["default_prefix"],
     )
     prefix = bot.command_prefix
     if callable(prefix):
@@ -1206,18 +1247,14 @@ async def prefix(ctx, *, msg=None):
 @prefix.error
 async def prefix_error(error, ctx):
     if isinstance(error, commands.errors.CheckFailure):
-        server_message = str(ctx.message.guild.id)
-        if not os.path.isfile("prefixes.json"):
-            prefix_data = {}
-            bot.logger.warning(".json file doesn't exist, making one...")
-            await write_files({}, "server_prefixes.json")
-        else:
-            prefix_data = await read_files("server_prefixes.json")
-        helpcmd = HelpGenerator(bot, "Load", desc="Load module bot.", color=0x00AAAA)
+        try:
+            server_message = str(ctx.message.guild.id)
+        except Exception:
+            return await ctx.send("Hanya bisa dijalankan di sebuah server!")
+        srv_pre = await bot.redisdb.get(f"ntprefix_{server_message}")
+        helpcmd = HelpGenerator(bot, "Prefix", color=0x00AAAA)
         helpcmd.embed.add_field(
-            name="Prefix Server",
-            value=prefix_data.get(server_message, "Tidak ada"),
-            inline=False,
+            name="Prefix Server", value="Tidak ada" if srv_pre is None else srv_pre, inline=False,
         )
         await helpcmd.generate_aliases()
         await ctx.send(embed=helpcmd.get())
@@ -1240,6 +1277,11 @@ def stop_stuff_on_completion(_):
     bot.logger.info("Shutting down KBBI and VNDB connection...")
     async_loop.run_until_complete(bot.kbbi.tutup())
     async_loop.run_until_complete(bot.vndb_socket.close())
+    bot.logger.info("Removing all slash commands")
+    async_loop.run_until_complete(bot.remove_slash_commands([]))
+    bot.logger.info("Closing Redis Connection...")
+    async_loop.run_until_complete(bot.redisdb.close())
+    garbage_collector.stop()
     async_loop.stop()
 
 
@@ -1288,8 +1330,9 @@ def cancel_all_tasks(loop):
 future = asyncio.ensure_future(run_bot(bot.botconf["bot_token"], bot=True, reconnect=True))
 future.add_done_callback(stop_stuff_on_completion)
 try:
-    async_loop.run_forever()
+    garbage_collector.start()
     bot.loop.create_task(change_bot_presence())
+    async_loop.run_forever()
     # bot.run()
 except (KeyboardInterrupt, SystemExit, SystemError):
     bot.logger.info("Received signal to terminate bot.")

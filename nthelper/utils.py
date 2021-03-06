@@ -9,6 +9,7 @@ import random
 import sys
 import time
 from datetime import datetime, timedelta, timezone
+from inspect import iscoroutinefunction
 from string import ascii_lowercase, ascii_uppercase, digits
 from typing import Any, Dict, List, Tuple, Union
 
@@ -19,7 +20,7 @@ import ujson
 from discord import __version__ as discord_ver
 from discord.ext import commands
 
-__version__ = "2.0.1"
+__version__ = "2.0.2"
 
 main_log = logging.getLogger("nthelper.utils")
 __CHROME_UA__ = ""
@@ -143,11 +144,7 @@ async def write_files(data: Any, fpath: str):
     """
     if isinstance(data, (dict, list, tuple)):
         data = ujson.dumps(
-            data,
-            ensure_ascii=False,
-            encode_html_chars=False,
-            escape_forward_slashes=False,
-            indent=4,
+            data, ensure_ascii=False, encode_html_chars=False, escape_forward_slashes=False, indent=4,
         )
     elif isinstance(data, int):
         data = str(data)
@@ -190,11 +187,7 @@ def blocking_write_files(data: Any, fpath: str):
     """
     if isinstance(data, (dict, list, tuple)):
         data = ujson.dumps(
-            data,
-            ensure_ascii=False,
-            encode_html_chars=False,
-            escape_forward_slashes=False,
-            indent=4,
+            data, ensure_ascii=False, encode_html_chars=False, escape_forward_slashes=False, indent=4,
         )
     elif isinstance(data, int):
         data = str(data)
@@ -345,6 +338,9 @@ class HelpGenerator:
         self.logger = logging.getLogger("nthelper.utils.HelpGenerator")
 
         self._ver = self.bot.semver
+        commit = self.bot.get_commit
+        if commit["hash"] is not None:
+            self._ver += f" ({commit['hash']})"
         self._pre = self.bot.prefix
         self._no_pre = False
 
@@ -408,8 +404,7 @@ class HelpGenerator:
         self.logger.info(f"start generating embed for: {self.cmd_name}")
         embed = discord.Embed(color=self.color)
         embed.set_author(
-            name=self.bot.user.display_name,
-            icon_url=self.bot.user.avatar_url,
+            name=self.bot.user.display_name, icon_url=self.bot.user.avatar_url,
         )
         embed.set_footer(text=f"Dibuat oleh N4O#8868 | Versi {self._ver}")
         title = "Bantuan Perintah"
@@ -484,16 +479,12 @@ class HelpGenerator:
             final_desc = "```\n" + final_desc + "\n```"
 
         self.embed.add_field(
-            name=gen_name,
-            value=final_desc,
-            inline=inline,
+            name=gen_name, value=final_desc, inline=inline,
         )
         if examples:
             examples = [f"- **{self._pre}{cmd_name}** {ex}" for ex in examples]
             self.embed.add_field(
-                name="Contoh",
-                value="\n".join(examples),
-                inline=False,
+                name="Contoh", value="\n".join(examples), inline=False,
             )
 
     async def generate_aliases(self, aliases: List[str] = [], add_note: bool = True):
@@ -616,3 +607,238 @@ class StealedEmote(commands.Converter):
                 results = await resp.read()
         self._cached_emote_data = results
         return results
+
+
+class PaginatorNoGenerator(Exception):
+    pass
+
+
+class PaginatorNoMoreEmotes(Exception):
+    pass
+
+
+class PaginatorHandlerNoResult(Exception):
+    pass
+
+
+class DiscordPaginator:
+    """A helper class to generate paginating pages utilizing Discord Embed or something.
+
+    This is a bad code, dont use it anywhere else except for this bot.
+    """
+
+    def __init__(self, bot: commands.Bot, ctx: commands.Context, extra_emotes=[], no_paginate=False):
+        self.emotes_map = {k: None for k in extra_emotes}
+        self.bot = bot
+        self.ctx = ctx
+        self.logger = logging.getLogger("nthelper.utils.DiscordPaginator")
+        self._generator = None
+        self._generator_num = False
+        self.remove_at_check = True
+        self.break_on_no_results = False
+        self._no_paginate = no_paginate
+
+    def checker(self):
+        if self.remove_at_check:
+            self.remove_at_check = False
+        else:
+            self.remove_at_check = True
+
+    def breaker(self):
+        if self.break_on_no_results:
+            self.break_on_no_results = False
+        else:
+            self.break_on_no_results = True
+
+    async def _maybe_asyncute(self, cb, *args, **kwargs):
+        real_func = cb
+        if hasattr(real_func, "func"):
+            real_func = cb.func
+        if iscoroutinefunction(real_func):
+            return await cb(*args, **kwargs)
+        else:
+            return cb(*args, **kwargs)
+
+    def add_handler(self, callback, generator=None):
+        empty_loc = None
+        for emote, handler in self.emotes_map.items():
+            if handler is None:
+                empty_loc = emote
+
+        if empty_loc is None:
+            raise PaginatorNoMoreEmotes("There's no more emote available to be added to the handler.")
+
+        self.emotes_map[empty_loc] = {"check": callback, "gen": generator}
+
+    def set_handler(self, position, callback, generator=None):
+        emote_sets = list(self.emotes_map.keys())
+        if position >= len(emote_sets):
+            raise PaginatorNoMoreEmotes("Emote position went pass the limit")
+
+        self.emotes_map[emote_sets[position]] = {"check": callback, "gen": generator}
+
+    def set_generator(self, generator, return_num=False):
+        if not callable(generator):
+            raise TypeError
+        self._generator = generator
+        self._generator_num = return_num
+
+    def _gen_kwargs(self, data: Any) -> Dict[str, Any]:
+        raw_msg = embed = None
+        if isinstance(data, (list, tuple)):
+            if len(data) == 2:
+                raw_msg = data[0]
+                embed = data[1]
+        elif isinstance(data, discord.Embed):
+            embed = data
+        elif isinstance(data, (str, int)):
+            if isinstance(data, int):
+                data = str(data)
+            raw_msg = data
+        if not raw_msg and not embed:
+            raise PaginatorHandlerNoResult
+        kwargs_done = {}
+        if raw_msg is not None:
+            kwargs_done["content"] = raw_msg
+        if embed is not None:
+            kwargs_done["embed"] = embed
+        return kwargs_done
+
+    async def start(
+        self,
+        datasets: List[Any],
+        timeout: int = None,
+        message: discord.Message = None,
+        pass_emote: bool = False,
+    ):
+        if not callable(self._generator):
+            raise PaginatorNoGenerator
+        if len(datasets) < 1:
+            return
+        first_run = True
+        position = 1
+        max_page = len(datasets)
+        is_timeout = False
+        while True:
+            if first_run:
+                data = datasets[position - 1]
+                args_to_send = [data]
+                if self._generator_num:
+                    args_to_send.append(position - 1)
+                generated = await self._maybe_asyncute(self._generator, *args_to_send)
+                first_run = False
+                kwargs_done = self._gen_kwargs(generated)
+                if not kwargs_done:
+                    raise PaginatorHandlerNoResult
+                if message is None:
+                    message = await self.ctx.send(**kwargs_done)
+                else:
+                    await message.edit(**kwargs_done)
+
+            reactmoji = []
+            if max_page == 1 and position == 1:
+                if self.break_on_no_results:
+                    self.logger.warn("No more results!")
+                    break
+            elif position == 1:
+                if not self._no_paginate:
+                    reactmoji.append("⏩")
+            elif position == max_page:
+                if not self._no_paginate:
+                    reactmoji.append("⏪")
+            elif position > 1 and position < max_page:
+                if not self._no_paginate:
+                    reactmoji.extend(["⏪", "⏩"])
+            for emote, handler in self.emotes_map.items():
+                is_success = await self._maybe_asyncute(handler["check"], position - 1, datasets)
+                if is_success:
+                    reactmoji.append(emote)
+            reactmoji.append("✅")
+
+            for react in reactmoji:
+                await message.add_reaction(react)
+
+            def check_react(reaction, user):
+                if reaction.message.id != message.id:
+                    return False
+                if user != self.ctx.message.author:
+                    return False
+                if str(reaction.emoji) not in reactmoji:
+                    return False
+                return True
+
+            try:
+                res, user = await self.bot.wait_for("reaction_add", timeout=timeout, check=check_react)
+            except asyncio.TimeoutError:
+                is_timeout = True
+                self.logger.warn("timeout, removing reactions...")
+                await message.clear_reactions()
+                return is_timeout
+            if user != self.ctx.message.author:
+                pass
+            elif "⏪" in str(res.emoji):
+                position -= 1
+                try:
+                    data = datasets[position - 1]
+                except IndexError:
+                    return
+                args_to_send = [data]
+                if self._generator_num:
+                    args_to_send.append(position - 1)
+                generated = await self._maybe_asyncute(self._generator, *args_to_send)
+                kwargs_done = self._gen_kwargs(generated)
+                if not kwargs_done:
+                    raise PaginatorHandlerNoResult
+                await message.clear_reactions()
+                await message.edit(**kwargs_done)
+            elif "⏩" in str(res.emoji):
+                position += 1
+                try:
+                    data = datasets[position - 1]
+                except IndexError:
+                    return
+                args_to_send = [data]
+                if self._generator_num:
+                    args_to_send.append(position - 1)
+                generated = await self._maybe_asyncute(self._generator, *args_to_send)
+                kwargs_done = self._gen_kwargs(generated)
+                if not kwargs_done:
+                    raise PaginatorHandlerNoResult
+                await message.clear_reactions()
+                await message.edit(**kwargs_done)
+            elif str(res.emoji) in list(self.emotes_map.keys()):
+                handler_data = self.emotes_map[str(res.emoji)]
+                if callable(handler_data["gen"]):
+                    generator_to_send = [handler_data["gen"], datasets, position - 1, message]
+                    if pass_emote:
+                        generator_to_send.append(str(res.emoji))
+                    executed_child = await self._maybe_asyncute(*generator_to_send)
+                    try:
+                        generated, message, timeout_error = executed_child
+                    except ValueError:
+                        generated, message = executed_child
+                        timeout_error = False
+                    if timeout_error:
+                        is_timeout = True
+                        await message.clear_reactions()
+                        return is_timeout
+                    if generated is None:
+                        args_to_send = [datasets[position - 1]]
+                        if self._generator_num:
+                            args_to_send.append(position - 1)
+                        generated = await self._maybe_asyncute(self._generator, *args_to_send)
+                else:
+                    args_to_send = [datasets[position - 1]]
+                    if self._generator_num:
+                        args_to_send.append(position - 1)
+                    generated = await self._maybe_asyncute(self._generator, *args_to_send)
+                await message.clear_reactions()
+                if generated:
+                    kwargs_done = self._gen_kwargs(generated)
+                    await message.edit(**kwargs_done)
+            elif "✅" in str(res.emoji):
+                await message.clear_reactions()
+                if self.remove_at_check:
+                    await message.delete()
+                return is_timeout
+        return is_timeout

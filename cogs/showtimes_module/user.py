@@ -22,8 +22,8 @@ class ShowtimesUser(commands.Cog, ShowtimesBase):
         self.ntdb = bot.ntdb
         # pylint: disable=E1101
         self.logger = logging.getLogger("cogs.showtimes_module.user.ShowtimesUser")
-        self.srv_fetch = partial(self.fetch_showtimes, cwd=bot.fcwd)
-        self.srv_dumps = partial(self.dumps_showtimes, cwd=bot.fcwd)
+        self.srv_fetch = partial(self.fetch_showtimes, redisdb=bot.redisdb)
+        self.srv_dumps = partial(self.dumps_showtimes, redisdb=bot.redisdb)
         # pylint: enable=E1101
         # self.task = asyncio.Task(self.resync_failure())
 
@@ -83,7 +83,10 @@ class ShowtimesUser(commands.Cog, ShowtimesBase):
 
         if self.any_progress(status_list[current]["staff_status"]):
             anilist_data = await fetch_anilist(program_info["anilist_id"], current)
-            last_status = anilist_data["episode_status"]
+            if isinstance(anilist_data, str):
+                last_status = "Tidak diketahui..."
+            else:
+                last_status = anilist_data["episode_status"]
             last_text = "Tayang"
         else:
             last_status = get_last_updated(last_update)
@@ -97,8 +100,7 @@ class ShowtimesUser(commands.Cog, ShowtimesBase):
         embed.add_field(name="Status", value=current_ep_status, inline=False)
         embed.add_field(name=last_text, value=last_status, inline=False)
         embed.set_footer(
-            text="Dibawakan oleh naoTimes™®",
-            icon_url="https://p.n4o.xyz/i/nao250px.png",
+            text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
         )
         await ctx.send(embed=embed)
 
@@ -161,8 +163,12 @@ class ShowtimesUser(commands.Cog, ShowtimesBase):
             fetch_anime_jobs.append(fetch_anilist(ani_data["anilist_id"], jadwal_only=True))
 
         self.logger.info(f"{server_message}: running jobs...")
+        is_error = False
         for anime_job in asyncio.as_completed(fetch_anime_jobs):
             anilist_data = await anime_job
+            if isinstance(anilist_data, str):
+                is_error = True
+                continue
             time_data = anilist_data["episode_status"]
             if not isinstance(time_data, str):
                 continue
@@ -196,6 +202,8 @@ class ShowtimesUser(commands.Cog, ShowtimesBase):
             await ctx.send(appendtext.strip())
         else:
             await ctx.send("**Tidak ada utang pada musim ini yang terdaftar**")
+        if is_error:
+            await ctx.send("Ada kemungkinan Anilist gagal dihubungi, mohon coba lagi nanti.")
 
     @commands.command(aliases=["tukangdelay", "pendelay"])
     @commands.guild_only()
@@ -257,10 +265,7 @@ class ShowtimesUser(commands.Cog, ShowtimesBase):
         rtext += ", ".join(new_srv_owner)
 
         rtext += "\n**Role**: {}".format(
-            self.get_role_name(
-                srv_data["anime"][matches[0]]["role_id"],
-                ctx.message.guild.roles,
-            )
+            self.get_role_name(srv_data["anime"][matches[0]]["role_id"], ctx.message.guild.roles,)
         )
 
         if "kolaborasi" in srv_data["anime"][matches[0]]:
@@ -281,7 +286,7 @@ class ShowtimesUser(commands.Cog, ShowtimesBase):
 
         for k, v in staff_assignment.items():
             try:
-                user = await get_user_name(v)
+                user = await get_user_name(v["id"])
                 rtext += "**{}**: {}\n".format(k, user)
             except discord.errors.NotFound:
                 rtext += "**{}**: Unknown\n".format(k)

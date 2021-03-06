@@ -15,8 +15,11 @@ import discord
 import pysubs2
 from bs4 import BeautifulSoup as BS4
 from discord.ext import commands
+from discord_slash import cog_ext
+from discord_slash import SlashContext
 
 from nthelper.romkan import to_hepburn
+from nthelper.bot import naoTimesBot
 
 logger = logging.getLogger("cogs.peninjau")
 
@@ -573,10 +576,7 @@ async def yahoo_finance(from_, to_):
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.97 Safari/537.36",  # noqa: E501
     }
     async with aiohttp.ClientSession(headers=base_head) as sesi:
-        async with sesi.post(
-            "https://adsynth-ofx-quotewidget-prod.herokuapp.com/api/1",
-            json=data_,
-        ) as resp:
+        async with sesi.post("https://adsynth-ofx-quotewidget-prod.herokuapp.com/api/1", json=data_,) as resp:
             try:
                 response = await resp.json()
                 if response["data"]["HistoricalPoints"]:
@@ -647,12 +647,17 @@ async def post_requests(url, data):
 
 
 class PeninjauWeb(commands.Cog):
-    def __init__(self, bot):
-        self.bot: commands.Cog = bot
+    def __init__(self, bot: naoTimesBot):
+        self.bot = bot
         self.logger = logging.getLogger("cogs.peninjau.PeninjauWeb")
 
         self.currency_data = bot.jsdb_currency
         self.crypto_data = bot.jsdb_crypto
+
+        self.bot.slash.get_cog_commands(self)
+
+    def cog_unload(self):
+        self.bot.slash.remove_cog_commands(self)
 
     @commands.command()
     async def anibin(self, ctx, *, query):
@@ -663,11 +668,7 @@ class PeninjauWeb(commands.Cog):
         self.logger.info(f"requested !anibin at {server_message}")
 
         self.logger.info("querying...")
-        (
-            search_title,
-            search_native,
-            search_studio,
-        ) = await query_take_first_result(query)
+        (search_title, search_native, search_studio,) = await query_take_first_result(query)
 
         if not search_title:
             self.logger.warn("no results.")
@@ -756,14 +757,7 @@ class PeninjauWeb(commands.Cog):
         os.remove(filename)  # Original subtitle
         os.remove(output_file)  # Translated subtitle
 
-    @commands.command(aliases=["konversiuang", "currency"])
-    async def kurs(self, ctx, from_, to_, total=None):
-        if total:
-            try:
-                total = float(total)
-            except ValueError:
-                return await ctx.send("Bukan jumlah uang yang valid (jangan memakai koma, pakai titik)")
-
+    async def _process_kurs(self, dari, ke, jumlah=None):
         mode = "normal"
 
         mode_list = {
@@ -774,88 +768,72 @@ class PeninjauWeb(commands.Cog):
             "normal": {"source": "yahoo!finance", "logo": "https://ihateani.me/o/y!.png"},
         }
 
-        from_, to_ = from_.upper(), to_.upper()
+        dari_cur, ke_cur = dari.upper(), ke.upper()
 
         full_crypto_mode = False
-        if from_ in self.crypto_data and to_ in self.crypto_data:
+        if dari_cur in self.crypto_data and ke_cur in self.crypto_data:
             mode = "crypto"
-            crypto_from = str(self.crypto_data[from_]["id"])
-            crypto_to = str(self.crypto_data[to_]["id"])
-            curr_sym_from = self.crypto_data[from_]["symbol"]
-            curr_sym_to = self.crypto_data[to_]["symbol"]
-            curr_name_from = self.crypto_data[from_]["name"]
-            curr_name_to = self.crypto_data[to_]["name"]
+            crypto_from = str(self.crypto_data[dari_cur]["id"])
+            crypto_to = str(self.crypto_data[ke_cur]["id"])
+            curr_sym_from = self.crypto_data[dari_cur]["symbol"]
+            curr_sym_to = self.crypto_data[ke_cur]["symbol"]
+            curr_name_from = self.crypto_data[dari_cur]["name"]
+            curr_name_to = self.crypto_data[ke_cur]["name"]
             full_crypto_mode = True
-        elif from_ in self.crypto_data:
+        elif dari_cur in self.crypto_data:
             mode = "crypto"
-            crypto_from = str(self.crypto_data[from_]["id"])
+            crypto_from = str(self.crypto_data[dari_cur]["id"])
             crypto_to = "2781"
-            curr_sym_from = self.crypto_data[from_]["symbol"]
-            curr_sym_to = self.currency_data[to_]["symbols"][0]
-            curr_name_from = self.crypto_data[from_]["name"]
-            curr_name_to = self.currency_data[to_]["name"]
-            from_ = "USD"
-            to_ = to_
-            if to_ not in self.currency_data:
-                return await ctx.send(
-                    "Tidak dapat menemukan kode negara mata utang **{}** di database".format(  # noqa: E501
-                        to_
-                    )
-                )
-        elif to_ in self.crypto_data:
+            curr_sym_from = self.crypto_data[dari_cur]["symbol"]
+            curr_sym_to = self.currency_data[ke_cur]["symbols"][0]
+            curr_name_from = self.crypto_data[dari_cur]["name"]
+            curr_name_to = self.currency_data[ke_cur]["name"]
+            dari_cur = "USD"
+            ke_cur = ke_cur
+            if ke_cur not in self.currency_data:
+                return f"Tidak dapat menemukan kode negara mata utang **{ke_cur}** di database"
+        elif ke_cur in self.crypto_data:
             mode = "crypto"
             crypto_from = "2781"
-            crypto_to = str(self.crypto_data[to_]["id"])
-            curr_sym_from = self.currency_data[from_]["symbols"][0]
-            curr_sym_to = self.crypto_data[to_]["symbol"]
-            curr_name_from = self.currency_data[from_]["name"]
-            curr_name_to = self.crypto_data[to_]["name"]
-            from_ = from_
-            to_ = "USD"
-            if from_ not in self.currency_data:
-                return await ctx.send(
-                    "Tidak dapat menemukan kode negara mata utang **{}** di database".format(  # noqa: E501
-                        from_
-                    )
-                )
+            crypto_to = str(self.crypto_data[ke_cur]["id"])
+            curr_sym_from = self.currency_data[dari_cur]["symbols"][0]
+            curr_sym_to = self.crypto_data[ke_cur]["symbol"]
+            curr_name_from = self.currency_data[dari_cur]["name"]
+            curr_name_to = self.crypto_data[ke_cur]["name"]
+            dari_cur = dari_cur
+            ke_cur = "USD"
+            if dari_cur not in self.currency_data:
+                return f"Tidak dapat menemukan kode negara mata utang **{dari_cur}** di database"
 
         if mode == "normal":
-            if from_ not in self.currency_data:
-                return await ctx.send(
-                    "Tidak dapat menemukan kode negara mata utang **{}** di database".format(  # noqa: E501
-                        from_
-                    )
-                )
-            if to_ not in self.currency_data:
-                return await ctx.send(
-                    "Tidak dapat menemukan kode negara mata utang **{}** di database".format(  # noqa: E501
-                        to_
-                    )
-                )
-            curr_sym_from = self.currency_data[from_]["symbols"][0]
-            curr_sym_to = self.currency_data[to_]["symbols"][0]
-            curr_name_from = self.currency_data[from_]["name"]
-            curr_name_to = self.currency_data[to_]["name"]
+            if dari_cur not in self.currency_data:
+                return f"Tidak dapat menemukan kode negara mata utang **{dari_cur}** di database"
+            if ke_cur not in self.currency_data:
+                return f"Tidak dapat menemukan kode negara mata utang **{ke_cur}** di database"
+            curr_sym_from = self.currency_data[dari_cur]["symbols"][0]
+            curr_sym_to = self.currency_data[ke_cur]["symbols"][0]
+            curr_name_from = self.currency_data[dari_cur]["name"]
+            curr_name_to = self.currency_data[ke_cur]["name"]
 
         if mode == "crypto":
             self.logger.info(f"converting crypto ({curr_name_from} -> {curr_name_to})")
             curr_crypto = await coinmarketcap(crypto_from, crypto_to)
 
         if not full_crypto_mode:
-            self.logger.info(f"converting currency ({from_} -> {to_})")
-            curr_ = await yahoo_finance(from_, to_)
+            self.logger.info(f"converting currency ({dari_cur} -> {ke_cur})")
+            curr_ = await yahoo_finance(dari_cur, ke_cur)
             if isinstance(curr_, str):
-                return await ctx.send(curr_)
+                return curr_
 
-        if not total:
-            total = 1.0
+        if not jumlah:
+            jumlah = 1.0
         if full_crypto_mode and mode == "crypto":
             curr_ = curr_crypto
         elif not full_crypto_mode and mode == "crypto":
             curr_ = curr_ * curr_crypto
 
         self.logger.info("rounding results")
-        conv_num, rounding_used = proper_rounding(curr_, total)
+        conv_num, rounding_used = proper_rounding(curr_, jumlah)
         embed = discord.Embed(
             title=":gear: Konversi mata uang",
             colour=discord.Colour(0x50E3C2),
@@ -863,16 +841,52 @@ class PeninjauWeb(commands.Cog):
                 f_=curr_name_from,
                 d_=curr_name_to,
                 sf_=curr_sym_from,
-                sa_=total,
+                sa_=jumlah,
                 df_=curr_sym_to,
                 da_=conv_num,
             ),
             timestamp=datetime.now(),
         )
         embed.set_footer(
-            text="Diprakasai dengan {}".format(mode_list[mode]["source"]),
-            icon_url=mode_list[mode]["logo"],
+            text="Diprakasai dengan {}".format(mode_list[mode]["source"]), icon_url=mode_list[mode]["logo"],
         )
+        return embed
+
+    @cog_ext.cog_slash(
+        name="kurs",
+        description="Konversi mata uang dari satu mata uang ke yang lain",
+        options=[
+            {"name": "dari", "description": "Mata uang awal", "type": 3, "required": True},
+            {"name": "ke", "description": "Mata uang tujuan", "type": 3, "required": True},
+            {"name": "jumlah", "description": "Jumlah yang ingin diubah", "type": 3, "required": False},
+        ],
+    )
+    async def _kurs_slash_cmd(self, ctx: SlashContext, dari: str, ke: str, jumlah=None):
+        if jumlah:
+            try:
+                jumlah = float(jumlah)
+            except ValueError:
+                return await ctx.send(
+                    content="Bukan jumlah uang yang valid (jangan memakai koma, pakai titik)"
+                )
+
+        embed = await self._process_kurs(dari, ke, jumlah)
+        if isinstance(embed, str):
+            return await ctx.send(content=embed)
+
+        await ctx.send(embeds=[embed])
+
+    @commands.command(aliases=["konversiuang", "currency"])
+    async def kurs(self, ctx, from_, to_, total=None):
+        if total:
+            try:
+                total = float(total)
+            except ValueError:
+                return await ctx.send("Bukan jumlah uang yang valid (jangan memakai koma, pakai titik)")
+
+        embed = await self._process_kurs(from_, to_, total)
+        if isinstance(embed, str):
+            return await ctx.send(content=embed)
 
         await ctx.send(embed=embed)
 

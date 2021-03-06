@@ -1,10 +1,9 @@
-import asyncio
 import logging
 
 import aiohttp
 import discord
 from discord.ext import commands
-
+from nthelper.utils import DiscordPaginator, __version__ as bot_version
 from nthelper.cmd_args import Arguments, CommandArgParse
 
 logger = logging.getLogger("cogs.games")
@@ -40,7 +39,7 @@ steamdb_converter = CommandArgParse(steamdb_args)
 
 async def requests(methods, url, **kwargs):
     async with aiohttp.ClientSession(
-        headers={"User-Agent": "naoTimes/2.0.1a (https://github.com/noaione/naoTimes)"}
+        headers={"User-Agent": f"naoTimes/{bot_version} (https://github.com/noaione/naoTimes)"}
     ) as sesi:
         methods_set = {
             "GET": sesi.get,
@@ -71,11 +70,14 @@ async def fetch_steam_status():
 class GamesAPI(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.BASE_URL = "https://api.ihateani.me/games/"
+        self.BASE_URL = "https://api.ihateani.me/v1/games/"
         self.logger = logging.getLogger("cogs.games.GamesAPI")
 
     @commands.command(aliases=["howlong", "howlongtobeat"])
     @commands.guild_only()
+    @commands.bot_has_guild_permissions(
+        manage_messages=True, embed_links=True, read_message_history=True, add_reactions=True,
+    )
     async def hltb(self, ctx, *, game_name):
         self.logger.info(f"searching: {game_name}")
         request_param = {"q": game_name}
@@ -88,9 +90,7 @@ class GamesAPI(commands.Cog):
 
         async def _construct_embed(hltb_data: dict):
             embed = discord.Embed(
-                title=hltb_data["title"],
-                url=hltb_data["url"],
-                color=hltb_data["color"],
+                title=hltb_data["title"], url=hltb_data["url"], color=hltb_data.get("color", 0x858585)
             )
             embed.set_thumbnail(url=hltb_data["image"])
             hltbs = hltb_data["hltb"]
@@ -105,9 +105,7 @@ class GamesAPI(commands.Cog):
             hltb_text += f"\n\n*(Info lebih lanjut? [Klik Di sini]({hltb_data['url']}))*"  # noqa: E501
 
             embed.add_field(
-                name="Seberapa lama untuk diselesaikan?",
-                value=hltb_text,
-                inline=False,
+                name="Seberapa lama untuk diselesaikan?", value=hltb_text, inline=False,
             )
             stats_data = []
             if hltb_data["stats"]:
@@ -123,63 +121,11 @@ class GamesAPI(commands.Cog):
             return embed
 
         self.logger.info(f"{game_name}: formatting results...")
-        hltb_formatted = [await _construct_embed(data) for data in hltb_results]
 
-        first_run = True
-        dataset_total = len(hltb_formatted)
-        pos = 1
-        self.logger.info(f"{game_name}: total {dataset_total} results")
-        while True:
-            if first_run:
-                self.logger.info(f"{game_name}: sending results...")
-                entri = hltb_formatted[pos - 1]
-                msg = await ctx.send(embed=entri)
-                first_run = False
-
-            if dataset_total < 2:
-                self.logger.info(f"{game_name}: only 1 results, exiting...")
-                break
-            if pos == 1:
-                to_react = ["⏩", "✅"]
-            elif dataset_total == pos:
-                to_react = ["⏪", "✅"]
-            elif pos > 1 and pos < dataset_total:
-                to_react = ["⏪", "⏩", "✅"]
-
-            for react in to_react:
-                await msg.add_reaction(react)
-
-            def check_react(reaction, user):
-                if reaction.message.id != msg.id:
-                    return False
-                if user != ctx.message.author:
-                    return False
-                if str(reaction.emoji) not in to_react:
-                    return False
-                return True
-
-            try:
-                res, user = await self.bot.wait_for("reaction_add", timeout=30.0, check=check_react)
-            except asyncio.TimeoutError:
-                self.logger.warn(f"{game_name}: timeout, clearing...")
-                return await msg.clear_reactions()
-            if user != ctx.message.author:
-                pass
-            elif "✅" in str(res.emoji):
-                self.logger.warn(f"{game_name}: clearing reaction...")
-                return await msg.clear_reactions()
-            elif "⏪" in str(res.emoji):
-                self.logger.debug(f"{game_name}: going backward")
-                await msg.clear_reactions()
-                pos -= 1
-                entri = hltb_formatted[pos - 1]
-                await msg.edit(embed=entri)
-            elif "⏩" in str(res.emoji):
-                self.logger.debug(f"{game_name}: going forward")
-                await msg.clear_reactions()
-                pos += 1
-                entri = hltb_formatted[pos - 1]
-                await msg.edit(embed=entri)
+        main_gen = DiscordPaginator(self.bot, ctx)
+        main_gen.checker()
+        main_gen.set_generator(_construct_embed)
+        await main_gen.start(hltb_results, 30.0)
 
     @commands.group()
     @commands.guild_only()
@@ -206,6 +152,10 @@ class GamesAPI(commands.Cog):
         return desc
 
     @steam.command(name="cari", aliases=["search"])
+    @commands.guild_only()
+    @commands.bot_has_guild_permissions(
+        manage_messages=True, embed_links=True, read_message_history=True, add_reactions=True,
+    )
     async def steam_cari(self, ctx, *, pencarian):
         self.logger.info(f"searching: {pencarian}")
         request_param = {"q": pencarian}
@@ -247,63 +197,10 @@ class GamesAPI(commands.Cog):
             return embed
 
         self.logger.info(f"{pencarian}: formatting...")
-        formatted_embed = [await _construct_embed(res) for res in ss_results]
-
-        first_run = True
-        dataset_total = len(formatted_embed)
-        pos = 1
-        self.logger.info(f"{pencarian}: total {dataset_total} results.")
-        while True:
-            if first_run:
-                self.logger.info(f"{pencarian}: sending results")
-                entri = formatted_embed[pos - 1]
-                msg = await ctx.send(embed=entri)
-                first_run = False
-
-            if dataset_total < 2:
-                self.logger.info(f"{pencarian}: no other results, exiting...")
-                break
-            if pos == 1:
-                to_react = ["⏩", "✅"]
-            elif dataset_total == pos:
-                to_react = ["⏪", "✅"]
-            elif pos > 1 and pos < dataset_total:
-                to_react = ["⏪", "⏩", "✅"]
-
-            for react in to_react:
-                await msg.add_reaction(react)
-
-            def check_react(reaction, user):
-                if reaction.message.id != msg.id:
-                    return False
-                if user != ctx.message.author:
-                    return False
-                if str(reaction.emoji) not in to_react:
-                    return False
-                return True
-
-            try:
-                res, user = await self.bot.wait_for("reaction_add", timeout=30.0, check=check_react)
-            except asyncio.TimeoutError:
-                self.logger.warn(f"{pencarian}: timeout!")
-                return await msg.clear_reactions()
-            if user != ctx.message.author:
-                pass
-            elif "✅" in str(res.emoji):
-                self.logger.warn(f"{pencarian}: clearing reactions...")
-                return await msg.clear_reactions()
-            elif "⏪" in str(res.emoji):
-                self.logger.debug(f"{pencarian}: going backward")
-                await msg.clear_reactions()
-                pos -= 1
-                entri = formatted_embed[pos - 1]
-                await msg.edit(embed=entri)
-            elif "⏩" in str(res.emoji):
-                self.logger.debug(f"{pencarian}: going forward")
-                await msg.clear_reactions()
-                pos += 1
-                entri = formatted_embed[pos - 1]
-                await msg.edit(embed=entri)
+        main_gen = DiscordPaginator(self.bot, ctx)
+        main_gen.checker()
+        main_gen.set_generator(_construct_embed)
+        await main_gen.start(ss_results, 30.0)
 
     @steam.command(name="info")
     async def steam_info(self, ctx, app_ids):
@@ -357,8 +254,7 @@ class GamesAPI(commands.Cog):
         embed.add_field(
             name="Developer",
             value="**Developer**: {}\n**Publisher**: {}".format(
-                ", ".join(sdb_data["developer"]),
-                ", ".join(sdb_data["publisher"]),
+                ", ".join(sdb_data["developer"]), ", ".join(sdb_data["publisher"]),
             ),
             inline=False,
         )
@@ -381,6 +277,10 @@ class GamesAPI(commands.Cog):
             return await ctx.send("Soon™")
 
     @steam.command(name="dbcari", aliases=["searchdb"])
+    @commands.guild_only()
+    @commands.bot_has_guild_permissions(
+        manage_messages=True, embed_links=True, read_message_history=True, add_reactions=True,
+    )
     async def steam_steamdbcari(
         self, ctx, *, args: steamdb_converter = steamdb_converter.show_help()  # type: ignore
     ):
@@ -442,79 +342,32 @@ class GamesAPI(commands.Cog):
                 inline=False,
             )
             embed.add_field(
-                name="Kategori",
-                value=", ".join(sdb_data["categories"]),
-                inline=False,
+                name="Kategori", value=", ".join(sdb_data["categories"]), inline=False,
             )
             embed.add_field(name="Label", value=", ".join(sdb_data["tags"]), inline=False)
             embed.set_footer(
                 text="Rilis: {} | {}-{} | Diprakasai oleh SteamDB".format(
-                    sdb_data["released"],
-                    sdb_data["type"].capitalize(),
-                    sdb_data["id"],
+                    sdb_data["released"], sdb_data["type"].capitalize(), sdb_data["id"],
                 ),
                 icon_url="https://steamdb.info/static/logos/512px.png",
             )
             return embed
 
         self.logger.info(f"{args.kueri}: formatting results...")
-        formatted_embed = [await _construct_embed(res) for res in sdb_results]
+        main_gen = DiscordPaginator(self.bot, ctx)
+        main_gen.checker()
+        main_gen.set_generator(_construct_embed)
+        await main_gen.start(sdb_results, 30.0)
 
-        first_run = True
-        dataset_total = len(formatted_embed)
-        pos = 1
-        self.logger.info(f"{args.kueri}: total {dataset_total} results")
-        while True:
-            if first_run:
-                self.logger.info(f"{args.kueri}: sending results...")
-                entri = formatted_embed[pos - 1]
-                msg = await ctx.send(embed=entri)
-                first_run = False
-
-            if dataset_total < 2:
-                self.logger.warn(f"{args.kueri}: no other results, exiting...")
-                break
-            if pos == 1:
-                to_react = ["⏩", "✅"]
-            elif dataset_total == pos:
-                to_react = ["⏪", "✅"]
-            elif pos > 1 and pos < dataset_total:
-                to_react = ["⏪", "⏩", "✅"]
-
-            for react in to_react:
-                await msg.add_reaction(react)
-
-            def check_react(reaction, user):
-                if reaction.message.id != msg.id:
-                    return False
-                if user != ctx.message.author:
-                    return False
-                if str(reaction.emoji) not in to_react:
-                    return False
-                return True
-
-            try:
-                res, user = await self.bot.wait_for("reaction_add", timeout=30.0, check=check_react)
-            except asyncio.TimeoutError:
-                self.logger.warn(f"{args.kueri}: timeout, exiting...")
-                return await msg.clear_reactions()
-            if user != ctx.message.author:
-                pass
-            elif "✅" in str(res.emoji):
-                self.logger.warn(f"{args.kueri}: clearing, exiting...")
-                return await msg.clear_reactions()
-            elif "⏪" in str(res.emoji):
-                self.logger.debug(f"{args.kueri}: going backward")
-                await msg.clear_reactions()
-                pos -= 1
-                entri = formatted_embed[pos - 1]
-                await msg.edit(embed=entri)
-            elif "⏩" in str(res.emoji):
-                self.logger.debug(f"{args.kueri}: going forward")
-                await msg.clear_reactions()
-                pos += 1
-                entri = formatted_embed[pos - 1]
-                await msg.edit(embed=entri)
+    @hltb.error
+    @steam_steamdbcari.error
+    @steam_cari.error
+    async def games_error(self, ctx, error):
+        if isinstance(error, commands.BotMissingPermissions):
+            perms = ["Manage Messages", "Embed Links", "Read Message History", "Add Reactions"]
+            await ctx.send("Bot tidak memiliki salah satu dari perms ini:\n" + "\n".join(perms))
+        elif isinstance(error, commands.NoPrivateMessage):
+            await ctx.send("Perintah ini hanya bisa dijalankan di server.")
 
 
 def setup(bot: commands.Bot):

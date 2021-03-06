@@ -1,7 +1,7 @@
 import asyncio
 import logging
-import socket
 import ssl
+import socket
 
 import ujson
 

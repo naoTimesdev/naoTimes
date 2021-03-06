@@ -1,10 +1,8 @@
 import asyncio
 import logging
-import os
+from nthelper.redis import RedisBridge
 from datetime import datetime, timezone
 from typing import Dict, List, Union
-
-from .utils import blocking_write_files, write_files
 
 
 def utc_time() -> int:
@@ -154,7 +152,8 @@ class VotingData(VotingBase):
         }
 
     def refresh(self):
-        """Refresh voting data, check with the timeout limit."""
+        """Refresh voting data, check with the timeout limit.
+        """
         current = utc_time()
         if current >= self._timeout:
             self._is_done = True
@@ -253,12 +252,17 @@ class VoteWatcher:
     this is poggers bois.
     """
 
-    def __init__(self, fcwd: str):
+    def __init__(self, fcwd: str, redis_client: RedisBridge, loop=None):
         self.logger = logging.getLogger("nthelper.votebackend.VoteWatcher")
+        if loop is None:
+            self._loop = asyncio.get_event_loop()
+        else:
+            self._loop = loop
         self._fcwd = fcwd
 
         self.vote_holding: Dict[str, Union[VotingData, VotingKickBan]] = {}
         self._vote_lock: List[int] = []
+        self._db = redis_client
 
         self.done_queue: asyncio.Queue = asyncio.Queue()
         self._voter_queue: asyncio.Queue = asyncio.Queue()
@@ -266,7 +270,7 @@ class VoteWatcher:
         self._clock_task: asyncio.Task = asyncio.Task(self._clock_tick())
         self._voter_task: asyncio.Task = asyncio.Task(self._handle_voter())
 
-    def stop_and_flush(self):
+    async def stop_and_flush(self):
         """
         This will halt every process and wait for everything to finish tallying,
         then stop it, and then clean everything.
@@ -279,8 +283,7 @@ class VoteWatcher:
         self._vote_lock.extend(all_vote_data)
 
         for msg_id, vote_handler in self.vote_holding.items():
-            save_path = os.path.join(self._fcwd, "vote_data", f"{msg_id}.votedata")
-            blocking_write_files(vote_handler.export_data(), save_path)
+            await self._db.set("ntvote_" + str(msg_id), vote_handler.export_data())
 
     @staticmethod
     def generate_answers(answers_options: list, two_choice_type=False):
@@ -308,8 +311,7 @@ class VoteWatcher:
         vote_handler = self.vote_holding[str(message_id)]
         await self.done_queue.put(vote_handler)
         del self.vote_holding[str(message_id)]
-        save_path = os.path.join(self._fcwd, "vote_data", f"{message_id}.votedata")
-        os.remove(save_path)
+        await self._db.rm("ntvote_" + str(message_id))
         self._vote_lock.remove(message_id)
 
     async def start_watching_vote(
@@ -323,8 +325,7 @@ class VoteWatcher:
         vote_handler = VotingData(requester_id, message_data, question, answers, timeout)
         self.vote_holding[str(message_data["id"])] = vote_handler
 
-        save_path = os.path.join(self._fcwd, "vote_data", f"{message_data['id']}.votedata")
-        await write_files(vote_handler.export_data(), save_path)
+        await self._db.set("ntvote_" + str(message_data["id"]), vote_handler.export_data())
 
     async def start_watching_vote_kickban(
         self,
@@ -347,8 +348,7 @@ class VoteWatcher:
         )
         self.vote_holding[str(message_data["id"])] = vote_handler
 
-        save_path = os.path.join(self._fcwd, "vote_data", f"{message_data['id']}.votedata")
-        await write_files(vote_handler.export_data(), save_path)
+        await self._db.set("ntvote_" + str(message_data["id"]), vote_handler.export_data())
 
     async def add_vote(self, message_id: int, user_id: int, choice_index: int):
         msg_str_id = str(message_id)
@@ -371,8 +371,7 @@ class VoteWatcher:
                         continue
                     vote_handler.refresh()
                     if vote_handler.is_timeout():
-                        await self.done_queue.put(vote_handler)
-                        to_remove.append(str(vote_handler.get_id()))
+                        await self.stop_watching_vote(str(vote_handler.get_id()))
 
                 for rem in to_remove:
                     del self.vote_holding[rem]
@@ -399,8 +398,10 @@ class VoteWatcher:
                                 handle_vote.user_id, handle_vote.choice
                             )
                         self.logger.info(f"{handle_vote.msg_id}: saving vote...")
-                        save_path = os.path.join(self._fcwd, "vote_data", f"{handle_vote.msg_id}.votedata")
-                        await write_files(self.vote_holding[str(handle_vote.msg_id)].export_data(), save_path)
+                        await self._db.set(
+                            "ntvote_" + str(handle_vote.msg_id),
+                            self.vote_holding[str(handle_vote.msg_id)].export_data(),
+                        )
                     except IndexError:
                         self.logger.error("failed to handle vote, choice index is out of range.")
                     except ValueError:

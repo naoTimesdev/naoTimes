@@ -3,17 +3,20 @@ import logging
 import os
 import platform
 import traceback
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Tuple
 
 import aiohttp
 import discord
+import discord_slash.utils.manage_commands
 from discord.ext import commands
+from discord_slash import SlashCommand
 
 from .anibucket import AnilistBucket
 from .fsdb import FansubDBBridge
 from .kbbiasync import KBBI
 from .showtimes_helper import ShowtimesQueue, naoTimesDB
 from .utils import __version__
+from .redis import RedisBridge
 from .vndbsocket import VNDBSockIOManager
 
 discord_semver = tuple([int(ver) for ver in discord.__version__.split(".")])
@@ -71,8 +74,10 @@ class naoTimesBot(commands.Bot):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        self.bot_id: str
+        self.bot_token: str
+
         self.logger: logging.Logger = logging.getLogger("naoTimesBot")
-        self.automod_folder: str
 
         self.semver: str = __version__
         self.botconf: Dict[str, Union[str, int, bool, Dict[str, Union[str, int, bool]]]]
@@ -91,6 +96,7 @@ class naoTimesBot(commands.Bot):
         self.anibucket: AnilistBucket
         self.vndb_socket: VNDBSockIOManager = None
         self.kbbi: KBBI = None
+        self.redisdb: RedisBridge = None
 
         self.showtimes_resync: list = []
         self.copy_of_commands: Dict[str, commands.Command] = {}
@@ -107,6 +113,14 @@ class naoTimesBot(commands.Bot):
         self._host_country = ""
         self._host_region = ""
         self._host_tz = ""
+
+        self._commit = {
+            "hash": None,
+            "full_hash": None,
+            "date": None,
+        }
+
+        self.slash: SlashCommand
 
     def echo_error(self, error):
         tb = traceback.format_exception(type(error), error, error.__traceback__)
@@ -207,18 +221,24 @@ class naoTimesBot(commands.Bot):
 
         self.logger.info("getting bot connection info...")
         async with aiohttp.ClientSession() as sesi:
-            async with sesi.get("https://ifconfig.co/json") as resp:
+            async with sesi.get("https://ipinfo.io/json") as resp:
                 conn_data = await resp.json()
 
         country = conn_data["country"]
-        region = conn_data["region_name"]
-        timezone = conn_data["time_zone"]
+        region = conn_data["region"]
+        timezone = conn_data["timezone"]
         ip_hostname = conn_data["ip"]
 
         self._ip_hostname = ip_hostname
         self._host_country = country
         self._host_region = region
         self._host_tz = timezone
+
+        self.logger.info("getting commit info...")
+        commit, commit_date = await self.get_commit_info()
+        self._commit["hash"] = commit[0:7]
+        self._commit["full_hash"] = commit
+        self._commit["date"] = commit_date
 
     @property
     def get_hostdata(self) -> HostingData:
@@ -231,8 +251,96 @@ class naoTimesBot(commands.Bot):
         """
         return HostingData(self._ip_hostname, f"{self._host_region}, {self._host_country}", self._host_tz)
 
+    @property
+    def get_commit(self) -> dict:
+        """Return the commit data if git is used.
+
+        Returns
+        -------
+        Commit data: `dict`:
+            A collection of dictionary that the 7 hash commit and the time of the commit
+        """
+        return self._commit
+
+    async def get_commit_info(self):
+        cmd = r'cd "{{fd}}" && git log --format="%H" -n 1 && git show -s --format=%ci'
+        cmd = cmd.replace(r"{{fd}}", self.fcwd)
+        self.logger.info("Executing: " + cmd)
+        proc = await asyncio.create_subprocess_shell(
+            cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        stdout = stdout.decode().rstrip()
+        stderr = stderr.decode().rstrip()
+        if not stdout:
+            return None, None
+        commit, date = stdout.split("\n")
+        return commit, date
+
     def bot_log(self, logging_data: dict):
         self._bot_log_data.put_nowait(logging_data)
 
     async def read_bot_log(self) -> dict:
         return await self._bot_log_data.get()
+
+    async def register_slash_commands(self, bot_id, bot_token):
+        self.bot_id = bot_id
+        self.bot_token = bot_token
+        commands = self.slash.commands
+        self.logger.info("registering all slash commands")
+
+        if len(commands) <= 0:
+            self.logger.warning("No slash commands registered, cancelling...")
+            return
+
+        for cmd, info in commands.items():
+            if info["guild_ids"] is not None:
+                for guild in info["guild_ids"]:
+                    self.logger.info(f"registering command '{cmd}' to guild {guild}")
+                    await discord_slash.utils.manage_commands.add_slash_command(
+                        bot_id, bot_token, guild, cmd, info["description"], info["api_options"]
+                    )
+            else:
+                self.logger.info(f"registering command '{cmd}' as global command")
+                await discord_slash.utils.manage_commands.add_slash_command(
+                    bot_id, bot_token, None, cmd, info["description"], info["api_options"]
+                )
+        self.logger.info("all slash commands registered")
+
+    async def _get_slash_commands(self, guildsWithCommands=None) -> Tuple[list, dict]:
+        """Retrives all global and guild specific commands that are registered on Discord."""
+        if guildsWithCommands is None:
+            guildsWithCommands = []
+        url = f"https://discord.com/api/v8/applications/{self.user.id}/commands"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers={"Authorization": f"Bot {self.http.token}"}) as resp:
+                globalCmds = await resp.json()
+            guildCmds = {}
+            for guildId in guildsWithCommands:
+                url = f"https://discord.com/api/v8/applications/{self.user.id}/guilds/{self.http.token}/commands"  # noqa: E501
+                async with session.get(url, headers={"Authorization": f"Bot {self.http.token}"}) as resp:
+                    guildCmds[guildId] = await resp.json()
+        return globalCmds, guildCmds
+
+    async def remove_slash_commands(self, guildsWithCommands: list):
+        """Removes all commands that are registered to the bot on Discord."""
+        globalCmds, guildCmds = await self._get_slash_commands(guildsWithCommands)
+
+        self.logger.info("removing all registering slash commands.")
+        if len(globalCmds) <= 0 and len(guildCmds) <= 0:
+            self.logger.warning("no registered commands to be removed.")
+            return
+
+        for guild, cmds in guildCmds.items():
+            for cmd in cmds:
+                self.logger.info(f"removing command '{cmd}' from guild {guild}")
+                await discord_slash.utils.manage_commands.remove_slash_command(
+                    self.user.id, self.http.token, guild, cmd["id"]
+                )
+
+        for cmd in globalCmds:
+            self.logger.info(f"removing global command '{cmd}'")
+            await discord_slash.utils.manage_commands.remove_slash_command(
+                self.user.id, self.http.token, None, cmd.id
+            )
+        self.logger.info("all slash commands removed.")

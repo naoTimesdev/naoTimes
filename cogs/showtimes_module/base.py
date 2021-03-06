@@ -1,15 +1,12 @@
 import asyncio
-import glob
 import logging
-import os
+from nthelper.redis import RedisBridge
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Union
 
 import aiohttp
 import discord
-
-from nthelper.utils import read_files, write_files
 
 showlog = logging.getLogger("cogs.showtimes_module.base")
 
@@ -367,34 +364,25 @@ class ShowtimesBase:
     async def __release_lock(self):
         self._async_lock = False
 
-    async def db_is_exists(self, cwd: str, server_id: str) -> bool:
-        svfn = os.path.join(cwd, "showtimes_folder", f"{server_id}.showtimes")
-        if not os.path.isfile(svfn):
-            return False
-        return True
-
-    async def fetch_servers(self, cwd: str) -> list:
-        self.logger.info("fetching with glob...")
-        glob_re = os.path.join(cwd, "showtimes_folder", "*.showtimes")
-        basename = os.path.basename
-        all_showtimes = glob.glob(glob_re)
-        all_showtimes = [os.path.splitext(basename(srv))[0] for srv in all_showtimes]
+    async def fetch_servers(self, redisdb: RedisBridge) -> list:
+        self.logger.info("fetching with keys...")
+        all_servers = await redisdb.keys("showtimes_*")
+        all_showtimes = [srv[10:] for srv in all_servers if srv]
         return all_showtimes
 
-    async def fetch_super_admins(self, cwd: str):
+    async def fetch_super_admins(self, redisdb: RedisBridge):
         self.logger.info("dumping data...")
-        svfn = os.path.join(cwd, "showtimes_folder", "super_admin.json")
-        if not os.path.isfile(svfn):
-            return []
         await self.__acquire_lock()
         try:
-            json_data = await read_files(svfn)
+            json_data = await redisdb.get("showtimesadmin")
+            if json_data is None:
+                return []
         except Exception:
             json_data = []
         await self.__release_lock()
         return json_data
 
-    async def fetch_showtimes(self, server_id: str, cwd: str) -> Union[dict, None]:
+    async def fetch_showtimes(self, server_id: str, redisdb: RedisBridge) -> Union[dict, None]:
         """Open a local database of server ID
 
         :param server_id: server ID
@@ -403,28 +391,26 @@ class ShowtimesBase:
         :rtype: dict
         """
         self.logger.info(f"opening db {server_id}")
-        svfn = os.path.join(cwd, "showtimes_folder", f"{server_id}.showtimes")
-        if not os.path.isfile(svfn):
-            return None
         await self.__acquire_lock()
         try:
-            json_data = await read_files(svfn)
+            json_data = await redisdb.get(f"showtimes_{server_id}")
+            if json_data is None:
+                return {}
         except Exception:
             json_data = None
         await self.__release_lock()
         return json_data
 
-    async def dumps_super_admins(self, dataset: list, cwd: str):
+    async def dumps_super_admins(self, dataset: list, redisdb: RedisBridge):
         self.logger.info("dumping data...")
-        svfn = os.path.join(cwd, "showtimes_folder", "super_admin.json")
         await self.__acquire_lock()
         try:
-            await write_files(dataset, svfn)
+            await redisdb.set("showtimesadmin", dataset)
         except Exception:
             self.logger.info("error occured when trying to write files.")
         await self.__release_lock()
 
-    async def dumps_showtimes(self, dataset: dict, server_id: str, cwd: str):
+    async def dumps_showtimes(self, dataset: dict, server_id: str, redisdb: RedisBridge):
         """Save data to local database of server ID
 
         :param server_id: server ID
@@ -433,10 +419,9 @@ class ShowtimesBase:
         :rtype: dict
         """
         self.logger.info(f"dumping db {server_id}")
-        svfn = os.path.join(cwd, "showtimes_folder", f"{server_id}.showtimes")
         await self.__acquire_lock()
         try:
-            await write_files(dataset, svfn)
+            await redisdb.set(f"showtimes_{server_id}", dataset)
         except Exception:
             self.logger.info("error occured when trying to write files.")
         await self.__release_lock()
@@ -469,8 +454,7 @@ class ShowtimesBase:
                 embed.description = "\n".join(format_value)
 
                 embed.set_footer(
-                    text="Dibawakan oleh naoTimes™®",
-                    icon_url="https://p.n4o.xyz/i/nao250px.png",
+                    text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
                 )
 
                 first_run = False
