@@ -343,15 +343,7 @@ for pair in pairs(re.split("\s+", KUNREITAB + HEPBURNTAB)):
 # du -> ヅ, but ヅ/ドゥ -> du
 # we -> ウェ, ウェ -> we
 ROMKAN.update(
-    {
-        "du": "ヅ",
-        "di": "ヂ",
-        "fu": "フ",
-        "ti": "チ",
-        "wi": "ウィ",
-        "we": "ウェ",
-        "wo": "ヲ",
-    }
+    {"du": "ヅ", "di": "ヂ", "fu": "フ", "ti": "チ", "wi": "ウィ", "we": "ウェ", "wo": "ヲ",}
 )
 
 # Sort in long order so that a longer Romaji sequence precedes.
@@ -395,15 +387,7 @@ for pair in pairs(re.split("\s+", KUNREITAB_H + HEPBURNTAB_H)):
 # du -> ヅ, but ヅ/ドゥ -> du
 # we -> ウェ, ウェ -> we
 ROMKAN_H.update(
-    {
-        "du": "づ",
-        "di": "ぢ",
-        "fu": "ふ",
-        "ti": "ち",
-        "wi": "うぃ",
-        "we": "うぇ",
-        "wo": "を",
-    }
+    {"du": "づ", "di": "ぢ", "fu": "ふ", "ti": "ち", "wi": "うぃ", "we": "うぇ", "wo": "を",}
 )
 
 # Sort in long order so that a longer Romaji sequence precedes.

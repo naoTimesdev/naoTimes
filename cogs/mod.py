@@ -1,18 +1,14 @@
 # -*- coding: utf-8 -*-
 
 import asyncio
-import glob
 import logging
-import os
+import re
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple, Union
 
-import aiofiles
 import discord
-import ujson
 from discord.ext import commands, tasks
 from discord.ext.commands.errors import BotMissingPermissions, MissingPermissions
-
 from nthelper.bot import naoTimesBot
 from nthelper.utils import send_timed_msg
 
@@ -25,15 +21,21 @@ class AutoMod(commands.Cog):
     def __init__(self, bot: naoTimesBot):
         self.bot = bot
         self.automod_srv: List[Union[str, int]] = []
+        self.pekmen_automod_srv: List[Union[str, int]] = []
         self.no_no_word: List[str] = []
+        self.no_no_word_server_based: Dict[int, List[str]] = {}
         self.logger = logging.getLogger("cogs.mod.AutoMod")
         self.mute_roles_map: Dict[int, int] = {}
         self.shadowban_map: Dict[str, List[str]] = {}
         self.serverlog_map: Dict[int, Dict[str, Union[int, bool]]] = {}
 
-        self.modpath = bot.automod_folder
         self._locked = False
         self._is_modifying = False
+
+        self._titik_dua_v_re = re.compile(
+            r"(\B(:|\uFF1A|\uFE55|\uFE13) ?v\b|\bv ?(:|\uFF1A|\uFE55|\uFE13)\B)",
+            re.IGNORECASE | re.MULTILINE,
+        )
 
         self.prechecked = False
         self.__precheck_existing.start()
@@ -63,13 +65,11 @@ class AutoMod(commands.Cog):
         if metadata3:
             self.logger.info("shadow_ban: there's shadowbanned list, adding...")
             self.shadowban_map = metadata3
-        srvs_log = glob.glob(os.path.join(self.modpath, "*.srvlog"))
-        for srv in srvs_log:
-            path, _ = os.path.basename(srv).split(".")
-            meta_srv_log = await self.read_local_server_log(path)
+        meta_srvs_log = await self.bot.redisdb.getall("ntmod_serverlog_*")
+        for meta_srv_log in meta_srvs_log:
             if meta_srv_log:
-                self.logger.info(f"server_log: adding server {path}...")
-                self.serverlog_map[int(path)] = meta_srv_log
+                self.logger.info(f"server_log: adding server {meta_srv_log['server_id']}...")
+                self.serverlog_map[meta_srv_log["server_id"]] = meta_srv_log
         self.prechecked = True
 
     async def acquire_lock(self):
@@ -82,72 +82,45 @@ class AutoMod(commands.Cog):
     async def release_lock(self):
         self._locked = False
 
-    async def read_file(self, path: str):
-        await self.acquire_lock()
-        async with aiofiles.open(path, "r", encoding="utf-8") as f:
-            data = await f.read()
-        await self.release_lock()
-        try:
-            data = ujson.loads(data)
-        except ValueError:
-            pass
-        return data, path
-
-    async def save_file(self, fpath: str, content):
-        await self.acquire_lock()
-        async with aiofiles.open(fpath, "w", encoding="utf-8") as fp:
-            await fp.write(content)
-        await self.release_lock()
-
     async def read_local(self) -> dict:
-        metafile = os.path.join(self.modpath, "automod.json")
-        if not os.path.isfile(metafile):
+        metafile = await self.bot.redisdb.get("ntmod_automod")
+        if metafile is None:
             return {}
-
-        metafile, _ = await self.read_file(metafile)
         return metafile  # type: ignore
 
     async def read_local_mute(self) -> dict:
-        metafile = os.path.join(self.modpath, "automod_mute.json")
-        if not os.path.isfile(metafile):
+        metafile = await self.bot.redisdb.get("ntmod_automod_mute")
+        if metafile is None:
             return {}
-
-        metafile, _ = await self.read_file(metafile)
         return metafile  # type: ignore
 
     async def read_local_shadowban(self) -> dict:
-        metafile = os.path.join(self.modpath, "automod_shadowban.json")
-        if not os.path.isfile(metafile):
+        metafile = await self.bot.redisdb.get("ntmod_automod_shadowban")
+        if metafile is None:
             return {}
-
-        metafile, _ = await self.read_file(metafile)
         return metafile  # type: ignore
 
     async def read_local_server_log(self, server_id: Union[str, int]) -> dict:
-        metafile = os.path.join(self.modpath, f"{server_id}.srvlog")
-        if not os.path.isfile(metafile):
+        metafile = await self.bot.redisdb.get(f"ntmod_serverlog_{server_id}")
+        if metafile is None:
             return {}
-        metafile, _ = await self.read_file(metafile)
         return metafile  # type: ignore
 
     async def save_local(self):
-        metafile_path = os.path.join(self.modpath, "automod.json")
         metafile = await self.read_local()
         metafile["words"] = self.no_no_word
         metafile["servers"] = self.automod_srv
-        await self.save_file(metafile_path, ujson.dumps(metafile))
+        await self.bot.redisdb.set("ntmod_automod", metafile)
 
     async def save_local_mute(self):
-        metafile_path = os.path.join(self.modpath, "automod_mute.json")
-        await self.save_file(metafile_path, ujson.dumps(self.mute_roles_map))
+        await self.bot.redisdb.set("ntmod_automod_mute", self.mute_roles_map)
 
     async def save_local_shadowban(self):
-        metafile_path = os.path.join(self.modpath, "automod_shadowban.json")
-        await self.save_file(metafile_path, ujson.dumps(self.shadowban_map))
+        await self.bot.redisdb.set("ntmod_automod_shadowban", self.shadowban_map)
 
     async def save_local_server_log(self, server_id: int):
-        metafile_path = os.path.join(self.modpath, f"{server_id}.srvlog")
-        await self.save_file(metafile_path, ujson.dumps(self.serverlog_map[server_id]))
+        self.serverlog_map[server_id]["server_id"] = server_id
+        await self.bot.redisdb.set(f"ntmod_serverlog_{server_id}", self.serverlog_map[server_id])
 
     async def verify_word(self, msg_data: str) -> bool:
         msg_data = msg_data.lower()
@@ -213,6 +186,13 @@ class AutoMod(commands.Cog):
         return found_data if found_data is not None else member_id
 
     @commands.command()
+    @commands.has_permissions(manage_messages=True)
+    async def nopekmen(self, ctx):
+        srv = ctx.message.guild.id
+        if srv not in self.automod_srv:
+            return await ctx.send("👮⚙️ Mohon aktifkan Auto-mod `!automod` ⚙️👮")
+
+    @commands.command()
     @commands.has_permissions(ban_members=True)
     async def shadowban(self, ctx, user_id: int):
         srv_id = str(ctx.message.guild.id)
@@ -272,7 +252,19 @@ class AutoMod(commands.Cog):
         if ctx.message.author.id != 466469077444067372:
             return
         self.no_no_word.append(word)
-        await ctx.send("⚙️ Added new word.")
+        await ctx.send("⚙️ Added new word for global pool.")
+        await self.save_local()
+        await asyncio.sleep(1.0)
+        self._is_modifying = False
+
+    @commands.command()
+    @commands.has_permissions(manage_messages=True)
+    async def automod_word_srv(self, ctx, *, word):
+        self._is_modifying = True
+        if ctx.message.guild.id not in self.no_no_word_server_based:
+            self.no_no_word_server_based[ctx.message.guild.id] = []
+        self.no_no_word_server_based[ctx.message.guild.id].append(word)
+        await ctx.send("⚙️ Added new word for this server pool.")
         await self.save_local()
         await asyncio.sleep(1.0)
         self._is_modifying = False
@@ -321,7 +313,11 @@ class AutoMod(commands.Cog):
 
     @commands.command()
     @commands.has_permissions(manage_messages=True)
-    async def slowmode(self, ctx, amount: int, channel=None):
+    async def slowmode(self, ctx, amount, channel=None):
+        try:
+            amount = int(amount)
+        except ValueError:
+            return await ctx.send("⚙️⚠ Not a valid number!")
         fallback_channel = ctx.message.channel
         if channel is not None:
             try:
@@ -341,7 +337,14 @@ class AutoMod(commands.Cog):
             return await ctx.send(
                 "Please give bot `Manage Message` and `Manage Channels` permission for this channel."
             )
+        except (commands.MissingPermissions, commands.MissingRole):
+            return await ctx.send("⚙️⚠ No access to the command")
         await ctx.send("⚙️ Slowmode Activated!\n" f"User can sent message every: {amount} seconds")
+
+    @slowmode.error
+    async def slowmode_err_handler(self, error, ctx):
+        if isinstance(error, (commands.MissingPermissions, commands.MissingAnyRole, commands.MissingRole)):
+            await ctx.send("⚙⚠ No access to the command")
 
     @commands.command()
     @commands.has_permissions(manage_messages=True)
@@ -411,7 +414,7 @@ class AutoMod(commands.Cog):
             self.mute_roles_map[server_id] = mute_roles.id
             await self.save_local_mute()
 
-            guild_channels = await ctx.message.guild.fetch_channels()
+            guild_channels: List[discord.TextChannel] = await ctx.message.guild.fetch_channels()
             for channel in guild_channels:
                 try:
                     self.logger.info(f"{channel.name}: setting channel perms.")
@@ -860,7 +863,6 @@ class AutoMod(commands.Cog):
         server_id = server_data.id
         channel_id = ctx.message.channel.id
         original_author = ctx.message.author.id
-        srv_log_path = os.path.join(self.modpath, f"{server_id}.srvlog")
 
         self.logger.info(f"{server_id}: initiated server logging...")
 
@@ -873,6 +875,7 @@ class AutoMod(commands.Cog):
 
         metadata_srvlog = {
             "id": 0,
+            "server_id": server_id,
             "edit_msg": False,
             "delete_msg": False,
             "member_join": False,
@@ -882,7 +885,7 @@ class AutoMod(commands.Cog):
             "nick_update": False,
             "role_update": False,
         }
-        if not os.path.isfile(srv_log_path):
+        if not (await self.bot.redisdb.exist(f"ntmod_serverlog_{server_id}")):
             channel_msg = await ctx.send(
                 "Ketik ID Kanal atau mention Kanal yang ingin dijadikan tempat *logging* peladen.\n"
                 "Ketik `cancel` untuk membatalkan."
@@ -952,9 +955,7 @@ class AutoMod(commands.Cog):
                 inline=False,
             )
             embed.add_field(
-                name="5️⃣ Roles",
-                value="Aktif" if datasete["role_update"] else "Tidak aktif",
-                inline=False,
+                name="5️⃣ Roles", value="Aktif" if datasete["role_update"] else "Tidak aktif", inline=False,
             )
             embed.add_field(name="🗑️ Matikan", value="Matikan Pencatatan Peladen", inline=False)
             embed.add_field(name="📜 Aktifkan Semua", value="Aktifkan Semua Pencatatan Peladen", inline=True)
@@ -1034,8 +1035,7 @@ class AutoMod(commands.Cog):
             return await ctx.send("Dibatalkan.")
         if deletion_from_data:
             self.logger.warning(f"{server_id}: removing from server logging.")
-            if os.path.isfile(srv_log_path):
-                os.remove(srv_log_path)
+            await self.bot.redisdb.rm(f"ntmod_serverlog_{server_id}")
             if server_id in self.serverlog_map:
                 del self.serverlog_map[server_id]
             return await ctx.send("Berhasil menghapus peladen ini dari fitur pencatatan.")

@@ -1,5 +1,4 @@
 import asyncio
-import glob
 import logging
 import os
 from copy import deepcopy
@@ -8,10 +7,8 @@ from typing import List, Union
 
 import discord
 from discord.ext import commands, tasks
-
 from nthelper.bot import naoTimesBot
 from nthelper.cmd_args import Arguments, CommandArgParse
-from nthelper.utils import read_files
 from nthelper.votebackend import VoteWatcher, VotingData, VotingKickBan
 
 reactions_num = ["1⃣", "2⃣", "3⃣", "4⃣", "5⃣", "6⃣", "7⃣", "8⃣", "9⃣", "🔟"]
@@ -73,7 +70,7 @@ class VoteApp(commands.Cog):
         self.bot = bot
         self.logger = logging.getLogger("cogs.vote.VoteApp")
 
-        self.vote_backend = VoteWatcher(self.bot.fcwd)
+        self.vote_backend = VoteWatcher(self.bot.fcwd, self.bot.redisdb, self.bot.loop)
         self._precheck_existing_vote.start()
         self.readjust_embed.start()
 
@@ -152,12 +149,11 @@ class VoteApp(commands.Cog):
             return
         search_path = os.path.join(search_path, "*.votedata")
         self.logger.info("searching for existing data...")
-        votes_datas = glob.glob(search_path)
+        votes_datas = await self.bot.redisdb.getall("ntvote_*")
         if not votes_datas:
             self.logger.info("no exisiting data, exiting...")
             return
-        for path in votes_datas:
-            vote_meta = await read_files(path)
+        for vote_meta in votes_datas:
             if vote_meta["type"] == "kickban":
                 self.logger.info(f"appending msg `{vote_meta['id']}` to kickban watcher")
                 await self.vote_backend.start_watching_vote_kickban(
@@ -181,9 +177,15 @@ class VoteApp(commands.Cog):
 
     def cog_unload(self):
         self.logger.info("Cancelling all tasks...")
-        self.vote_backend.stop_and_flush()
         self._task_handler.cancel()
         self.readjust_embed.cancel()
+        self.cog_unload_async.start()
+        self.cog_unload_async.stop()
+
+    @tasks.loop(seconds=1, count=1)
+    async def cog_unload_async(self):
+        self.logger.info("Cancelling all async tasks...")
+        await self.vote_backend.stop_and_flush()
 
     async def _handle_kickban(self, exported_data: dict, channel_data: discord.TextChannel):
         guild_id = channel_data.guild.id
@@ -288,12 +290,6 @@ class VoteApp(commands.Cog):
                                 content="Waktu voting habis, tidak ada yang voting"
                                 f" tentang **{exported_data['question']}**"
                             )
-
-                try:
-                    os.remove(os.path.join(self.bot.fcwd, "vote_data", f"{exported_data['id']}.votedata"))
-                except FileNotFoundError:
-                    pass
-
                 self.vote_backend.done_queue.task_done()
             except asyncio.CancelledError:
                 return
@@ -328,16 +324,10 @@ class VoteApp(commands.Cog):
                     y_ans = exported_data["answers"][0]
                     x_ans = exported_data["answers"][1]
                     embed.set_field_at(
-                        0,
-                        name="✅ Ya",
-                        value=f"**Total**: {y_ans['tally']}",
-                        inline=True,
+                        0, name="✅ Ya", value=f"**Total**: {y_ans['tally']}", inline=True,
                     )
                     embed.set_field_at(
-                        1,
-                        name="❎ Tidak",
-                        value=f"**Total**: {x_ans['tally']}",
-                        inline=True,
+                        1, name="❎ Tidak", value=f"**Total**: {x_ans['tally']}", inline=True,
                     )
                 else:
                     for i in range(len(exported_data["answers"])):
@@ -512,9 +502,7 @@ class VoteApp(commands.Cog):
             color=0x3F0A16,
         )
         embed.add_field(
-            name=f"Jumlah vote (Dibutuhkan: {vote_limit})",
-            value="0 votes",
-            inline=False,
+            name=f"Jumlah vote (Dibutuhkan: {vote_limit})", value="0 votes", inline=False,
         )
 
         time_limit = args.detik
@@ -586,9 +574,7 @@ class VoteApp(commands.Cog):
             color=0x3F0A16,
         )
         embed.add_field(
-            name=f"Jumlah vote (Dibutuhkan: {vote_limit})",
-            value="0 votes",
-            inline=False,
+            name=f"Jumlah vote (Dibutuhkan: {vote_limit})", value="0 votes", inline=False,
         )
 
         time_limit = args.detik

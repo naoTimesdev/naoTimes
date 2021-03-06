@@ -28,8 +28,8 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
         self.bot = bot
         self.ntdb = bot.ntdb
         self.showqueue = bot.showqueue
-        self.srv_fetch = partial(self.fetch_showtimes, cwd=bot.fcwd)
-        self.srv_dumps = partial(self.dumps_showtimes, cwd=bot.fcwd)
+        self.srv_fetch = partial(self.fetch_showtimes, redisdb=bot.redisdb)
+        self.srv_dumps = partial(self.dumps_showtimes, redisdb=bot.redisdb)
         self.logger = logging.getLogger("cogs.showtimes_module.data.ShowtimesData")
         self.fsdb_conn = bot.fsdb
 
@@ -114,8 +114,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                 inline=False,
             )
             embed.set_footer(
-                text="Dibawakan oleh naoTimes™®",
-                icon_url="https://p.n4o.xyz/i/nao250px.png",
+                text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
             )
             await emb_msg.edit(embed=embed)
 
@@ -124,11 +123,19 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                 mentions = await_msg.mentions
                 if not mentions:
                     if await_msg.content.isdigit():
-                        staff_list[role] = await_msg.content
+                        staff_list[role]["id"] = await_msg.content
+                        usr_ = await get_user_name(await_msg.content)
+                        if usr_ == "[Rahasia]":
+                            usr_ = None
+                        staff_list[role]["name"] = usr_
                         await await_msg.delete()
                         break
                 else:
-                    staff_list[role] = str(mentions[0].id)
+                    staff_list[role]["id"] = str(mentions[0].id)
+                    usr_ = await get_user_name(str(mentions[0].id))
+                    if usr_ == "[Rahasia]":
+                        usr_ = None
+                    staff_list[role]["name"] = usr_
                     await await_msg.delete()
                     break
             return staff_list, emb_msg
@@ -144,33 +151,26 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
 
                 staff_list_name = {}
                 for k, v in staff_list.items():
-                    usr_ = await get_user_name(v)
+                    usr_ = await get_user_name(v["id"])
                     staff_list_name[k] = usr_
 
                 embed = discord.Embed(
-                    title="Mengubah Staff",
-                    description="Anime: {}".format(matches[0]),
-                    color=0xEBA279,
+                    title="Mengubah Staff", description="Anime: {}".format(matches[0]), color=0xEBA279,
                 )
                 embed.add_field(name="1⃣ TLor", value=staff_list_name["TL"], inline=False)
                 embed.add_field(name="2⃣ TLCer", value=staff_list_name["TLC"], inline=False)
                 embed.add_field(
-                    name="3⃣ Encoder",
-                    value=staff_list_name["ENC"],
-                    inline=False,
+                    name="3⃣ Encoder", value=staff_list_name["ENC"], inline=False,
                 )
                 embed.add_field(name="4⃣ Editor", value=staff_list_name["ED"], inline=True)
                 embed.add_field(name="5⃣ Timer", value=staff_list_name["TM"], inline=True)
                 embed.add_field(
-                    name="6⃣ Typeseter",
-                    value=staff_list_name["TS"],
-                    inline=True,
+                    name="6⃣ Typeseter", value=staff_list_name["TS"], inline=True,
                 )
                 embed.add_field(name="7⃣ QCer", value=staff_list_name["QC"], inline=True)
                 embed.add_field(name="Lain-Lain", value="✅ Selesai!", inline=False)
                 embed.set_footer(
-                    text="Dibawakan oleh naoTimes™®",
-                    icon_url="https://p.n4o.xyz/i/nao250px.png",
+                    text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
                 )
                 await emb_msg.edit(embed=embed)
 
@@ -222,8 +222,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                 inline=False,
             )
             embed.set_footer(
-                text="Dibawakan oleh naoTimes™®",
-                icon_url="https://p.n4o.xyz/i/nao250px.png",
+                text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
             )
             await emb_msg.edit(embed=embed)
 
@@ -238,9 +237,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                         break
                     if await_msg.content.startswith("auto"):
                         c_role = await ctx.message.guild.create_role(
-                            name=matches[0],
-                            colour=discord.Colour(0xDF2705),
-                            mentionable=True,
+                            name=matches[0], colour=discord.Colour(0xDF2705), mentionable=True,
                         )
                         srv_data["anime"][matches[0]]["role_id"] = str(c_role.id)
                         await await_msg.delete()
@@ -269,13 +266,10 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                 color=0xEBA279,
             )
             embed.add_field(
-                name="Masukan jumlah episode yang diinginkan.",
-                value=add_eps_instruct,
-                inline=False,
+                name="Masukan jumlah episode yang diinginkan.", value=add_eps_instruct, inline=False,
             )
             embed.set_footer(
-                text="Dibawakan oleh naoTimes™®",
-                icon_url="https://p.n4o.xyz/i/nao250px.png",
+                text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
             )
             await emb_msg.edit(embed=embed)
 
@@ -300,9 +294,10 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                 if "fsdb_data" in program_info:
                     if self.fsdb_conn is not None:
                         self.logger.info("Updating FSDB Project to on progress again.")
-                        await self.fsdb_conn.update_project(
-                            program_info["fsdb_data"]["id"], "status", "Jalan"
-                        )
+                        if "id" in program_info["fsdb_data"]:
+                            await self.fsdb_conn.update_project(
+                                program_info["fsdb_data"]["id"], "status", "Jalan"
+                            )
 
             self.logger.info(f"{matches[0]}: adding a total of {jumlah_tambahan}...")
             for x in range(
@@ -352,13 +347,10 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                 color=0xEBA279,
             )
             embed.add_field(
-                name="Masukan range episode yang ingin dihapus.",
-                value=del_eps_instruct,
-                inline=False,
+                name="Masukan range episode yang ingin dihapus.", value=del_eps_instruct, inline=False,
             )
             embed.set_footer(
-                text="Dibawakan oleh naoTimes™®",
-                icon_url="https://p.n4o.xyz/i/nao250px.png",
+                text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
             )
             await emb_msg.edit(embed=embed)
 
@@ -369,13 +361,10 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                 jumlah_tambahan = await_msg.content
                 embed = discord.Embed(title="Menghapus Episode", color=0xEBA279)
                 embed.add_field(
-                    name="Apakah Yakin?",
-                    value="Range episode: **{}**".format(jumlah_tambahan),
-                    inline=False,
+                    name="Apakah Yakin?", value="Range episode: **{}**".format(jumlah_tambahan), inline=False,
                 )
                 embed.set_footer(
-                    text="Dibawakan oleh naoTimes™®",
-                    icon_url="https://p.n4o.xyz/i/nao250px.png",
+                    text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
                 )
                 await emb_msg.edit(embed=embed)
 
@@ -413,8 +402,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                         inline=False,
                     )
                     embed.set_footer(
-                        text="Dibawakan oleh naoTimes™®",
-                        icon_url="https://p.n4o.xyz/i/nao250px.png",
+                        text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
                     )
                     await emb_msg.edit(embed=embed)
                 await emb_msg.clear_reactions()
@@ -446,9 +434,10 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                 if "fsdb_data" in program_info:
                     if self.fsdb_conn is not None:
                         self.logger.info("Updating FSDB Project to finished.")
-                        await self.fsdb_conn.update_project(
-                            program_info["fsdb_data"]["id"], "status", "Tamat"
-                        )
+                        if "id" in program_info["fsdb_data"]:
+                            await self.fsdb_conn.update_project(
+                                program_info["fsdb_data"]["id"], "status", "Tamat"
+                            )
             srv_data["anime"][matches[0]]["last_update"] = str(int(round(time.time())))
 
             await send_timed_msg(ctx, f"Berhasil menghapus episode {current} ke {total}", 2)
@@ -460,9 +449,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
             self.logger.info(f"{matches[0]}: preparing to nuke project...")
             while True:
                 embed = discord.Embed(
-                    title="Menghapus Utang",
-                    description="Anime: {}".format(matches[0]),
-                    color=0xCC1C20,
+                    title="Menghapus Utang", description="Anime: {}".format(matches[0]), color=0xCC1C20,
                 )
                 embed.add_field(
                     name="Peringatan!",
@@ -471,8 +458,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                     inline=False,
                 )
                 embed.set_footer(
-                    text="Dibawakan oleh naoTimes™®",
-                    icon_url="https://p.n4o.xyz/i/nao250px.png",
+                    text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
                 )
                 await emb_msg.edit(embed=embed)
 
@@ -511,14 +497,10 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
             total_episodes = len(srv_data["anime"][matches[0]]["status"])
             role_id = srv_data["anime"][matches[0]]["role_id"]
             embed = discord.Embed(
-                title="Mengubah Data",
-                description="Anime: {}".format(matches[0]),
-                color=0xE7E363,
+                title="Mengubah Data", description="Anime: {}".format(matches[0]), color=0xE7E363,
             )
             embed.add_field(
-                name="1⃣ Ubah Staff",
-                value="Ubah staff yang mengerjakan anime ini.",
-                inline=False,
+                name="1⃣ Ubah Staff", value="Ubah staff yang mengerjakan anime ini.", inline=False,
             )
             embed.add_field(
                 name="2⃣ Ubah Role",
@@ -532,9 +514,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                 inline=False,
             )
             embed.add_field(
-                name="4⃣ Hapus Episode",
-                value="Hapus episode tertentu.",
-                inline=False,
+                name="4⃣ Hapus Episode", value="Hapus episode tertentu.", inline=False,
             )
             embed.add_field(
                 name="5⃣ Drop Garapan",
@@ -543,8 +523,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
             )
             embed.add_field(name="Lain-Lain", value="✅ Selesai!\n❌ Batalkan!", inline=False)
             embed.set_footer(
-                text="Dibawakan oleh naoTimes™®",
-                icon_url="https://p.n4o.xyz/i/nao250px.png",
+                text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
             )
             if first_run:
                 emb_msg = await ctx.send(embed=embed)
@@ -605,7 +584,8 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
             if "fsdb_data" in program_info:
                 if self.fsdb_conn is not None:
                     self.logger.info("Updating FSDB Project to dropped.")
-                    await self.fsdb_conn.update_project(program_info["fsdb_data"]["id"], "status", "Drop")
+                    if "id" in program_info["fsdb_data"]:
+                        await self.fsdb_conn.update_project(program_info["fsdb_data"]["id"], "status", "Drop")
             current = self.get_current_ep(program_info["status"])
             try:
                 if program_info["status"]["1"]["status"] == "not_released":
@@ -733,8 +713,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
         embed = discord.Embed(title="Menambah Utang", color=0x56ACF3)
         embed.add_field(name="Memulai Proses!", value="Mempersiapkan...", inline=False)
         embed.set_footer(
-            text="Dibawakan oleh naoTimes™®",
-            icon_url="https://p.n4o.xyz/i/nao250px.png",
+            text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
         )
         emb_msg = await ctx.send(embed=embed)
         current_time = int(round(time.time()))
@@ -769,13 +748,10 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
             embed = discord.Embed(title="Menambah Utang", color=0x96DF6A)
             embed.set_thumbnail(url=table["poster_img"])
             embed.add_field(
-                name="Jumlah Episode",
-                value="Ketik Jumlah Episode perkiraan",
-                inline=False,
+                name="Jumlah Episode", value="Ketik Jumlah Episode perkiraan", inline=False,
             )
             embed.set_footer(
-                text="Dibawakan oleh naoTimes™®",
-                icon_url="https://p.n4o.xyz/i/nao250px.png",
+                text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
             )
             await emb_msg.edit(embed=embed)
 
@@ -805,8 +781,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                 inline=False,
             )
             embed.set_footer(
-                text="Dibawakan oleh naoTimes™®",
-                icon_url="https://p.n4o.xyz/i/nao250px.png",
+                text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
             )
             await emb_msg.edit(content="", embed=embed)
 
@@ -831,13 +806,10 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
             embed = discord.Embed(title="Menambah Utang", color=0x96DF6A)
             embed.set_thumbnail(url=poster_image)
             embed.add_field(
-                name="Apakah benar?",
-                value="Judul: **{}**".format(title),
-                inline=False,
+                name="Apakah benar?", value="Judul: **{}**".format(title), inline=False,
             )
             embed.set_footer(
-                text="Dibawakan oleh naoTimes™®",
-                icon_url="https://p.n4o.xyz/i/nao250px.png",
+                text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
             )
             await emb_msg.edit(embed=embed)
 
@@ -903,8 +875,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                 inline=False,
             )
             embed.set_footer(
-                text="Dibawakan oleh naoTimes™®",
-                icon_url="https://p.n4o.xyz/i/nao250px.png",
+                text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
             )
             await emb_msg.edit(embed=embed)
 
@@ -920,9 +891,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                     elif await_msg.content.startswith("auto"):
                         self.logger.info(f"{server_message}: auto-generating role...")
                         c_role = await ctx.message.guild.create_role(
-                            name=table["ani_title"],
-                            colour=discord.Colour(0xDF2705),
-                            mentionable=True,
+                            name=table["ani_title"], colour=discord.Colour(0xDF2705), mentionable=True,
                         )
                         table["role_id"] = str(c_role.id)
                         await await_msg.delete()
@@ -954,8 +923,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                 inline=False,
             )
             embed.set_footer(
-                text="Dibawakan oleh naoTimes™®",
-                icon_url="https://p.n4o.xyz/i/nao250px.png",
+                text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
             )
             await emb_msg.edit(embed=embed)
 
@@ -1017,8 +985,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                 )
                 embed.add_field(name="Lain-Lain", value="⏪ Kembali", inline=False)
                 embed.set_footer(
-                    text="Dibawakan oleh naoTimes™®",
-                    icon_url="https://p.n4o.xyz/i/nao250px.png",
+                    text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
                 )
                 await emb_msg.edit(embed=embed)
 
@@ -1044,9 +1011,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                 elif to_react[0] in str(res.emoji):
                     await emb_msg.clear_reactions()
                     table, emb_msg = await gear_1(
-                        table,
-                        emb_msg,
-                        table["settings"]["time_data_are_the_same"],
+                        table, emb_msg, table["settings"]["time_data_are_the_same"],
                     )
                 elif to_react[-1] in str(res.emoji):
                     await emb_msg.clear_reactions()
@@ -1089,9 +1054,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
             qc_ = await fetch_username_from_id(json_tables["qcer_id"])
 
             embed = discord.Embed(
-                title="Menambah Utang",
-                description="Periksa data!\nReact jika ingin diubah.",
-                color=0xE7E363,
+                title="Menambah Utang", description="Periksa data!\nReact jika ingin diubah.", color=0xE7E363,
             )
             embed.set_thumbnail(url=json_tables["poster_img"])
             embed.add_field(
@@ -1100,9 +1063,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                 inline=False,
             )
             embed.add_field(
-                name="2⃣ Episode",
-                value="{}".format(json_tables["episodes"]),
-                inline=False,
+                name="2⃣ Episode", value="{}".format(json_tables["episodes"]), inline=False,
             )
             embed.add_field(
                 name="3⃣ Role",
@@ -1117,13 +1078,10 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
             embed.add_field(name="9⃣ Typesetter", value=ts_, inline=True)
             embed.add_field(name="0⃣ Quality Checker", value=qc_, inline=True)
             embed.add_field(
-                name="Lain-Lain",
-                value="🔐 Pengaturan\n✅ Tambahkan!\n❌ Batalkan!",
-                inline=False,
+                name="Lain-Lain", value="🔐 Pengaturan\n✅ Tambahkan!\n❌ Batalkan!", inline=False,
             )
             embed.set_footer(
-                text="Dibawakan oleh naoTimes™®",
-                icon_url="https://p.n4o.xyz/i/nao250px.png",
+                text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
             )
             if first_time:
                 await emb_msg.delete()
@@ -1212,8 +1170,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
         embed = discord.Embed(title="Menambah Utang", color=0x56ACF3)
         embed.add_field(name="Memproses!", value="Membuat data...", inline=True)
         embed.set_footer(
-            text="Dibawakan oleh naoTimes™®",
-            icon_url="https://p.n4o.xyz/i/nao250px.png",
+            text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
         )
         await emb_msg.edit(embed=embed)
 
@@ -1228,13 +1185,41 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
         new_anime_data["poster_data"] = json_tables["poster_data"]
         new_anime_data["start_time"] = json_tables["start_time"]
 
-        staff_data["TL"] = json_tables["tlor_id"]
-        staff_data["TLC"] = json_tables["tlcer_id"]
-        staff_data["ENC"] = json_tables["encoder_id"]
-        staff_data["ED"] = json_tables["editor_id"]
-        staff_data["TM"] = json_tables["timer_id"]
-        staff_data["TS"] = json_tables["tser_id"]
-        staff_data["QC"] = json_tables["qcer_id"]
+        def get_username_of_user(user_id):
+            try:
+                user_data = self.bot.get_user(int(user_id))
+                return user_data.name
+            except Exception:
+                return None
+
+        staff_data["TL"] = {
+            "id": json_tables["tlor_id"],
+            "name": get_username_of_user(json_tables["tlor_id"]),
+        }
+        staff_data["TLC"] = {
+            "id": json_tables["tlcer_id"],
+            "name": get_username_of_user(json_tables["tlcer_id"]),
+        }
+        staff_data["ENC"] = {
+            "id": json_tables["encoder_id"],
+            "name": get_username_of_user(json_tables["encoder_id"]),
+        }
+        staff_data["ED"] = {
+            "id": json_tables["editor_id"],
+            "name": get_username_of_user(json_tables["editor_id"]),
+        }
+        staff_data["TM"] = {
+            "id": json_tables["timer_id"],
+            "name": get_username_of_user(json_tables["timer_id"]),
+        }
+        staff_data["TS"] = {
+            "id": json_tables["tser_id"],
+            "name": get_username_of_user(json_tables["tser_id"]),
+        }
+        staff_data["QC"] = {
+            "id": json_tables["qcer_id"],
+            "name": get_username_of_user(json_tables["qcer_id"]),
+        }
         new_anime_data["staff_assignment"] = staff_data
 
         self.logger.info(f"{server_message}: generating episode...")
@@ -1261,8 +1246,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
             embed = discord.Embed(title="Menambah Utang", color=0x56ACF3)
             embed.add_field(name="Memproses!", value="Membuat data fansubdb...", inline=True)
             embed.set_footer(
-                text="Dibawakan oleh naoTimes™®",
-                icon_url="https://p.n4o.xyz/i/nao250px.png",
+                text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
             )
             await emb_msg.edit(embed=embed)
             collect_anime_dataset = await self.fsdb_conn.fetch_animes()
@@ -1292,8 +1276,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
         embed = discord.Embed(title="Menambah Utang", color=0x56ACF3)
         embed.add_field(name="Memproses!", value="Mengirim data...", inline=True)
         embed.set_footer(
-            text="Dibawakan oleh naoTimes™®",
-            icon_url="https://p.n4o.xyz/i/nao250px.png",
+            text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
         )
         await emb_msg.edit(embed=embed)
 
@@ -1308,8 +1291,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
             inline=True,
         )
         embed.set_footer(
-            text="Dibawakan oleh naoTimes™®",
-            icon_url="https://p.n4o.xyz/i/nao250px.png",
+            text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
         )
         await ctx.send(embed=embed)
 

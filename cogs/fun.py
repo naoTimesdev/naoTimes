@@ -1,4 +1,5 @@
 import logging
+from nthelper.utils import StealedEmote
 import random
 import re
 from datetime import datetime
@@ -7,7 +8,6 @@ from typing import List, Union
 import discord
 import numpy as np
 from discord.ext import commands
-
 from nthelper.bot import naoTimesBot
 
 logger = logging.getLogger("cogs.fun")
@@ -173,11 +173,6 @@ class Fun(commands.Cog):
             ans.set_image(url=ava)
             await channeru.send(embed=ans)
 
-        # titikduaV = re.compile(
-        #     r"((:|\uFF1A|\uFE55|\uFE13)v|v(:|\uFF1A|\uFE55|\uFF13))",
-        #     re.IGNORECASE,
-        # )
-
     @commands.command(aliases=["user", "uinfo", "userinfo"])
     async def ui(self, ctx, *, name=""):
         if name:
@@ -245,15 +240,18 @@ class Fun(commands.Cog):
             await ctx.send(embed=em)
         except discord.errors.HTTPException:
             if isinstance(user, discord.Member):
-                msg = "**User Info:** ```User ID: %s\nNick: %s\nStatus: %s\nGame: %s\nHighest Role: %s\nAccount Created: %s\nJoin Date: %s\nAvatar url:%s```" % (  # noqa: E501
-                    user.id,
-                    user.nick,
-                    user.status,
-                    user.activity,
-                    role,
-                    translate_date(user.created_at.__format__("%A, %d. %B %Y @ %H:%M:%S")),
-                    translate_date(user.joined_at.__format__("%A, %d. %B %Y @ %H:%M:%S")),
-                    avi,
+                msg = (
+                    "**User Info:** ```User ID: %s\nNick: %s\nStatus: %s\nGame: %s\nHighest Role: %s\nAccount Created: %s\nJoin Date: %s\nAvatar url:%s```"  # noqa: E501
+                    % (
+                        user.id,
+                        user.nick,
+                        user.status,
+                        user.activity,
+                        role,
+                        translate_date(user.created_at.__format__("%A, %d. %B %Y @ %H:%M:%S")),
+                        translate_date(user.joined_at.__format__("%A, %d. %B %Y @ %H:%M:%S")),
+                        avi,
+                    )
                 )
             else:
                 msg = "**User Info:** ```User ID: %s\nAccount Created: %s\nAvatar url:%s```" % (  # noqa: E501
@@ -468,21 +466,21 @@ class Fun(commands.Cog):
         avi = user.avatar_url
 
         try:
-            em = discord.Embed(
-                title="Ini dia",
-                timestamp=ctx.message.created_at,
-                color=0x708DD0,
-            )
+            em = discord.Embed(title="Ini dia", timestamp=ctx.message.created_at, color=0x708DD0,)
             em.set_image(url=avi)
             await ctx.send(embed=em)
         except discord.errors.HTTPException:
             await ctx.send("Ini dia!\n{}".format(avi))
 
     @commands.command(aliases=["be", "bigemoji"])
-    async def bigemote(self, ctx, emoji: discord.Emoji):
-        uri = emoji.url
-        uri = uri.replace("https://discordapp.com", "https://cdn.discordapp.com").replace("/api", "") + "?v=1"
-        await ctx.send(uri)
+    async def bigemote(self, ctx, emoji: StealedEmote):
+        fmt_msg = f"`:{emoji.name}:`\n{emoji.url}"
+        await ctx.send(fmt_msg)
+
+    @bigemote.error
+    async def bigemote_error(self, ctx, error):
+        if isinstance(error, commands.ConversionError):
+            return await ctx.send("Gagal mendapatkan emote yang dimaksud.")
 
     @commands.command()
     async def f(self, ctx, *, pesan=None):
@@ -504,11 +502,7 @@ class Fun(commands.Cog):
         useravatar = str(ctx.message.author.avatar_url)
         textasker = "Ditanyakan oleh: " + userasking
         pertanyaan = pertanyaan[0].upper() + pertanyaan[1:]
-        rel1 = discord.Embed(
-            title="Kerang Ajaib",
-            timestamp=ctx.message.created_at,
-            color=0x8CEEFF,
-        )
+        rel1 = discord.Embed(title="Kerang Ajaib", timestamp=ctx.message.created_at, color=0x8CEEFF,)
         rel1.set_thumbnail(url="https://www.shodor.org/~alexc/pics/MagicConch.png")
         rel1.add_field(name=pertanyaan, value=["Ya", "Tidak"][rand], inline=False)
         rel1.set_footer(text=textasker, icon_url=useravatar)
@@ -516,9 +510,6 @@ class Fun(commands.Cog):
 
     @commands.command()
     async def pilih(self, ctx, *, input_data):
-        server_message = str(ctx.message.guild.id)
-        print("Requested !pilih at: " + server_message)
-
         inp_d = input_data.split(",")
         inp_d = [d for d in inp_d if d]
 
@@ -538,7 +529,6 @@ class Fun(commands.Cog):
 
     @commands.command(aliases=["penis", "dick", "kntl"])
     async def kontol(self, ctx):
-        print("Requested !kontol")
         length = random.randint(2, 12)  # nosec
 
         txt = "Panjang kntl **{}** adalah:\n".format(ctx.message.author.name)
@@ -599,9 +589,6 @@ class Fun(commands.Cog):
 
     @commands.command(name="8ball")
     async def _8ball(self, ctx, *, input_):
-        server_message = str(ctx.message.guild.id)
-        print("Requested !8ball at: " + server_message)
-
         jawaban_ = {
             "positif": [
                 "Pastinya.",
@@ -667,3 +654,27 @@ class Fun(commands.Cog):
         ans.add_field(name=pertanyaan, value=answer_of_life, inline=False)
         ans.set_footer(text=ditanyakan, icon_url=avatar)
         await ctx.send(embed=ans)
+
+    @commands.command()
+    async def agama(self, ctx, *, hal=""):
+        if not hal:
+            hal = f"**{ctx.message.author.name}**"
+        else:
+            hal = f"**{hal}**"
+
+        pilihan_agama = [
+            "Islam",
+            "Katolik",
+            "Protestan",
+            "Kong Hu Cu",
+            "Budha",
+            "Hindu",
+            "Atheis",
+            "Agnostik",
+            "Shinto",
+            "Yahudi",
+        ]
+
+        text_to_send = f"Agama {hal} itu apa?\n"
+        text_to_send += f"{random.choice(pilihan_agama)}."
+        await ctx.send(text_to_send)

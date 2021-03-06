@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 
-import asyncio
+from functools import partial
 import logging
+from nthelper.utils import DiscordPaginator
 import time
 from copy import deepcopy
 from datetime import datetime, timedelta
@@ -211,10 +212,7 @@ async def current_season_streams():
 
     sup = BeautifulSoup(data, "html.parser")
 
-    streams_lists = sup.find_all(
-        "div",
-        {"class": "column column-block", "data-controller": "stream-list"},
-    )
+    streams_lists = sup.find_all("div", {"class": "column column-block", "data-controller": "stream-list"},)
 
     full_query_result = []
     for streams in streams_lists:
@@ -404,9 +402,7 @@ async def parse_anilist_results(results, method, streams_list={}):
                     time_tuple = datetime(1, 1, 1) + d_airing_time
 
                     dataset["airing_date"] = "{d} {m} {y}".format(
-                        d=time_tuple.day,
-                        m=monthintext(time_tuple.month),
-                        y=time.strftime("%Y"),
+                        d=time_tuple.day, m=monthintext(time_tuple.month), y=time.strftime("%Y"),
                     )
                     dataset["next_episode"] = ne_data["episode"]
                     dataset["time_remain"] = create_time_format(ne_data["timeUntilAiring"])
@@ -454,8 +450,7 @@ async def fetch_anichart():
         async with aiohttp.ClientSession() as sesi:
             try:
                 async with sesi.post(
-                    "https://graphql.anilist.co",
-                    json={"query": anichart_query, "variables": variables},
+                    "https://graphql.anilist.co", json={"query": anichart_query, "variables": variables},
                 ) as r:
                     try:
                         data = await r.json()
@@ -583,8 +578,7 @@ async def fetch_anichart():
                     time_until_air = str(start_date["year"])
                     if start_date["month"]:
                         time_until_air = "{s}/{e}".format(
-                            s=str(start_date["month"]).zfill(2),
-                            e=time_until_air,
+                            s=str(start_date["month"]).zfill(2), e=time_until_air,
                         )
                     if start_date["day"]:
                         time_until_air = "{s}/{e}".format(s=str(start_date["day"]).zfill(2), e=time_until_air)
@@ -661,8 +655,91 @@ class Anilist(commands.Cog):
 
         self.anibucket = bot.anibucket
 
+    def _generate_anime_embed(self, data: dict) -> discord.Embed:
+        embed = discord.Embed(color=0x19212D)
+
+        embed.set_thumbnail(url=data["poster_img"])
+        embed.set_author(
+            name=data["title"], url=data["link"], icon_url="https://p.ihateani.me/wtelbjmn.png",
+        )
+        embed.set_footer(text=data["footer"])
+
+        embed.add_field(name="Nama Lain", value=data["title_other"], inline=True)
+        embed.add_field(name="Episode", value=data["episodes"], inline=True)
+        embed.add_field(name="Status", value=data["status"], inline=True)
+        embed.add_field(name="Skor", value=data["score"], inline=True)
+        embed.add_field(name="Rilis", value=data["start_date"], inline=True)
+        embed.add_field(name="Berakhir", value=data["end_date"], inline=True)
+        embed.add_field(name="Format", value=data["format"], inline=True)
+        embed.add_field(name="Adaptasi", value=data["source_fmt"], inline=True)
+        embed.add_field(name="Sinopsis", value=data["synopsis"], inline=False)
+        return embed
+
+    def _generate_manga_embed(self, data: dict) -> discord.Embed:
+        embed = discord.Embed(color=0x19212D)
+
+        embed.set_thumbnail(url=data["poster_img"])
+        embed.set_author(
+            name=data["title"], url=data["link"], icon_url="https://p.ihateani.me/wtelbjmn.png",
+        )
+        embed.set_footer(text=data["footer"])
+
+        embed.add_field(name="Nama Lain", value=data["title_other"], inline=True)
+        embed.add_field(name="Chapter/Volume", value=data["ch_vol"], inline=True)
+        embed.add_field(name="Status", value=data["status"], inline=True)
+        embed.add_field(name="Skor", value=data["score"], inline=True)
+        embed.add_field(name="Rilis", value=data["start_date"], inline=True)
+        embed.add_field(name="Berakhir", value=data["end_date"], inline=True)
+        embed.add_field(name="Format", value=data["format"], inline=True)
+        embed.add_field(name="Adaptasi", value=data["source_fmt"], inline=True)
+        embed.add_field(name="Sinopsis", value=data["synopsis"], inline=False)
+        return embed
+
+    def _generate_stream_set(self, data: dict) -> discord.Embed:
+        text_data = "**Legal Streams**:\n"
+        for k, v in data["streams"].items():
+            if not isinstance(v, str):
+                temp = []
+                for k2, v2 in v.items():
+                    if v2:
+                        temp.append("[{}]({})".format(k2, v2))
+                    else:
+                        temp.append("*{s}*".format(s=k2))
+                text_data += "- **{s}**\n".format(s=k)
+                text_data += "  " + " \| ".join(temp)  # noqa: W605
+                text_data += "\n"
+            else:
+                if v:
+                    text_data += "- [{}]({})\n".format(k, v)
+                else:
+                    text_data += "- **{s}**\n".format(s=k)
+
+        embed = discord.Embed(color=0x19212D)
+
+        embed.set_thumbnail(url=data["poster_img"])
+        embed.set_author(
+            name=data["title"], url=data["link"], icon_url="https://p.ihateani.me/wtelbjmn.png",
+        )
+        embed.description = text_data
+        embed.set_footer(text=data["footer"])
+        return embed
+
+    def _generate_next_episode(self, data: dict) -> discord.Embed:
+        ep_txt = "Episode " + str(data["next_episode"])
+        embed = discord.Embed(color=0x19212D)
+        embed.set_author(
+            name=data["title"], url=data["link"], icon_url="https://p.ihateani.me/wtelbjmn.png",
+        )
+        embed.set_footer(text=f"Akan tayang pada {data['airing_date']}")
+
+        embed.add_field(name=ep_txt, value=data["time_remain"], inline=False)
+        return embed
+
     @commands.command(aliases=["animu", "kartun", "ani"])
     @commands.guild_only()
+    @commands.bot_has_guild_permissions(
+        manage_messages=True, embed_links=True, read_message_history=True, add_reactions=True,
+    )
     async def anime(self, ctx, *, judul):
         """Mencari informasi anime lewat API anilist.co"""
         self.logger.info(f"searching {judul}")
@@ -674,218 +751,37 @@ class Anilist(commands.Cog):
         if isinstance(aqres, str):
             return await ctx.send(aqres)
 
-        max_page = aqres["data_total"]
         resdata = aqres["result"]
         self.logger.info(f"total results {len(resdata)}")
 
-        first_run = True
-        time_table = False
-        stream_list = False
-        num = 1
-        while True:
-            if first_run:
-                self.logger.info("showing results...")
-                data = resdata[num - 1]
-                embed = discord.Embed(color=0x19212D)
+        async def handle_stream_table(datasets, position, message):
+            await message.clear_reactions()
+            stream_gen = DiscordPaginator(self.bot, ctx, [], True)
+            stream_gen.checker()
+            stream_gen.set_generator(self._generate_stream_set)
+            timeout = await stream_gen.start([datasets[position]], 30.0, message)
+            return None, message, timeout
 
-                embed.set_thumbnail(url=data["poster_img"])
-                embed.set_author(
-                    name=data["title"],
-                    url=data["link"],
-                    icon_url="https://anilist.co/img/icons/apple-touch-icon-152x152.png",
-                )
-                embed.set_footer(text=data["footer"])
+        async def handle_next_ep_table(datasets, position, message):
+            await message.clear_reactions()
+            nextep_gen = DiscordPaginator(self.bot, ctx, [], True)
+            nextep_gen.checker()
+            nextep_gen.set_generator(self._generate_next_episode)
+            timeout = await nextep_gen.start([datasets[position]], 30.0, message)
+            return None, message, timeout
 
-                embed.add_field(name="Nama Lain", value=data["title_other"], inline=True)
-                embed.add_field(name="Episode", value=data["episodes"], inline=True)
-                embed.add_field(name="Status", value=data["status"], inline=True)
-                embed.add_field(name="Skor", value=data["score"], inline=True)
-                embed.add_field(name="Rilis", value=data["start_date"], inline=True)
-                embed.add_field(name="Berakhir", value=data["end_date"], inline=True)
-                embed.add_field(name="Format", value=data["format"], inline=True)
-                embed.add_field(name="Adaptasi", value=data["source_fmt"], inline=True)
-                embed.add_field(name="Sinopsis", value=data["synopsis"], inline=False)
-
-                first_run = False
-                msg = await ctx.send(embed=embed)
-
-            reactmoji = []
-            if time_table or stream_list:
-                reactmoji.append("👍")
-            elif max_page == 1 and num == 1:
-                pass
-            elif num == 1:
-                reactmoji.append("⏩")
-            elif num == max_page:
-                reactmoji.append("⏪")
-            elif num > 1 and num < max_page:
-                reactmoji.extend(["⏪", "⏩"])
-            if "next_episode" in data and not time_table and not stream_list:
-                reactmoji.append("⏳")
-            if "streams" in data and not time_table and not stream_list:
-                reactmoji.append("📺")
-            reactmoji.append("✅")
-
-            self.logger.debug("reacting message...")
-            for react in reactmoji:
-                await msg.add_reaction(react)
-
-            def check_react(reaction, user):
-                if reaction.message.id != msg.id:
-                    return False
-                if user != ctx.message.author:
-                    return False
-                if str(reaction.emoji) not in reactmoji:
-                    return False
-                return True
-
-            try:
-                self.logger.debug("now waiting for reaction...")
-                res, user = await self.bot.wait_for("reaction_add", timeout=30.0, check=check_react)
-            except asyncio.TimeoutError:
-                self.logger.warn("timeout, removing reactions...")
-                return await msg.clear_reactions()
-            if user != ctx.message.author:
-                pass
-            elif "⏪" in str(res.emoji):
-                self.logger.debug("going backward...")
-                num = num - 1
-                data = resdata[num - 1]
-
-                embed = discord.Embed(color=0x19212D)
-
-                embed.set_thumbnail(url=data["poster_img"])
-                embed.set_author(
-                    name=data["title"],
-                    url=data["link"],
-                    icon_url="https://anilist.co/img/icons/apple-touch-icon-152x152.png",
-                )
-                embed.set_footer(text=data["footer"])
-
-                embed.add_field(name="Nama Lain", value=data["title_other"], inline=True)
-                embed.add_field(name="Episode", value=data["episodes"], inline=True)
-                embed.add_field(name="Status", value=data["status"], inline=True)
-                embed.add_field(name="Skor", value=data["score"], inline=True)
-                embed.add_field(name="Rilis", value=data["start_date"], inline=True)
-                embed.add_field(name="Berakhir", value=data["end_date"], inline=True)
-                embed.add_field(name="Format", value=data["format"], inline=True)
-                embed.add_field(name="Adaptasi", value=data["source_fmt"], inline=True)
-                embed.add_field(name="Sinopsis", value=data["synopsis"], inline=False)
-
-                await msg.clear_reactions()
-                await msg.edit(embed=embed)
-            elif "⏩" in str(res.emoji):
-                self.logger.debug("going forward...")
-                num = num + 1
-                data = resdata[num - 1]
-
-                embed = discord.Embed(color=0x19212D)
-
-                embed.set_thumbnail(url=data["poster_img"])
-                embed.set_author(
-                    name=data["title"],
-                    url=data["link"],
-                    icon_url="https://anilist.co/img/icons/apple-touch-icon-152x152.png",
-                )
-                embed.set_footer(text=data["footer"])
-
-                embed.add_field(name="Nama Lain", value=data["title_other"], inline=True)
-                embed.add_field(name="Episode", value=data["episodes"], inline=True)
-                embed.add_field(name="Status", value=data["status"], inline=True)
-                embed.add_field(name="Skor", value=data["score"], inline=True)
-                embed.add_field(name="Rilis", value=data["start_date"], inline=True)
-                embed.add_field(name="Berakhir", value=data["end_date"], inline=True)
-                embed.add_field(name="Format", value=data["format"], inline=True)
-                embed.add_field(name="Adaptasi", value=data["source_fmt"], inline=True)
-                embed.add_field(name="Sinopsis", value=data["synopsis"], inline=False)
-
-                await msg.clear_reactions()
-                await msg.edit(embed=embed)
-            elif "👍" in str(res.emoji):
-                self.logger.debug("reshowing anime info...")
-                embed = discord.Embed(color=0x19212D)
-
-                embed.set_thumbnail(url=data["poster_img"])
-                embed.set_author(
-                    name=data["title"],
-                    url=data["link"],
-                    icon_url="https://anilist.co/img/icons/apple-touch-icon-152x152.png",
-                )
-                embed.set_footer(text=data["footer"])
-
-                embed.add_field(name="Nama Lain", value=data["title_other"], inline=True)
-                embed.add_field(name="Episode", value=data["episodes"], inline=True)
-                embed.add_field(name="Status", value=data["status"], inline=True)
-                embed.add_field(name="Skor", value=data["score"], inline=True)
-                embed.add_field(name="Rilis", value=data["start_date"], inline=True)
-                embed.add_field(name="Berakhir", value=data["end_date"], inline=True)
-                embed.add_field(name="Format", value=data["format"], inline=True)
-                embed.add_field(name="Adaptasi", value=data["source_fmt"], inline=True)
-                embed.add_field(name="Sinopsis", value=data["synopsis"], inline=False)
-
-                if time_table:
-                    time_table = False
-                if stream_list:
-                    stream_list = False
-                await msg.clear_reactions()
-                await msg.edit(embed=embed)
-            elif "⏳" in str(res.emoji):
-                self.logger.debug("showing next episode air time...")
-                ep_txt = "Episode " + str(data["next_episode"])
-                embed = discord.Embed(color=0x19212D)
-                embed.set_author(
-                    name=data["title"],
-                    url=data["link"],
-                    icon_url="https://anilist.co/img/icons/apple-touch-icon-152x152.png",
-                )
-                embed.set_footer(text=f"Akan tayang pada {data['airing_date']}")
-
-                embed.add_field(name=ep_txt, value=data["time_remain"], inline=False)
-
-                time_table = True
-                await msg.clear_reactions()
-                await msg.edit(embed=embed)
-            elif "📺" in str(res.emoji):
-                self.logger.debug("showing streams list...")
-                text_data = "**Legal Streams**:\n"
-                for k, v in data["streams"].items():
-                    if not isinstance(v, str):
-                        temp = []
-                        for k2, v2 in v.items():
-                            if v2:
-                                temp.append("[{}]({})".format(k2, v2))
-                            else:
-                                temp.append("*{s}*".format(s=k2))
-                        text_data += "- **{s}**\n".format(s=k)
-                        text_data += "  " + " \| ".join(temp)  # noqa: W605
-                        text_data += "\n"
-                    else:
-                        if v:
-                            text_data += "- [{}]({})\n".format(k, v)
-                        else:
-                            text_data += "- **{s}**\n".format(s=k)
-
-                embed = discord.Embed(color=0x19212D)
-
-                embed.set_thumbnail(url=data["poster_img"])
-                embed.set_author(
-                    name=data["title"],
-                    url=data["link"],
-                    icon_url="https://anilist.co/img/icons/apple-touch-icon-152x152.png",
-                )
-                embed.description = text_data
-                embed.set_footer(text=data["footer"])
-
-                stream_list = True
-                await msg.clear_reactions()
-                await msg.edit(embed=embed)
-            elif "✅" in str(res.emoji):
-                self.logger.warn("deleting embed...")
-                await ctx.message.delete()
-                return await msg.delete()
+        main_gen = DiscordPaginator(self.bot, ctx, extra_emotes=["⏳", "📺"])
+        main_gen.set_generator(self._generate_anime_embed)
+        main_gen.set_handler(0, lambda pos, data: "next_episode" in data[pos], handle_next_ep_table)
+        main_gen.set_handler(1, lambda pos, data: "streams" in data[pos], handle_stream_table)
+        await main_gen.start(resdata, 30.0)
+        await ctx.message.delete()
 
     @commands.command(aliases=["komik", "mango"])
     @commands.guild_only()
+    @commands.bot_has_guild_permissions(
+        manage_messages=True, embed_links=True, read_message_history=True, add_reactions=True,
+    )
     async def manga(self, ctx, *, judul):
         """Mencari informasi manga lewat API anilist.co"""
         self.logger.info(f"searching {judul}")
@@ -897,132 +793,19 @@ class Anilist(commands.Cog):
         if isinstance(aqres, str):
             return await ctx.send(aqres)
 
-        max_page = aqres["data_total"]
         resdata = aqres["result"]
-        self.logger.info(f"total result {max_page}")
+        self.logger.info(f"total result {len(resdata)}")
 
-        first_run = True
-        num = 1
-        while True:
-            if first_run:
-                self.logger.info("showing results...")
-                data = resdata[num - 1]
-                embed = discord.Embed(color=0x19212D)
-
-                embed.set_thumbnail(url=data["poster_img"])
-                embed.set_author(
-                    name=data["title"],
-                    url=data["link"],
-                    icon_url="https://anilist.co/img/icons/apple-touch-icon-152x152.png",
-                )
-                embed.set_footer(text=data["footer"])
-
-                embed.add_field(name="Nama Lain", value=data["title_other"], inline=True)
-                embed.add_field(name="Chapter/Volume", value=data["ch_vol"], inline=True)
-                embed.add_field(name="Status", value=data["status"], inline=True)
-                embed.add_field(name="Skor", value=data["score"], inline=True)
-                embed.add_field(name="Rilis", value=data["start_date"], inline=True)
-                embed.add_field(name="Berakhir", value=data["end_date"], inline=True)
-                embed.add_field(name="Format", value=data["format"], inline=True)
-                embed.add_field(name="Adaptasi", value=data["source_fmt"], inline=True)
-                embed.add_field(name="Sinopsis", value=data["synopsis"], inline=False)
-
-                first_run = False
-                msg = await ctx.send(embed=embed)
-
-            reactmoji = []
-            if max_page == 1 and num == 1:
-                pass
-            elif num == 1:
-                reactmoji.append("⏩")
-            elif num == max_page:
-                reactmoji.append("⏪")
-            elif num > 1 and num < max_page:
-                reactmoji.extend(["⏪", "⏩"])
-            reactmoji.append("✅")
-
-            self.logger.debug("reacting message...")
-            for react in reactmoji:
-                await msg.add_reaction(react)
-
-            def check_react(reaction, user):
-                if reaction.message.id != msg.id:
-                    return False
-                if user != ctx.message.author:
-                    return False
-                if str(reaction.emoji) not in reactmoji:
-                    return False
-                return True
-
-            try:
-                self.logger.debug("now waiting for reaction...")
-                res, user = await self.bot.wait_for("reaction_add", timeout=30.0, check=check_react)
-            except asyncio.TimeoutError:
-                self.logger.warn("timeout, removing reactions...")
-                return await msg.clear_reactions()
-            if user != ctx.message.author:
-                pass
-            elif "⏪" in str(res.emoji):
-                self.logger.debug("going backward...")
-                num = num - 1
-                data = resdata[num - 1]
-
-                embed = discord.Embed(color=0x19212D)
-
-                embed.set_thumbnail(url=data["poster_img"])
-                embed.set_author(
-                    name=data["title"],
-                    url=data["link"],
-                    icon_url="https://anilist.co/img/icons/apple-touch-icon-152x152.png",
-                )
-                embed.set_footer(text=data["footer"])
-
-                embed.add_field(name="Nama Lain", value=data["title_other"], inline=True)
-                embed.add_field(name="Chapter/Volume", value=data["ch_vol"], inline=True)
-                embed.add_field(name="Status", value=data["status"], inline=True)
-                embed.add_field(name="Skor", value=data["score"], inline=True)
-                embed.add_field(name="Rilis", value=data["start_date"], inline=True)
-                embed.add_field(name="Berakhir", value=data["end_date"], inline=True)
-                embed.add_field(name="Format", value=data["format"], inline=True)
-                embed.add_field(name="Adaptasi", value=data["source_fmt"], inline=True)
-                embed.add_field(name="Sinopsis", value=data["synopsis"], inline=False)
-
-                await msg.clear_reactions()
-                await msg.edit(embed=embed)
-            elif "⏩" in str(res.emoji):
-                self.logger.debug("going forward...")
-                num = num + 1
-                data = resdata[num - 1]
-
-                embed = discord.Embed(color=0x19212D)
-
-                embed.set_thumbnail(url=data["poster_img"])
-                embed.set_author(
-                    name=data["title"],
-                    url=data["link"],
-                    icon_url="https://anilist.co/img/icons/apple-touch-icon-152x152.png",
-                )
-                embed.set_footer(text=data["footer"])
-
-                embed.add_field(name="Nama Lain", value=data["title_other"], inline=True)
-                embed.add_field(name="Chapter/Volume", value=data["ch_vol"], inline=True)
-                embed.add_field(name="Status", value=data["status"], inline=True)
-                embed.add_field(name="Skor", value=data["score"], inline=True)
-                embed.add_field(name="Rilis", value=data["start_date"], inline=True)
-                embed.add_field(name="Berakhir", value=data["end_date"], inline=True)
-                embed.add_field(name="Format", value=data["format"], inline=True)
-                embed.add_field(name="Adaptasi", value=data["source_fmt"], inline=True)
-                embed.add_field(name="Sinopsis", value=data["synopsis"], inline=False)
-
-                await msg.clear_reactions()
-                await msg.edit(embed=embed)
-            elif "✅" in str(res.emoji):
-                self.logger.warn("deleting embed...")
-                await ctx.message.delete()
-                return await msg.delete()
+        main_gen = DiscordPaginator(self.bot, ctx)
+        main_gen.set_generator(self._generate_manga_embed)
+        await main_gen.start(resdata, 30.0)
+        await ctx.message.delete()
 
     @commands.command()
     @commands.guild_only()
+    @commands.bot_has_guild_permissions(
+        manage_messages=True, embed_links=True, read_message_history=True, add_reactions=True,
+    )
     async def tayang(self, ctx):
         """Mencari informasi season lewat API anilist.co"""
         self.logger.info("requesting...")
@@ -1045,18 +828,18 @@ class Anilist(commands.Cog):
 
         sisen = aqres["season"]
         amount_final = len(resdata)
+        resdata_keys = list(resdata.keys())
 
-        async def generate_embed(dataset, day_left):
+        async def generate_embed(datasets, position):
+            dataset = datasets[list(datasets.keys())[position]]
             embed = discord.Embed(color=0x19212D)
             embed.set_author(
-                name="Anichart",
-                url="https://anichart.net/",
-                icon_url="https://anichart.net/favicon.ico",
+                name="Anichart", url="https://anichart.net/", icon_url="https://anichart.net/favicon.ico",
             )
             val = ""
             for data in dataset:
                 val += "- {}\n{}\n".format(data["title"], data["remain_txt"])
-            embed.add_field(name=day_left, value=val, inline=False)
+            embed.add_field(name=resdata_keys[position], value=val, inline=False)
             return embed
 
         emote_list = [
@@ -1080,200 +863,44 @@ class Anilist(commands.Cog):
             "🇭",
         ]
 
-        resdata_keys = list(resdata.keys())
+        async def generate_main(_data):
+            embed = discord.Embed(title="Listing Jadwal Tayang - " + sisen, color=0x19212D)
+            embed.set_author(
+                name="Anichart", url="https://anichart.net/", icon_url="https://p.ihateani.me/wtelbjmn.png",
+            )
+            val = ""
+            for n, data in enumerate(resdata.keys()):
+                val += "{em} **{fmt}**\n".format(em=emote_list[n], fmt=data)
+            embed.add_field(name="List Hari", value=val)
+            return embed
 
-        first_run = True
-        melihat_listing = False
-        num = 1
-        while True:
-            if first_run:
-                self.logger.info("showing results...")
-                embed = discord.Embed(title="Listing Jadwal Tayang - " + sisen, color=0x19212D)
-                embed.set_author(
-                    name="Anichart",
-                    url="https://anichart.net/",
-                    icon_url="https://anichart.net/favicon.ico",
-                )
-                val = ""
-                for n, data in enumerate(resdata.keys()):
-                    val += "{em} **{fmt}**\n".format(em=emote_list[n], fmt=data)
-                embed.add_field(name="List Hari", value=val)
+        async def generator_jadwal(datasets, position, message: discord.Message, emote: str):
+            try:
+                emote_pos = emote_list.index(emote)
+            except ValueError:
+                return None, message
+            my_life_in_shambles = partial(generate_embed, position=emote_pos)
+            await message.clear_reactions()
+            custom_gen = DiscordPaginator(self.bot, ctx, [], True)
+            custom_gen.set_generator(my_life_in_shambles)
+            custom_gen.checker()
+            await custom_gen.start([datasets[position]], None, message)
+            return None, message
 
-                first_run = False
-                msg = await ctx.send(embed=embed)
+        main_gen = DiscordPaginator(self.bot, ctx, emote_list[:amount_final], True)
+        main_gen.set_generator(generate_main)
+        for n, _ in enumerate(resdata_keys):
+            main_gen.set_handler(n, lambda x, y: True, generator_jadwal)
+        await main_gen.start([resdata], None, None, True)
+        await ctx.message.delete()
 
-            if melihat_listing:
-                amount_to_use = 0
-            else:
-                amount_to_use = amount_final
-
-            emotes = emote_list[:amount_to_use]
-            emotes.extend("✅")
-
-            for react in emotes:
-                await msg.add_reaction(react)
-
-            def check_react(reaction, user):
-                if reaction.message.id != msg.id:
-                    return False
-                if user != ctx.message.author:
-                    return False
-                if str(reaction.emoji) not in emotes:
-                    return False
-                return True
-
-            res, user = await self.bot.wait_for("reaction_add", check=check_react)
-            if user != ctx.message.author:
-                pass
-            elif "✅" in str(res.emoji):
-                await msg.clear_reactions()
-                if melihat_listing:
-                    embed = discord.Embed(
-                        title="Listing Jadwal Tayang - " + sisen,
-                        color=0x19212D,
-                    )
-                    embed.set_author(
-                        name="Anichart",
-                        url="https://anichart.net/",
-                        icon_url="https://anichart.net/favicon.ico",
-                    )
-                    val = ""
-                    for n, data in enumerate(resdata.keys()):
-                        val += "{em} **{fmt}**\n".format(em=emote_list[n], fmt=data)
-                    embed.add_field(name="List Hari", value=val)
-
-                    melihat_listing = False
-                    await msg.edit(embed=embed)
-                else:
-                    self.logger.warn("deleting embed...")
-                    await msg.delete()
-                    return await ctx.message.delete()
-            elif emote_list[0] in str(res.emoji):
-                await msg.clear_reactions()
-                num = 0
-                self.logger.debug(f"picking no. {num}...")
-                melihat_listing = True
-                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
-                await msg.edit(embed=embed)
-            elif emote_list[1] in str(res.emoji):
-                await msg.clear_reactions()
-                num = 1
-                self.logger.debug(f"picking no. {num}...")
-                melihat_listing = True
-                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
-                await msg.edit(embed=embed)
-            elif emote_list[2] in str(res.emoji):
-                await msg.clear_reactions()
-                num = 2
-                self.logger.debug(f"picking no. {num}...")
-                melihat_listing = True
-                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
-                await msg.edit(embed=embed)
-            elif emote_list[3] in str(res.emoji):
-                await msg.clear_reactions()
-                num = 3
-                self.logger.debug(f"picking no. {num}...")
-                melihat_listing = True
-                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
-                await msg.edit(embed=embed)
-            elif emote_list[4] in str(res.emoji):
-                await msg.clear_reactions()
-                num = 4
-                self.logger.debug(f"picking no. {num}...")
-                melihat_listing = True
-                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
-                await msg.edit(embed=embed)
-            elif emote_list[5] in str(res.emoji):
-                await msg.clear_reactions()
-                num = 5
-                self.logger.debug(f"picking no. {num}...")
-                melihat_listing = True
-                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
-                await msg.edit(embed=embed)
-            elif emote_list[6] in str(res.emoji):
-                await msg.clear_reactions()
-                num = 6
-                self.logger.debug(f"picking no. {num}...")
-                melihat_listing = True
-                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
-                await msg.edit(embed=embed)
-            elif emote_list[7] in str(res.emoji):
-                await msg.clear_reactions()
-                num = 7
-                self.logger.debug(f"picking no. {num}...")
-                melihat_listing = True
-                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
-                await msg.edit(embed=embed)
-            elif emote_list[8] in str(res.emoji):
-                await msg.clear_reactions()
-                num = 8
-                self.logger.debug(f"picking no. {num}...")
-                melihat_listing = True
-                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
-                await msg.edit(embed=embed)
-            elif emote_list[9] in str(res.emoji):
-                await msg.clear_reactions()
-                num = 9
-                self.logger.debug(f"picking no. {num}...")
-                melihat_listing = True
-                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
-                await msg.edit(embed=embed)
-            elif emote_list[10] in str(res.emoji):
-                await msg.clear_reactions()
-                num = 10
-                self.logger.debug(f"picking no. {num}...")
-                melihat_listing = True
-                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
-                await msg.edit(embed=embed)
-            elif emote_list[11] in str(res.emoji):
-                await msg.clear_reactions()
-                num = 11
-                self.logger.debug(f"picking no. {num}...")
-                melihat_listing = True
-                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
-                await msg.edit(embed=embed)
-            elif emote_list[12] in str(res.emoji):
-                await msg.clear_reactions()
-                num = 12
-                self.logger.debug(f"picking no. {num}...")
-                melihat_listing = True
-                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
-                await msg.edit(embed=embed)
-            elif emote_list[13] in str(res.emoji):
-                await msg.clear_reactions()
-                num = 13
-                self.logger.debug(f"picking no. {num}...")
-                melihat_listing = True
-                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
-                await msg.edit(embed=embed)
-            elif emote_list[14] in str(res.emoji):
-                await msg.clear_reactions()
-                num = 14
-                self.logger.debug(f"picking no. {num}...")
-                melihat_listing = True
-                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
-                await msg.edit(embed=embed)
-            elif emote_list[15] in str(res.emoji):
-                await msg.clear_reactions()
-                num = 15
-                self.logger.debug(f"picking no. {num}...")
-                melihat_listing = True
-                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
-                await msg.edit(embed=embed)
-            elif emote_list[16] in str(res.emoji):
-                await msg.clear_reactions()
-                num = 16
-                self.logger.debug(f"picking no. {num}...")
-                melihat_listing = True
-                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
-                await msg.edit(embed=embed)
-            elif emote_list[17] in str(res.emoji):
-                await msg.clear_reactions()
-                num = 17
-                self.logger.debug(f"picking no. {num}...")
-                melihat_listing = True
-                embed = await generate_embed(resdata[resdata_keys[num]], resdata_keys[num])
-                await msg.edit(embed=embed)
-            else:
-                self.logger.warn("clearing reactions...")
-                await msg.clear_reactions()
+    @anime.error
+    @manga.error
+    @tayang.error
+    async def anilist_error(self, ctx, error):
+        if isinstance(error, commands.BotMissingPermissions):
+            self.logger.error("Missing extra permission!")
+            perms = ["Manage Messages", "Embed Links", "Read Message History", "Add Reactions"]
+            await ctx.send("Bot tidak memiliki salah satu dari perms ini:\n" + "\n".join(perms))
+        elif isinstance(error, commands.NoPrivateMessage):
+            await ctx.send("Perintah ini hanya bisa dijalankan di server.")

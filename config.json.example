@@ -1,4 +1,5 @@
 {
+    "bot_id": "",
     "bot_token": "",
     "default_prefix": "!",
     "vndb": {
@@ -9,23 +10,28 @@
         "username": "",
         "password": ""
     },
-	"mongodb": {
-		"ip_hostname": "localhost",
-		"port": 13307,
+    "mongodb": {
+        "ip_hostname": "localhost",
+        "port": 27017,
         "dbname": "naotimesdb",
         "tls": false,
-        "auth": null
-	},
+        "auth": ""
+    },
+    "redisdb": {
+        "ip_hostname": "127.0.0.1",
+        "port": 6379,
+        "password": null
+    },
     "kbbi": {
         "email": "",
-        "password": "",
+        "password": ""
     },
     "fansubdb": {
         "username": "",
         "password": ""
     },
-	"weather_data": {
-		"openweatherapi": "",
-		"opencageapi": ""
-	}
+    "weather_data": {
+        "openweatherapi": "",
+        "opencageapi": ""
+    }
 }

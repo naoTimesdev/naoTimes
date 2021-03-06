@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 import aiohttp
+from nthelper.utils import __version__ as bot_version
 
 
 class AnilistBucket:
@@ -24,12 +25,15 @@ class AnilistBucket:
     async def handle(self, query, variables):
         query_to_send = {"query": query, "variables": variables}
         async with aiohttp.ClientSession(
-            headers={"User-Agent": "naoTimes/2.0.1a (https://github.com/noaione/naoTimes)"}
+            headers={"User-Agent": f"naoTimes/{bot_version} (https://github.com/noaione/naoTimes)"}
         ) as session:
             try:
                 await self._handle_rate_limit()
                 async with session.post(self.BASE_API, json=query_to_send) as resp:
-                    rate_left = resp.headers["x-ratelimit-remaining"]
+                    try:
+                        rate_left = resp.headers["x-ratelimit-remaining"]
+                    except KeyError:
+                        return "Tidak dapat menghubungi Anilist"
                     if isinstance(rate_left, str):
                         rate_left = int(rate_left)
                     self._rate_left = rate_left

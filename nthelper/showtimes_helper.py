@@ -1,7 +1,7 @@
 import asyncio
 import functools
 import logging
-import os
+from nthelper.redis import RedisBridge
 import time
 import traceback
 from copy import deepcopy
@@ -9,8 +9,6 @@ from typing import Union
 
 import motor.motor_asyncio
 import pymongo
-
-from .utils import read_files, write_files
 
 showtimes_log = logging.getLogger("showtimes_helper")
 
@@ -504,8 +502,8 @@ class ShowtimesQueue:
     Use asyncio.Queue and asyncio.Task
     """
 
-    def __init__(self, cwd, loop=None):
-        self.folder_cwd = cwd
+    def __init__(self, redis_client: RedisBridge, loop=None):
+        self._db: RedisBridge = redis_client
 
         self._loop: asyncio.AbstractEventLoop = asyncio.get_event_loop() if loop is None else loop
         self._logger = logging.getLogger("nthelper.showtimes_helper.ShowtimesQueue")
@@ -541,25 +539,23 @@ class ShowtimesQueue:
 
     async def _dumps_data(self, dataset: Union[list, dict], server_id: str):
         self._logger.info(f"dumping db {server_id}")
-        svfn = os.path.join(self.folder_cwd, "showtimes_folder", f"{server_id}.showtimes")
         await self._lock_job()
         try:
-            await write_files(dataset, svfn)
-        except Exception:
+            await self._db.set(f"showtimes_{server_id}", dataset)
+        except Exception as e:
             self._logger.error("Failed to dumps database...")
+            self._logger.error(e)
             pass
         await self._job_done()
 
     async def fetch_database(self, server_id: str):
         self._logger.info(f"opening db {server_id}")
-        svfn = os.path.join(self.folder_cwd, "showtimes_folder", f"{server_id}.showtimes")
-        if not os.path.isfile(svfn):
-            return None
         await self._lock_job()
         try:
-            json_data = await read_files(svfn)
-        except Exception:
+            json_data = await self._db.get(f"showtimes_{server_id}")
+        except Exception as e:
             self._logger.error("Failed to read database...")
+            self._logger.error(e)
             json_data = None
         # self._logger.info("Adding to data part...")
         # self._showdata[server_id] = json_data

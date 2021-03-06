@@ -58,18 +58,14 @@ class CommandArgParse(commands.Converter):
             err_str = err_str.replace("unrecognized arguments", "Argumen tidak diketahui")
         elif err_str.startswith("the following arguments are required"):
             err_str = err_str.replace(
-                "the following arguments are required",
-                "Argumen berikut wajib diberikan",
+                "the following arguments are required", "Argumen berikut wajib diberikan",
             )
         if "usage" in err_str:
             err_str = (
                 err_str.replace("usage", "Gunakan")
                 .replace("positional arguments", "Argumen yang diwajibkan")
                 .replace("optional arguments", "Argumen opsional")
-                .replace(
-                    "show this help message and exit",
-                    "Perlihatkan bantuan perintah",
-                )
+                .replace("show this help message and exit", "Perlihatkan bantuan perintah",)
             )
             err_str = err_str.replace("Gunakan: ! ", "Gunakan: !")
         return err_str

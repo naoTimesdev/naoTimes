@@ -1,6 +1,5 @@
 # Based on kbbi-python 0.4.2
 
-import asyncio
 import re
 from datetime import datetime, timezone
 from urllib.parse import quote
@@ -8,11 +7,17 @@ from urllib.parse import quote
 import aiohttp
 import kbbi
 from bs4 import BeautifulSoup
-from kbbi import BatasSehari, GagalAutentikasi, TerjadiKesalahan, TidakDitemukan  # noqa: F401
+from kbbi import (  # noqa: F401
+    Galat,
+    BatasSehari,
+    GagalAutentikasi,
+    TerjadiKesalahan,
+    TidakDitemukan,
+)
 
-from .utils import sync_wrap
+from .utils import sync_wrap, __version__
 
-__NT_UA__ = "naoTimes/2.0.1a (https://github.com/noaione/naoTimes)"
+__NT_UA__ = f"naoTimes/{__version__} (https://github.com/noaione/naoTimes)"
 
 
 class GagalKoneksi(kbbi.Galat):
@@ -40,12 +45,9 @@ class AutentikasiKBBI:
     async def __ambil_token(self):
         async with self.sesi.get(f"{self.host}/{self.lokasi}") as resp:
             laman = await resp.text()
-        token = re.search(
-            r"<input name=\"__RequestVerificationToken\".*value=\"(.*)\" />",
-            laman,
-        )
+        token = re.search(r"<input name=\"__RequestVerificationToken\".*value=\"(.*)\" />", laman,)
         if not token:
-            raise kbbi.TerjadiKesalahan()
+            raise TerjadiKesalahan()
         return token.group(1)
 
     async def autentikasi(self):
@@ -115,7 +117,7 @@ class KBBI:
                 raise TerjadiKesalahan()
             if req.status == 404:
                 raise TidakDitemukan(self.nama)
-            raise kbbi.Galat(f"Terjadi kesalahan ketika berkomunikasi dengan KBBI, status code: {req.status}")
+            raise Galat(f"Terjadi kesalahan ketika berkomunikasi dengan KBBI, status code: {req.status}")
         await self._cek_autentikasi(laman)
         await self._cek_galat(req, laman)
         await self._init_entri(laman)
@@ -184,12 +186,12 @@ class KBBI:
 
     async def _cek_galat(self, req, laman):
         if "Beranda/Error" in str(req.url):
-            raise kbbi.TerjadiKesalahan()
+            raise TerjadiKesalahan()
         if "Beranda/BatasSehari" in str(req.url):
-            raise kbbi.BatasSehari()
+            raise BatasSehari()
         if "Entri tidak ditemukan." in laman:
             await self._init_saran(laman)
-            raise kbbi.TidakDitemukan(self.nama)
+            raise TidakDitemukan(self.nama)
 
     async def _init_saran(self, laman):
         if "Berikut beberapa saran entri lain yang mirip." not in laman:
@@ -228,16 +230,3 @@ class KBBI:
 
     def __str__(self, contoh=True, terkait=True, fitur_pengguna=True):
         return "\n\n".join(entri.__str__(contoh, terkait, fitur_pengguna) for entri in self.entri)
-
-
-if __name__ == "__main__":
-    import json
-
-    loop = asyncio.get_event_loop()
-
-    kb = KBBI()
-    loop.run_until_complete(kb.cari("khayal"))
-    res = kb.serialisasi()
-    loop.run_until_complete(kb.sesi.close())
-    print(res)
-    print(json.dumps(res, indent=2, ensure_ascii=False))

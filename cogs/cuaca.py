@@ -1,12 +1,12 @@
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Dict, Optional, Any, Tuple, Union
 
 import aiohttp
 import discord
 from discord.ext import commands
-
 from nthelper.bot import naoTimesBot
+from nthelper.utils import __version__ as bot_version
 
 wlogger = logging.getLogger("cogs.cuaca")
 
@@ -20,7 +20,9 @@ async def fetch_geolat(
         "q": location,
         "key": GEOCODE_API,
     }
-    async with aiohttp.ClientSession(headers={"User-Agent": "api.ihateani.me/0.7.3"}) as session:
+    async with aiohttp.ClientSession(
+        headers={"User-Agent": f"naoTimes/{bot_version} (https://github.com/noaione/naoTimes)"}
+    ) as session:
         async with session.get(API_ENDPOINT, params=param) as resp:
             res = await resp.json()
             if res["results"] == []:
@@ -365,11 +367,17 @@ class CuacaDunia(commands.Cog):
             return await ctx.send(
                 "Owner Bot tidak memberikan API Key untuk command cuaca, mohon kontak owner."
             )
-        if "openweatherapi" not in self.bot.botconf and self.bot.botconf["openweatherapi"] == "":
+        if (
+            "openweatherapi" not in self.bot.botconf["weather_data"]
+            and self.bot.botconf["weather_data"]["openweatherapi"] == ""
+        ):
             return await ctx.send(
                 "Owner Bot tidak memberikan API Key OpenWeatherMap untuk command cuaca, mohon kontak owner."
             )
-        if "opencageapi" not in self.bot.botconf and self.bot.botconf["opencageapi"] == "":
+        if (
+            "opencageapi" not in self.bot.botconf["weather_data"]
+            and self.bot.botconf["weather_data"]["opencageapi"] == ""
+        ):
             return await ctx.send(
                 "Owner Bot tidak memberikan API Key OpenCage untuk command cuaca, mohon kontak owner."
             )
