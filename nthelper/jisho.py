@@ -77,9 +77,12 @@ class JishoWord:
         other_readings = []
         for n, jpwords in enumerate(self.__raw.get("japanese", [])):
             if n == 0:
+                real_word = jpwords.get("word")
                 reading = jpwords.get("reading")
                 if reading is not None or not reading:
                     setattr(self, "__reading", reading)
+                    if real_word is None:
+                        setattr(self, "__reading", None)
                     try:
                         setattr(self, "__romaji", to_roma(reading))
                     except Exception:
@@ -88,11 +91,15 @@ class JishoWord:
                     setattr(self, "__reading", None)
                     setattr(self, "__romaji", None)
                 continue
+            word = jpwords.get("word")
             reading = jpwords.get("reading")
             romanization = None
             if reading is not None or not reading:
                 romanization = to_roma(reading)
-            other_readings.append({"word": jpwords["word"], "reading": reading, "romaji": romanization})
+            if word is None and reading is not None:
+                word = reading
+                reading = None
+            other_readings.append({"word": word, "reading": reading, "romaji": romanization})
         setattr(self, "__other_forms", other_readings)
         meanings = []
         for meaning in self.__raw.get("senses", []):
