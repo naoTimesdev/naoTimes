@@ -9,6 +9,7 @@ import discord
 from discord.ext import commands, tasks
 from discord_slash import cog_ext
 from discord_slash import SlashContext
+from discord_slash.utils import manage_commands
 
 from nthelper.bot import naoTimesBot
 from nthelper.utils import DiscordPaginator, write_files
@@ -127,18 +128,19 @@ class KBBICog(commands.Cog):
         self._on_maintenance = False
         self._maintenance_range: List[int] = [None, 0]  # type: ignore
 
-        self.bot.slash.get_cog_commands(self)
-
     def cog_unload(self):
         self.logger.info("Cancelling all tasks...")
         self.daily_check_auth.cancel()
         self.check_maintenance_range.cancel()
-        self.bot.slash.remove_cog_commands(self)
 
     @cog_ext.cog_slash(
         name="kbbi",
         description="Cari definisi kata di KBBI",
-        options=[{"name": "kata", "description": "Kata yang ingin di cari", "type": 3, "required": True}],
+        options=[
+            manage_commands.create_option(
+                name="kata", description="Kata yang ingin di cari", option_type=3, required=True
+            )
+        ],
     )
     async def _kbbi_slash_cmd(self, ctx: SlashContext, kata: str):
         if self._on_maintenance:

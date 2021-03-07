@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 
-import asyncio
 import ctypes
 import json
 import logging
@@ -15,11 +14,11 @@ import discord
 import pysubs2
 from bs4 import BeautifulSoup as BS4
 from discord.ext import commands
-from discord_slash import cog_ext
-from discord_slash import SlashContext
-
-from nthelper.romkan import to_hepburn
+from discord_slash import SlashContext, cog_ext
+from discord_slash.utils import manage_commands
 from nthelper.bot import naoTimesBot
+from nthelper.jisho import JishoWord
+from nthelper.utils import DiscordPaginator
 
 logger = logging.getLogger("cogs.peninjau")
 
@@ -515,53 +514,6 @@ async def persamaankata(cari: str, mode: str = "sinonim") -> Union[List[str], st
         return list(filter(None, result))
     result = tesaurus[0].text.strip().splitlines()[1:]
     return list(filter(None, result))
-    return "Tidak ada hasil."
-
-
-async def fetch_jisho(query: str) -> Union[dict, str]:
-    async with aiohttp.ClientSession() as sesi:
-        try:
-            async with sesi.get("http://jisho.org/api/v1/search/words?keyword={}".format(query)) as r:
-                try:
-                    data = await r.json()
-                except IndexError:
-                    return "ERROR: Terjadi kesalahan internal"
-                if r.status != 200:
-                    if r.status == 404:
-                        return "ERROR: Tidak dapat menemukan kata tersebut"
-                    if r.status == 500:
-                        return "ERROR: Internal Error :/"
-                try:
-                    query_result = data["data"]
-                except IndexError:
-                    return "ERROR: Tidak ada hasil."
-        except aiohttp.ClientError:
-            return "ERROR: Koneksi terputus"
-
-    full_query_results = []
-    for q in query_result:
-        words_ = []
-        for w in q["japanese"]:
-            word = w["word"]
-            reading = w["reading"]
-            hepburn = to_hepburn(reading)
-            words_.append((word, reading, hepburn))
-
-        senses_ = []
-        for s in q["senses"]:
-            try:
-                english_def = s["english_definitions"]
-            except Exception:
-                english_def = "(?)"
-            senses_.append((english_def))
-
-        dataset = {"words": words_, "senses": senses_}
-
-        full_query_results.append(dataset)
-    return {
-        "result": full_query_results,
-        "data_total": len(full_query_results),
-    }
 
 
 async def yahoo_finance(from_, to_):
@@ -653,11 +605,6 @@ class PeninjauWeb(commands.Cog):
 
         self.currency_data = bot.jsdb_currency
         self.crypto_data = bot.jsdb_crypto
-
-        self.bot.slash.get_cog_commands(self)
-
-    def cog_unload(self):
-        self.bot.slash.remove_cog_commands(self)
 
     @commands.command()
     async def anibin(self, ctx, *, query):
@@ -856,9 +803,15 @@ class PeninjauWeb(commands.Cog):
         name="kurs",
         description="Konversi mata uang dari satu mata uang ke yang lain",
         options=[
-            {"name": "dari", "description": "Mata uang awal", "type": 3, "required": True},
-            {"name": "ke", "description": "Mata uang tujuan", "type": 3, "required": True},
-            {"name": "jumlah", "description": "Jumlah yang ingin diubah", "type": 3, "required": False},
+            manage_commands.create_option(
+                name="dari", description="Mata uang awal", option_type=3, required=True
+            ),
+            manage_commands.create_option(
+                name="ke", description="Mata uang tujuan", option_type=3, required=True
+            ),
+            manage_commands.create_option(
+                name="jumlah", description="Jumlah yang ingin diubah", option_type=3, required=False
+            ),
         ],
     )
     async def _kurs_slash_cmd(self, ctx: SlashContext, dari: str, ke: str, jumlah=None):
@@ -926,109 +879,118 @@ class PeninjauWeb(commands.Cog):
         embed.add_field(name=q_, value=result, inline=False)
         await ctx.send(embed=embed)
 
-    @commands.command(aliases=["kanji"])
-    async def jisho(self, ctx, *, q_):
-        if not isinstance(q_, str):
-            q_ = " ".join(q_)
-        if True:
-            return await ctx.send("Perintah dinon-aktifkan.")
+    async def _generate_jisho_embed(self, result: JishoWord) -> discord.Embed:
+        entri = result.to_dict()
+        embed = discord.Embed(color=0x41A51D)
+        entri_nama = entri["word"]
+        pranala = f"https://jisho.org/search/{entri_nama}%20%23kanji"
+        if entri["numbering"] > 0:
+            entri_nama += f" [{entri['numbering'] + 1}]"
+        embed.set_author(
+            name=entri["word"],
+            url=pranala,
+            icon_url="https://assets.jisho.org/assets/touch-icon-017b99ca4bfd11363a97f66cc4c00b1667613a05e38d08d858aa5e2a35dce055.png",  # noqa: E501
+        )
 
-        self.logger.info(f"searching: {q_}")
+        deskripsi = ""
+        if entri["reading"]:
+            kana = entri["reading"].get("kana", None)
+            romaji = entri["reading"].get("romaji", "-")
+            if kana:
+                deskripsi += f"**Pelafalan**: {kana} [Romaji: {romaji}]\n"
+        if entri["other_forms"]:
+            parsed_forms = []
+            for other in entri["other_forms"]:
+                build_text = ""
+                build_text += other.get("word") + " "
+                reading = other.get("reading", None)
+                romaji = other.get("romaji", None)
+                if isinstance(reading, str):
+                    build_text += f"({reading}) "
+                if isinstance(romaji, str):
+                    build_text += f"[{romaji}] "
+                parsed_forms.append(build_text.rstrip(" "))
+            if parsed_forms:
+                deskripsi += "**Bentuk lain**: " + "; ".join(parsed_forms) + "\n"
 
-        jqres = await fetch_jisho(q_)
-        if isinstance(jqres, str):
-            self.logger.warn("no results.")
-            return await ctx.send(jqres)
+        deskripsi += "\n"
 
-        dataset_total = jqres["data_total"]
-        dataset = jqres["result"]
+        arti_data = []
+        for n, meaning in enumerate(entri["definitions"], 1):
+            build_txt = ""
+            parts = " ".join(meaning.get("part", []))
+            build_txt += f"**{n}**. "
+            if parts:
+                build_txt += f"*{parts}* "
+            build_txt += meaning.get("definition", "Tidak ada definisi")
+            extra_info = meaning.get("extra_info", "")
+            suggestion = meaning.get("suggestion", "")
+            tags = meaning.get("tags", "")
+            if extra_info:
+                build_txt += f"\n  {extra_info}"
+            if tags:
+                build_txt += f"\n  {tags}"
+            if suggestion:
+                build_txt += f"\n  Lihat juga: {suggestion}"
+            arti_data.append(build_txt)
+        if len(arti_data) > 0:
+            deskripsi += "**Makna/Arti**\n" + "\n".join(arti_data) + "\n"
+        else:
+            deskripsi += "**Makna/Arti**\n*Tidak ada makna/arti*\n"
 
-        first_run = True
-        pos = 1
-        while True:
-            if first_run:
-                data = dataset[pos - 1]
-                embed = discord.Embed(color=0x81E28D)
-                embed.set_author(
-                    name="Jisho: " + q_,
-                    url="https://jisho.org/search/%s" % q_,
-                    icon_url="https://ihateani.me/o/jishoico.png",
-                )
+        deskripsi += "\n"
 
-                for i in data["words"]:
-                    format_value = "**Cara baca**: {}\n**Hepburn**: {}".format(i[1], i[2])
-                    embed.add_field(name=i[0], value=format_value, inline=False)
+        terdapat_di = entri["appearances"]
+        jlpt_level = terdapat_di.get("jlpt", None)
+        wanikani_level = terdapat_di.get("wanikani", None)
 
-                eng_ = [i[0] if i[0] is not None else "(?)" for i in data["senses"]]
-                embed.add_field(name="Definisi", value="\n".join(eng_), inline=True)
+        terdapat_di_data = []
+        if isinstance(jlpt_level, str) and jlpt_level:
+            terdapat_di_data.append("- " + jlpt_level)
+        if isinstance(wanikani_level, str) and wanikani_level:
+            terdapat_di_data.append("- " + wanikani_level)
 
-                first_run = False
-                msg = await ctx.send(embed=embed)
+        if terdapat_di_data:
+            deskripsi += "**Terdapat di**:\n"
+            deskripsi += "\n".join(terdapat_di_data)
 
-            reactmoji = []
-            if dataset_total < 2:
-                break
-            if pos == 1:
-                reactmoji = ["⏩"]
-            elif dataset_total == pos:
-                reactmoji = ["⏪"]
-            elif pos > 1 and pos < dataset_total:
-                reactmoji = ["⏪", "⏩"]
+        deskripsi = deskripsi.rstrip()
+        embed.description = deskripsi
+        embed.set_footer(text="Menggunakan Jisho + Romkan dan data JMDict")
 
-            for react in reactmoji:
-                await msg.add_reaction(react)
+        return embed
 
-            def check_react(reaction, user):
-                if reaction.message.id != msg.id:
-                    return False
-                if user != ctx.message.author:
-                    return False
-                if str(reaction.emoji) not in reactmoji:
-                    return False
-                return True
+    @commands.command(name="jisho", aliases=["kanji"])
+    async def _jisho_cmd_main(self, ctx, *, keyword):
+        self.logger.info(f"searching: {keyword}")
 
-            try:
-                res, user = await self.bot.wait_for("reaction_add", timeout=20.0, check=check_react)
-            except asyncio.TimeoutError:
-                return await msg.clear_reactions()
-            if user != ctx.message.author:
-                pass
-            elif "⏪" in str(res.emoji):
-                await msg.clear_reactions()
-                pos -= 1
-                data = dataset[pos - 1]
-                embed = discord.Embed(color=0x81E28D)
-                embed.set_author(
-                    name="Jisho: " + q_,
-                    url="https://jisho.org/search/%s" % q_,
-                    icon_url="https://ihateani.me/o/jishoico.png",
-                )
+        jisho_results, error_msg = await self.bot.jisho.search(keyword)
+        if len(jisho_results) < 1:
+            return await ctx.send(error_msg)
 
-                for i in data["words"]:
-                    format_value = "**Cara baca**: {}\n**Hepburn**: {}".format(i[1], i[2])
-                    embed.add_field(name=i[0], value=format_value, inline=False)
+        main_gen = DiscordPaginator(self.bot, ctx)
+        main_gen.checker()
+        main_gen.set_generator(self._generate_jisho_embed)
+        await main_gen.start(jisho_results, 25.0)
 
-                eng_ = [i[0] if i[0] is not None else "(?)" for i in data["senses"]]
-                embed.add_field(name="Definisi", value="\n".join(eng_), inline=True)
-                await msg.edit(embed=embed)
-            elif "⏩" in str(res.emoji):
-                await msg.clear_reactions()
-                pos += 1
-                data = dataset[pos - 1]
-                embed = discord.Embed(color=0x81E28D)
-                embed.set_author(
-                    name="Jisho: " + q_,
-                    url="https://jisho.org/search/%s" % q_,
-                    icon_url="https://ihateani.me/o/jishoico.png",
-                )
+    @cog_ext.cog_slash(
+        name="jisho",
+        description="Melihat informasi atau arti sebuah kata/kanji di Jisho",
+        options=[
+            manage_commands.create_option(
+                name="kata", description="Huruf atau kalimat yang ingin dilihat", option_type=3, required=True
+            ),
+        ],
+    )
+    async def _jisho_cmd_slash(self, ctx: SlashContext, kata: str):
+        self.logger.info(f"searching: {kata}")
 
-                for i in data["words"]:
-                    format_value = "**Cara baca**: {}\n**Hepburn**: {}".format(i[1], i[2])
-                    embed.add_field(name=i[0], value=format_value, inline=False)
+        jisho_results, error_msg = await self.bot.jisho.search(kata)
+        if len(jisho_results) < 1:
+            return await ctx.send(content=error_msg)
 
-                eng_ = [i[0] if i[0] is not None else "(?)" for i in data["senses"]]
-                embed.add_field(name="Definisi", value="\n".join(eng_), inline=True)
-                await msg.edit(embed=embed)
+        parsed_embeds = [await self._generate_jisho_embed(result) for result in jisho_results[:5]]
+        await ctx.send(embeds=parsed_embeds)
 
 
 def setup(bot):
