@@ -3,7 +3,7 @@ import logging
 import os
 import platform
 import traceback
-from typing import Dict, List, Union, Tuple
+from typing import Dict, List, Tuple, Union
 
 import aiohttp
 import discord
@@ -13,10 +13,11 @@ from discord_slash import SlashCommand
 
 from .anibucket import AnilistBucket
 from .fsdb import FansubDBBridge
+from .jisho import JishoAPI
 from .kbbiasync import KBBI
+from .redis import RedisBridge
 from .showtimes_helper import ShowtimesQueue, naoTimesDB
 from .utils import __version__
-from .redis import RedisBridge
 from .vndbsocket import VNDBSockIOManager
 
 discord_semver = tuple([int(ver) for ver in discord.__version__.split(".")])
@@ -97,6 +98,7 @@ class naoTimesBot(commands.Bot):
         self.vndb_socket: VNDBSockIOManager = None
         self.kbbi: KBBI = None
         self.redisdb: RedisBridge = None
+        self.jisho: JishoAPI = None
 
         self.showtimes_resync: list = []
         self.copy_of_commands: Dict[str, commands.Command] = {}

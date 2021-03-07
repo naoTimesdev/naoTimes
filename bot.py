@@ -22,6 +22,7 @@ from discord_slash import SlashCommand
 from nthelper.anibucket import AnilistBucket
 from nthelper.bot import naoTimesBot
 from nthelper.fsdb import FansubDBBridge
+from nthelper.jisho import JishoAPI
 from nthelper.kbbiasync import KBBI, AutentikasiKBBI
 from nthelper.redis import RedisBridge
 from nthelper.showtimes_helper import ShowtimesQueue, naoTimesDB
@@ -260,6 +261,8 @@ async def init_bot(loop) -> naoTimesBot:
         bot.fcwd = cwd
         bot.logger.info("Binding KBBI Connection...")
         bot.kbbi = kbbi_conn
+        bot.logger.info("Binding Jisho Connection...")
+        bot.jisho = JishoAPI()
         if use_fsdb:
             bot.logger.info("Binding FansubDB...")
             bot.fsdb = fsdb_bridge
@@ -274,7 +277,7 @@ async def init_bot(loop) -> naoTimesBot:
         bot.redisdb = redis_conn
         bot.logger.info("Success Loading Discord.py")
         bot.logger.info("Binding interactions...")
-        bot.slash = SlashCommand(bot, override_type=True)
+        SlashCommand(bot, sync_commands=True, override_type=True)
     except Exception as exc:
         bot.logger.error("Failed to load Discord.py")
         announce_error(exc)
@@ -406,7 +409,8 @@ async def on_ready():
     bot_hostdata = bot.get_hostdata
     bot.logger.info("[#][@][!] All cogs/extensions loaded.")
     bot.logger.info("Preparing command registration")
-    await bot.slash.register_all_commands()
+    await bot.slash.sync_all_commands()
+    # await bot.slash.register_all_commands()
     bot.logger.info("---------------------------------------------------------------")
     bot.logger.info("Bot Ready!")
     bot.logger.info("Using Python {}".format(sys.version))
@@ -1271,14 +1275,18 @@ async def run_bot(*args, **kwargs):
 
 def stop_stuff_on_completion(_):
     bot.logger.info("Closing queue loop.")
-    async_loop.run_until_complete(bot.showqueue.shutdown())
+    if hasattr(bot, "showqueue") and bot.showqueue is not None:
+        async_loop.run_until_complete(bot.showqueue.shutdown())
     bot.logger.info("Shutting down fsdb connection...")
-    async_loop.run_until_complete(bot.fsdb.close())
+    if hasattr(bot, "fsdb") and bot.fsdb is not None:
+        async_loop.run_until_complete(bot.fsdb.close())
     bot.logger.info("Shutting down KBBI and VNDB connection...")
-    async_loop.run_until_complete(bot.kbbi.tutup())
-    async_loop.run_until_complete(bot.vndb_socket.close())
-    bot.logger.info("Removing all slash commands")
-    async_loop.run_until_complete(bot.remove_slash_commands([]))
+    if hasattr(bot, "kbbi") and bot.kbbi is not None:
+        async_loop.run_until_complete(bot.kbbi.tutup())
+    if hasattr(bot, "vndb_socket") and bot.vndb_socket is not None:
+        async_loop.run_until_complete(bot.vndb_socket.close())
+    if hasattr(bot, "jisho") and bot.jisho is not None:
+        async_loop.run_until_complete(bot.jisho.close())
     bot.logger.info("Closing Redis Connection...")
     async_loop.run_until_complete(bot.redisdb.close())
     garbage_collector.stop()

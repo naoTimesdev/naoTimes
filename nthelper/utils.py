@@ -38,6 +38,39 @@ def sync_wrap(func):
     return run
 
 
+# Markdown helper
+def bold(data: str, italic: bool = False) -> str:
+    if italic:
+        return "***" + data + "***"
+    return "**" + data + "**"
+
+
+def italic(data: str) -> str:
+    return "*" + data + "*"
+
+
+def underline(data: str) -> str:
+    return "__" + data + "__"
+
+
+def linkify(url, title: str = None) -> str:
+    t = url
+    if isinstance(title, str):
+        t = title
+    return f"[{t}]({url})"
+
+
+def quote(data: str, triple: bool = False, code: str = None) -> str:
+    if triple:
+        if code:
+            return f"```{code}\n{data}\n```"
+        return f"```\n{data}\n```"
+    return f"`{data}`"
+
+
+quoteblock = functools.partial(quote, triple=True)
+
+
 def get_server() -> str:
     """Generate a server information.
 
