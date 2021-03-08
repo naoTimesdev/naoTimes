@@ -3,11 +3,10 @@ import logging
 
 import aiohttp
 import discord
+import magic
 from discord.ext import commands
 
 from nthelper.bot import naoTimesBot
-
-import magic
 
 SAUCE_QUERY_PARAMS = r"""query ($url:String!) {
     sauce {

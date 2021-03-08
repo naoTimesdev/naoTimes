@@ -7,15 +7,9 @@ from urllib.parse import quote
 import aiohttp
 import kbbi
 from bs4 import BeautifulSoup
-from kbbi import (  # noqa: F401
-    Galat,
-    BatasSehari,
-    GagalAutentikasi,
-    TerjadiKesalahan,
-    TidakDitemukan,
-)
+from kbbi import BatasSehari, GagalAutentikasi, Galat, TerjadiKesalahan, TidakDitemukan  # noqa: F401
 
-from .utils import sync_wrap, __version__
+from .utils import __version__, sync_wrap
 
 __NT_UA__ = f"naoTimes/{__version__} (https://github.com/noaione/naoTimes)"
 
@@ -88,6 +82,7 @@ class KBBI:
         """
         self._bs4 = sync_wrap(BeautifulSoup)
 
+        self.nama = ""
         self.entri = []
         self.saran_entri = []
         self.terautentikasi = False
@@ -95,6 +90,7 @@ class KBBI:
 
         self._username = ""
         self._password = ""
+        self.lokasi = ""
         self._expiry = 0
         self._cookies = asp_cookies
 

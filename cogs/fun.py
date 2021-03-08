@@ -1,5 +1,4 @@
 import logging
-from nthelper.utils import StealedEmote
 import random
 import re
 from datetime import datetime
@@ -8,7 +7,9 @@ from typing import List, Union
 import discord
 import numpy as np
 from discord.ext import commands
+
 from nthelper.bot import naoTimesBot
+from nthelper.utils import StealedEmote
 
 logger = logging.getLogger("cogs.fun")
 
@@ -194,7 +195,7 @@ class Fun(commands.Cog):
 
         if isinstance(user, discord.Member):
             role = user.top_role.name
-            if role == "@everyone" or role == "semuanya":
+            if role in ["@everyone", "semuanya"]:
                 role = "N/A"
 
         try:
@@ -427,9 +428,8 @@ class Fun(commands.Cog):
         user_data.append(f"🤖 **{len(bot_accounts)}** Bot")
         embed.description = "\n".join(description)
         embed.set_thumbnail(url=guilds_data.icon_url)
-        if "INVITE_SPLASH" in server_features:
-            if guilds_data.splash:
-                embed.set_image(url=guilds_data.splash_url)
+        if "INVITE_SPLASH" in server_features and guilds_data.splash:
+            embed.set_image(url=guilds_data.splash_url)
         embed.add_field(name=f"Member [{len(server_members)}]", value="\n".join(user_data), inline=False)
         embed.add_field(name=f"Kanal [{total_channels}]", value="\n".join(channels_data), inline=False)
         embed.add_field(

@@ -4,9 +4,10 @@
 
 from __future__ import unicode_literals
 
+import re
+
 __version__ = "0.2.1"
 
-import re
 
 try:
     from functools import cmp_to_key

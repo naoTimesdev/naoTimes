@@ -1,10 +1,11 @@
 import logging
 from datetime import datetime, timezone
-from typing import Dict, Optional, Any, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import aiohttp
 import discord
 from discord.ext import commands
+
 from nthelper.bot import naoTimesBot
 from nthelper.utils import __version__ as bot_version
 
@@ -386,7 +387,7 @@ class CuacaDunia(commands.Cog):
             self.logger.error(hasil_cuaca)
             return await ctx.send(hasil_cuaca)
         if hasil_cuaca == {}:
-            self.logger.warn("no results")
+            self.logger.warning("no results")
             return await ctx.send("Tidak dapat menemukan lokasi tersebut.")
 
         self.logger.info(f"{lokasi}: Processing cuaca results...")

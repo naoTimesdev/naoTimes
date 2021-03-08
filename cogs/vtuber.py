@@ -1,11 +1,12 @@
 import functools as ft
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List
 
 import discord
 from aiographql.client import GraphQLClient, GraphQLRequest
 from discord.ext import commands
+
 from nthelper.bot import naoTimesBot
 from nthelper.cmd_args import Arguments, CommandArgParse
 from nthelper.utils import DiscordPaginator, HelpGenerator
@@ -406,12 +407,12 @@ class VTuberAPI(commands.Cog):
                 pub_at_dt = datetime.strptime(dataset["publishedAt"], "%Y-%m-%dT%H:%M:%S.%fZ").replace(
                     tzinfo=timezone.utc
                 )
-            except Exception:
+            except ValueError:
                 try:
                     pub_at_dt = datetime.strptime(dataset["publishedAt"], "%Y-%m-%dT%H:%M:%SZ").replace(
                         tzinfo=timezone.utc
                     )
-                except Exception:
+                except ValueError:
                     pub_at_dt = None
             if pub_at_dt is not None:
                 pub_at = pub_at_dt.astimezone(tz=self.__WIB_TZ).strftime("%a, %d %b %Y %H:%M:%S WIB")

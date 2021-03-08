@@ -2,17 +2,17 @@
 
 import logging
 
+from nthelper.bot import naoTimesBot
+
 from .showtimes_module import (
-    ShowtimesUser,
-    ShowtimesStaff,
     ShowtimesAlias,
-    ShowtimesKolaborasi,
     ShowtimesData,
     ShowtimesFansubDB,
+    ShowtimesKolaborasi,
     ShowtimesOwner,
+    ShowtimesStaff,
+    ShowtimesUser,
 )
-
-from nthelper.bot import naoTimesBot
 
 showlogger = logging.getLogger("cogs.showtimes")
 
@@ -37,7 +37,7 @@ def setup(bot: naoTimesBot):
             ShowTCLoad = ShowTC(bot)
             showlogger.info(f"\tLoading {str(ShowTCLoad)} subcogs...")
             bot.add_cog(ShowTCLoad)
-        except Exception as ex:
+        except Exception as ex:  # skipcq: PYL-W0703
             showlogger.error(f"\tFailed to load {str(ShowTCLoad)} subcogs.")
             bot.echo_error(ex)
 
@@ -52,6 +52,6 @@ def teardown(bot: naoTimesBot):
             ShowTCLoad = ShowTC(bot)
             showlogger.info(f"\tUnloading {str(ShowTCLoad)} subcogs...")
             bot.remove_cog(ShowTCLoad.qualified_name)
-        except Exception as ex:
+        except Exception as ex:  # skipcq: PYL-W0703
             showlogger.error(f"\tFailed to load {str(ShowTCLoad)} subcogs.")
             bot.echo_error(ex)

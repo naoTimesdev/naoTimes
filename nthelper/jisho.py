@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+from json.decoder import JSONDecodeError
 from typing import List, Tuple, Union
 
 import aiohttp
@@ -53,7 +54,7 @@ class JishoWord:
                     numbering = int(numbering)
                 else:
                     numbering = -1
-            except Exception:
+            except (ValueError, IndexError):
                 numbering = -1
         else:
             word = parsed_slug[0]
@@ -85,7 +86,7 @@ class JishoWord:
                         setattr(self, "__reading", None)
                     try:
                         setattr(self, "__romaji", to_roma(reading))
-                    except Exception:
+                    except Exception:  # skipcq: PYL-W0703
                         setattr(self, "__romaji", None)
                 else:
                     setattr(self, "__reading", None)
@@ -131,10 +132,10 @@ class JishoWord:
         setattr(self, "__success", True)
         try:
             delattr(self, "_JishoWord__raw")
-        except Exception:
+        except AttributeError:
             try:
                 delattr(self, "__raw")
-            except Exception:
+            except AttributeError:
                 pass
 
     @property
@@ -154,7 +155,7 @@ class JishoWord:
         """
         build_text = ""
         numbering = getattr(self, "__numbering", -1)
-        build_text += getattr(self, "__word") + " "
+        build_text += getattr(self, "__word", "????") + " "
         if numbering > 0:
             build_text += f"<{numbering}> "
         reading = getattr(self, "__reading", None)
@@ -227,7 +228,7 @@ class JishoWord:
         :return: A dict data of the parsed data.
         :rtype: dict
         """
-        word = getattr(self, "__word")
+        word = getattr(self, "__word", "????")
         numbering = getattr(self, "__numbering", -1)
         reading = getattr(self, "__reading", None)
         romaji = getattr(self, "__romaji", None)
@@ -313,7 +314,7 @@ class JishoAPI:
             if resp.status != 200:
                 if resp.status == 404:
                     return [], "Tidak ada hasil."
-                self._logger.warn(f"error, status code: {resp.status}")
+                self._logger.warning(f"error, status code: {resp.status}")
                 self._on_request.remove(uniq_id)
                 return (
                     [],
@@ -321,8 +322,8 @@ class JishoAPI:
                 )
             try:
                 raw_dict: dict = await resp.json()
-            except Exception:
-                self._logger.warn("Failed to parse fetch result.")
+            except (JSONDecodeError, ValueError):
+                self._logger.warning("Failed to parse fetch result.")
                 self._on_request.remove(uniq_id)
                 return [], "Gagal memparsing data dari API."
             results = raw_dict.get("data", [])

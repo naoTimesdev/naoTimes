@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 
 import logging
+from datetime import datetime, timezone
 from functools import partial
 from typing import List, Union
 
 import aiohttp
 import discord
 import discord.ext.commands as commands
-from datetime import datetime, timezone
 
 from nthelper.bot import naoTimesBot
 from nthelper.utils import DiscordPaginator, HelpGenerator

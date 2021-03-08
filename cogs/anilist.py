@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
 
-from functools import partial
 import logging
-from nthelper.utils import DiscordPaginator
 import time
 from copy import deepcopy
 from datetime import datetime, timedelta
+from functools import partial
 from math import ceil
 
 import aiohttp
@@ -14,6 +13,7 @@ import discord.ext.commands as commands
 from bs4 import BeautifulSoup
 
 from nthelper.bot import naoTimesBot
+from nthelper.utils import DiscordPaginator
 
 anilog = logging.getLogger("cogs.anilist")
 
@@ -379,13 +379,11 @@ async def parse_anilist_results(results, method, streams_list={}):
             vol = entry["volumes"]
             ch = entry["chapters"]
             ch_vol = "{c} chapterXXC/{v} volumeXXV".format(c=ch, v=vol).replace("None", "??")
-            if ch:
-                if ch > 1:
-                    ch_vol = ch_vol.replace("XXC", "s")
+            if ch and ch > 1:
+                ch_vol = ch_vol.replace("XXC", "s")
             ch_vol = ch_vol.replace("XXC", "")
-            if vol:
-                if vol > 1:
-                    ch_vol = ch_vol.replace("XXV", "s")
+            if vol and vol > 1:
+                ch_vol = ch_vol.replace("XXV", "s")
             ch_vol = ch_vol.replace("XXV", "")
             dataset["ch_vol"] = ch_vol
         if method == "anime":
@@ -615,8 +613,6 @@ async def fetch_anichart():
             day_dataset.append(q)
             filtered_full_fetched_query[day] = day_dataset
 
-    del full_fetched_query
-
     sorted_full_fetched_query = {}
     for sss in sorted(list(filtered_full_fetched_query.keys())):
         if sss.startswith("0"):
@@ -629,16 +625,12 @@ async def fetch_anichart():
             na = "<24 jam lagi"
         sorted_full_fetched_query[na] = filtered_full_fetched_query[sss]
 
-    del filtered_full_fetched_query
-
     sorted_time_full_fetched_query = {}
     for sss in list(sorted_full_fetched_query.keys()):
         dk = sorted_full_fetched_query[sss]
         if sss != "Lain-Lain":
             dk.sort(key=lambda x: x["remain"])
         sorted_time_full_fetched_query[sss] = dk
-
-    del sorted_full_fetched_query
 
     anilog.info("Done!")
     return {
@@ -655,7 +647,8 @@ class Anilist(commands.Cog):
 
         self.anibucket = bot.anibucket
 
-    def _generate_anime_embed(self, data: dict) -> discord.Embed:
+    @staticmethod
+    def _generate_anime_embed(data: dict) -> discord.Embed:
         embed = discord.Embed(color=0x19212D)
 
         embed.set_thumbnail(url=data["poster_img"])
@@ -675,7 +668,8 @@ class Anilist(commands.Cog):
         embed.add_field(name="Sinopsis", value=data["synopsis"], inline=False)
         return embed
 
-    def _generate_manga_embed(self, data: dict) -> discord.Embed:
+    @staticmethod
+    def _generate_manga_embed(data: dict) -> discord.Embed:
         embed = discord.Embed(color=0x19212D)
 
         embed.set_thumbnail(url=data["poster_img"])
@@ -695,7 +689,8 @@ class Anilist(commands.Cog):
         embed.add_field(name="Sinopsis", value=data["synopsis"], inline=False)
         return embed
 
-    def _generate_stream_set(self, data: dict) -> discord.Embed:
+    @staticmethod
+    def _generate_stream_set(data: dict) -> discord.Embed:
         text_data = "**Legal Streams**:\n"
         for k, v in data["streams"].items():
             if not isinstance(v, str):
@@ -724,7 +719,8 @@ class Anilist(commands.Cog):
         embed.set_footer(text=data["footer"])
         return embed
 
-    def _generate_next_episode(self, data: dict) -> discord.Embed:
+    @staticmethod
+    def _generate_next_episode(data: dict) -> discord.Embed:
         ep_txt = "Episode " + str(data["next_episode"])
         embed = discord.Embed(color=0x19212D)
         embed.set_author(

@@ -1,12 +1,13 @@
 import asyncio
 import logging
-from nthelper.redis import RedisBridge
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Union
 
 import aiohttp
 import discord
+
+from nthelper.redis import RedisBridge
 
 showlog = logging.getLogger("cogs.showtimes_module.base")
 
@@ -260,23 +261,21 @@ async def fetch_anilist(
 
     if isinstance(current_ep, str):
         current_ep = int(current_ep)
-    if total_episode is not None:
-        if isinstance(total_episode, str):
-            total_episode = int(total_episode)
+    if total_episode is not None and isinstance(total_episode, str):
+        total_episode = int(total_episode)
 
     airing_time_nodes = entry["airingSchedule"]["nodes"]
     show_format = entry["format"].lower()
     airing_time, episode_number = get_episode_airing(airing_time_nodes, current_ep)  # type: ignore
     if not airing_time:
         airing_time = start_timestamp
-    if show_format in ["tv", "tv_short"]:
-        if episode_number != current_ep:
-            if current_ep > episode_number:
-                for _ in range(current_ep - episode_number):
-                    airing_time += 7 * 24 * 3600
-            elif episode_number > current_ep:
-                for _ in range(episode_number - current_ep):
-                    airing_time -= 7 * 24 * 3600
+    if show_format in ["tv", "tv_short"] and episode_number != current_ep:
+        if current_ep > episode_number:
+            for _ in range(current_ep - episode_number):
+                airing_time += 7 * 24 * 3600
+        elif episode_number > current_ep:
+            for _ in range(episode_number - current_ep):
+                airing_time -= 7 * 24 * 3600
 
     try:
         episodes = entry["episodes"]
@@ -337,8 +336,7 @@ def get_last_updated(oldtime: int) -> str:
         text = "{} bulan yang lalu".format(round(days_passed_by / 30))
     else:
         calculate_year = round(days_passed_by / 365)
-        if calculate_year < 1:
-            calculate_year = 1
+        calculate_year = max(calculate_year, 1)
         text = "{} bulan yang lalu".format(calculate_year)
 
     return text
@@ -373,12 +371,9 @@ class ShowtimesBase:
     async def fetch_super_admins(self, redisdb: RedisBridge):
         self.logger.info("dumping data...")
         await self.__acquire_lock()
-        try:
-            json_data = await redisdb.get("showtimesadmin")
-            if json_data is None:
-                return []
-        except Exception:
-            json_data = []
+        json_data = await redisdb.get("showtimesadmin")
+        if json_data is None:
+            return []
         await self.__release_lock()
         return json_data
 
@@ -392,22 +387,16 @@ class ShowtimesBase:
         """
         self.logger.info(f"opening db {server_id}")
         await self.__acquire_lock()
-        try:
-            json_data = await redisdb.get(f"showtimes_{server_id}")
-            if json_data is None:
-                return {}
-        except Exception:
-            json_data = None
+        json_data = await redisdb.get(f"showtimes_{server_id}")
+        if json_data is None:
+            return {}
         await self.__release_lock()
         return json_data
 
     async def dumps_super_admins(self, dataset: list, redisdb: RedisBridge):
         self.logger.info("dumping data...")
         await self.__acquire_lock()
-        try:
-            await redisdb.set("showtimesadmin", dataset)
-        except Exception:
-            self.logger.info("error occured when trying to write files.")
+        await redisdb.set("showtimesadmin", dataset)
         await self.__release_lock()
 
     async def dumps_showtimes(self, dataset: dict, server_id: str, redisdb: RedisBridge):
@@ -420,10 +409,7 @@ class ShowtimesBase:
         """
         self.logger.info(f"dumping db {server_id}")
         await self.__acquire_lock()
-        try:
-            await redisdb.set(f"showtimes_{server_id}", dataset)
-        except Exception:
-            self.logger.info("error occured when trying to write files.")
+        await redisdb.set(f"showtimes_{server_id}", dataset)
         await self.__release_lock()
 
     async def choose_anime(self, bot, ctx, matches: list):
@@ -637,7 +623,7 @@ class ShowtimesBase:
             "check": "qc",
         }
         posisi = posisi.lower()
-        picked_roles = posisi_kw.get(posisi, None)
+        picked_roles = posisi_kw.get(posisi)
         if picked_roles is not None:
             picked_roles = picked_roles.upper()
         return picked_roles, posisi

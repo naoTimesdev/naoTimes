@@ -1,10 +1,13 @@
 import logging
+from datetime import datetime, timezone
 
 import aiohttp
 import discord
 from discord.ext import commands
-from nthelper.utils import DiscordPaginator, __version__ as bot_version
+
 from nthelper.cmd_args import Arguments, CommandArgParse
+from nthelper.utils import DiscordPaginator
+from nthelper.utils import __version__ as bot_version
 
 logger = logging.getLogger("cogs.games")
 
@@ -48,7 +51,7 @@ async def requests(methods, url, **kwargs):
             "PATCH": sesi.patch,
             "DELETE": sesi.delete,
         }
-        request = methods_set.get(methods.upper(), None)
+        request = methods_set.get(methods.upper())
         if request is None:
             return None, "Unknown request methods"
         async with request(url, **kwargs) as resp:
@@ -62,9 +65,124 @@ async def requests(methods, url, **kwargs):
 
 
 async def fetch_steam_status():
-    res, msg = await requests("get", "https://crowbar.steamstat.us/gravity.json")
-    if res is None:
-        return res, None
+    logger.info("fetching steam status...")
+    async with aiohttp.ClientSession(
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.82 Safari/537.36",  # noqa: E501
+            "Origin": "https://steamstat.us",
+            "Referer": "https://steamstat.us/",
+        }
+    ) as sesi:
+        async with sesi.get("https://crowbar.steamstat.us/gravity.json") as resp:
+            if resp.status != 200:
+                logger.error(f"Cannot contact SteamStat.us, got error code: {resp.status}")
+                return "Tidak dapat menghubungi SteamStat.us"
+            try:
+                res = await resp.json()
+            except ValueError:
+                logger.error("Failed to decode JSON data from SteamStat.us")
+                return "Gagal mendapatkan status dari SteamStat.us"
+
+    logger.info("remapping results...")
+    csgo_server_mapping = {
+        "csgo_eu_east": "Vienna, AT",
+        "csgo_eu_north": "Stockholm, SWE",
+        "csgo_poland": "Warsaw, PL",
+        "csgo_spain": "Madrid, SPA",
+        "csgo_eu_west": "Frankfurt, DE",
+        "csgo_us_northeast": "Sterling, DC, USA",
+        "csgo_us_southwest": "Los Angeles, CA, USA",
+        "csgo_us_northcentral": "Chicago, USA",
+        "csgo_us_northwest": "Moses Lake, WA, USA",
+        "csgo_us_southeast": "Atlanta, GA, USA",
+        "csgo_australia": "Syndey, AUS",
+        "csgo_brazil": "Sao Paulo, BRA",
+        "csgo_argentina": "Buenos Aires, ARG",
+        "csgo_chile": "Santiago, CHI",
+        "csgo_emirates": "Dubai, UAE",
+        "csgo_india": "Mumbai, IND",
+        "csgo_india_east": "Chennai, IND",
+        "csgo_peru": "Lima, Peru",
+        "csgo_japan": "Tokyo, JP",
+        "csgo_hong_kong": "Hong Kong",
+        "csgo_singapore": "Singapore",
+        "csgo_south_africa": "Johannesburg, SA",
+        "csgo_china_shanghai": "Shanghai, CN",
+        "csgo_china_guangzhou": "Guangzhou, CN",
+        "csgo_china_tianjin": "Tianjin, CN",
+    }
+
+    steam_cms_mappings = {
+        "ams": "Amsterdam, NL",
+        "vie": "Vienna, AT",
+        "sto": "Stockholm, SWE",
+        "waw": "Warsaw, PL",
+        "mad": "Madrid, SPA",
+        "fra": "Frankfurt, DE",
+        "par": "Paris, FRA",
+        "lhr": "London, UK",
+        "iad": "Sterling, DC, USA",
+        "lax": "Los Angeles, CA, USA",
+        "ord": "Chicago, USA",
+        "dfw": "Dallas, TX, USA",
+        "sea": "Seattle, SF, USA",
+        "syd": "Syndey, AUS",
+        "gru": "Sao Paulo, BRA",
+        "eze": "Buenos Aires, ARG",
+        "scl": "Santiago, CHI",
+        "lim": "Lima, Peru",
+        "tyo": "Tokyo, JP",
+        "hkg": "Hong Kong",
+        "sgp": "Singapore",
+        "jnb": "Johannesburg, SA",
+        "sha": "Shanghai, CN",
+    }
+
+    main_mappings = {
+        "artifact": "Artifact Game Coordinator",
+        "csgo": "CS:GO Game Coordinator",
+        "cms": "Steam Connection Managers",
+        "dota2": "Dota 2 Game Coordinator",
+        "ingame": "In-Game",
+        "online": "Online",
+        "store": "Steam Store",
+        "tf2": "TF2 Game Coordinator",
+        "underlords": "Underlords Game Coordinator",
+        "webapi": "Steam Web API",
+        "community": "Steam Community",
+        "csgo_mm_scheduler": "CS:GO Matchmaker",
+        "csgo_sessions": "CS:GO Sessions Logon",
+        "csgo_community": "CS:GO Player Inventories",
+    }
+
+    online_status = res["online"]
+    last_updated = datetime.fromtimestamp(res["time"], timezone.utc)
+    last_updated_wib = last_updated.strftime("%a, %d %b %Y %H:%M:%S WIB")
+
+    main_keys = list(main_mappings.keys())
+    csgo_keys = list(csgo_server_mapping.keys())
+    cms_keys = list(steam_cms_mappings.keys())
+
+    remapped_shits = {
+        "online": online_status,
+        "services": {},
+        "csgo_servers": {},
+        "steam_cms": {},
+        "last_update": last_updated_wib,
+        "last_update_timestamp": last_updated,
+    }
+
+    for service, _, text_status in res["services"]:
+        if service in main_keys:
+            key_name = main_mappings[service]
+            remapped_shits["services"][key_name] = text_status
+        elif service in csgo_keys:
+            key_name = csgo_server_mapping[service]
+            remapped_shits["csgo_servers"][key_name] = text_status
+        elif service in cms_keys:
+            key_name = steam_cms_mappings[service]
+            remapped_shits["steam_cms"][key_name] = text_status
+    return remapped_shits
 
 
 class GamesAPI(commands.Cog):
@@ -83,7 +201,7 @@ class GamesAPI(commands.Cog):
         request_param = {"q": game_name}
         results, msg = await requests("get", self.BASE_URL + "hltb", params=request_param)
         if results is None:
-            self.logger.warn(f"{game_name}: no results.")
+            self.logger.warning(f"{game_name}: no results.")
             return await ctx.send(msg)
 
         hltb_results = results["results"]
@@ -135,6 +253,7 @@ class GamesAPI(commands.Cog):
             perintah += "- `!steam cari [kueri]` (cari game di steam)\n"
             perintah += "- `!steam info appID` (lihat info game/app)\n"
             perintah += "- `!steam user userID` (lihat info user)\n"
+            perintah += "- `!steam status` (lihat status server steam)`"
             perintah += "- `!steam dbcari -h` (cari game di steam via steamdb)"
             await ctx.send(perintah)
 
@@ -162,12 +281,12 @@ class GamesAPI(commands.Cog):
         sapp_fmt = "https://store.steampowered.com/app/{}/"
         results, msg = await requests("get", self.BASE_URL + "steamsearch", params=request_param)
         if results is None:
-            self.logger.warn(f"{pencarian}: error: {msg}.")
+            self.logger.warning(f"{pencarian}: error: {msg}.")
             return await ctx.send(msg)
 
         ss_results = results["results"]
         if not ss_results:
-            self.logger.warn(f"{pencarian}: no results.")
+            self.logger.warning(f"{pencarian}: no results.")
             return await ctx.send("Tidak ada hasil.")
 
         async def _construct_embed(sdb_data):
@@ -213,10 +332,10 @@ class GamesAPI(commands.Cog):
                 return await ctx.send("Bukan appID yang valid.")
         sdb_data, msg = await requests("get", self.BASE_URL + "steam/" + str(app_ids))
         if sdb_data is None:
-            self.logger.warn(f"{app_ids}: error\n{msg}")
+            self.logger.warning(f"{app_ids}: error\n{msg}")
             return await ctx.send(msg)
         if sdb_data == {}:
-            self.logger.warn(f"{app_ids}: no result.")
+            self.logger.warning(f"{app_ids}: no result.")
             return await ctx.send("Tidak dapat menemukan appID tersebut.")
 
         genres_list = [genre["description"] for genre in sdb_data["genres"]]
@@ -272,9 +391,137 @@ class GamesAPI(commands.Cog):
         await ctx.send(embed=embed)
 
     @steam.command(name="user", aliases=["ui"])
-    async def steam_user(self, ctx, user_id):
-        if True:
-            return await ctx.send("Soon™")
+    @commands.guild_only()
+    @commands.bot_has_guild_permissions(
+        manage_messages=True, embed_links=True, read_message_history=True, add_reactions=True,
+    )
+    async def steam_user(self, ctx, user_id):  # skipcq: PYL-W0613
+        return await ctx.send("Soon™")
+
+    @steam.command(name="status", aliases=["stat"])
+    @commands.guild_only()
+    @commands.bot_has_guild_permissions(
+        manage_messages=True, embed_links=True, read_message_history=True, add_reactions=True,
+    )
+    async def steam_status(self, ctx: commands.Context):
+        steam_statuses = await fetch_steam_status()
+        if isinstance(steam_statuses, str):
+            return await ctx.send(steam_statuses)
+
+        emote_list = ["1️⃣", "2️⃣"]
+
+        def _generator_csgo_servers(_d):
+            embed = discord.Embed(
+                title="CS:GO Servers", color=0x19212D, timestamp=steam_statuses["last_update_timestamp"],
+            )
+            embed.set_author(
+                name="SteamStat.us",
+                url="https://steamstat.us/",
+                icon_url="https://p.ihateani.me/tjnjoeio.png",
+            )
+            embed.set_thumbnail(url="https://p.ihateani.me/tjnjoeio.png")
+            descriptions = []
+            for server_name, server_status in steam_statuses["csgo_servers"].items():
+                descriptions.append(f"- **{server_name}**: {server_status}")
+            if descriptions:
+                embed.description = "\n".join(descriptions)
+            else:
+                embed.description = "No status for the CS:GO Servers"
+            embed.set_footer(text="Powered by SteamStat.us")
+            return embed
+
+        def _generate_cms_servers(_d):
+            embed = discord.Embed(
+                title="CMS Servers", color=0x19212D, timestamp=steam_statuses["last_update_timestamp"],
+            )
+            embed.set_author(
+                name="SteamStat.us",
+                url="https://steamstat.us/",
+                icon_url="https://p.ihateani.me/tjnjoeio.png",
+            )
+            embed.set_thumbnail(url="https://p.ihateani.me/tjnjoeio.png")
+            descriptions = []
+            for server_name, server_status in steam_statuses["steam_cms"].items():
+                descriptions.append(f"- **{server_name}**: {server_status}")
+            if descriptions:
+                embed.description = "\n".join(descriptions)
+            else:
+                embed.description = "No status for the CMS"
+            embed.set_footer(text="Powered by SteamStat.us")
+            return embed
+
+        def _generate_main_embed(_d):
+            embed = discord.Embed(
+                title="Services", color=0x19212D, timestamp=steam_statuses["last_update_timestamp"],
+            )
+            embed.set_author(
+                name="SteamStat.us",
+                url="https://steamstat.us/",
+                icon_url="https://p.ihateani.me/tjnjoeio.png",
+            )
+            embed.set_thumbnail(url="https://p.ihateani.me/tjnjoeio.png")
+            descriptions = []
+            game_coords = [
+                "TF2 Game Coordinator",
+                "Dota 2 Game Coordinator",
+                "Underlords Game Coordinator",
+                "Artifact Game Coordinator",
+                "CS:GO Game Coordinator",
+            ]
+            main_services = ["Steam Store", "Steam Community", "Steam Web API", "Steam Connection Managers"]
+            csgo_helpers = ["CS:GO Sessions Logon", "CS:GO Player Inventories", "CS:GO Matchmaker"]
+            steam_services = steam_statuses["services"]
+            if "Online" in steam_services:
+                descriptions.append(f"**Online**: {steam_services['Online']}")
+            if "In-Game" in steam_services:
+                descriptions.append(f"**In-Game** {steam_services['In-Game']}")
+            services_collect = []
+            for service in main_services:
+                if service in steam_services:
+                    services_collect.append(f"**{service}**: {steam_services[service]}")
+            if services_collect:
+                descriptions.extend(services_collect)
+            services_collect = []
+            for service in game_coords:
+                if service in steam_services:
+                    services_collect.append(f"**{service}**: {steam_services[service]}")
+            if services_collect:
+                descriptions.extend(services_collect)
+            services_collect = []
+            for service in csgo_helpers:
+                if service in steam_services:
+                    services_collect.append(f"**{service}**: {steam_services[service]}")
+            if services_collect:
+                descriptions.extend(services_collect)
+            embed.add_field(name="More Info", value="1️⃣ CS:GO Servers\n2️⃣ Steam CMS")
+            embed.description = "\n".join(descriptions).rstrip()
+            embed.set_footer(text="Powered by SteamStat.us")
+            return embed
+
+        async def generator_child(datasets, position, message: discord.Message, emote: str):
+            try:
+                emote_pos = emote_list.index(emote)
+            except ValueError:
+                return None, message
+            if emote_pos == 0:
+                generator_embed = _generator_csgo_servers
+            elif emote_pos == 1:
+                generator_embed = _generate_cms_servers
+            await message.clear_reactions()
+            custom_gen = DiscordPaginator(self.bot, ctx, [], True)
+            custom_gen.set_generator(generator_embed)
+            custom_gen.checker()
+            await custom_gen.start([datasets[position]], 30.0, message)
+            return None, message
+
+        self.logger.info("starting embed generator")
+        main_gen = DiscordPaginator(self.bot, ctx, emote_list, True)
+        main_gen.checker()
+        main_gen.set_generator(_generate_main_embed)
+        main_gen.set_handler(0, lambda x, y: True, generator_child)
+        main_gen.set_handler(1, lambda x, y: True, generator_child)
+        await main_gen.start([steam_statuses], 30.0, None, True)
+        await ctx.message.delete()
 
     @steam.command(name="dbcari", aliases=["searchdb"])
     @commands.guild_only()
@@ -309,11 +556,11 @@ class GamesAPI(commands.Cog):
         )
         results, msg = await requests("get", self.BASE_URL + "steamdbsearch", params=params)
         if results is None:
-            self.logger.warn(f"{args.kueri}: error\n{msg}")
+            self.logger.warning(f"{args.kueri}: error\n{msg}")
             return await ctx.send(msg)
         sdb_results = results["results"]
         if not sdb_results:
-            self.logger.warn(f"{args.kueri}: no results.")
+            self.logger.warning(f"{args.kueri}: no results.")
             return await ctx.send("Tidak ada hasil.")
 
         async def _construct_embed(sdb_data):
@@ -362,6 +609,7 @@ class GamesAPI(commands.Cog):
     @hltb.error
     @steam_steamdbcari.error
     @steam_cari.error
+    @steam_status.error
     async def games_error(self, ctx, error):
         if isinstance(error, commands.BotMissingPermissions):
             perms = ["Manage Messages", "Embed Links", "Read Message History", "Add Reactions"]

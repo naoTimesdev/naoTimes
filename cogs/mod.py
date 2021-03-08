@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Tuple, Union
 import discord
 from discord.ext import commands, tasks
 from discord.ext.commands.errors import BotMissingPermissions, MissingPermissions
+
 from nthelper.bot import naoTimesBot
 from nthelper.utils import send_timed_msg
 
@@ -351,7 +352,7 @@ class AutoMod(commands.Cog):
     async def mute(self, ctx, user):
         try:
             _ = ctx.message.guild.channels
-        except Exception:
+        except (AttributeError, KeyError, ValueError):
             return await ctx.send("Not in a server.")
 
         bot_user = ctx.message.guild.get_member(self.bot.user.id)
@@ -436,7 +437,7 @@ class AutoMod(commands.Cog):
                         reason="Auto-set by naoTimes moderation cogs.",
                     )
                 except discord.Forbidden:
-                    self.logger.warn(f"{channel.name}: failed to set perms.")
+                    self.logger.warning(f"{channel.name}: failed to set perms.")
         else:
             mute_roles = ctx.message.guild.get_role(self.mute_roles_map[server_id])
 

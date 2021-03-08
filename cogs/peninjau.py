@@ -16,6 +16,7 @@ from bs4 import BeautifulSoup as BS4
 from discord.ext import commands
 from discord_slash import SlashContext, cog_ext
 from discord_slash.utils import manage_commands
+
 from nthelper.bot import naoTimesBot
 from nthelper.jisho import JishoWord
 from nthelper.utils import DiscordPaginator
@@ -421,7 +422,7 @@ class AsyncTranslator:
         self.logger.info("detecting source language...")
         response = await self.session.get(url)
         resp = await response.text()
-        result, language = json.loads(resp)
+        _, language = json.loads(resp)
         self.source_l = language
         self.logger.info(f"source language: {self.source_l}")
 
@@ -429,7 +430,7 @@ class AsyncTranslator:
 
     async def translate(self, string_=None):
         if not self.source_l:
-            self.logger.warn("source language is not detected yet, detecting...")
+            self.logger.warning("source language is not detected yet, detecting...")
             await self.detect_language(string_)
         data = {"q": string_}
         url = "{url}&sl={from_lang}&tl={to_lang}&hl={to_lang}&tk={tk}&{q}".format(  # noqa: E501
@@ -486,8 +487,8 @@ async def chunked_translate(sub_data, number, target_lang, untranslated, mode=".
                 sub_data[n].text = res + "{" + clean_line + "}"
             else:
                 sub_data[n].text = re.sub(r"{.*}", r"", res)  # Just to make sure
-        except Exception as err:
-            logger.warn(f"translation problem (line {n + 1}): {err}")
+        except Exception as err:  # skipcq: PYL-W0703
+            logger.warning(f"translation problem (line {n + 1}): {err}")
             untranslated += 1
     await Translator.close_connection()  # Close connection
     return sub_data, untranslated
@@ -535,7 +536,7 @@ async def yahoo_finance(from_, to_):
                     latest = response["data"]["HistoricalPoints"][-1]
                 else:
                     return response["data"]["CurrentInterbankRate"]
-            except Exception:
+            except (KeyError, json.JSONDecodeError, ValueError):
                 response = await resp.text()
                 return "Tidak dapat terhubung dengan API.\nAPI Response: ```\n" + response + "\n```"
 
@@ -618,7 +619,7 @@ class PeninjauWeb(commands.Cog):
         (search_title, search_native, search_studio,) = await query_take_first_result(query)
 
         if not search_title:
-            self.logger.warn("no results.")
+            self.logger.warning("no results.")
             return await ctx.send(
                 "Tidak dapat menemukan anime yang diberikan" ", mohon gunakan kanji jika belum."
             )
@@ -631,9 +632,10 @@ class PeninjauWeb(commands.Cog):
 
     @commands.command(aliases=["fastsub", "gtlsub"])
     async def speedsub(self, ctx, targetlang="id"):
+        disabled = True
         server_message = str(ctx.message.guild.id)
         self.logger.info(f"running command at {server_message}")
-        if True:
+        if disabled:
             return await ctx.send("Nonaktif karena rate-limit.\n" "P.S. GOOGLE KAPITALIS ANJ-")
         channel = ctx.message.channel
         DICT_LANG = dict(LANGUAGES_LIST)
@@ -736,7 +738,6 @@ class PeninjauWeb(commands.Cog):
             curr_name_from = self.crypto_data[dari_cur]["name"]
             curr_name_to = self.currency_data[ke_cur]["name"]
             dari_cur = "USD"
-            ke_cur = ke_cur
             if ke_cur not in self.currency_data:
                 return f"Tidak dapat menemukan kode negara mata utang **{ke_cur}** di database"
         elif ke_cur in self.crypto_data:
@@ -747,7 +748,6 @@ class PeninjauWeb(commands.Cog):
             curr_sym_to = self.crypto_data[ke_cur]["symbol"]
             curr_name_from = self.currency_data[dari_cur]["name"]
             curr_name_to = self.crypto_data[ke_cur]["name"]
-            dari_cur = dari_cur
             ke_cur = "USD"
             if dari_cur not in self.currency_data:
                 return f"Tidak dapat menemukan kode negara mata utang **{dari_cur}** di database"
@@ -780,7 +780,7 @@ class PeninjauWeb(commands.Cog):
             curr_ = curr_ * curr_crypto
 
         self.logger.info("rounding results")
-        conv_num, rounding_used = proper_rounding(curr_, jumlah)
+        conv_num, _ = proper_rounding(curr_, jumlah)
         embed = discord.Embed(
             title=":gear: Konversi mata uang",
             colour=discord.Colour(0x50E3C2),
@@ -849,7 +849,7 @@ class PeninjauWeb(commands.Cog):
 
         result = await persamaankata(q_, "Sinonim")
         if not isinstance(result, list):
-            self.logger.warn("no results.")
+            self.logger.warning("no results.")
             return await ctx.send(result)
         result = "\n".join(result)
         embed = discord.Embed(title="Sinonim: {}".format(q_), color=0x81E28D)
@@ -867,7 +867,7 @@ class PeninjauWeb(commands.Cog):
 
         result = await persamaankata(q_, "antonim")
         if not isinstance(result, list):
-            self.logger.warn("no results.")
+            self.logger.warning("no results.")
             return await ctx.send(result)
         result = "\n".join(result)
         embed = discord.Embed(title="Antonim: {}".format(q_), color=0x81E28D)
@@ -879,7 +879,8 @@ class PeninjauWeb(commands.Cog):
         embed.add_field(name=q_, value=result, inline=False)
         await ctx.send(embed=embed)
 
-    async def _generate_jisho_embed(self, result: JishoWord) -> discord.Embed:
+    @staticmethod
+    async def _generate_jisho_embed(result: JishoWord) -> discord.Embed:
         entri = result.to_dict()
         embed = discord.Embed(color=0x41A51D)
         entri_nama = entri["word"]
@@ -960,8 +961,10 @@ class PeninjauWeb(commands.Cog):
 
         return embed
 
-    @commands.command(name="jisho", aliases=["kanji"])
-    async def _jisho_cmd_main(self, ctx, *, keyword):
+    @commands.command(name="jisho")
+    async def _jisho_cmd_main(self, ctx, *, keyword=""):
+        if not keyword:
+            return await ctx.send("Mohon berikan kata atau kalimat yang ingin dicari")
         self.logger.info(f"searching: {keyword}")
 
         jisho_results, error_msg = await self.bot.jisho.search(keyword)
@@ -991,6 +994,93 @@ class PeninjauWeb(commands.Cog):
 
         parsed_embeds = [await self._generate_jisho_embed(result) for result in jisho_results[:5]]
         await ctx.send(embeds=parsed_embeds)
+
+    @commands.command(name="kanji")
+    async def _jisho_cmd_kanji(self, ctx: commands.Context, kanji: str):
+        self.logger.info(f"searching for {kanji}")
+
+        async with aiohttp.ClientSession(
+            headers={"User-Agent": f"naoTimes/v{self.bot.semver} (https://github.com/noaione/naoTimes)"}
+        ) as session:
+            async with session.get(f"https://api.ihateani.me/v1/jisho/kanji/{kanji}") as resp:
+                try:
+                    res = await resp.json()
+                except ValueError:
+                    return await ctx.send("Tidak bisa menghubungi API...")
+                except aiohttp.ClientError:
+                    return await ctx.send("Tidak bisa menghubungi API...")
+
+        if res["code"] != 200 or len(res["data"]) < 1:
+            return await ctx.send("Kanji tidak ditemukan!")
+
+        entris = res["data"]
+
+        def _design_kanji_embed(entri: dict):
+            embed = discord.Embed(color=0x41A51D)
+            entri_nama = entri["query"]
+            pranala = f"https://jisho.org/search/{entri_nama}%20%23kanji"
+            embed.set_author(
+                name=entri_nama + " #kanji",
+                url=pranala,
+                icon_url="https://assets.jisho.org/assets/touch-icon-017b99ca4bfd11363a97f66cc4c00b1667613a05e38d08d858aa5e2a35dce055.png",  # noqa: E501
+            )
+
+            entri_radikal = entri["radical"]
+            goresan = entri["strokes"]
+            radicals = f"{entri_radikal['symbol']} ({entri_radikal['meaning']})"
+            bagian = ", ".join(entri["parts"])
+            arti = ", ".join(entri["meanings"])
+
+            embed.description = f"**Arti**: {arti}\n**Radikal**: {radicals}\n"
+            embed.description += f"**Bagian**: {bagian}\n**Goresan**: {goresan['count']}"
+            embed.set_thumbnail(url=goresan["gif"])
+            embed.set_image(url=goresan["diagram"])
+
+            kunyomis = entri["kunyomi"]
+            kunyomi_writing = ""
+            for n, kata in enumerate(kunyomis["words"], 1):
+                kunyomi_writing += f"**{n}.** {kata['word']} [Romaji: `{kata['romaji']}`]\n"
+            if kunyomi_writing:
+                kunyomi_writing += "\n**Contoh**\n"
+            for n, contoh in enumerate(kunyomis["examples"], 1):
+                kunyomi_writing += (
+                    f"**{n}.** {contoh['word']} ({contoh['reading']}) [Romaji: `{contoh['romaji']}`]\n"
+                )
+                kunyomi_writing += f"*{contoh['meaning']}*\n"
+            embed.add_field(name="Kunyomi", value=kunyomi_writing.rstrip())
+
+            onyomis = entri["onyomi"]
+            onyomi_writing = ""
+            for n, kata in enumerate(onyomis["words"], 1):
+                onyomi_writing += f"**{n}.** {kata['word']} [Romaji: `{kata['romaji']}`]\n"
+            if onyomi_writing:
+                onyomi_writing += "\n**Contoh**\n"
+            for n, contoh in enumerate(onyomis["examples"], 1):
+                onyomi_writing += (
+                    f"**{n}.** {contoh['word']} ({contoh['reading']}) [Romaji: `{contoh['romaji']}`]\n"
+                )
+                onyomi_writing += f"*{contoh['meaning']}*\n"
+            embed.add_field(name="Onyomi", value=onyomi_writing.rstrip())
+
+            footer_text = []
+            if "jlpt" in entri and entri["jlpt"]:
+                footer_text.append(f"JLPT {entri['jlpt']}")
+            if "taughtIn" in entri and entri["taughtIn"]:
+                taught = entri["taughtIn"]
+                if "grade" in taught:
+                    taught = taught.replace("grade", "kelas")
+                elif "junior high" in taught.lower():
+                    taught = "kelas SMP"
+                footer_text.append(f"Diajarkan pada {taught}")
+            footer_text.append("Diprakasai oleh Jisho")
+            embed.set_footer(text=" | ".join(footer_text).rstrip())
+            return embed
+
+        main_gen = DiscordPaginator(self.bot, ctx)
+        main_gen.checker()
+        main_gen.breaker()
+        main_gen.set_generator(_design_kanji_embed)
+        await main_gen.start(entris, 20.0)
 
 
 def setup(bot):

@@ -7,19 +7,12 @@ from typing import List, Tuple, Union
 
 import discord
 from discord.ext import commands, tasks
-from discord_slash import cog_ext
-from discord_slash import SlashContext
+from discord_slash import SlashContext, cog_ext
 from discord_slash.utils import manage_commands
 
 from nthelper.bot import naoTimesBot
+from nthelper.kbbiasync import KBBI, BatasSehari, GagalKoneksi, TerjadiKesalahan, TidakDitemukan
 from nthelper.utils import DiscordPaginator, write_files
-from nthelper.kbbiasync import (
-    KBBI,
-    BatasSehari,
-    GagalKoneksi,
-    TerjadiKesalahan,
-    TidakDitemukan,
-)
 
 kbbilog = logging.getLogger("cogs.kbbi")
 
@@ -59,7 +52,7 @@ async def query_requests_kbbi(kata_pencarian: str, kbbi_conn: KBBI) -> Tuple[str
             kata_pencarian,
             "Tidak dapat terhubung dengan KBBI, kemungkinan KBBI daring sedang down.",
         )
-    except Exception as error:
+    except Exception as error:  # skipcq: PYL-W0703
         tb = traceback.format_exception(type(error), error, error.__traceback__)
         kbbilog.error("Exception occured\n" + "".join(tb))
         return kata_pencarian, "Terjadi kesalahan ketika memparsing hasil dari KBBI, mohon kontak N4O."
@@ -159,7 +152,7 @@ class KBBICog(commands.Cog):
             return await ctx.send(hasil_entri)
 
         if not hasil_entri:
-            self.logger.warn(f"{kata}: no results...")
+            self.logger.warning(f"{kata}: no results...")
             return await ctx.send(content="Tidak dapat menemukan kata tersebut di KBBI")
 
         self.logger.info(f"{kata}: parsing results...")
@@ -201,14 +194,14 @@ class KBBICog(commands.Cog):
         do_reauth = False
         kbbi_data = self.kbbi_conn.get_cookies
         if ct >= kbbi_data["expires"]:
-            self.logger.warn("cookie expired!")
+            self.logger.warning("cookie expired!")
             do_reauth = True
         if not do_reauth:
             self.logger.info("checking directly to KBBI...")
             do_reauth = await self.kbbi_conn.cek_auth()
             self.logger.info(f"test results if it needs reauth: {do_reauth}")
         if not do_reauth:
-            self.logger.warn("cookie is not expired yet, skipping...")
+            self.logger.warning("cookie is not expired yet, skipping...")
             return
 
         self.logger.info("reauthenticating...")
@@ -346,10 +339,6 @@ class KBBICog(commands.Cog):
         return final_dataset
 
     @commands.command()
-    async def print_cookies(self, ctx):
-        print(await self.kbbi_conn.get_cookies)
-
-    @commands.command()
     @commands.is_owner()
     async def kbbi_auth(self, ctx):
         if self._use_auth:
@@ -425,7 +414,7 @@ class KBBICog(commands.Cog):
             return await ctx.send(hasil_entri)
 
         if not hasil_entri:
-            self.logger.warn(f"{kata_pencarian}: no results...")
+            self.logger.warning(f"{kata_pencarian}: no results...")
             return await ctx.send("Tidak dapat menemukan kata tersebut di KBBI")
 
         add_numbering = False

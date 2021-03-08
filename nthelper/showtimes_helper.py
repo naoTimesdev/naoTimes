@@ -1,14 +1,17 @@
 import asyncio
 import functools
 import logging
-from nthelper.redis import RedisBridge
 import time
 import traceback
 from copy import deepcopy
 from typing import Union
 
+import aioredis
 import motor.motor_asyncio
 import pymongo
+import pymongo.errors
+
+from nthelper.redis import RedisBridge
 
 showtimes_log = logging.getLogger("showtimes_helper")
 
@@ -29,24 +32,22 @@ def safe_asynclock(func):
     async def safelock(self, *args, **kwargs):
         try:
             showtimes_log.info("Acquiring lock...")
-            await self._acquire_lock()
+            await self._acquire_lock()  # skipcq: PYL-W0212
             showtimes_log.info("Running function...")
             ret = await func(self, *args, **kwargs)
             showtimes_log.info("Releasing lock...")
-            await self._release_lock()
+            await self._release_lock()  # skipcq: PYL-W0212
             return ret
-        except Exception as error:
+        except Exception as error:  # skipcq: PYL-W0703
             showtimes_log.error("Exception occured, releasing lock...")
             tb = traceback.format_exception(type(error), error, error.__traceback__)
             showtimes_log.error("traceback\n{}".format("".join(tb)))
-            await self._release_lock()
+            await self._release_lock()  # skipcq: PYL-W0212
             ret = None
-            if args:
-                if len(args) == 1:
-                    ret = None, None
-            if kwargs:
-                if kwargs.get("collection"):
-                    ret = None, None
+            if args and len(args) == 1:
+                ret = None, None
+            if kwargs and kwargs.get("collection"):
+                ret = None, None
             return ret
 
     return safelock
@@ -106,7 +107,7 @@ class naoTimesDB:
                 user, pass_ = self._auth_string.split(":")
                 pass_ = "*" * len(pass_)
                 secured_auth = f"{user}:{pass_}"
-            except Exception:
+            except ValueError:
                 secured_auth = self._auth_string
             _url += secured_auth + "@"
         _url += f"{self._ip_hostname}"
@@ -190,11 +191,10 @@ class naoTimesDB:
         try:
             res = await self.db.command({"ping": 1})
             t2_ping = time.perf_counter()
-            if "ok" in res:
-                if int(res["ok"]) == 1:
-                    return True, (t2_ping - t1_ping) * 1000
+            if "ok" in res and int(res["ok"]) == 1:
+                return True, (t2_ping - t1_ping) * 1000
             return False, 99999
-        except Exception:
+        except (ValueError, pymongo.errors.PyMongoError):
             return False, 99999
 
     async def fetch_all_as_json(self):
@@ -255,7 +255,7 @@ class naoTimesDB:
         adm_list = await self.get_top_admin()
         adm_id = str(adm_id)
         if adm_id in adm_list:
-            self.logger.warn("admin already on top admin.")
+            self.logger.warning("admin already on top admin.")
             return True, "Sudah ada"
         res = await self.update_data("server_admin", {"server_admin": adm_list})
         if res:
@@ -269,7 +269,7 @@ class naoTimesDB:
         adm_list = await self.get_top_admin()
         adm_id = str(adm_id)
         if adm_id in adm_list:
-            self.logger.warn("admin is not on top admin.")
+            self.logger.warning("admin is not on top admin.")
             adm_list.remove(adm_id)
         res = await self.update_data("server_admin", {"server_admin": adm_list})
         if res:
@@ -292,7 +292,7 @@ class naoTimesDB:
         self.logger.info(f"fetching server set: {server}")
         srv_list = await self.get_server_list()
         if server not in srv_list:
-            self.logger.warn(f"cant find {server} on database.")
+            self.logger.warning(f"cant find {server} on database.")
             return {}
 
         srv, _ = await self.fetch_data(server)
@@ -303,7 +303,7 @@ class naoTimesDB:
         self.logger.info(f"updating data for {server}")
         srv_list = await self.get_server_list()
         if server not in srv_list:
-            self.logger.warn(f"cant find {server} on database.")
+            self.logger.warning(f"cant find {server} on database.")
             return (
                 False,
                 "Server tidak terdaftar di database, gunakan metode `new_server`",
@@ -320,7 +320,7 @@ class naoTimesDB:
         self.logger.info(f"trying to add {adm_id} to {server}...")
         srv_data = await self.get_server(server)
         if not srv_data:
-            self.logger.warn(f"cant find {server} on database.")
+            self.logger.warning(f"cant find {server} on database.")
             return False, "Server tidak terdaftar di naoTimes."
 
         if adm_id not in srv_data["serverowner"]:
@@ -335,7 +335,7 @@ class naoTimesDB:
         self.logger.info(f"trying to remove {adm_id} from {server}...")
         srv_data = await self.get_server(server)
         if not srv_data:
-            self.logger.warn(f"cant find {server} on database.")
+            self.logger.warning(f"cant find {server} on database.")
             return False, "Server tidak terdaftar di naoTimes."
 
         if adm_id in srv_data["serverowner"]:
@@ -349,7 +349,7 @@ class naoTimesDB:
         self.logger.info(f"trying to add {server} to database...")
         srv_list = await self.get_server_list()
         if server in srv_list:
-            self.logger.warn(f"{server} already exists on database.")
+            self.logger.warning(f"{server} already exists on database.")
             return (
                 False,
                 "Server terdaftar di database, gunakan metode `update_data_server`",
@@ -379,7 +379,7 @@ class naoTimesDB:
         self.logger.info(f"yeeting {server} from database...")
         srv_list = await self.get_server_list()
         if server not in srv_list:
-            self.logger.warn(f"cant find {server} on database.")
+            self.logger.warning(f"cant find {server} on database.")
             return True
 
         res = await self.db.drop_collection(server)
@@ -387,19 +387,15 @@ class naoTimesDB:
             res, msg = await self.remove_top_admin(admin_id)
             self.logger.info(f"{server} yeeted from database.")
             return res, msg if not res else "Success."
-        self.logger.warn("server doesn't exist on database when dropping, ignoring...")
+        self.logger.warning("server doesn't exist on database when dropping, ignoring...")
         return True, "Success anyway"
-
-    """
-    Kolaborasi command
-    """
 
     async def kolaborasi_dengan(self, target_server, confirm_id, target_data):
         self.logger.info(f"new collaboration with {target_server}")
         target_server = await self._precheck_server_name(target_server)
         srv_data = await self.get_server(target_server)
         if not srv_data:
-            self.logger.warn(f"server {target_server} doesn't exist.")
+            self.logger.warning(f"server {target_server} doesn't exist.")
             return False, "Server tidak terdaftar di naoTimes."
         srv_data["konfirmasi"][confirm_id] = target_data
 
@@ -414,10 +410,10 @@ class naoTimesDB:
         target_srv_data = await self.get_server(target_server)
         source_srv_data = await self.get_server(source_server)
         if not target_srv_data:
-            self.logger.warn("target server doesn't exist.")
+            self.logger.warning("target server doesn't exist.")
             return False, "Server target tidak terdaftar di naoTimes."
         if not source_srv_data:
-            self.logger.warn("init server doesn't exist.")
+            self.logger.warning("init server doesn't exist.")
             return False, "Server awal tidak terdaftar di naoTimes."
 
         res, msg = await self.update_data_server(source_server, srv1_data)
@@ -433,7 +429,7 @@ class naoTimesDB:
         server = await self._precheck_server_name(server)
         srv_data = await self.get_server(server)
         if not srv_data:
-            self.logger.warn(f"{server} doesn't exist.")
+            self.logger.warning(f"{server} doesn't exist.")
             return False, "Server tidak terdaftar di naoTimes."
 
         if confirm_id in srv_data["kolaborasi"]:
@@ -462,9 +458,8 @@ class naoTimesDB:
             klosrv.remove(server[4:])
 
             remove_all = False
-            if len(klosrv) == 1:
-                if klosrv[0] == osrv[4:]:
-                    remove_all = True
+            if len(klosrv) == 1 and klosrv[0] == osrv[4:]:
+                remove_all = True
 
             if remove_all:
                 del osrvd["anime"][anime]["kolaborasi"]
@@ -542,7 +537,7 @@ class ShowtimesQueue:
         await self._lock_job()
         try:
             await self._db.set(f"showtimes_{server_id}", dataset)
-        except Exception as e:
+        except aioredis.RedisError as e:
             self._logger.error("Failed to dumps database...")
             self._logger.error(e)
             pass
@@ -553,7 +548,7 @@ class ShowtimesQueue:
         await self._lock_job()
         try:
             json_data = await self._db.get(f"showtimes_{server_id}")
-        except Exception as e:
+        except aioredis.RedisError as e:
             self._logger.error("Failed to read database...")
             self._logger.error(e)
             json_data = None

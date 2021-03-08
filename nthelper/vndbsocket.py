@@ -1,7 +1,7 @@
 import asyncio
 import logging
-import ssl
 import socket
+import ssl
 
 import ujson
 
@@ -59,9 +59,8 @@ class VNDBSockIOManager:
             finvars["password"] = self._password
             self.logger.info(f"trying to login with username {self._username}")
             ret = await self.send_command("login", ujson.dumps(finvars))
-            if not isinstance(ret, str):  # should just be 'Ok'
-                if self.loggedin:
-                    self.loggedin = False
+            if not isinstance(ret, str) and self.loggedin:  # should just be 'Ok'
+                self.loggedin = False
             self.loggedin = True
 
     async_login = login
