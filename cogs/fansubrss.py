@@ -14,14 +14,9 @@ import feedparser
 import schema as sc
 from discord.ext import commands, tasks
 from markdownify import markdownify as mdparse
+
 from nthelper.bot import naoTimesBot
-from nthelper.utils import (
-    HelpGenerator,
-    confirmation_dialog,
-    generate_custom_code,
-    send_timed_msg,
-    sync_wrap,
-)
+from nthelper.utils import HelpGenerator, confirmation_dialog, generate_custom_code, send_timed_msg, sync_wrap
 
 asyncfeed = sync_wrap(feedparser.parse)
 fsrsslog = logging.getLogger("cogs.fansubrss")
@@ -290,7 +285,7 @@ async def parse_embed(embed_data: dict, entry_data: dict) -> discord.Embed:
     if embed_data["timestamp"]:
         try:
             _, dt_data = time_struct_dt(entry_data["published_parsed"])
-        except Exception:
+        except (AttributeError, KeyError, ValueError):
             dt_data = datetime.now(tz=timezone.utc)
         embed_beauty.timestamp = dt_data
 
@@ -531,7 +526,7 @@ class FansubRSS(commands.Cog):
             for metadata in metadatas_to_fetch:
                 fetched_feeds = await self.read_rss_feeds(server_id, metadata["id"])
                 print(metadata, fetched_feeds)
-                feed_res, etag, modified = await recursive_check_feed(
+                feed_res, _, _ = await recursive_check_feed(
                     metadata["feedUrl"], metadata, fetched_feeds["fetchedURL"]
                 )
                 if feed_res:
@@ -1053,7 +1048,7 @@ class FansubRSS(commands.Cog):
                                     await send_timed_msg(
                                         ctx, f"Berhasil mengubah warna ke: `{color_parsed}`.", 2
                                     )
-                                except Exception:
+                                except Exception:  # skipcq: PYL-W0703
                                     await send_timed_msg(ctx, "Bukan warna HEX yang valid.", 2)
                             else:
                                 new_embed_data[embed_input_txt.strip()] = embed_change_input_txt

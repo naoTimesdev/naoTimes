@@ -124,12 +124,12 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                 should_update_fsdb = True
                 fsdb_update_to = "Jalan"
 
-            if str(ctx.message.author.id) != program_info["staff_assignment"]["QC"]["id"]:
-                if str(ctx.message.author.id) not in srv_owner:
-                    self.logger.warning(f"{matches[0]}: user not allowed.")
-                    return await ctx.send(
-                        "**Tidak secepat itu ferguso, yang bisa rilis cuma admin atau QCer**"
-                    )
+            if (
+                str(ctx.message.author.id) != program_info["staff_assignment"]["QC"]["id"]
+                and str(ctx.message.author.id) not in srv_owner
+            ):
+                self.logger.warning(f"{matches[0]}: user not allowed.")
+                return await ctx.send("**Tidak secepat itu ferguso, yang bisa rilis cuma admin atau QCer**")
 
             if koleb_list:
                 self.logger.info(f"{matches[0]}: setting collab status...")
@@ -189,12 +189,12 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                 self.logger.warning(f"{matches[0]}: no episode left to be worked on.")
                 return await ctx.send("**Sudah beres digarap!**")
 
-            if str(ctx.message.author.id) != program_info["staff_assignment"]["QC"]["id"]:
-                if str(ctx.message.author.id) not in srv_owner:
-                    self.logger.warning(f"{matches[0]}: user not allowed.")
-                    return await ctx.send(
-                        "**Tidak secepat itu ferguso, yang bisa rilis cuma admin atau QCer**"
-                    )
+            if (
+                str(ctx.message.author.id) != program_info["staff_assignment"]["QC"]["id"]
+                and str(ctx.message.author.id) not in srv_owner
+            ):
+                self.logger.warning(f"{matches[0]}: user not allowed.")
+                return await ctx.send("**Tidak secepat itu ferguso, yang bisa rilis cuma admin atau QCer**")
 
             if koleb_list:
                 self.logger.info(f"{matches[0]}: setting collab status...")
@@ -264,12 +264,12 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                 self.logger.warning(f"{matches[0]}: no episode left to be worked on.")
                 return await ctx.send("**Sudah beres digarap!**")
 
-            if str(ctx.message.author.id) != program_info["staff_assignment"]["QC"]["id"]:
-                if str(ctx.message.author.id) not in srv_owner:
-                    self.logger.warning(f"{matches[0]}: user not allowed.")
-                    return await ctx.send(
-                        "**Tidak secepat itu ferguso, yang bisa rilis cuma admin atau QCer**"
-                    )
+            if (
+                str(ctx.message.author.id) != program_info["staff_assignment"]["QC"]["id"]
+                and str(ctx.message.author.id) not in srv_owner
+            ):
+                self.logger.warning(f"{matches[0]}: user not allowed.")
+                return await ctx.send("**Tidak secepat itu ferguso, yang bisa rilis cuma admin atau QCer**")
 
             if koleb_list:
                 self.logger.info(f"{matches[0]}: setting collab status...")
@@ -331,7 +331,7 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                 try:
                     announce_chan = int(announce_chan)
                 except ValueError:
-                    self.logger.warn(f"{osrv}: failed to convert announce channel to integer, ignoring...")
+                    self.logger.warning(f"{osrv}: failed to convert announce channel to integer, ignoring...")
                     continue
                 target_chan = self.bot.get_channel(announce_chan)
                 if not target_chan:
@@ -347,7 +347,7 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
             try:
                 announce_chan = int(announce_chan)
             except ValueError:
-                self.logger.warn(
+                self.logger.warning(
                     f"{server_message}: failed to convert announce channel to integer, ignoring..."
                 )
                 return
@@ -416,9 +416,11 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                     koleb_list.append(ko_data)
 
         try:
-            if not self.check_role(program_info["role_id"], ctx.message.author.roles):
-                if str(ctx.message.author.id) not in srv_owner:
-                    return
+            if (
+                not self.check_role(program_info["role_id"], ctx.message.author.roles)
+                and str(ctx.message.author.id) not in srv_owner
+            ):
+                return
         except ValueError:
             return await ctx.send(
                 f"Gagal memeriksa role, mohon ubah dengan {self.bot.prefix}ubahdata {matches[0]}"
@@ -437,10 +439,12 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
         poster_data = program_info["poster_data"]
         poster_image = poster_data["url"]
 
-        if str(ctx.message.author.id) != program_info["staff_assignment"][posisi]["id"]:
-            if str(ctx.message.author.id) not in srv_owner:
-                self.logger.warning(f"{matches[0]}: no access to set to done.")
-                return await ctx.send("**Bukan posisi situ untuk mengubahnya!**")
+        if (
+            str(ctx.message.author.id) != program_info["staff_assignment"][posisi]["id"]
+            and str(ctx.message.author.id) not in srv_owner
+        ):
+            self.logger.warning(f"{matches[0]}: no access to set to done.")
+            return await ctx.send("**Bukan posisi situ untuk mengubahnya!**")
 
         self.logger.info(f"{matches[0]}: setting episode {current} to done.")
         srv_data["anime"][matches[0]]["status"][current]["staff_status"][posisi] = "y"
@@ -491,7 +495,7 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                     try:
                         announce_chan = int(announce_chan)
                     except ValueError:
-                        self.logger.warn(
+                        self.logger.warning(
                             f"{osrv}: failed to convert announce channel to integer, ignoring..."
                         )
                         continue
@@ -514,7 +518,7 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
             try:
                 announce_chan = int(announce_chan)
             except ValueError:
-                self.logger.warn(
+                self.logger.warning(
                     f"{server_message}: failed to convert announce channel to integer, ignoring..."
                 )
                 announce_chan = -1
@@ -567,11 +571,13 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
         status_list = program_info["status"]
         srv_owner = srv_data["serverowner"]
 
-        if str(ctx.message.author.id) != program_info["staff_assignment"]["QC"]["id"]:
-            if str(ctx.message.author.id) not in srv_owner:
-                return await ctx.send(
-                    "**Tidak secepat itu ferguso, yang bisa membatalkan rilisan cuma admin atau QCer**"
-                )
+        if (
+            str(ctx.message.author.id) != program_info["staff_assignment"]["QC"]["id"]
+            and str(ctx.message.author.id) not in srv_owner
+        ):
+            return await ctx.send(
+                "**Tidak secepat itu ferguso, yang bisa membatalkan rilisan cuma admin atau QCer**"
+            )
 
         current = self.get_current_ep(status_list)
         reset_fsdb = False
@@ -667,7 +673,7 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
             try:
                 announce_chan = int(announce_chan)
             except ValueError:
-                self.logger.warn(
+                self.logger.warning(
                     f"{server_message}: failed to convert announce channel to integer, ignoring..."
                 )
                 return
@@ -744,9 +750,11 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                     koleb_list.append(ko_data)
 
         try:
-            if not self.check_role(program_info["role_id"], ctx.message.author.roles):
-                if str(ctx.message.author.id) not in srv_owner:
-                    return
+            if (
+                not self.check_role(program_info["role_id"], ctx.message.author.roles)
+                and str(ctx.message.author.id) not in srv_owner
+            ):
+                return
         except ValueError:
             return await ctx.send(
                 f"Gagal memeriksa role, mohon ubah dengan {self.bot.prefix}ubahdata {matches[0]}"
@@ -765,10 +773,12 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
         poster_data = program_info["poster_data"]
         poster_image = poster_data["url"]
 
-        if str(ctx.message.author.id) != program_info["staff_assignment"][posisi]["id"]:
-            if str(ctx.message.author.id) not in srv_owner:
-                self.logger.warning(f"{matches[0]}: no access to set to undone.")
-                return await ctx.send("**Bukan posisi situ untuk mengubahnya!**")
+        if (
+            str(ctx.message.author.id) != program_info["staff_assignment"][posisi]["id"]
+            and str(ctx.message.author.id) not in srv_owner
+        ):
+            self.logger.warning(f"{matches[0]}: no access to set to undone.")
+            return await ctx.send("**Bukan posisi situ untuk mengubahnya!**")
 
         self.logger.info(f"{matches[0]}: setting episode {current} to undone.")
         srv_data["anime"][matches[0]]["status"][current]["staff_status"][posisi] = "x"
@@ -818,7 +828,7 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                 try:
                     announce_chan = int(announce_chan)
                 except ValueError:
-                    self.logger.warn(f"{osrv}: failed to convert announce channel to integer, ignoring...")
+                    self.logger.warning(f"{osrv}: failed to convert announce channel to integer, ignoring...")
                     continue
                 try:
                     target_chan = self.bot.get_channel(announce_chan)
@@ -842,7 +852,7 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
             try:
                 announce_chan = int(announce_chan)
             except ValueError:
-                self.logger.warn(
+                self.logger.warning(
                     f"{server_message}: failed to convert announce channel to integer, ignoring..."
                 )
                 announce_chan = -1
@@ -925,10 +935,12 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                     koleb_list.append(ko_data)
 
         # Toggle status section
-        if str(ctx.message.author.id) != program_info["staff_assignment"][posisi]["id"]:
-            if str(ctx.message.author.id) not in srv_owner:
-                self.logger.warning(f"{matches[0]}: no access to set to mark it.")
-                return await ctx.send("**Bukan posisi situ untuk mengubahnya!**")
+        if (
+            str(ctx.message.author.id) != program_info["staff_assignment"][posisi]["id"]
+            and str(ctx.message.author.id) not in srv_owner
+        ):
+            self.logger.warning(f"{matches[0]}: no access to set to mark it.")
+            return await ctx.send("**Bukan posisi situ untuk mengubahnya!**")
 
         pos_status = status_list[str(episode_n)]["staff_status"]
 

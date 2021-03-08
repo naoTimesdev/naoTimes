@@ -2,6 +2,8 @@
 # flake8: noqa
 # type: ignore
 
+from .anibucket import AnilistBucket
+from .bot import naoTimesBot
 from .cmd_args import (
     ArgumentParserError,
     Arguments,
@@ -10,6 +12,15 @@ from .cmd_args import (
     HelpException,
     subparser,
 )
+from .cpputest import (
+    CPPTestCompileError,
+    CPPTestError,
+    CPPTestRuntimeError,
+    CPPTestSanitizeError,
+    CPPTestTimeoutError,
+    CPPUnitTester,
+)
+from .fsdb import FansubDBBridge
 from .redis import RedisBridge
 from .romkan import (
     expand_consonant,
@@ -23,17 +34,13 @@ from .romkan import (
     to_kunrei,
     to_roma,
 )
-from .showtimes_helper import (
-    naoTimesDB,
-    ShowtimesQueue,
-    ShowtimesQueueData,
-)
+from .showtimes_helper import ShowtimesQueue, ShowtimesQueueData, naoTimesDB
 from .utils import (
+    DiscordPaginator,
     HelpGenerator,
     PaginatorHandlerNoResult,
     PaginatorNoGenerator,
     PaginatorNoMoreEmotes,
-    DiscordPaginator,
     get_current_time,
     get_server,
     get_version,
@@ -43,17 +50,5 @@ from .utils import (
     send_timed_msg,
     write_files,
 )
-from .fsdb import FansubDBBridge
-from .cpputest import (
-    CPPUnitTester,
-    CPPTestError,
-    CPPTestCompileError,
-    CPPTestRuntimeError,
-    CPPTestTimeoutError,
-    CPPTestSanitizeError,
-)
-
-from .bot import naoTimesBot
-from .anibucket import AnilistBucket
-from .votebackend import VoteWatcher
 from .vndbsocket import VNDBSockIOManager
+from .votebackend import VoteWatcher

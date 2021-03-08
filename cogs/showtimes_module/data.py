@@ -36,9 +36,6 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
     def __str__(self):
         return "Showtimes Data"
 
-    def __del__(self):
-        pass
-
     @commands.command()
     @commands.guild_only()
     async def ubahdata(self, ctx, *, judul):
@@ -93,7 +90,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
             try:
                 user_data = self.bot.get_user(int(user_id))
                 return "{}#{}".format(user_data.name, user_data.discriminator)
-            except Exception:
+            except AttributeError:
                 return "[Rahasia]"
 
         async def internal_change_staff(role, staff_list, emb_msg):
@@ -290,14 +287,14 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                         continue
                     osrv_dumped[osrv] = osrv_data
 
-            if program_info["status"][max_episode]["status"] == "released":
-                if "fsdb_data" in program_info:
-                    if self.fsdb_conn is not None:
-                        self.logger.info("Updating FSDB Project to on progress again.")
-                        if "id" in program_info["fsdb_data"]:
-                            await self.fsdb_conn.update_project(
-                                program_info["fsdb_data"]["id"], "status", "Jalan"
-                            )
+            if (
+                program_info["status"][max_episode]["status"] == "released"
+                and "fsdb_data" in program_info
+                and self.fsdb_conn is not None
+            ):
+                self.logger.info("Updating FSDB Project to on progress again.")
+                if "id" in program_info["fsdb_data"]:
+                    await self.fsdb_conn.update_project(program_info["fsdb_data"]["id"], "status", "Jalan")
 
             self.logger.info(f"{matches[0]}: adding a total of {jumlah_tambahan}...")
             for x in range(
@@ -430,14 +427,14 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                 del srv_data["anime"][matches[0]]["status"][str(x)]
 
             new_max_ep = list(srv_data["anime"][matches[0]]["status"].keys())[-1]
-            if program_info["status"][new_max_ep]["status"] == "released":
-                if "fsdb_data" in program_info:
-                    if self.fsdb_conn is not None:
-                        self.logger.info("Updating FSDB Project to finished.")
-                        if "id" in program_info["fsdb_data"]:
-                            await self.fsdb_conn.update_project(
-                                program_info["fsdb_data"]["id"], "status", "Tamat"
-                            )
+            if (
+                program_info["status"][new_max_ep]["status"] == "released"
+                and "fsdb_data" in program_info
+                and self.fsdb_conn is not None
+            ):
+                self.logger.info("Updating FSDB Project to finished.")
+                if "id" in program_info["fsdb_data"]:
+                    await self.fsdb_conn.update_project(program_info["fsdb_data"]["id"], "status", "Tamat")
             srv_data["anime"][matches[0]]["last_update"] = str(int(round(time.time())))
 
             await send_timed_msg(ctx, f"Berhasil menghapus episode {current} ke {total}", 2)
@@ -581,11 +578,10 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
             return await ctx.send("**Dibatalkan!**")
         if hapus_utang:
             self.logger.warning(f"{matches[0]}: nuking project...")
-            if "fsdb_data" in program_info:
-                if self.fsdb_conn is not None:
-                    self.logger.info("Updating FSDB Project to dropped.")
-                    if "id" in program_info["fsdb_data"]:
-                        await self.fsdb_conn.update_project(program_info["fsdb_data"]["id"], "status", "Drop")
+            if "fsdb_data" in program_info and self.fsdb_conn is not None:
+                self.logger.info("Updating FSDB Project to dropped.")
+                if "id" in program_info["fsdb_data"]:
+                    await self.fsdb_conn.update_project(program_info["fsdb_data"]["id"], "status", "Drop")
             current = self.get_current_ep(program_info["status"])
             try:
                 if program_info["status"]["1"]["status"] == "not_released":
@@ -602,21 +598,22 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                 osrv_data = await self.showqueue.fetch_database(osrv)
                 if osrv_data is None:
                     continue
-                if "kolaborasi" in osrv_data["anime"][matches[0]]:
-                    if server_message in osrv_data["anime"][matches[0]]["kolaborasi"]:
-                        klosrv = deepcopy(osrv_data["anime"][matches[0]]["kolaborasi"])
-                        klosrv.remove(server_message)
+                if (
+                    "kolaborasi" in osrv_data["anime"][matches[0]]
+                    and server_message in osrv_data["anime"][matches[0]]["kolaborasi"]
+                ):
+                    klosrv = deepcopy(osrv_data["anime"][matches[0]]["kolaborasi"])
+                    klosrv.remove(server_message)
 
-                        remove_all = False
-                        if len(klosrv) == 1:
-                            if klosrv[0] == osrv:
-                                remove_all = True
+                    remove_all = False
+                    if len(klosrv) == 1 and klosrv[0] == osrv:
+                        remove_all = True
 
-                        if remove_all:
-                            del osrv_data["anime"][matches[0]]["kolaborasi"]
-                        else:
-                            osrv_data["anime"][matches[0]]["kolaborasi"] = klosrv
-                        await self.showqueue.add_job(ShowtimesQueueData(osrv_data, osrv))
+                    if remove_all:
+                        del osrv_data["anime"][matches[0]]["kolaborasi"]
+                    else:
+                        osrv_data["anime"][matches[0]]["kolaborasi"] = klosrv
+                    await self.showqueue.add_job(ShowtimesQueueData(osrv_data, osrv))
 
             await self.showqueue.add_job(ShowtimesQueueData(srv_data, server_message))
             self.logger.info(f"{matches[0]}: storing final data...")
@@ -833,7 +830,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                 try:
                     ani_air_data = await fetch_anilist(await_msg.content, 1, 1, return_only_time=True)
                     start_time = ani_air_data["airing_start"]
-                except Exception:
+                except Exception:  # skipcq: PYL-W0703
                     self.logger.warning(
                         f"{server_message}: failed to fetch air start, please try again later."
                     )
@@ -1040,7 +1037,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
             try:
                 user_data = self.bot.get_user(int(_id))
                 return "{}#{}".format(user_data.name, user_data.discriminator)
-            except Exception:
+            except AttributeError:
                 return "[Rahasia]"
 
         self.logger.info(f"{server_message}: checkpoint before commiting")
@@ -1189,7 +1186,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
             try:
                 user_data = self.bot.get_user(int(user_id))
                 return user_data.name
-            except Exception:
+            except AttributeError:
                 return None
 
         staff_data["TL"] = {

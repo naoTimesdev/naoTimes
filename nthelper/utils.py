@@ -16,9 +16,10 @@ from typing import Any, Dict, List, Tuple, Union
 import aiofiles
 import aiohttp
 import discord
-import ujson
 from discord import __version__ as discord_ver
 from discord.ext import commands
+
+import ujson
 
 __version__ = "2.0.2"
 
@@ -391,7 +392,7 @@ class HelpGenerator:
 
     def __call__(self) -> discord.Embed:
         if not isinstance(self.embed, discord.Embed):
-            self.logger.warn("Embed are not generated yet.")
+            self.logger.warning("Embed are not generated yet.")
             raise ValueError("Embed are not generated yet.")
         self.logger.info("sending embed results")
         return self.embed
@@ -405,7 +406,7 @@ class HelpGenerator:
         :rtype: discord.Embed
         """
         if not isinstance(self.embed, discord.Embed):
-            self.logger.warn("Embed are not generated yet.")
+            self.logger.warning("Embed are not generated yet.")
             raise ValueError("Embed are not generated yet.")
         self.logger.info("sending embed results")
         return self.embed
@@ -572,9 +573,9 @@ class StealedEmote(commands.Converter):
     def __hash__(self):
         return self.id >> 22
 
-    async def convert(self, ctx, message: str):
-        if message.startswith("<:") and message.endswith(">"):
-            message = message[2:-1]
+    async def convert(self, ctx, argument: str):
+        if argument.startswith("<:") and argument.endswith(">"):
+            message = argument[2:-1]
             try:
                 emote_name, emote_id = message.split(":")
             except ValueError as err:
@@ -589,8 +590,8 @@ class StealedEmote(commands.Converter):
                     f'Failed to convert "{message}" to Stealed Emoji Data.', err.__cause__
                 )
             return self
-        elif message.startswith("<a:") and message.endswith(">"):
-            message = message[1:-1]
+        elif argument.startswith("<a:") and argument.endswith(">"):
+            message = argument[1:-1]
             try:
                 _, emote_name, emote_id = message.split(":")
             except ValueError as err:
@@ -608,7 +609,7 @@ class StealedEmote(commands.Converter):
             return self
         else:
             raise commands.ConversionError(
-                f'Failed to convert "{message}" to Stealed Emoji Data.', "Missing emote"
+                f'Failed to convert "{argument}" to Stealed Emoji Data.', "Missing emote"
             )
 
     @property
@@ -716,7 +717,8 @@ class DiscordPaginator:
         self._generator = generator
         self._generator_num = return_num
 
-    def _gen_kwargs(self, data: Any) -> Dict[str, Any]:
+    @staticmethod
+    def _gen_kwargs(data: Any) -> Dict[str, Any]:
         raw_msg = embed = None
         if isinstance(data, (list, tuple)):
             if len(data) == 2:
@@ -771,7 +773,7 @@ class DiscordPaginator:
             reactmoji = []
             if max_page == 1 and position == 1:
                 if self.break_on_no_results:
-                    self.logger.warn("No more results!")
+                    self.logger.warning("No more results!")
                     break
             elif position == 1:
                 if not self._no_paginate:
@@ -779,9 +781,8 @@ class DiscordPaginator:
             elif position == max_page:
                 if not self._no_paginate:
                     reactmoji.append("⏪")
-            elif position > 1 and position < max_page:
-                if not self._no_paginate:
-                    reactmoji.extend(["⏪", "⏩"])
+            elif position > 1 and position < max_page and not self._no_paginate:
+                reactmoji.extend(["⏪", "⏩"])
             for emote, handler in self.emotes_map.items():
                 is_success = await self._maybe_asyncute(handler["check"], position - 1, datasets)
                 if is_success:
@@ -804,7 +805,7 @@ class DiscordPaginator:
                 res, user = await self.bot.wait_for("reaction_add", timeout=timeout, check=check_react)
             except asyncio.TimeoutError:
                 is_timeout = True
-                self.logger.warn("timeout, removing reactions...")
+                self.logger.warning("timeout, removing reactions...")
                 await message.clear_reactions()
                 return is_timeout
             if user != self.ctx.message.author:

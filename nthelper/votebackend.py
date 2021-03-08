@@ -1,8 +1,9 @@
 import asyncio
 import logging
-from nthelper.redis import RedisBridge
 from datetime import datetime, timezone
 from typing import Dict, List, Union
+
+from nthelper.redis import RedisBridge
 
 
 def utc_time() -> int:

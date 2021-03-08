@@ -44,6 +44,13 @@ class Arguments:
     def add_args(self, *args, **kwargs):
         self._cmd_args.insert(0, (args, kwargs))
 
+    @property
+    def name(self):
+        return self._cmd_name
+
+    def get_args(self):
+        return self._cmd_args
+
 
 class CommandArgParse(commands.Converter):
     def __init__(self, args: Arguments):
@@ -71,14 +78,13 @@ class CommandArgParse(commands.Converter):
         return err_str
 
     def _init_args(self):
-        parser = subparser.add_parser(self._args._cmd_name)
-        if self._args._cmd_args:
-            for arg_args, arg_kwargs in self._args._cmd_args:
+        parser = subparser.add_parser(self._args.name)
+        if self._args.get_args():
+            for arg_args, arg_kwargs in self._args.get_args():
                 get_args_path = arg_args[0]
                 default = arg_kwargs.get("default")
-                if default is not None:
-                    if get_args_path.startswith("-"):
-                        self._defaults_map[get_args_path] = default
+                if default is not None and get_args_path.startswith("-"):
+                    self._defaults_map[get_args_path] = default
                 if not get_args_path.startswith("-") and not self._any_kw:
                     self._any_kw = True
                 parser.add_argument(*arg_args, **arg_kwargs)

@@ -113,6 +113,15 @@ class naoTimesBot(commands.Bot):
 
         self._ip_hostname = ""
         self._host_country = ""
+        self._host_name = ""
+        self._host_os = ""
+        self._host_dpyver = discord.__version__
+        self._host_pyver = ""
+        self._host_pid = os.getpid()
+        self._host_proc_threads = -1
+        self._host_proc = ""
+        self._host_arch = ""
+        self._host_os_ver = ""
         self._host_region = ""
         self._host_tz = ""
 
@@ -207,7 +216,7 @@ class naoTimesBot(commands.Bot):
         self.logger.info("getting bot hardware info...")
         platform_info = platform.uname()
         self._host_os = platform_info.system
-        self._host_os_ver = f"{platform_info.release}"
+        self._host_os_ver = platform_info.release
         self._host_name = platform_info.node
         self._host_arch = platform_info.machine
 

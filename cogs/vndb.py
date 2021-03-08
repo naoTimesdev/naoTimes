@@ -1,18 +1,18 @@
 # -*- coding: utf-8 -*-
 
 import asyncio
-from functools import partial
 import logging
-
-from nthelper.utils import DiscordPaginator
 import random
 import re
+from functools import partial
 from typing import Union
 
 import discord
 import discord.ext.commands as commands
+
 import ujson
 from nthelper.bot import naoTimesBot
+from nthelper.utils import DiscordPaginator
 from nthelper.vndbsocket import VNDBSockIOManager
 
 vnlog = logging.getLogger("cogs.vndb")
@@ -105,7 +105,7 @@ async def fetch_vndb(search_string: str, VNconn: VNDBSockIOManager) -> Union[dic
     full_query_result = []
     total_data = res["num"]
     if total_data < 1:
-        vnlog.warn(f"{search_string}: no results...")
+        vnlog.warning(f"{search_string}: no results...")
         return "Tidak dapat menemukan sesuatu dengan judul/ID yang diberikan"
 
     vnlog.info(f"{search_string}: parsing results...")
@@ -221,7 +221,8 @@ class VNDB(commands.Cog):
 
         self.vnconn = bot.vndb_socket
 
-    def _design_embed(self, data) -> discord.Embed:
+    @staticmethod
+    def _design_embed(data) -> discord.Embed:
         embed = discord.Embed(color=0x225588)
 
         embed.set_thumbnail(url=data["poster_img"])
@@ -241,7 +242,8 @@ class VNDB(commands.Cog):
         embed.add_field(name="Sinopsis", value=data["synopsis"], inline=False)
         return embed
 
-    def _design_screenies(self, data, pos, real_data, total_screenshot) -> discord.Embed:
+    @staticmethod
+    def _design_screenies(data, pos, real_data, total_screenshot) -> discord.Embed:
         embed = discord.Embed(color=0x225588, description="<{}>".format(data))
         embed.set_author(
             name=real_data["title"] + " ({}/{})".format(pos + 1, total_screenshot),

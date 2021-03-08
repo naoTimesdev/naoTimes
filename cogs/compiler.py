@@ -1,12 +1,14 @@
 import logging
 import random
 import re
+from datetime import datetime, timezone
 from string import ascii_lowercase
 
 import aiohttp
 import discord
 from discord.ext import commands
 
+from nthelper.bot import naoTimesBot
 from nthelper.cpputest import (
     CPPTestCompileError,
     CPPTestRuntimeError,
@@ -21,27 +23,27 @@ def setup(bot):
 
 
 class CPPCompiler(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: naoTimesBot):
         self.bot = bot
         self.reblocks = re.compile(r"```[a-zA-Z0-9+\-]*\n(?P<codes>[\s\S]*?)\n```")
         self.logger = logging.getLogger("cogs.compiler.CPPCompiler")
 
-    async def paste_to_hastebin(self, text_to_send: str) -> str:
-        async with aiohttp.ClientSession() as session:
-            async with session.post("https://hastebin.com/documents", data=str(text_to_send)) as resp:
-                haste_key = "unknown"
+    async def paste_to_ihacdn(self, text_to_send: str) -> str:
+        async with aiohttp.ClientSession(
+            headers={"User-Agent": f"naoTimes/v{self.bot.semver} (https://github.com/noaione/naoTimes)"}
+        ) as session:
+            current = str(datetime.now(tz=timezone.utc).timestamp())
+            form_data = aiohttp.FormData()
+            form_data.add_field(
+                name="file",
+                value=text_to_send.encode("utf-8"),
+                content_type="text/x-c",
+                filename=f"naoTimes_CPP_Unit_Test{current}.cpp",
+            )
+            async with session.post("https://p.ihateani.me/upload", data=form_data) as resp:
                 if resp.status == 200:
-                    haste_key = (await resp.json())["key"]
-        return f"https://hastebin.com/{haste_key}.log"
-
-    async def paste_to_psty(self, text_to_send: str) -> str:
-        form_data = {"lang": "cpp", "code": text_to_send}
-        async with aiohttp.ClientSession() as session:
-            async with session.post("https://psty.io/upload", data=form_data) as resp:
-                if resp.status == 200:
-                    await resp.text()
-                final_url = str(resp.url)
-        return final_url
+                    res = await resp.text()
+                    return res
 
     @commands.command(name="compile")
     async def compile_code(self, ctx):
@@ -238,7 +240,7 @@ class CPPCompiler(commands.Cog):
             await cpp_tc.cleanup_data()
             embed = discord.Embed(title="C++ Compiler", color=0xB62626)
             if len(str(ctcerr)) > 1000:
-                hasted = await self.paste_to_hastebin(str(ctcerr))
+                hasted = await self.paste_to_ihacdn(str(ctcerr))
                 embed.add_field(
                     name="Failed to compile!",
                     value="Since the error log is way too long, " f"here's Hastebin dump\n{hasted}",
@@ -262,14 +264,14 @@ class CPPCompiler(commands.Cog):
             embed = discord.Embed(title="C++ Compiler", color=0x7BD453)
             embed.description = f"Time taken: {time_taken}ms"
             if len(out_shit) > 1000:
-                hasted = await self.paste_to_hastebin(out_shit)
+                hasted = await self.paste_to_ihacdn(out_shit)
                 embed.add_field(
                     name="Output",
                     value="Since the output is way too long, " f"here's Hastebin dump\n{hasted}",
                 )
             else:
                 embed.add_field(name="Output", value="```\n{}\n```".format(out_shit))
-            embed.set_footer(text="C++@Discord")
+            embed.set_footer(text=f"C++@Discord (Code: {err_code})")
             await emb_msg.edit(embed=embed)
             await cpp_tc.cleanup_data()
             return
@@ -277,7 +279,7 @@ class CPPCompiler(commands.Cog):
             await cpp_tc.cleanup_data()
             embed = discord.Embed(title="C++ Compiler", color=0xB62626)
             if len(str(ctrerr)) > 1000:
-                hasted = await self.paste_to_hastebin(str(ctrerr))
+                hasted = await self.paste_to_ihacdn(str(ctrerr))
                 embed.add_field(
                     name="Runtime Error!",
                     value="Since the error log is way too long, " f"here's Hastebin dump\n{hasted}",

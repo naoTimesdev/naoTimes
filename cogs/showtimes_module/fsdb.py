@@ -492,7 +492,7 @@ class ShowtimesFansubDB(commands.Cog, ShowtimesBase):
                 self.logger.debug("now waiting for reaction...")
                 res, user = await self.bot.wait_for("reaction_add", timeout=30.0, check=check_react)
             except asyncio.TimeoutError:
-                self.logger.warn("timeout, removing reactions...")
+                self.logger.warning("timeout, removing reactions...")
                 return await msg.clear_reactions()
             if user != ctx.message.author:
                 pass
@@ -513,6 +513,6 @@ class ShowtimesFansubDB(commands.Cog, ShowtimesBase):
                 await msg.clear_reactions()
                 await msg.edit(embed=embed)
             elif "✅" in str(res.emoji):
-                self.logger.warn("deleting embed...")
+                self.logger.warning("deleting embed...")
                 await msg.clear_reactions()
                 return await msg.delete()

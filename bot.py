@@ -6,6 +6,7 @@ import gc
 import logging
 import os
 import pathlib
+import random
 import sys
 import time
 import traceback
@@ -16,6 +17,7 @@ from typing import Optional
 
 import aiohttp
 import discord
+import pymongo.errors
 from discord.ext import commands, tasks
 from discord_slash import SlashCommand
 
@@ -119,7 +121,7 @@ async def initialize_kbbi(config_data: dict) -> KBBI:
                         cookie=cookie_baru, expiry=round(current_dt + (15 * 24 * 60 * 60))
                     )
         logger.info("kbbi auth restored, resetting connection.")
-    except Exception:
+    except Exception:  # skipcq: PYL-W0703
         logger.error("Failed to authenticate, probably server down or something, ignoring for now...")
     await kbbi_cls.reset_connection()
     await write_files(kbbi_cls.get_cookies, "kbbi_auth.json")
@@ -278,7 +280,7 @@ async def init_bot(loop) -> naoTimesBot:
         bot.logger.info("Success Loading Discord.py")
         bot.logger.info("Binding interactions...")
         SlashCommand(bot, sync_commands=True, override_type=True)
-    except Exception as exc:
+    except Exception as exc:  # skipcq: PYL-W0703
         bot.logger.error("Failed to load Discord.py")
         announce_error(exc)
         return None  # type: ignore
@@ -379,7 +381,7 @@ async def on_ready():
                 bot.logger.info(
                     "---------------------------------------------------------------"
                 )  # noqa: E501
-        except Exception:
+        except Exception:  # skipcq: PYL-W0703
             bot.logger.error("Failed to validate if database is up and running.")
             bot.logger.error("IP:Port: {}:{}".format(mongos["ip_hostname"], mongos["port"]))
             bot.ntdb = None
@@ -403,9 +405,9 @@ async def on_ready():
             bot.logger.info(f"Loading: {load}")
             bot.load_extension(load)
             bot.logger.info(f"Loaded: {load}")
-        except Exception as e:
+        except commands.ExtensionError as enoff:
             bot.logger.error(f"Failed to load {load} module")
-            bot.echo_error(e)
+            bot.echo_error(enoff)
     bot_hostdata = bot.get_hostdata
     bot.logger.info("[#][@][!] All cogs/extensions loaded.")
     bot.logger.info("Preparing command registration")
@@ -443,7 +445,10 @@ async def change_bot_presence():
 
     while not bot.is_closed():
         await asyncio.sleep(30)
-        current_status = next(presences)
+        try:
+            current_status = next(presences)
+        except StopIteration:
+            current_status = random.choice(presences)
         activity = discord.Game(name=current_status, type=3)
         await bot.change_presence(activity=activity)
 
@@ -477,7 +482,7 @@ async def send_hastebin(info):
 
 
 @bot.event
-async def on_command_error(ctx, error):
+async def on_command_error(ctx: commands.Context, error):
     """The event triggered when an error is raised while invoking a command.
     ctx   : Context
     error : Exception"""
@@ -503,7 +508,8 @@ async def on_command_error(ctx, error):
     if isinstance(error, commands.NoPrivateMessage):
         try:
             return await ctx.author.send(f"`{ctx.command}`` tidak bisa dipakai di Private Messages.")
-        except Exception:
+        except discord.HTTPException:
+            bot.logger.error("Failed to sent private message about it, ignoring...")
             return
 
     current_time = datetime.now(tz=timezone.utc).timestamp()
@@ -553,7 +559,8 @@ async def on_command_error(ctx, error):
     embed.set_thumbnail(url="https://p.ihateani.me/mccvpqgd.png")
     try:
         await bot.send_error_log(embed=embed)
-    except Exception:
+    except discord.HTTPException:
+        bot.logger.error("Failed to send bot error log to provided channel!")
         if len(msg) > 1900:
             msg = await send_hastebin(msg)
         else:
@@ -649,9 +656,8 @@ async def fetch_bot_count_data():
         total_channels += len(srv.channels)
 
         for user in srv.members:
-            if not user.bot:
-                if user.id not in users_list:
-                    users_list.append(user.id)
+            if not user.bot and user.id not in users_list:
+                users_list.append(user.id)
 
     total_valid_users = len(users_list)
 
@@ -801,7 +807,7 @@ async def reloadconf(ctx):
         await nt_db.validate_connection()
         bot.logger.info("connected to database...")
         bot.ntdb = nt_db
-    except Exception:
+    except pymongo.errors.PyMongoError:
         bot.logger.error("failed to connect to database...")
         bot.ntdb = None
     if bot.fsdb is not None:
@@ -1249,11 +1255,11 @@ async def prefix(ctx, *, msg=None):
 
 
 @prefix.error
-async def prefix_error(error, ctx):
+async def prefix_error(error, ctx: commands.Context):
     if isinstance(error, commands.errors.CheckFailure):
         try:
             server_message = str(ctx.message.guild.id)
-        except Exception:
+        except (AttributeError, KeyError, ValueError):
             return await ctx.send("Hanya bisa dijalankan di sebuah server!")
         srv_pre = await bot.redisdb.get(f"ntprefix_{server_message}")
         helpcmd = HelpGenerator(bot, "Prefix", color=0x00AAAA)

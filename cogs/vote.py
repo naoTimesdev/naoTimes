@@ -7,13 +7,14 @@ from typing import List, Union
 
 import discord
 from discord.ext import commands, tasks
+
 from nthelper.bot import naoTimesBot
 from nthelper.cmd_args import Arguments, CommandArgParse
 from nthelper.votebackend import VoteWatcher, VotingData, VotingKickBan
 
 reactions_num = ["1⃣", "2⃣", "3⃣", "4⃣", "5⃣", "6⃣", "7⃣", "8⃣", "9⃣", "🔟"]
-res2num = {k: v for v, k in enumerate(reactions_num)}
-num2res = {v: k for v, k in enumerate(reactions_num)}
+res2num = dict(zip(reactions_num, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]))
+num2res = dict(zip([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], reactions_num))
 
 kickban_limit_args = ["--limit", "-l"]
 kickban_limit_kwargs = {
@@ -97,7 +98,7 @@ class VoteApp(commands.Cog):
         final_data = []
         if reactions:
             self.logger.info("accumulating reaction while bot gone...")
-            if vote_meta["type"] == "kickban" or vote_meta["type"] == "yn":
+            if vote_meta["type"] in ["kickban", "yn"]:
                 self.logger.info("detected y/n type")
                 y_reaction: discord.Reaction = reactions[0]
                 x_reaction: discord.Reaction = reactions[1]
@@ -231,9 +232,7 @@ class VoteApp(commands.Cog):
 
                 # Sort results.
                 self.logger.info(f"{exported_data['id']}: sorting data...")
-                sorted_tally = {
-                    k: v for k, v in sorted(final_tally.items(), key=lambda item: item[1], reverse=True)
-                }
+                sorted_tally = dict(sorted(final_tally.items(), key=lambda item: item[1], reverse=True))
 
                 # Decide.
                 if exported_data["type"] == "kickban":
@@ -485,7 +484,7 @@ class VoteApp(commands.Cog):
             if user_input.isdigit():
                 try:
                     user_data = ctx.message.guild.get_member(int(user_input))
-                except Exception:
+                except (ValueError, AttributeError, KeyError):
                     return await ctx.send("Mention orang/ketik ID yang valid")
             else:
                 return await ctx.send("Mention orang/ketik ID yang ingin di kick")
@@ -557,7 +556,7 @@ class VoteApp(commands.Cog):
             if user_input.isdigit():
                 try:
                     user_data = ctx.message.guild.get_member(int(user_input))
-                except Exception:
+                except (AttributeError, KeyError, ValueError):
                     return await ctx.send("Mention orang/ketik ID yang valid")
             else:
                 return await ctx.send("Mention orang/ketik ID yang ingin di kick")

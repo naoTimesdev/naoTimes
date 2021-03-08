@@ -7,6 +7,7 @@ from functools import partial
 
 import discord
 from discord.ext import commands
+
 from nthelper.bot import naoTimesBot
 from nthelper.showtimes_helper import ShowtimesQueueData
 from nthelper.utils import HelpGenerator, generate_custom_code
@@ -579,10 +580,12 @@ class ShowtimesKolaborasi(commands.Cog, ShowtimesBase):
 
         self.logger.info(f"{server_message}: matched {matches[0]}")
 
-        if "kolaborasi" in srv_data["anime"][matches[0]]:
-            if server_id in srv_data["anime"][matches[0]]["kolaborasi"]:
-                self.logger.info(f"{matches[0]}: already on collab.")
-                return await ctx.send("Server tersebut sudah diajak kolaborasi.")
+        if (
+            "kolaborasi" in srv_data["anime"][matches[0]]
+            and server_id in srv_data["anime"][matches[0]]["kolaborasi"]
+        ):
+            self.logger.info(f"{matches[0]}: already on collab.")
+            return await ctx.send("Server tersebut sudah diajak kolaborasi.")
 
         randomize_confirm = generate_custom_code(16)  # nosec
 
@@ -592,7 +595,7 @@ class ShowtimesKolaborasi(commands.Cog, ShowtimesBase):
             try:
                 server_identd = self.bot.get_guild(int(server_id))
                 server_ident = server_identd.name
-            except Exception:
+            except AttributeError:
                 server_ident = server_id
             embed = discord.Embed(
                 title="Kolaborasi", description="Periksa data!\nReact jika ingin diubah.", color=0xE7E363,
@@ -712,7 +715,7 @@ class ShowtimesKolaborasi(commands.Cog, ShowtimesBase):
         try:
             server_identd = self.bot.get_guild(int(klb_data["server"]))
             server_ident = server_identd.name
-        except Exception:
+        except AttributeError:
             server_ident = klb_data["server"]
 
         embed = discord.Embed(title="Konfirmasi Kolaborasi", color=0xE7E363)
@@ -943,9 +946,8 @@ class ShowtimesKolaborasi(commands.Cog, ShowtimesBase):
             klosrv.remove(server_message)
 
             remove_all = False
-            if len(klosrv) == 1:
-                if klosrv[0] == osrv:
-                    remove_all = True
+            if len(klosrv) == 1 and klosrv[0] == osrv:
+                remove_all = True
 
             if remove_all:
                 del osrv_data["anime"][matches[0]]["kolaborasi"]

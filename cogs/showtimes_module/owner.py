@@ -11,9 +11,9 @@ import discord
 from discord.ext import commands
 
 import ujson
-from nthelper.utils import HelpGenerator, write_files
-from nthelper.showtimes_helper import ShowtimesQueueData
 from nthelper.bot import naoTimesBot
+from nthelper.showtimes_helper import ShowtimesQueueData
+from nthelper.utils import HelpGenerator, write_files
 
 from .base import ShowtimesBase
 
@@ -183,7 +183,6 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
         if self.ntdb is None:
             self.logger.info("owner hasn't enabled naoTimesDB yet.")
             return
-        """This will patch entire database."""
         self.logger.info("Initiating database by bot owner")
 
         if ctx.message.attachments == []:
@@ -326,7 +325,7 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
 
         try:
             super_admins.remove(adm_id)
-        except Exception:
+        except ValueError:
             return await ctx.send("Gagal menghapus admin dari data super admin")
 
         await self.dumps_super_admins(super_admins, self.bot.redisdb)
@@ -454,7 +453,7 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
             try:
                 user_data = self.bot.get_user(int(user_id))
                 return user_data.name
-            except Exception:
+            except AttributeError:
                 return None
 
         await msg_dc.edit(content="Monkey-patching DB...")

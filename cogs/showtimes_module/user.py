@@ -125,16 +125,6 @@ class ShowtimesUser(commands.Cog, ShowtimesBase):
         total_anime = len(list(srv_data["anime"].keys()))
         self.logger.info(f"{server_message}: collecting {total_anime} jadwal...")
 
-        async def add_to_list(data_map):
-            time_until, data = data_map["t"], data_map["d"]
-            if time_until in time_data_list:  # For anime that air at the same time
-                time_until += 1
-                while True:
-                    if time_until not in time_data_list:
-                        break
-                    time_until += 1
-            time_data_list[time_until] = data
-
         def calculate_needed(status_list):
             all_ep = list(status_list.keys())[-1]
             return 7 * int(all_ep) * 24 * 60 * 60
@@ -254,7 +244,7 @@ class ShowtimesUser(commands.Cog, ShowtimesBase):
             try:
                 user_data = self.bot.get_user(int(user_id))
                 return "{}#{}".format(user_data.name, user_data.discriminator)
-            except Exception:
+            except AttributeError:
                 return "[Rahasia]"
 
         new_srv_owner = []

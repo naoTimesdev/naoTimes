@@ -527,7 +527,7 @@ class Helper(commands.Cog):
             [{"name": "kata", "type": "r", "desc": "`<kata>` merupakan kueri yang akan dicari nanti"}],
             examples=["duduk", "makan"],
         )
-        await helpcmd.generate_aliases(["kanji"])
+        await helpcmd.generate_aliases()
         await ctx.send(embed=helpcmd.get())
 
     @oldhelp.command(aliases=["konversiuang", "currency"])

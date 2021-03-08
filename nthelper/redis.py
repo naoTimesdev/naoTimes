@@ -1,7 +1,7 @@
 import asyncio
-import uuid
 import json
 import logging
+import uuid
 from typing import Any, Dict, List, Optional
 
 import aioredis
@@ -60,7 +60,8 @@ class RedisBridge:
         self._need_execution = []
         self._is_stopping = False
 
-    def stringify(self, data: Any) -> str:
+    @staticmethod
+    def stringify(data: Any) -> str:
         """Stringify `data`
 
         :param data: data to be turn into a string
@@ -78,7 +79,8 @@ class RedisBridge:
             data = json.dumps(data, ensure_ascii=False)
         return data
 
-    def to_original(self, data: Optional[str]) -> Any:
+    @staticmethod
+    def to_original(data: Optional[str]) -> Any:
         """Convert back data to the possible original data types
 
         For bytes, you need to prepend with `b2dntcode_`
@@ -146,7 +148,7 @@ class RedisBridge:
         try:
             res = await self._conn.get(key, encoding="utf-8")
             res = self.to_original(res)
-        except Exception:
+        except aioredis.errors.RedisError:
             res = None
         self._need_execution.remove("get_" + uniq_id)
         return res
@@ -166,7 +168,7 @@ class RedisBridge:
         self._need_execution.append("keys_" + uniq_id)
         try:
             all_keys = await self._conn.keys(pattern)
-        except Exception:
+        except aioredis.errors.RedisError:
             all_keys = []
         self._need_execution.remove("keys_" + uniq_id)
         if not isinstance(all_keys, list):
@@ -191,7 +193,7 @@ class RedisBridge:
         self._need_execution.append("getall_" + uniq_id)
         try:
             all_keys = await self._conn.keys(pattern)
-        except Exception:
+        except aioredis.errors.RedisError:
             all_keys = []
         self._need_execution.remove("getall_" + uniq_id)
         if not isinstance(all_keys, list):
@@ -221,7 +223,7 @@ class RedisBridge:
         self._need_execution.append("getalldict_" + uniq_id)
         try:
             all_keys = await self._conn.keys(pattern)
-        except Exception:
+        except aioredis.RedisError:
             all_keys = []
         self._need_execution.remove("getalldict_" + uniq_id)
         if not isinstance(all_keys, list):
@@ -250,7 +252,7 @@ class RedisBridge:
         self._need_execution.append("set_" + uniq_id)
         try:
             res = await self._conn.set(key, self.stringify(data))
-        except Exception:
+        except aioredis.RedisError:
             res = False
         self._need_execution.remove("set_" + uniq_id)
         return res
@@ -273,7 +275,7 @@ class RedisBridge:
         self._need_execution.append("setex_" + uniq_id)
         try:
             res = await self._conn.setex(key, expires, self.stringify(data))
-        except Exception:
+        except aioredis.RedisError:
             res = False
         self._need_execution.remove("setex_" + uniq_id)
         return res
@@ -292,7 +294,7 @@ class RedisBridge:
         self._need_execution.append("exists_" + uniq_id)
         try:
             res = await self._conn.exists(key)
-        except Exception:
+        except aioredis.RedisError:
             res = 0
         self._need_execution.remove("exists_" + uniq_id)
         if res > 0:
@@ -313,7 +315,7 @@ class RedisBridge:
         self._need_execution.append("delete_" + uniq_id)
         try:
             res = await self._conn.delete(key)
-        except Exception:
+        except aioredis.RedisError:
             res = 0
         self._need_execution.remove("delete_" + uniq_id)
         if res > 0:
