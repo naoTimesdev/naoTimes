@@ -289,10 +289,11 @@ class VTuberAPI(commands.Cog):
                 return await ctx.send("Tidak dapat menemukan bantuan perintah tersebut.")
             helpcmd = HelpGenerator(
                 self.bot,
+                ctx,
                 "vtuber",
                 desc="Informasi stream VTuber dan sebagainya!\nSemua command menggunakan sistem `argparse`\n"
                 "Silakan tambah `-h` setelah salah satu command untuk "
-                f"melihat bantuan tambahan (ex: `{self.bot.prefix}vtuber live -h`)",
+                f"melihat bantuan tambahan (ex: `{self.bot.prefixes(ctx)}vtuber live -h`)",
             )
             await helpcmd.generate_field("vtuber", desc="Memunculkan perintah ini")
             await helpcmd.generate_field("vtuber live", desc="Melihat VTuber yang sedang live")

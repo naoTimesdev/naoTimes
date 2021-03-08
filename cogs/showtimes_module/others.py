@@ -510,7 +510,7 @@ class ShowtimesKolaborasi(commands.Cog, ShowtimesBase):
             self.logger.info("owner hasn't enabled naoTimesDB yet.")
             return
         if not ctx.invoked_subcommand:
-            helpcmd = HelpGenerator(self.bot, "kolaborasi", f"Versi {self.bot.semver}")
+            helpcmd = HelpGenerator(self.bot, ctx, "kolaborasi", f"Versi {self.bot.semver}")
             await helpcmd.generate_field(
                 "kolaborasi", desc="Memunculkan bantuan perintah", use_fullquote=True,
             )
@@ -998,5 +998,5 @@ class ShowtimesKolaborasi(commands.Cog, ShowtimesBase):
         if fsdb_binded:
             await ctx.send(
                 "Binding FansubDB untuk anime terputus, "
-                f"silakan hubungkan ulang dengan: `{self.bot.prefix}fsdb bind {matches[0]}`"
+                f"silakan hubungkan ulang dengan: `{self.bot.prefixes(ctx)}fsdb bind {matches[0]}`"
             )

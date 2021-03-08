@@ -43,7 +43,7 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
     @commands.guild_only()
     async def ntadmin(self, ctx):  # noqa: D102
         if ctx.invoked_subcommand is None:
-            helpcmd = HelpGenerator(self.bot, "ntadmin", desc=f"Versi {self.bot.semver}",)
+            helpcmd = HelpGenerator(self.bot, ctx, "ntadmin", desc=f"Versi {self.bot.semver}",)
             await helpcmd.generate_field(
                 "ntadmin", desc="Memunculkan bantuan perintah ini.",
             )

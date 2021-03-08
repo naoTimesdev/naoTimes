@@ -967,7 +967,7 @@ async def reload(ctx, *, cogs=None):
     Restart salah satu module bot, owner only
     """
     if not cogs:
-        helpcmd = HelpGenerator(bot, "Reload", desc="Reload module bot.",)
+        helpcmd = HelpGenerator(bot, ctx, "Reload", desc="Reload module bot.",)
         helpcmd.embed.add_field(
             name="Module/Cogs List", value="\n".join(["- " + cl for cl in cogs_list]), inline=False,
         )
@@ -1012,7 +1012,7 @@ async def load(ctx, *, cogs=None):
     Load salah satu module bot, owner only
     """
     if not cogs:
-        helpcmd = HelpGenerator(bot, "Load", desc="Load module bot.",)
+        helpcmd = HelpGenerator(bot, ctx, "Load", desc="Load module bot.",)
         helpcmd.embed.add_field(
             name="Module/Cogs List", value="\n".join(["- " + cl for cl in cogs_list]), inline=False,
         )
@@ -1046,7 +1046,7 @@ async def unload(ctx, *, cogs=None):
     Unload salah satu module bot, owner only
     """
     if not cogs:
-        helpcmd = HelpGenerator(bot, "Unload", desc="Unload module bot.",)
+        helpcmd = HelpGenerator(bot, ctx, "Unload", desc="Unload module bot.",)
         helpcmd.embed.add_field(
             name="Module/Cogs List", value="\n".join(["- " + cl for cl in cogs_list]), inline=False,
         )
@@ -1188,28 +1188,32 @@ async def prefix(ctx, *, msg=None):
     bot.logger.info(f"requested at {server_message}")
     srv_pre = await bot.redisdb.get(f"ntprefix_{server_message}")
     if not msg:
-        helpcmd = HelpGenerator(bot, "Prefix", color=0x00AAAA)
+        helpcmd = HelpGenerator(bot, ctx, "Prefix", color=0x00AAAA)
         helpcmd.embed.add_field(
             name="Prefix Server", value="Tidak ada" if srv_pre is None else srv_pre, inline=False,
         )
         await helpcmd.generate_aliases()
         return await ctx.send(embed=helpcmd.get())
 
+    deletion = False
     if msg in ["clear", "bersihkan", "hapus"]:
         res = await bot.redisdb.rm(f"ntprefix_{server_message}")
+        deletion = True
         if res:
-            return await ctx.send("Berhasil menghapus custom prefix dari server ini")
+            bot.logger.info(f"{server_message}: removing custom prefix...")
+            send_txt = "Berhasil menghapus custom prefix dari server ini"
         else:
             return await ctx.send("Tidak ada prefix yang terdaftar untuk server ini, mengabaikan...")
 
-    if srv_pre is not None:
+    if srv_pre is not None and not deletion:
         bot.logger.info(f"{server_message}: changing custom prefix...")
         send_txt = "Berhasil mengubah custom prefix ke `{pre_}` untuk server ini"
-    else:
+    elif srv_pre is None and not deletion:
         bot.logger.info(f"{server_message}: adding custom prefix...")
         send_txt = "Berhasil menambah custom prefix `{pre_}` untuk server ini"
 
-    await bot.redisdb.set(f"ntprefix_{server_message}", msg)
+    if not deletion:
+        await bot.redisdb.set(f"ntprefix_{server_message}", msg)
     prefix_data = await bot.redisdb.getalldict("ntprefix_*")
     new_prefix_fmt = {}
     for srv, pre in prefix_data.items():
@@ -1217,13 +1221,7 @@ async def prefix(ctx, *, msg=None):
     bot.command_prefix = partial(
         prefixes_with_data, prefixes_data=new_prefix_fmt, default=bot.botconf["default_prefix"],
     )
-    prefix = bot.command_prefix
-    if callable(prefix):
-        prefix = prefix(bot, "[]")
-    if isinstance(prefix, (list, tuple)):
-        bot.prefix = prefix[0]
-    else:
-        bot.prefix = prefix
+    bot.prefix = bot.prefixes("[]")
 
     bot.logger.info("reloading all cogs.")
     loaded_extensions = list(dict(bot.extensions).keys())
@@ -1262,7 +1260,7 @@ async def prefix_error(error, ctx: commands.Context):
         except (AttributeError, KeyError, ValueError):
             return await ctx.send("Hanya bisa dijalankan di sebuah server!")
         srv_pre = await bot.redisdb.get(f"ntprefix_{server_message}")
-        helpcmd = HelpGenerator(bot, "Prefix", color=0x00AAAA)
+        helpcmd = HelpGenerator(bot, ctx, "Prefix", color=0x00AAAA)
         helpcmd.embed.add_field(
             name="Prefix Server", value="Tidak ada" if srv_pre is None else srv_pre, inline=False,
         )
