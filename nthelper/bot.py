@@ -137,10 +137,18 @@ class naoTimesBot(commands.Bot):
         tb = traceback.format_exception(type(error), error, error.__traceback__)
         self.logger.error("Exception occured\n" + "".join(tb))
 
-    def prefix_srv(self, ctx) -> str:
+    def prefixes(self, ctx: Union[commands.Context, discord.TextChannel, discord.Guild]) -> str:
+        """Get server-based prefixes or get the default one.
+        ---
+
+        :param ctx: the context of the commands
+        :type ctx: commands.Context
+        :return: server prefix or default global prefix
+        :rtype: str
+        """
         prefix = self.command_prefix
         if callable(prefix):
-            prefix = prefix(self, ctx.message)
+            prefix = prefix(self, ctx)
         if isinstance(prefix, (list, tuple)):
             final_pre = prefix[0]
         else:

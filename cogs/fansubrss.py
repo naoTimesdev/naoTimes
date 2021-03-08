@@ -27,8 +27,8 @@ fansubRSSSchemas = sc.Schema(
     {
         "feeds": [
             {
-                "id": sc.And(str, int),
-                "channel": sc.And(str, int),
+                "id": sc.Or(str, int),
+                "channel": sc.Or(str, int),
                 "feedUrl": str,
                 sc.Optional("message"): NoneStr,
                 sc.Optional("lastEtag"): str,
@@ -45,7 +45,8 @@ fansubRSSSchemas = sc.Schema(
                     "timestamp": bool,
                 },
             }
-        ]
+        ],
+        sc.Optional("premium"): bool,
     }
 )
 
@@ -416,10 +417,10 @@ class FansubRSS(commands.Cog):
 
     @tasks.loop(seconds=1, count=1)
     async def _precheck_server_type(self):
-        fetch_all_servers = await self.bot.redisdb.getall("ntfsrss_*")
+        fetch_all_servers = await self.bot.redisdb.getalldict("ntfsrss_*")
         self.logger.info("Prechecking server type...")
-        for srv in fetch_all_servers:
-            rss_meta = await self.read_rss(srv)
+        for srv_key, rss_meta in fetch_all_servers.items():
+            srv = srv_key.replace("ntfsrss_", "")
             if "premium" in rss_meta and rss_meta["premium"]:
                 self.logger.info(f"Appending `{srv}` server to premium treatmeant.")
                 self._server_premium.append(srv)
@@ -525,7 +526,6 @@ class FansubRSS(commands.Cog):
                 metadatas_to_fetch.extend(full_metadata["feeds"])
             for metadata in metadatas_to_fetch:
                 fetched_feeds = await self.read_rss_feeds(server_id, metadata["id"])
-                print(metadata, fetched_feeds)
                 feed_res, _, _ = await recursive_check_feed(
                     metadata["feedUrl"], metadata, fetched_feeds["fetchedURL"]
                 )
@@ -596,7 +596,7 @@ class FansubRSS(commands.Cog):
         if ctx.invoked_subcommand is None:
             if not self.is_msg_empty(msg, 2):
                 return await ctx.send("Tidak dapat menemukan bantuan perintah tersebut.")
-            helpcmd = HelpGenerator(self.bot, "fansubrss", desc="Pemantau RSS Fansub.")
+            helpcmd = HelpGenerator(self.bot, ctx, "fansubrss", desc="Pemantau RSS Fansub.")
             await helpcmd.generate_field(
                 "fansubrss", desc="Memunculkan bantuan perintah ini.",
             )
@@ -727,7 +727,8 @@ class FansubRSS(commands.Cog):
             pass
         self.logger.info(f"{server_id}: server rss deactivated...")
         await ctx.send(
-            f"Berhasil menonaktifkan, silakan aktifkan kembali via `{self.bot.prefix}fansubrss aktifkan`"
+            "Berhasil menonaktifkan, silakan aktifkan kembali via "
+            f"`{self.bot.prefixes(ctx)}fansubrss aktifkan`"
         )
 
     @fansubrss.command(name="tambah", aliases=["add"])
@@ -1139,7 +1140,7 @@ class FansubRSS(commands.Cog):
         if total_data < 2:
             return await ctx.send(
                 "Tidak dapat menghapus salah satu RSS, dikarenakan hanya ada 1\n"
-                f"Silakan gunakan, `{self.bot.prefix}fansubrss deaktivasi`"
+                f"Silakan gunakan, `{self.bot.prefixes(ctx)}fansubrss deaktivasi`"
             )
 
         selected_rss = await self.choose_rss(ctx, full_rss_metadata)

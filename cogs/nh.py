@@ -267,7 +267,10 @@ class nHController(commands.Cog):
             if not self.is_msg_empty(msg, 2):
                 return await ctx.send("Tidak dapat menemukan bantuan perintah tersebut.")
             helpcmd = HelpGenerator(
-                self.bot, "nh", desc="Sebuah modul untuk membaca, melihat info, mencari doujin via nhentai"
+                self.bot,
+                ctx,
+                "nh",
+                desc="Sebuah modul untuk membaca, melihat info, mencari doujin via nhentai",
             )
             await helpcmd.generate_field("nh", desc="Memunculkan bantuan perintah ini.")
             await helpcmd.generate_field(

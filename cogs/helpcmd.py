@@ -205,7 +205,7 @@ class Helper(commands.Cog):
             if not self.is_msg_empty(msg, 2):
                 return await ctx.send("Tidak dapat menemukan bantuan perintah tersebut.")
             is_owner = await self.bot.is_owner(ctx.author)
-            helpcmd = HelpGenerator(self.bot, desc=f"Versi {self._ver}")
+            helpcmd = HelpGenerator(self.bot, ctx, desc=f"Versi {self._ver}")
             await helpcmd.generate_field("help", desc="Memunculkan bantuan perintah")
             if "cogs.showtimes" in loaded_cogs:
                 await helpcmd.generate_field(
@@ -255,7 +255,7 @@ class Helper(commands.Cog):
     @oldhelp.command()
     @commands.is_owner()
     async def admin(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "Admin[*]", desc=f"Versi {self._ver}")
+        helpcmd = HelpGenerator(self.bot, ctx, "Admin[*]", desc=f"Versi {self._ver}")
         await helpcmd.generate_field(
             "supermotd", desc="Mengirimkan pesan berantai ke tiap admin fansub yang terdaftar di naoTimes",
         )
@@ -277,7 +277,7 @@ class Helper(commands.Cog):
         channel = ctx.message.channel
         if isinstance(channel, discord.TextChannel):
             is_nsfw = channel.is_nsfw()
-        helpcmd = HelpGenerator(self.bot, "Fun[*]", desc=f"Versi {self._ver}")
+        helpcmd = HelpGenerator(self.bot, ctx, "Fun[*]", desc=f"Versi {self._ver}")
         await helpcmd.generate_field(
             "ui", [{"name": "user", "type": "o"}], desc="Melihat informasi user",
         )
@@ -305,7 +305,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command(aliases=["user", "uinfo", "userinfo"])
     async def ui(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "ui", "Melihat informasi user")
+        helpcmd = HelpGenerator(self.bot, ctx, "ui", "Melihat informasi user")
         await helpcmd.generate_field(
             "ui",
             [
@@ -322,7 +322,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command(aliases=["pp", "profile", "bigprofile", "ava"])
     async def avatar(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "avatar", "Melihat profile picture user")
+        helpcmd = HelpGenerator(self.bot, ctx, "avatar", "Melihat profile picture user")
         await helpcmd.generate_field(
             "avatar",
             [
@@ -339,7 +339,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command()
     async def f(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "f", "Pencet F untuk memberikan respek")
+        helpcmd = HelpGenerator(self.bot, ctx, "f", "Pencet F untuk memberikan respek")
         await helpcmd.generate_field(
             "f",
             [{"name": "pesan", "type": "o", "desc": "`[pesan]` bebas mau diisi apa aja."}],
@@ -350,7 +350,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command(aliases=["kerangajaib"])
     async def kerang(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "kerang", "Bertanya kepada kerang ajaib.")
+        helpcmd = HelpGenerator(self.bot, ctx, "kerang", "Bertanya kepada kerang ajaib.")
         await helpcmd.generate_field(
             "kerang",
             [{"name": "pertanyaan", "type": "r", "desc": "`<pertanyaan>` akan dijawab oleh kerang ajaib."}],
@@ -361,7 +361,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command()
     async def pilih(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "pilih", "Berikan bot pilihan untuk dipilih.")
+        helpcmd = HelpGenerator(self.bot, ctx, "pilih", "Berikan bot pilihan untuk dipilih.")
         await helpcmd.generate_field(
             "pilih",
             [
@@ -380,7 +380,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command(aliases=["penis", "dick", "kntl"])
     async def kontol(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "kontol", "Periksa panjang kntl anda.")
+        helpcmd = HelpGenerator(self.bot, ctx, "kontol", "Periksa panjang kntl anda.")
         await helpcmd.generate_field(
             "kontol",
             desc="Bot akan memberikan panjang kntl situ\n"
@@ -393,7 +393,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command(name="8ball")
     async def _8ball(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "8ball", "Bertanya kepada bola delapan ajaib.")
+        helpcmd = HelpGenerator(self.bot, ctx, "8ball", "Bertanya kepada bola delapan ajaib.")
         await helpcmd.generate_field(
             "8ball",
             [{"name": "pertanyaan", "type": "r", "desc": "`<pertanyaan>` akan dijawab oleh bola delapan."}],
@@ -405,7 +405,7 @@ class Helper(commands.Cog):
     @oldhelp.command()
     @commands.is_owner()
     async def reload(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "reload", "Mereload salah satu module bot.")
+        helpcmd = HelpGenerator(self.bot, ctx, "reload", "Mereload salah satu module bot.")
         await helpcmd.generate_field(
             "reload",
             [{"name": "module", "type": "r", "desc": "`<module>` yang akan direload."}],
@@ -417,7 +417,7 @@ class Helper(commands.Cog):
     @oldhelp.command()
     @commands.is_owner()
     async def load(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "load", "Load salah satu module bot.")
+        helpcmd = HelpGenerator(self.bot, ctx, "load", "Load salah satu module bot.")
         await helpcmd.generate_field(
             "load",
             [{"name": "module", "type": "r", "desc": "`<module>` yang akan diload."}],
@@ -429,7 +429,7 @@ class Helper(commands.Cog):
     @oldhelp.command()
     @commands.is_owner()
     async def unload(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "unload", "Unload salah satu module bot.")
+        helpcmd = HelpGenerator(self.bot, ctx, "unload", "Unload salah satu module bot.")
         await helpcmd.generate_field(
             "unload",
             [{"name": "module", "type": "r", "desc": "`<module>` yang akan unload."}],
@@ -441,7 +441,7 @@ class Helper(commands.Cog):
     @oldhelp.command(name="peninjau")
     async def peninjau_help(self, ctx):
         helpcmd = HelpGenerator(
-            self.bot, "Peninjau[*]", desc="Bantuan untuk perintah yang mengambil data dari website",
+            self.bot, ctx, "Peninjau[*]", desc="Bantuan untuk perintah yang mengambil data dari website",
         )
         await helpcmd.generate_field(
             "anibin",
@@ -477,7 +477,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command()
     async def anibin(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "anibin", "Mencari resolusi asli anime melalui anibin.")
+        helpcmd = HelpGenerator(self.bot, ctx, "anibin", "Mencari resolusi asli anime melalui anibin.")
         await helpcmd.generate_field(
             "anibin",
             [{"name": "judul", "type": "r", "desc": "`<judul>` merupakan kueri yang akan dicari nanti"}],
@@ -488,7 +488,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command()
     async def kbbi(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "kbbi", "Mencari kata di KBBI Daring.")
+        helpcmd = HelpGenerator(self.bot, ctx, "kbbi", "Mencari kata di KBBI Daring.")
         await helpcmd.generate_field(
             "kbbi",
             [{"name": "kata", "type": "r", "desc": "`<kata>` merupakan kueri yang akan dicari nanti"}],
@@ -499,7 +499,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command(aliases=["persamaankata", "persamaan"])
     async def sinonim(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "sinonim", "Mencari sinonim sebuah kata.")
+        helpcmd = HelpGenerator(self.bot, ctx, "sinonim", "Mencari sinonim sebuah kata.")
         await helpcmd.generate_field(
             "sinonim",
             [{"name": "kata", "type": "r", "desc": "`<kata>` merupakan kueri yang akan dicari nanti"}],
@@ -510,7 +510,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command(aliases=["lawankata"])
     async def antonim(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "antonim", "Mencari antonim sebuah kata.")
+        helpcmd = HelpGenerator(self.bot, ctx, "antonim", "Mencari antonim sebuah kata.")
         await helpcmd.generate_field(
             "antonim",
             [{"name": "kata", "type": "r", "desc": "`<kata>` merupakan kueri yang akan dicari nanti"}],
@@ -521,7 +521,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command(aliases=["kanji"])
     async def jisho(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "jisho", "Mencari kata di Jisho.")
+        helpcmd = HelpGenerator(self.bot, ctx, "jisho", "Mencari kata di Jisho.")
         await helpcmd.generate_field(
             "jisho",
             [{"name": "kata", "type": "r", "desc": "`<kata>` merupakan kueri yang akan dicari nanti"}],
@@ -532,7 +532,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command(aliases=["konversiuang", "currency"])
     async def kurs(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "kurs", "Konversi nilai mata uang maupun cryptocurrency.")
+        helpcmd = HelpGenerator(self.bot, ctx, "kurs", "Konversi nilai mata uang maupun cryptocurrency.")
         await helpcmd.generate_field(
             "kurs",
             [
@@ -563,7 +563,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command(aliases=["fastsub", "gtlsub"])
     async def speedsub(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "kurs", "Speedsub file bokong dengan GTL.")
+        helpcmd = HelpGenerator(self.bot, ctx, "kurs", "Speedsub file bokong dengan GTL.")
         extra_txt = "Tautkan/Tambahkan Attachments file .ass atau .srt "
         extra_txt += f"dan isi pesannya dengan `{self._pre}speedsub`\n\n"
         extra_txt += "`<kode_bahasa>` merupakan kode bahasa 2 huruf, silakan cari di google dengan query `ISO 639-1`"  # noqa: E501
@@ -577,7 +577,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command(name="weebs")
     async def weebs_help(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "Weebs[*]", "Bantuan untuk perintah Anilist dan VNDB.")
+        helpcmd = HelpGenerator(self.bot, ctx, "Weebs[*]", "Bantuan untuk perintah Anilist dan VNDB.")
         await helpcmd.generate_field(
             "anime", [{"name": "judul", "type": "r"}], desc="Cari informasi sebuah anime melalui Anilist.co",
         )
@@ -598,7 +598,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command(aliases=["animu", "kartun"])
     async def anime(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "anime", "Cari informasi sebuah anime melalui Anilist.co.",)
+        helpcmd = HelpGenerator(self.bot, ctx, "anime", "Cari informasi sebuah anime melalui Anilist.co.",)
         await helpcmd.generate_field(
             "anime", [{"name": "judul", "type": "r", "desc": animangavn_textdata}], examples=["hitoribocchi"],
         )
@@ -615,7 +615,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command(aliases=["mango", "komik"])
     async def manga(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "manga", "Cari informasi sebuah manga melalui Anilist.co.",)
+        helpcmd = HelpGenerator(self.bot, ctx, "manga", "Cari informasi sebuah manga melalui Anilist.co.",)
         await helpcmd.generate_field(
             "manga",
             [{"name": "judul", "type": "r", "desc": animangavn_textdata}],
@@ -631,7 +631,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command()
     async def tayang(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "tayang", "Melihat jadwal tayang anime musim sekarang.",)
+        helpcmd = HelpGenerator(self.bot, ctx, "tayang", "Melihat jadwal tayang anime musim sekarang.",)
         await helpcmd.generate_field(
             "tayang", desc="Melihat jadwal tayang dengan listing per sisa hari menuju episode selanjutnya.",
         )
@@ -645,7 +645,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command(name="vn", aliases=["vndb", "visualnovel", "eroge"])
     async def vn_help(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "vn", "Melihat informasi sebuah VN melalui VNDB.")
+        helpcmd = HelpGenerator(self.bot, ctx, "vn", "Melihat informasi sebuah VN melalui VNDB.")
         await helpcmd.generate_field(
             "vn",
             [{"name": "judul", "type": "r", "desc": animangavn_textdata}],
@@ -662,7 +662,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command(aliases=["randomvisualnovel", "randomeroge", "vnrandom"])
     async def randomvn(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "vn", "Melihat informasi sebuah VN random.")
+        helpcmd = HelpGenerator(self.bot, ctx, "vn", "Melihat informasi sebuah VN random.")
         await helpcmd.generate_field(
             "randomvn", desc="VN akan dicari dipilih secara random oleh bot menggunakan RNG.",
         )
@@ -678,7 +678,7 @@ class Helper(commands.Cog):
         if not ctx.invoked_subcommand:
             if not self.is_msg_empty(msg):
                 return await ctx.send("Tidak dapat menemukan bantuan perintah tersebut.")
-            helpcmd = HelpGenerator(self.bot, "Showtimes[*]", desc=f"Versi {self._ver}")
+            helpcmd = HelpGenerator(self.bot, ctx, "Showtimes[*]", desc=f"Versi {self._ver}")
             await helpcmd.generate_field(
                 "help showtimes user", desc="Memunculkan bantuan perintah showtimes untuk user biasa",
             )
@@ -729,7 +729,10 @@ class Helper(commands.Cog):
     @showtimes.command(name="user", aliases=["pengguna"])
     async def showtimes_user(self, ctx):
         helpcmd = HelpGenerator(
-            self.bot, "Showtimes User[*]", desc="Perintah-perintah yang dapat digunakan oleh semua user.",
+            self.bot,
+            ctx,
+            "Showtimes User[*]",
+            desc="Perintah-perintah yang dapat digunakan oleh semua user.",
         )
         await helpcmd.generate_field(
             "tagih", desc="Melihat progress garapan sebuah anime.", opts=[{"name": "judul", "type": "r"}],
@@ -745,7 +748,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command(aliases=["blame", "mana"])
     async def tagih(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "tagih", "Melihat progress garapan sebuah anime.")
+        helpcmd = HelpGenerator(self.bot, ctx, "tagih", "Melihat progress garapan sebuah anime.")
         extra_info = self.get_text("judul") + "\n"
         extra_info += "Jika judul tidak diberikan, akan diberikan list"
         extra_info += " seluruh garapan fansub yang terdaftar."
@@ -758,7 +761,7 @@ class Helper(commands.Cog):
     @oldhelp.command(aliases=["airing"])
     async def jadwal(self, ctx):
         helpcmd = HelpGenerator(
-            self.bot, "jadwal", "Melihat jadwal episode selanjutnya untuk garapan fansub.",
+            self.bot, ctx, "jadwal", "Melihat jadwal episode selanjutnya untuk garapan fansub.",
         )
         await helpcmd.generate_field(
             "jadwal", desc="Memberikan list jadwal episode selanjutnya untuk garapan fansub musim ini.",
@@ -768,7 +771,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command(aliases=["tukangdelay", "pendelay"])
     async def staff(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "staff", "Melihat staff garapan sebuah anime.")
+        helpcmd = HelpGenerator(self.bot, ctx, "staff", "Melihat staff garapan sebuah anime.")
         extra_info = "`<judul>` yang terdaftar di database naoTimes."
         await helpcmd.generate_field("staff", [{"name": "judul", "type": "r", "desc": extra_info}])
         await helpcmd.generate_aliases(["tukangdelay", "pendelay"])
@@ -777,7 +780,7 @@ class Helper(commands.Cog):
     @showtimes.command(name="staff")
     async def showtimes_staff(self, ctx):
         helpcmd = HelpGenerator(
-            self.bot, "Showtimes Staff[*]", desc="Perintah yang dapat digunakan oleh staff fansub.",
+            self.bot, ctx, "Showtimes Staff[*]", desc="Perintah yang dapat digunakan oleh staff fansub.",
         )
         await helpcmd.generate_field(
             "beres",
@@ -814,7 +817,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command(aliases=["done"])
     async def beres(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "beres", "Menandakan posisi garapan episode menjadi beres.",)
+        helpcmd = HelpGenerator(self.bot, ctx, "beres", "Menandakan posisi garapan episode menjadi beres.",)
         await helpcmd.generate_field(
             "beres",
             [
@@ -829,7 +832,7 @@ class Helper(commands.Cog):
     @oldhelp.command(aliases=["undone", "cancel"])
     async def gakjadi(self, ctx):
         helpcmd = HelpGenerator(
-            self.bot, "gakjadi", "Menandakan posisi garapan episode menjadi belum beres.",
+            self.bot, ctx, "gakjadi", "Menandakan posisi garapan episode menjadi belum beres.",
         )
         await helpcmd.generate_field(
             "gakjadi",
@@ -845,7 +848,7 @@ class Helper(commands.Cog):
     @oldhelp.command(aliases=["release"])
     async def rilis(self, ctx):
         helpcmd = HelpGenerator(
-            self.bot, "rilis", "Merilis garapan!\n" "*Hanya bisa dipakai oleh Admin atau tukang QC*",
+            self.bot, ctx, "rilis", "Merilis garapan!\n" "*Hanya bisa dipakai oleh Admin atau tukang QC*",
         )
         await helpcmd.generate_field(
             "rilis",
@@ -875,6 +878,7 @@ class Helper(commands.Cog):
     async def batalrilis(self, ctx):
         helpcmd = HelpGenerator(
             self.bot,
+            ctx,
             "batalrilis",
             "Membatalkan rilisan episode yang dirlis paling terakhir.\n"
             "*Hanya bisa dipakai oleh Admin atau tukang QC*",
@@ -891,6 +895,7 @@ class Helper(commands.Cog):
     async def tandakan(self, ctx):
         helpcmd = HelpGenerator(
             self.bot,
+            ctx,
             "tandakan",
             "Menandakan status garapan episode tertentu untuk "
             "posisi tertentu menjadi beres ataupun sebaliknya.",
@@ -910,7 +915,10 @@ class Helper(commands.Cog):
     @showtimes.command(name="alias")
     async def showtimes_alias(self, ctx):
         helpcmd = HelpGenerator(
-            self.bot, "Showtimes Alias[*]", desc="Perintah yang dapat digunakan oleh admin/owner fansub.",
+            self.bot,
+            ctx,
+            "Showtimes Alias[*]",
+            desc="Perintah yang dapat digunakan oleh admin/owner fansub.",
         )
         await helpcmd.generate_field(
             "alias", desc="Menambah alias baru untuk sebuah judul.",
@@ -930,7 +938,7 @@ class Helper(commands.Cog):
         if ctx.invoked_subcommand is None:
             if not self.is_msg_empty(msg):
                 return await ctx.send("Tidak dapat menemukan bantuan perintah tersebut.")
-            helpcmd = HelpGenerator(self.bot, "alias", desc=f"Versi {self._ver}",)
+            helpcmd = HelpGenerator(self.bot, ctx, "alias", desc=f"Versi {self._ver}",)
             txt_help = "Menambah alias baru untuk sebuah judul.\n"
             txt_help += f"Command ini bersifat interaktif, cukup ketik {self._pre}alias"
             txt_help += " untuk memulai proses menambahkan alias baru"
@@ -940,7 +948,7 @@ class Helper(commands.Cog):
 
     @alias.command(name="list")
     async def alias_list_help(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "alias list", desc="Melihat alias untuk sebuah judul.",)
+        helpcmd = HelpGenerator(self.bot, ctx, "alias list", desc="Melihat alias untuk sebuah judul.",)
         await helpcmd.generate_field(
             "alias list", opts=[{"name": "judul", "type": "r", "desc": self.get_text("judul")}],
         )
@@ -949,7 +957,7 @@ class Helper(commands.Cog):
 
     @alias.command(name="hapus")
     async def alias_hapus_help(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "alias hapus", desc="Menghapus alias untuk sebuah judul.",)
+        helpcmd = HelpGenerator(self.bot, ctx, "alias hapus", desc="Menghapus alias untuk sebuah judul.",)
         await helpcmd.generate_field(
             "alias hapus", opts=[{"name": "judul", "type": "r", "desc": self.get_text("judul")}],
         )
@@ -960,6 +968,7 @@ class Helper(commands.Cog):
     async def showtimes_kolaborasi(self, ctx):
         helpcmd = HelpGenerator(
             self.bot,
+            ctx,
             "Showtimes Kolaborasi[*]",
             desc="Perintah yang dapat digunakan oleh admin/owner fansub.",
         )
@@ -989,7 +998,10 @@ class Helper(commands.Cog):
     @showtimes.command(name="admin")
     async def showtimes_admin(self, ctx):
         helpcmd = HelpGenerator(
-            self.bot, "Showtimes Admin[*]", desc="Perintah yang dapat digunakan oleh admin/owner fansub.",
+            self.bot,
+            ctx,
+            "Showtimes Admin[*]",
+            desc="Perintah yang dapat digunakan oleh admin/owner fansub.",
         )
         await helpcmd.generate_field(
             "tambahutang", desc="Menambah garapan baru ke database.",
@@ -1004,6 +1016,7 @@ class Helper(commands.Cog):
     async def ubahdata(self, ctx):
         helpcmd = HelpGenerator(
             self.bot,
+            ctx,
             "ubahdata",
             "Mengubah data internal suatu garapan.\n" "*Hanya bisa dipakai oleh Admin.*",
         )
@@ -1018,7 +1031,7 @@ class Helper(commands.Cog):
     @oldhelp.command(aliases=["addnew"])
     async def tambahutang(self, ctx):
         helpcmd = HelpGenerator(
-            self.bot, "tambahutang", f"Versi {self._ver}\n" "*Hanya bisa dipakai oleh Admin.*",
+            self.bot, ctx, "tambahutang", f"Versi {self._ver}\n" "*Hanya bisa dipakai oleh Admin.*",
         )
         txt_help = "Menambah garapan baru ke database.\n"
         txt_help += f"Command ini bersifat interaktif, cukup ketik {self._pre}tambahutang"
@@ -1031,7 +1044,7 @@ class Helper(commands.Cog):
     @commands.is_owner()
     async def showtimes_owner(self, ctx):
         helpcmd = HelpGenerator(
-            self.bot, "Showtimes Owner[*]", desc="Perintah yang dapat digunakan oleh owner bot.",
+            self.bot, ctx, "Showtimes Owner[*]", desc="Perintah yang dapat digunakan oleh owner bot.",
         )
         await helpcmd.generate_field(
             "ntadmin initiate", desc="Menginisiasi showtimes.",
@@ -1077,7 +1090,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command()
     async def vote(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "vote", desc="Lakukan pemilu di server anda.",)
+        helpcmd = HelpGenerator(self.bot, ctx, "vote", desc="Lakukan pemilu di server anda.",)
         await helpcmd.generate_field(
             "vote",
             desc='Jika teks lebih dari 1 kata, gunakan kutip dua `"`',
@@ -1108,7 +1121,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command()
     async def votekick(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "votekick", desc="Lakukan pemilu untuk menendang user.")
+        helpcmd = HelpGenerator(self.bot, ctx, "votekick", desc="Lakukan pemilu untuk menendang user.")
         await helpcmd.generate_field(
             "votekick",
             opts=[
@@ -1135,7 +1148,7 @@ class Helper(commands.Cog):
 
     @oldhelp.command()
     async def voteban(self, ctx):
-        helpcmd = HelpGenerator(self.bot, "voteban", desc="Lakukan pemilu untuk ngebanned user.")
+        helpcmd = HelpGenerator(self.bot, ctx, "voteban", desc="Lakukan pemilu untuk ngebanned user.")
         await helpcmd.generate_field(
             "voteban",
             opts=[
@@ -1623,7 +1636,8 @@ class Helper(commands.Cog):
         invi = discord.Embed(
             title="Ingin invite Bot ini? Klik link di bawah ini!",
             description="[Invite](https://ihateani.me/andfansub)"
-            f"\n[Support Server](https://discord.gg/7KyYecn) atau ketik `{self.bot.prefix}tiket` di DM Bot."
+            "\n[Support Server](https://discord.gg/7KyYecn) atau ketik "
+            f"`{self.bot.prefixes(ctx)}tiket` di DM Bot."
             "\n[Dukung Dev-nya](https://trakteer.id/noaione)",
             color=0x1,
         )
@@ -1649,7 +1663,7 @@ class Helper(commands.Cog):
             title="Support!",
             description="Silakan Join [Support Server](https://discord.gg/7KyYecn)"
             "\ndan kunjungi #bantuan."
-            f"\nATAU ketik `{self.bot.prefix}tiket` di DM Bot.",
+            f"\nATAU ketik `{self.bot.prefixes(ctx)}tiket` di DM Bot.",
             color=0x1,
         )
         invi.set_thumbnail(url="https://p.n4o.xyz/i/naotimes_ava.png")

@@ -36,7 +36,7 @@ class ShowtimesFansubDB(commands.Cog, ShowtimesBase):
         if self.fsdb_conn is None:
             return await ctx.send("FSDB Tidak di initialisasi oleh owner bot")
         if ctx.invoked_subcommand is None:
-            helpcmd = HelpGenerator(self.bot, "fsdb", f"Versi {self.bot.semver}")
+            helpcmd = HelpGenerator(self.bot, ctx, "fsdb", f"Versi {self.bot.semver}")
             await helpcmd.generate_field("fsdb", desc="Memunculkan bantuan perintah")
             await helpcmd.generate_field(
                 "fsdb integrasi", desc="Memulai proses integrasi fansubdb.",
@@ -55,7 +55,7 @@ class ShowtimesFansubDB(commands.Cog, ShowtimesBase):
 
     @commands.command(name="integrasi_fsdb", aliases=["fsdb_integrate"])
     async def old_fsdb_command(self, ctx):
-        await ctx.send(f"Command dipindahkan ke: `{self.bot.prefix}fsdb integrasi`")
+        await ctx.send(f"Command dipindahkan ke: `{self.bot.prefixes(ctx)}fsdb integrasi`")
 
     @fsdb_cmd.command(name="integrasi", aliases=["integrate"])
     async def fsdb_integrasi(self, ctx):

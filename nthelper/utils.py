@@ -95,20 +95,51 @@ def get_version() -> str:
     return "```py\nDiscord.py v{d}\nPython {p}\n```".format(d=discord_ver, p=py_ver)
 
 
-def prefixes_with_data(bot, message: discord.Message, prefixes_data: dict, default: str) -> list:
+def prefixes_with_data(
+    bot,
+    context: Union[discord.Message, discord.TextChannel, discord.Guild, commands.Context],
+    prefixes_data: dict,
+    default: str,
+) -> list:
     """
     A modified version of discord.ext.command.when_mentioned_or
     """
     pre_data = []
     pre_data.append(default)
 
-    if hasattr(message, "guild"):
-        server = message.guild
-        if server:
-            srv_pre = prefixes_data.get(str(server.id))
-            if srv_pre:
-                pre_data.remove(default)
-                pre_data.append(srv_pre)
+    guild: discord.Guild = None
+    if isinstance(context, (discord.Message, discord.TextChannel)):
+        if hasattr(context, "guild"):
+            try:
+                guild = context.guild
+            except AttributeError:
+                pass
+    elif isinstance(context, discord.Guild):
+        guild = context
+    elif isinstance(context, commands.Context):
+        if hasattr(context, "guild"):
+            try:
+                guild = context.guild
+            except AttributeError:
+                pass
+        elif hasattr(context, "message"):
+            try:
+                if hasattr(context.message, "guild"):
+                    guild = context.message.guild
+            except AttributeError:
+                pass
+    elif hasattr(context, "guild"):
+        guild = context.guild
+    elif hasattr(context, "message"):
+        msg = context.message
+        if hasattr(msg, "guild"):
+            guild = msg.guild
+
+    if guild is not None and hasattr(guild, "id"):
+        srv_pre = prefixes_data.get(str(guild.id))
+        if srv_pre:
+            pre_data.remove(default)
+            pre_data.append(srv_pre)
     if "ntd." not in pre_data:
         pre_data.append("ntd.")
     pre_data.extend([bot.user.mention + " ", "<@!%s> " % bot.user.id])
@@ -351,7 +382,7 @@ class HelpGenerator:
     Example:
     ```
     # Assuming this is on a async function of a command
-    helpcmd = HelpGenerator(bot, "add", desc="do an addition")
+    helpcmd = HelpGenerator(bot, ctx, "add", desc="do an addition")
     await helpcmd.generate_field(
         "add"
         [
@@ -367,7 +398,9 @@ class HelpGenerator:
     ```
     """
 
-    def __init__(self, bot: commands.Bot, cmd_name: str = "", desc: str = "", color=None):
+    def __init__(
+        self, bot: commands.Bot, ctx: commands.Context, cmd_name: str = "", desc: str = "", color=None
+    ):
         self.bot: commands.Bot = bot
         self.logger = logging.getLogger("nthelper.utils.HelpGenerator")
 
@@ -375,7 +408,7 @@ class HelpGenerator:
         commit = self.bot.get_commit
         if commit["hash"] is not None:
             self._ver += f" ({commit['hash']})"
-        self._pre = self.bot.prefix
+        self._pre = self.bot.prefixes(ctx)
         self._no_pre = False
 
         if cmd_name.endswith("[*]"):
