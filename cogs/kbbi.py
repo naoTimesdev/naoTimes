@@ -160,7 +160,7 @@ class KBBICog(commands.Cog):
             if len(saran_entri) > 0:
                 saran = ", ".join(saran_entri)
                 return await ctx.send(
-                    content=f"Tidak dapat menemukan kata tersebut.\nMungkin maksud anda: {saran}"
+                    content=f"Tidak dapat menemukan kata tersebut.\n**Mungkin maksud anda**: {saran}"
                 )
             return await ctx.send(hasil_entri)
 
@@ -169,7 +169,7 @@ class KBBICog(commands.Cog):
             if len(saran_entri) > 0:
                 saran = ", ".join(saran_entri)
                 return await ctx.send(
-                    content=f"Tidak dapat menemukan kata tersebut.\nMungkin maksud anda: {saran}"
+                    content=f"Tidak dapat menemukan kata tersebut.\n**Mungkin maksud anda**: {saran}"
                 )
             return await ctx.send(content="Tidak dapat menemukan kata tersebut di KBBI")
 
@@ -432,7 +432,7 @@ class KBBICog(commands.Cog):
             if len(saran_entri) > 0:
                 saran = ", ".join(saran_entri)
                 return await ctx.send(
-                    content=f"Tidak dapat menemukan kata tersebut.\nMungkin maksud anda: {saran}"
+                    content=f"Tidak dapat menemukan kata tersebut.\n**Mungkin maksud anda**: {saran}"
                 )
             return await ctx.send(hasil_entri)
 
@@ -441,7 +441,7 @@ class KBBICog(commands.Cog):
             if len(saran_entri) > 0:
                 saran = ", ".join(saran_entri)
                 return await ctx.send(
-                    content=f"Tidak dapat menemukan kata tersebut.\nMungkin maksud anda: {saran}"
+                    content=f"Tidak dapat menemukan kata tersebut.\n**Mungkin maksud anda**: {saran}"
                 )
             return await ctx.send("Tidak dapat menemukan kata tersebut di KBBI")
 
