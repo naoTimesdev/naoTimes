@@ -59,6 +59,10 @@ console_formatter = logging.Formatter("[%(levelname)s] (%(name)s): %(funcName)s:
 console.setFormatter(console_formatter)
 logger.addHandler(console)
 
+# Check if Python3.7+
+# Refer: https://docs.python.org/3/whatsnew/3.7.html#asyncio
+PY37 = sys.version_info >= (3, 7)
+
 # Handle the new Intents.
 discord_ver_tuple = tuple([int(ver) for ver in discord.__version__.split(".")])
 DISCORD_INTENTS = None
@@ -1305,7 +1309,11 @@ def cancel_all_tasks(loop):
     """
     try:
         try:
-            task_retriever = asyncio.Task.all_tasks
+            if PY37:
+                # Silence the deprecation notice
+                task_retriever = asyncio.all_tasks
+            else:
+                task_retriever = asyncio.Task.all_tasks
         except AttributeError:
             # future proofing for 3.9 I guess
             task_retriever = asyncio.all_tasks
