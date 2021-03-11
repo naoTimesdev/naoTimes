@@ -115,8 +115,8 @@ class ImageBooru(commands.Cog):
     def clean_title(text: str) -> str:
         split_spaces = text.split(" ")
         cleaned = []
-        for text in split_spaces:
-            tx = text.split("_")
+        for txt in split_spaces:
+            tx = txt.split("_")
             cleaned.append(" ".join(tx))
         return ", ".join(cleaned)
 

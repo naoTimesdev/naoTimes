@@ -659,8 +659,11 @@ class VoteApp(commands.Cog):
             args = f"```py\n{args}\n```"
             return await ctx.send(args)
 
+        if len("Giveaway: " + args.barang) >= 256:
+            return await ctx.send("Nama barang/item terlalu panjang!")
+
         embed = discord.Embed(
-            title=f"Giveaway {args.barang}", description="React 🎉 untuk join giveaway!", color=0x3D72A8,
+            title=f"Giveaway: {args.barang}", description="React 🎉 untuk join giveaway!", color=0x3D72A8,
         )
         embed.add_field(
             name="Partisipasi", value="0 partisipasi", inline=False,
@@ -709,10 +712,13 @@ class VoteApp(commands.Cog):
         giveaway_embed: discord.Message = None
         for embed in pesan.embeds:
             test: discord.Embed = discord.Embed.from_dict(embed.to_dict())
-            if isinstance(test.title, str):
-                if test.title.startswith("Giveaway ") and pesan.author.id == self.bot.user.id:
-                    giveaway_embed = pesan
-                    break
+            if (
+                isinstance(test.title, str)
+                and test.title.startswith("Giveaway: ")
+                and pesan.author.id == self.bot.user.id
+            ):
+                giveaway_embed = pesan
+                break
         if giveaway_embed is None:
             return await ctx.send("Pesan tersebut bukanlah embed giveaway naoTimes")
 
@@ -725,7 +731,7 @@ class VoteApp(commands.Cog):
                 popper_dex = reaction
         if popper_dex is None:
             return await ctx.send("Tidak dapat menemukan reaction 🎉 di pesan tersebut")
-        reactionist = await reaction.users().flatten()
+        reactionist = await popper_dex.users().flatten()
         users = [user for user in reactionist if not user.bot]
         winner = random.choice(users)
         await kanal.send(f"Giveaway <{pesan.jump_url}>, direroll!\nPemenang barunya adalah: <@{winner.id}>")
