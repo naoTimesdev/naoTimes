@@ -32,36 +32,44 @@ async def secure_results(hasil_entri: list) -> list:
     return hasil_entri
 
 
-async def query_requests_kbbi(kata_pencarian: str, kbbi_conn: KBBI) -> Tuple[str, Union[str, list]]:
+async def query_requests_kbbi(
+    kata_pencarian: str, kbbi_conn: KBBI
+) -> Tuple[str, Union[str, list], List[str]]:
     try:
         await kbbi_conn.cari(kata_pencarian)
-    except TidakDitemukan:
-        return kata_pencarian, "Tidak dapat menemukan kata tersebut di KBBI."
+    except TidakDitemukan as te:
+        return kata_pencarian, "Tidak dapat menemukan kata tersebut di KBBI.", te.objek.saran_entri
     except TerjadiKesalahan:
         return (
             kata_pencarian,
             "Terjadi kesalahan komunikasi dengan server KBBI.",
+            [],
         )
     except BatasSehari:
         return (
             kata_pencarian,
             "Bot telah mencapai batas pencarian harian, mohon coba esok hari lagi.",
+            [],
         )
     except GagalKoneksi:
         return (
             kata_pencarian,
             "Tidak dapat terhubung dengan KBBI, kemungkinan KBBI daring sedang down.",
+            [],
         )
     except Exception as error:  # skipcq: PYL-W0703
         tb = traceback.format_exception(type(error), error, error.__traceback__)
         kbbilog.error("Exception occured\n" + "".join(tb))
-        return kata_pencarian, "Terjadi kesalahan ketika memparsing hasil dari KBBI, mohon kontak N4O."
+        return kata_pencarian, "Terjadi kesalahan ketika memparsing hasil dari KBBI, mohon kontak N4O.", []
 
     hasil_kbbi = kbbi_conn.serialisasi()
     pranala = hasil_kbbi["pranala"]
     hasil_entri = await secure_results(hasil_kbbi["entri"])
+    saran_entri = []
+    if "saran_entri" in hasil_kbbi:
+        saran_entri.extend(hasil_kbbi["saran_entri"])
 
-    return pranala, hasil_entri
+    return pranala, hasil_entri, saran_entri
 
 
 def strunct(text: str, max_characters: int) -> str:
@@ -145,14 +153,24 @@ class KBBICog(commands.Cog):
             return await ctx.send(content=txt)
 
         self.logger.info(f"searching {kata}")
-        pranala, hasil_entri = await query_requests_kbbi(kata, self.kbbi_conn)
+        pranala, hasil_entri, saran_entri = await query_requests_kbbi(kata, self.kbbi_conn)
 
         if isinstance(hasil_entri, str):
             self.logger.error(f"{kata}: error\n{hasil_entri}")
+            if len(saran_entri) > 0:
+                saran = ", ".join(saran_entri)
+                return await ctx.send(
+                    content=f"Tidak dapat menemukan kata tersebut.\nMungkin maksud anda: {saran}"
+                )
             return await ctx.send(hasil_entri)
 
         if not hasil_entri:
             self.logger.warning(f"{kata}: no results...")
+            if len(saran_entri) > 0:
+                saran = ", ".join(saran_entri)
+                return await ctx.send(
+                    content=f"Tidak dapat menemukan kata tersebut.\nMungkin maksud anda: {saran}"
+                )
             return await ctx.send(content="Tidak dapat menemukan kata tersebut di KBBI")
 
         self.logger.info(f"{kata}: parsing results...")
@@ -407,14 +425,24 @@ class KBBICog(commands.Cog):
         kata_pencarian = kata_pencarian.lower()
 
         self.logger.info(f"searching {kata_pencarian}")
-        pranala, hasil_entri = await query_requests_kbbi(kata_pencarian, self.kbbi_conn)
+        pranala, hasil_entri, saran_entri = await query_requests_kbbi(kata_pencarian, self.kbbi_conn)
 
         if isinstance(hasil_entri, str):
             self.logger.error(f"{kata_pencarian}: error\n{hasil_entri}")
+            if len(saran_entri) > 0:
+                saran = ", ".join(saran_entri)
+                return await ctx.send(
+                    content=f"Tidak dapat menemukan kata tersebut.\nMungkin maksud anda: {saran}"
+                )
             return await ctx.send(hasil_entri)
 
         if not hasil_entri:
             self.logger.warning(f"{kata_pencarian}: no results...")
+            if len(saran_entri) > 0:
+                saran = ", ".join(saran_entri)
+                return await ctx.send(
+                    content=f"Tidak dapat menemukan kata tersebut.\nMungkin maksud anda: {saran}"
+                )
             return await ctx.send("Tidak dapat menemukan kata tersebut di KBBI")
 
         add_numbering = False

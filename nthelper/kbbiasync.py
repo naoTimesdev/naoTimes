@@ -187,7 +187,7 @@ class KBBI:
             raise BatasSehari()
         if "Entri tidak ditemukan." in laman:
             await self._init_saran(laman)
-            raise TidakDitemukan(self.nama)
+            raise TidakDitemukan(self.nama, objek=self)
 
     async def _init_saran(self, laman):
         if "Berikut beberapa saran entri lain yang mirip." not in laman:
