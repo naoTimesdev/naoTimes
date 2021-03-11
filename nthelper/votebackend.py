@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Dict, List, Union
+from typing import Any, Dict, List, Union
 
 from nthelper.redis import RedisBridge
 
@@ -39,7 +39,7 @@ class VotingBase:
 
         self._is_done = False
 
-        if self._type not in ("yn", "mul", "kickban"):
+        if self._type not in ("yn", "mul", "kickban", "giveaway"):
             raise ValueError(f"Unknown '{self._type}' value in vote_type.")
 
     def export_data(self):
@@ -235,6 +235,50 @@ class VotingKickBan(VotingBase):
         return vote_results
 
 
+class VotingGiveaway(VotingBase):
+    def __init__(
+        self,
+        requester_id: int,
+        message_data: Dict[str, int],
+        vote_question: Union[str, int],
+        vote_answers: List[dict],
+        timeout: Union[int, float],
+    ):
+        super().__init__(
+            requester_id, message_data, vote_question, vote_answers, timeout, vote_type="giveaway"
+        )
+
+    def refresh(self):
+        """Refresh voting data, check with the timeout limit."""
+        current = utc_time()
+        if current >= self._timeout:
+            self._is_done = True
+
+    def export_data(self) -> Dict[str, Any]:
+        """Get the giveaway information
+
+        :return: Giveaway information
+        :rtype: dict
+        """
+        return {
+            "id": self._mid,
+            "channel_id": self._cid,
+            "initiator": self._requester,
+            "item": self._question,
+            "participants": self._answers,
+            "timeout": self._timeout,
+            "type": self._type,
+        }
+
+    def tally_all(self) -> List[int]:
+        """Tally or get the list of participants of the giveaway.
+
+        :return: the participants
+        :rtype: List[int]
+        """
+        return self._answers[0]["voter"]
+
+
 class UserVote:
     """
     UserVote holding data.
@@ -347,6 +391,15 @@ class VoteWatcher:
         vote_handler = VotingKickBan(
             requester_id, message_data, user_target, yn_watcher, timeout, limit, hammer_type
         )
+        self.vote_holding[str(message_data["id"])] = vote_handler
+
+        await self._db.set("ntvote_" + str(message_data["id"]), vote_handler.export_data())
+
+    async def start_watching_giveaway(
+        self, initiator_id: int, message_data: Dict[str, int], item: str, timeout: Union[int, float]
+    ):
+        giveaway_vote = [{"id": "join", "tally": 0, "voter": [], "name": "Join"}]
+        vote_handler = VotingGiveaway(initiator_id, message_data, item, giveaway_vote, timeout)
         self.vote_holding[str(message_data["id"])] = vote_handler
 
         await self._db.set("ntvote_" + str(message_data["id"]), vote_handler.export_data())
