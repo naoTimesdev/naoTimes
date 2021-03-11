@@ -35,6 +35,12 @@ from .romkan import (
     to_roma,
 )
 from .showtimes_helper import ShowtimesQueue, ShowtimesQueueData, naoTimesDB
+from .timeparse import (
+    TimeString,
+    TimeStringError,
+    TimeStringParseError,
+    TimeStringValidationError,
+)
 from .utils import (
     DiscordPaginator,
     HelpGenerator,

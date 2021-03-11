@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import random
 from copy import deepcopy
 from datetime import datetime, timezone
 from typing import List, Union
@@ -10,6 +11,7 @@ from discord.ext import commands, tasks
 
 from nthelper.bot import naoTimesBot
 from nthelper.cmd_args import Arguments, CommandArgParse
+from nthelper.timeparse import TimeString, TimeStringParseError
 from nthelper.votebackend import VoteWatcher, VotingData, VotingKickBan
 
 reactions_num = ["1⃣", "2⃣", "3⃣", "4⃣", "5⃣", "6⃣", "7⃣", "8⃣", "9⃣", "🔟"]
@@ -27,10 +29,12 @@ kickban_limit_kwargs = {
 kickban_timer_args = ["--timer", "-t"]
 kickban_timer_kwargs = {
     "required": False,
-    "default": 60,
-    "dest": "detik",
+    "default": "1m",
+    "dest": "waktu",
     "action": "store",
-    "help": "Waktu sebelum voting ditutup (Dalam detik, min 30 detik)",
+    "help": "Waktu sebelum voting ditutup (Format time string seperti: "
+    "'30m 30s' untuk 30 menit 30 detik, minimal 30 detik, default 1 menit)\n"
+    "Referensi time string: https://naoti.me/#/vote_cmd?id=time-string-format",
 }
 vote_opsi_args = ["--opsi", "-O"]
 vote_opsi_kwargs = {
@@ -45,8 +49,20 @@ vote_tipe_yn_kwargs = {
     "help": "Gunakan tipe satu pilihan (ya/tidak) untuk reactions.",
 }
 vote_timer_kwargs = deepcopy(kickban_timer_kwargs)
-vote_timer_kwargs["default"] = 3
-vote_timer_kwargs["help"] = "Waktu sebelum voting ditutup (Dalam menit, min 3 menit)"
+vote_timer_kwargs["default"] = "5m"
+vote_timer_kwargs["help"] = (
+    "Waktu sebelum voting ditutup (Format time string seperti: "
+    "'30m 30s' untuk 30 menit 30 detik, minimal 3 menit, default 5 menit)\n"
+    "Referensi time string: https://naoti.me/#/vote_cmd?id=time-string-format"
+)
+
+giveaway_timer_kwargs = deepcopy(kickban_timer_kwargs)
+giveaway_timer_kwargs["default"] = "1hr"
+giveaway_timer_kwargs["help"] = (
+    "Waktu sebelum voting ditutup (Format time string seperti: "
+    "'30m 30s' untuk 30 menit 30 detik, minimal 5 menit, default 1 jam)\n"
+    "Referensi time string: https://naoti.me/#/vote_cmd?id=time-string-format"
+)
 
 ban_args = Arguments("voteban")
 ban_args.add_args("user", help="User yang ingin di ban/kick.")
@@ -61,9 +77,13 @@ vote_args.add_args("topik", help="Hal yang ingin divote.")
 vote_args.add_args(*vote_opsi_args, **vote_opsi_kwargs)
 vote_args.add_args(*kickban_timer_args, **vote_timer_kwargs)
 vote_args.add_args(*vote_tipe_yn_args, **vote_tipe_yn_kwargs)
+giveaway_args = Arguments("giveaway")
+giveaway_args.add_args("barang", help="Hal yang ingin diberikan")
+giveaway_args.add_args(*kickban_timer_args, **giveaway_timer_kwargs)
 ban_converter = CommandArgParse(ban_args)
 kick_converter = CommandArgParse(kick_args)
 vote_converter = CommandArgParse(vote_args)
+giveaway_converter = CommandArgParse(giveaway_args)
 
 
 class VoteApp(commands.Cog):
@@ -224,20 +244,22 @@ class VoteApp(commands.Cog):
                 try:
                     message: discord.Message = await channel.fetch_message(exported_data["id"])
                     embed: discord.Embed = discord.Embed.from_dict(message.embeds[0].to_dict())
-                    embed.set_footer(text="Voting Selesai!")
-                    await message.edit(embed=embed)
+                    if exported_data["type"] == "giveaway":
+                        embed.set_footer(text="Giveaway selesai!")
+                    else:
+                        embed.set_footer(text="Voting Selesai!")
+                    await message.edit(content="🎉 **Giveaway selesai** 🎉", embed=embed)
                 except discord.NotFound:
                     self.logger.warning(f"{exported_data['id']}: message missing, will send results...")
                     pass
-
-                # Sort results.
-                self.logger.info(f"{exported_data['id']}: sorting data...")
-                sorted_tally = dict(sorted(final_tally.items(), key=lambda item: item[1], reverse=True))
 
                 # Decide.
                 if exported_data["type"] == "kickban":
                     self.logger.info(f"{exported_data['id']}: deciding kick/ban results...")
                     target_member = channel.guild.get_member(exported_data["user_target"])
+                    # Sort results.
+                    self.logger.info(f"{exported_data['id']}: sorting data...")
+                    sorted_tally = dict(sorted(final_tally.items(), key=lambda item: item[1], reverse=True))
                     if sorted_tally["y"] >= exported_data["limit"]:
                         self.logger.info(f"{exported_data['id']}: limit reached, people voted for yes...")
                         await self._handle_kickban(exported_data, channel)
@@ -256,7 +278,33 @@ class VoteApp(commands.Cog):
                             content=f"Waktu voting habis, **{target_member.name}** aman "
                             f"dari {exported_data['kickban_type']}"
                         )
+                elif exported_data["type"] == "giveaway":
+                    self.logger.info(f"{exported_data['id']}: deciding giveaway results...")
+                    if len(final_tally) < 1:
+                        await channel.send(
+                            f"Giveaway **__{exported_data['item']}__** selesai! Tetapi tidak ada yang join..."
+                        )
+                    else:
+                        winner_member: discord.Member = None
+                        while True:
+                            selected_winner = random.choice(final_tally)
+                            winner_member = channel.guild.get_member(selected_winner)
+                            if winner_member is not None:
+                                break
+                        if winner_member is None:
+                            await channel.send(
+                                f"Giveaway **__{exported_data['item']}__** selesai! Tetapi bot "
+                                "tidak bisa memilih pemenang..."
+                            )
+                        else:
+                            win_msg = f"Giveaway **__{exported_data['item']}__** selesai!\n"
+                            win_msg += f"Selamat kepada <@{winner_member.id}>\n"
+                            win_msg += f"<{message.jump_url}>"
+                            await channel.send(win_msg)
                 else:
+                    # Sort results.
+                    self.logger.info(f"{exported_data['id']}: sorting data...")
+                    sorted_tally = dict(sorted(final_tally.items(), key=lambda item: item[1], reverse=True))
                     if "y" in sorted_tally or "n" in sorted_tally:
                         if sorted_tally["y"] == sorted_tally["n"]:
                             await channel.send(
@@ -328,6 +376,11 @@ class VoteApp(commands.Cog):
                     embed.set_field_at(
                         1, name="❎ Tidak", value=f"**Total**: {x_ans['tally']}", inline=True,
                     )
+                elif exported_data["type"] == "giveaway":
+                    participant = exported_data["participants"][0]
+                    embed.set_field_at(
+                        0, name="Partisipasi", value=f"{participant['tally']} partisipasi", inline=False
+                    )
                 else:
                     for i in range(len(exported_data["answers"])):
                         react = num2res[i]
@@ -353,7 +406,7 @@ class VoteApp(commands.Cog):
             # Ignore other msg vote.
             return
         try:
-            if "✅" in str(reaction.emoji):
+            if "✅" in str(reaction.emoji) or "🎉" in str(reaction.emoji):
                 await self.vote_backend.add_vote(reaction.message.id, user.id, 0)
             elif "❌" in str(reaction.emoji) or "❎" in str(reaction.emoji):
                 await self.vote_backend.add_vote(reaction.message.id, user.id, 1)
@@ -372,7 +425,7 @@ class VoteApp(commands.Cog):
             # Ignore other msg vote.
             return
         try:
-            if "✅" in str(reaction.emoji):
+            if "✅" in str(reaction.emoji) or "🎉" in str(reaction.emoji):
                 await self.vote_backend.remove_vote(reaction.message.id, user.id, 0)
             elif "❌" in str(reaction.emoji) or "❎" in str(reaction.emoji):
                 await self.vote_backend.remove_vote(reaction.message.id, user.id, 1)
@@ -429,13 +482,11 @@ class VoteApp(commands.Cog):
             embed.add_field(name="✅ Ya", value="**Total**: 0", inline=True)
             embed.add_field(name="❎ Tidak", value="**Total**: 0", inline=True)
 
-        time_limit = args.detik
-        if isinstance(time_limit, (str, float)):
-            try:
-                time_limit = int(time_limit)
-            except ValueError:
-                return await ctx.send("Batas waktu bukanlah angka.")
-        time_limit *= 60
+        try:
+            parsed_time = TimeString.parse(args.waktu)
+            time_limit = parsed_time.timestamp()
+        except TimeStringParseError as errparse:
+            return await ctx.send(f"Gagal parsing batas waktu, {errparse.reason}")
         if time_limit < 180:
             return await ctx.send("Minimal batas waktu adalah 3 menit.")
 
@@ -504,12 +555,11 @@ class VoteApp(commands.Cog):
             name=f"Jumlah vote (Dibutuhkan: {vote_limit})", value="0 votes", inline=False,
         )
 
-        time_limit = args.detik
-        if isinstance(time_limit, (str, float)):
-            try:
-                time_limit = int(time_limit)
-            except ValueError:
-                return await ctx.send("Batas waktu bukanlah angka.")
+        try:
+            parsed_time = TimeString.parse(args.waktu)
+            time_limit = parsed_time.timestamp()
+        except TimeStringParseError as errparse:
+            return await ctx.send(f"Gagal parsing batas waktu, {errparse.reason}")
         if time_limit < 30:
             return await ctx.send("Minimal batas waktu adalah 30 detik.")
 
@@ -576,12 +626,11 @@ class VoteApp(commands.Cog):
             name=f"Jumlah vote (Dibutuhkan: {vote_limit})", value="0 votes", inline=False,
         )
 
-        time_limit = args.detik
-        if isinstance(time_limit, (str, float)):
-            try:
-                time_limit = int(time_limit)
-            except ValueError:
-                return await ctx.send("Batas waktu bukanlah angka.")
+        try:
+            parsed_time = TimeString.parse(args.waktu)
+            time_limit = parsed_time.timestamp()
+        except TimeStringParseError as errparse:
+            return await ctx.send(f"Gagal parsing batas waktu, {errparse.reason}")
         if time_limit < 30:
             return await ctx.send("Minimal batas waktu adalah 30 detik.")
 
@@ -602,6 +651,84 @@ class VoteApp(commands.Cog):
             max_dt,
             vote_limit,
         )
+
+    @commands.command()
+    @commands.guild_only()
+    async def giveaway(self, ctx, *, args: giveaway_converter = giveaway_converter.show_help()):
+        if isinstance(args, str):
+            args = f"```py\n{args}\n```"
+            return await ctx.send(args)
+
+        embed = discord.Embed(
+            title=f"Giveaway {args.barang}", description="React 🎉 untuk join giveaway!", color=0x3D72A8,
+        )
+        embed.add_field(
+            name="Partisipasi", value="0 partisipasi", inline=False,
+        )
+
+        try:
+            parsed_time = TimeString.parse(args.waktu)
+            time_limit = parsed_time.timestamp()
+        except TimeStringParseError as errparse:
+            return await ctx.send(f"Gagal parsing batas waktu, {errparse.reason}")
+        if time_limit < 300:
+            return await ctx.send("Minimal batas waktu adalah 5 menit.")
+
+        embed.set_footer(
+            text=f"Sisa Waktu: {self.sec_to_left(time_limit)} | Embed akan diperbarui tiap 30 detik."
+        )
+
+        msg: discord.Message = await ctx.send(embed=embed)
+        await msg.add_reaction("🎉")
+
+        max_dt = int(round(datetime.now(tz=timezone.utc).timestamp() + time_limit + 2))
+        await self.vote_backend.start_watching_giveaway(
+            ctx.message.author.id, {"id": msg.id, "channel": msg.channel.id}, args.barang, max_dt
+        )
+
+    @commands.command()
+    @commands.guild_only()
+    async def reroll(self, ctx: commands.Context, msg_id: int):
+        kanal: discord.TextChannel = ctx.channel
+        if kanal is None:
+            return await ctx.send("Mohon jalankan command ini ditempat yang sama giveaway dilakukan!")
+        try:
+            pesan: discord.Message = await kanal.fetch_message(msg_id)
+        except discord.NotFound:
+            return await ctx.send(
+                "Tidak dapat menemukan pesan ID tersebut, "
+                "mohon jalankan command ini ditempat yang sama giveaway dilakukan!"
+            )
+        except discord.Forbidden:
+            return await ctx.send("Bot tidak memiliki akses untuk melihat pesan di channel ini.")
+        except discord.HTTPException:
+            return await ctx.send("Tidak dapat menghubungi Discord, mohon coba lagi!")
+
+        if len(pesan.embeds) < 1:
+            return await ctx.send("Tidak dapat menemukan embed pada pesan tersebut!")
+        giveaway_embed: discord.Message = None
+        for embed in pesan.embeds:
+            test: discord.Embed = discord.Embed.from_dict(embed.to_dict())
+            if isinstance(test.title, str):
+                if test.title.startswith("Giveaway ") and pesan.author.id == self.bot.user.id:
+                    giveaway_embed = pesan
+                    break
+        if giveaway_embed is None:
+            return await ctx.send("Pesan tersebut bukanlah embed giveaway naoTimes")
+
+        reactions = pesan.reactions
+        if len(reactions) < 1:
+            return await ctx.send("Tidak ada reaction di pesan tersebut?")
+        popper_dex: discord.Reaction = None
+        for reaction in reactions:
+            if "🎉" in str(reaction.emoji):
+                popper_dex = reaction
+        if popper_dex is None:
+            return await ctx.send("Tidak dapat menemukan reaction 🎉 di pesan tersebut")
+        reactionist = await reaction.users().flatten()
+        users = [user for user in reactionist if not user.bot]
+        winner = random.choice(users)
+        await kanal.send(f"Giveaway <{pesan.jump_url}>, direroll!\nPemenang barunya adalah: <@{winner.id}>")
 
     @votekick.error
     async def votekick_error(self, ctx, error):
