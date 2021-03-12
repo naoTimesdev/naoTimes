@@ -723,6 +723,7 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
             "time_data": "",
             "poster_img": "",
             "role_id": "",
+            "role_generated": None,
             "tlor_id": "",
             "tlcer_id": "",
             "encoder_id": "",
@@ -881,21 +882,35 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
 
                 mentions = await_msg.role_mentions
 
+                should_break = False
                 if not mentions:
                     if await_msg.content.isdigit():
                         table["role_id"] = await_msg.content
                         await await_msg.delete()
                     elif await_msg.content.startswith("auto"):
                         self.logger.info(f"{server_message}: auto-generating role...")
-                        c_role = await ctx.message.guild.create_role(
-                            name=table["ani_title"], colour=discord.Colour(0xDF2705), mentionable=True,
-                        )
-                        table["role_id"] = str(c_role.id)
+                        try:
+                            c_role = await ctx.message.guild.create_role(
+                                name=table["ani_title"], colour=discord.Colour(0xDF2705), mentionable=True,
+                            )
+                            table["role_generated"] = c_role
+                            table["role_id"] = str(c_role.id)
+                            should_break = True
+                        except discord.Forbidden:
+                            await send_timed_msg(
+                                ctx, "Tidak dapat membuat role karena bot tidak ada akses `Manage Roles`", 3
+                            )
+                        except discord.HTTPException:
+                            await send_timed_msg(
+                                ctx, "Terjadi kesalahan ketika menghubungi Discord, mohon coba lagi!", 3
+                            )
                         await await_msg.delete()
                 else:
                     table["role_id"] = mentions[0].id
                     await await_msg.delete()
-                break
+                    should_break = True
+                if should_break:
+                    break
 
             return table, emb_msg
 
@@ -1036,19 +1051,20 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
         async def fetch_username_from_id(_id):
             try:
                 user_data = self.bot.get_user(int(_id))
-                return "{}#{}".format(user_data.name, user_data.discriminator)
+                return "{}#{}".format(user_data.name, user_data.discriminator), True
             except AttributeError:
-                return "[Rahasia]"
+                return "[Rahasia]", False
 
         self.logger.info(f"{server_message}: checkpoint before commiting")
+        valid_users = []
         while True:
-            tl_ = await fetch_username_from_id(json_tables["tlor_id"])
-            tlc_ = await fetch_username_from_id(json_tables["tlcer_id"])
-            enc_ = await fetch_username_from_id(json_tables["encoder_id"])
-            ed_ = await fetch_username_from_id(json_tables["editor_id"])
-            tm_ = await fetch_username_from_id(json_tables["timer_id"])
-            ts_ = await fetch_username_from_id(json_tables["tser_id"])
-            qc_ = await fetch_username_from_id(json_tables["qcer_id"])
+            tl_, tl_success = await fetch_username_from_id(json_tables["tlor_id"])
+            tlc_, tlc_success = await fetch_username_from_id(json_tables["tlcer_id"])
+            enc_, enc_success = await fetch_username_from_id(json_tables["encoder_id"])
+            ed_, ed_success = await fetch_username_from_id(json_tables["editor_id"])
+            tm_, tm_success = await fetch_username_from_id(json_tables["timer_id"])
+            ts_, ts_success = await fetch_username_from_id(json_tables["tser_id"])
+            qc_, qc_success = await fetch_username_from_id(json_tables["qcer_id"])
 
             embed = discord.Embed(
                 title="Menambah Utang", description="Periksa data!\nReact jika ingin diubah.", color=0xE7E363,
@@ -1152,6 +1168,20 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                 json_tables, emb_msg = await process_pengaturan(json_tables, emb_msg)
             elif "✅" in str(res.emoji):
                 await emb_msg.clear_reactions()
+                if tl_success and json_tables["tlor_id"] not in valid_users:
+                    valid_users.append(json_tables["tlor_id"])
+                if tlc_success and json_tables["tlcer_id"] not in valid_users:
+                    valid_users.append(json_tables["tlcer_id"])
+                if enc_success and json_tables["encoder_id"] not in valid_users:
+                    valid_users.append(json_tables["encoder_id"])
+                if ed_success and json_tables["editor_id"] not in valid_users:
+                    valid_users.append(json_tables["editor_id"])
+                if tm_success and json_tables["timer_id"] not in valid_users:
+                    valid_users.append(json_tables["timer_id"])
+                if ts_success and json_tables["tser_id"] not in valid_users:
+                    valid_users.append(json_tables["tser_id"])
+                if qc_success and json_tables["qcer_id"] not in valid_users:
+                    valid_users.append(json_tables["qcer_id"])
                 break
             elif "❌" in str(res.emoji):
                 self.logger.warning(f"{server_message}: process cancelled")
@@ -1170,6 +1200,48 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
             text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
         )
         await emb_msg.edit(embed=embed)
+
+        gen_all_success = True
+        current_guild: discord.Guild = ctx.message.guild
+        if isinstance(json_tables["role_generated"], discord.Role):
+            gen_roles: discord.Role = json_tables["role_generated"]
+            for member in valid_users:
+                if current_guild:
+                    self.logger.info(f"Auto-adding auto-generated role to {member}")
+                    try:
+                        member_sel: discord.Member = current_guild.get_member(int(member))
+                        if not member_sel:
+                            self.logger.warning(f"Cannot add the auto-role to {member}, can't find the user.")
+                            continue
+                        await member_sel.add_roles(gen_roles, reason="Auto add by Bot for tambahutang!")
+                    except (discord.Forbidden, discord.HTTPException):
+                        gen_all_success = False
+                        self.logger.error(f"Gagal menambah role ke user {member}")
+        else:
+            if current_guild:
+                rr_id = int(json_tables["role_id"])
+                real_roles: discord.Role = current_guild.get_role(rr_id)
+                if real_roles:
+                    for member in valid_users:
+                        self.logger.info(f"Auto-adding role to {member}")
+                        try:
+                            member_sel: discord.Member = current_guild.get_member(int(member))
+                            if not member_sel:
+                                self.logger.warning(f"Cannot add the role to {member}, can't find the user.")
+                                continue
+                            rr_exist = False
+                            for role in member_sel.roles:
+                                if role.id == rr_id:
+                                    self.logger.warning(f"Role already exist for member {member}")
+                                    rr_exist = True
+                                    break
+                            if not rr_exist:
+                                await member_sel.add_roles(
+                                    real_roles, reason="Auto add by Bot for tambahutang!"
+                                )
+                        except (discord.Forbidden, discord.HTTPException):
+                            gen_all_success = False
+                            self.logger.error(f"Gagal menambah role ke user {member}")
 
         new_anime_data = {}
         staff_data = {}
@@ -1307,3 +1379,6 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                 json_tables["ani_title"]
             )
         )
+
+        if gen_all_success:
+            await ctx.send("Bot telah otomatis menambah role ke member garapan, mohon cek!")

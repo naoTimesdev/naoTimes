@@ -16,12 +16,11 @@ from typing import Any, Dict, List, Tuple, Union
 import aiofiles
 import aiohttp
 import discord
+import ujson
 from discord import __version__ as discord_ver
 from discord.ext import commands
 
-import ujson
-
-__version__ = "2.0.2"
+__version__ = "2.0.3"
 
 main_log = logging.getLogger("nthelper.utils")
 __CHROME_UA__ = ""
