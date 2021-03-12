@@ -7,7 +7,13 @@ from urllib.parse import quote
 import aiohttp
 import kbbi
 from bs4 import BeautifulSoup
-from kbbi import BatasSehari, GagalAutentikasi, Galat, TerjadiKesalahan, TidakDitemukan  # noqa: F401
+from kbbi import (  # noqa: F401
+    BatasSehari,
+    GagalAutentikasi,
+    Galat,
+    TerjadiKesalahan,
+    TidakDitemukan,
+)
 
 from .utils import __version__, sync_wrap
 

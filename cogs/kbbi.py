@@ -11,7 +11,13 @@ from discord_slash import SlashContext, cog_ext
 from discord_slash.utils import manage_commands
 
 from nthelper.bot import naoTimesBot
-from nthelper.kbbiasync import KBBI, BatasSehari, GagalKoneksi, TerjadiKesalahan, TidakDitemukan
+from nthelper.kbbiasync import (
+    KBBI,
+    BatasSehari,
+    GagalKoneksi,
+    TerjadiKesalahan,
+    TidakDitemukan,
+)
 from nthelper.utils import DiscordPaginator, write_files
 
 kbbilog = logging.getLogger("cogs.kbbi")

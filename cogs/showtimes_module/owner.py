@@ -8,9 +8,9 @@ from functools import partial
 
 import aiohttp
 import discord
+import ujson
 from discord.ext import commands
 
-import ujson
 from nthelper.bot import naoTimesBot
 from nthelper.showtimes_helper import ShowtimesQueueData
 from nthelper.utils import HelpGenerator, write_files

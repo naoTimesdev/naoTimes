@@ -9,8 +9,8 @@ from typing import Union
 
 import discord
 import discord.ext.commands as commands
-
 import ujson
+
 from nthelper.bot import naoTimesBot
 from nthelper.utils import DiscordPaginator
 from nthelper.vndbsocket import VNDBSockIOManager
