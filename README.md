@@ -1,7 +1,7 @@
 <h1 align="center">
     naoTimes
 </h1>
-<p align="center"><b>versi 2.0.2</b><br>Bot berbahasa Indonesia untuk membantu tracking garapan fansubber.</p>
+<p align="center"><b>versi 2.0.3</b><br>Bot berbahasa Indonesia untuk membantu tracking garapan fansubber.</p>
 <p align="center">Prefix: <b>!</b><br/>Bantuan: <b>!help</b></p>
 <p align="center"><img src="https://img.shields.io/endpoint?color=%231c7d9a&logo=discord&logoColor=white&style=for-the-badge&url=https%3A%2F%2Fapi.ihateani.me%2Fshield%2Fserver" data-origin="https://img.shields.io/endpoint?color=%231c7d9a&logo=discord&logoColor=white&style=for-the-badge&url=https%3A%2F%2Fapi.ihateani.me%2Fshield%2Fserver" alt="Guilds"> <img src="https://img.shields.io/endpoint?color=%231c7d9a&logo=discord&logoColor=white&style=for-the-badge&url=https%3A%2F%2Fapi.ihateani.me%2Fshield%2Fpengguna" data-origin="https://img.shields.io/endpoint?color=%231c7d9a&logo=discord&logoColor=white&style=for-the-badge&url=https%3A%2F%2Fapi.ihateani.me%2Fshield%2Fpengguna" alt="Users"> <img src="https://img.shields.io/endpoint?color=%231c7d9a&logo=discord&logoColor=white&style=for-the-badge&url=https%3A%2F%2Fapi.ihateani.me%2Fshield%2Fperintah" data-origin="https://img.shields.io/endpoint?color=%231c7d9a&logo=discord&logoColor=white&style=for-the-badge&url=https%3A%2F%2Fapi.ihateani.me%2Fshield%2Fperintah" alt="Commands"> <img src="https://img.shields.io/uptimerobot/status/m786469671-606ba8f8deaf00978879eb7d?style=for-the-badge" data-src="https://img.shields.io/uptimerobot/status/m786469671-606ba8f8deaf00978879eb7d?style=for-the-badge" alt="Bot Status"></p>
 
@@ -10,7 +10,8 @@
     <a href="#requirements">Requirements</a> •
     <a href="#setting-up">Setup</a> •
     <a href="#webscript">WebScript</a> •
-    <a href="https://naoti.me">Dokumentasi</a>
+    <a href="https://naoti.me">Dokumentasi</a> •
+    <a href="https://naoti.me/#/changelog">Changelog</a>
 </p>
 
 <p align="center">:warning: <b>Laporkan kesalahan di <a href="https://github.com/noaione/naoTimes/issues">Issues</a></b> :warning:</p>
