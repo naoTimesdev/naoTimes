@@ -16,7 +16,13 @@ from discord.ext import commands, tasks
 from markdownify import markdownify as mdparse
 
 from nthelper.bot import naoTimesBot
-from nthelper.utils import HelpGenerator, confirmation_dialog, generate_custom_code, send_timed_msg, sync_wrap
+from nthelper.utils import (
+    HelpGenerator,
+    confirmation_dialog,
+    generate_custom_code,
+    send_timed_msg,
+    sync_wrap,
+)
 
 asyncfeed = sync_wrap(feedparser.parse)
 fsrsslog = logging.getLogger("cogs.fansubrss")

@@ -29,9 +29,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
-import schema as sc
 from datetime import datetime, timedelta
 from typing import Dict, List, Union
+
+import schema as sc
 
 TimeSets = List[Dict[str, Union[str, int]]]
 
