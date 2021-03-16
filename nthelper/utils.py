@@ -71,6 +71,14 @@ def quote(data: str, triple: bool = False, code: str = None) -> str:
 quoteblock = functools.partial(quote, triple=True)
 
 
+def traverse(data: dict, nots: str) -> dict:
+    for n in nots.split("."):
+        if n.isdigit():
+            n = int(n, 10)
+        data = data[n]
+    return data
+
+
 def get_server() -> str:
     """Generate a server information.
 
