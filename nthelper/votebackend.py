@@ -396,9 +396,16 @@ class VoteWatcher:
         await self._db.set("ntvote_" + str(message_data["id"]), vote_handler.export_data())
 
     async def start_watching_giveaway(
-        self, initiator_id: int, message_data: Dict[str, int], item: str, timeout: Union[int, float]
+        self,
+        initiator_id: int,
+        message_data: Dict[str, int],
+        item: str,
+        timeout: Union[int, float],
+        override_result=None,
     ):
         giveaway_vote = [{"id": "join", "tally": 0, "voter": [], "name": "Join"}]
+        if override_result is not None:
+            giveaway_vote = override_result
         vote_handler = VotingGiveaway(initiator_id, message_data, item, giveaway_vote, timeout)
         self.vote_holding[str(message_data["id"])] = vote_handler
 

@@ -20,6 +20,7 @@ import discord
 import pymongo.errors
 from discord.ext import commands, tasks
 from discord_slash import SlashCommand
+from tesaurus import TesaurusAsync
 
 from nthelper.anibucket import AnilistBucket
 from nthelper.bot import naoTimesBot
@@ -242,6 +243,12 @@ async def init_bot(loop) -> naoTimesBot:
 
     default_prefix = config["default_prefix"]
 
+    # Custom tesaurus binding :>
+    te_session = aiohttp.ClientSession(
+        headers={"User-Agent": f"naoTimes/v{__version__} (https://github.com/noaione/naoTimes)"}, loop=loop
+    )
+    te_model = TesaurusAsync(te_session, loop)
+
     try:
         logger.info("Initiating discord.py")
         description = "Penyuruh Fansub biar kerja cepat\n"
@@ -267,6 +274,8 @@ async def init_bot(loop) -> naoTimesBot:
         bot.fcwd = cwd
         bot.logger.info("Binding KBBI Connection...")
         bot.kbbi = kbbi_conn
+        bot.logger.info("Binding Tesaurus Tematis")
+        bot.tesaurus = te_model
         bot.logger.info("Binding Jisho Connection...")
         bot.jisho = JishoAPI()
         if use_fsdb:
@@ -1295,6 +1304,8 @@ def stop_stuff_on_completion(_):
         async_loop.run_until_complete(bot.vndb_socket.close())
     if hasattr(bot, "jisho") and bot.jisho is not None:
         async_loop.run_until_complete(bot.jisho.close())
+    if hasattr(bot, "tesaurus") and bot.tesaurus is not None:
+        async_loop.run_until_complete(bot.tesaurus.tutup())
     bot.logger.info("Closing Redis Connection...")
     async_loop.run_until_complete(bot.redisdb.close())
     garbage_collector.stop()

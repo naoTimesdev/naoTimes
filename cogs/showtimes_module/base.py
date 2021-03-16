@@ -629,6 +629,21 @@ class ShowtimesBase:
         return picked_roles, posisi
 
     @staticmethod
+    def normalize_role_to_name(posisi: str) -> str:
+        posisi_kw = {
+            "tl": "Translasi",
+            "tlc": "TL Check",
+            "enc": "Encode",
+            "ed": "Editing",
+            "tm": "Timing",
+            "ts": "Typesetting",
+            "qc": "Pemeriksaan Akhir",
+        }
+        posisi = posisi.lower()
+        picked_role = posisi_kw.get(posisi, posisi.upper())
+        return picked_role
+
+    @staticmethod
     def split_until_less_than(dataset: list) -> list:
         """
         Split the !tagih shit into chunked text because discord

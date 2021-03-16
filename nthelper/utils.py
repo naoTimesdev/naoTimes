@@ -20,7 +20,7 @@ import ujson
 from discord import __version__ as discord_ver
 from discord.ext import commands
 
-__version__ = "2.0.3"
+__version__ = "2.0.4"
 
 main_log = logging.getLogger("nthelper.utils")
 __CHROME_UA__ = ""
@@ -69,6 +69,14 @@ def quote(data: str, triple: bool = False, code: str = None) -> str:
 
 
 quoteblock = functools.partial(quote, triple=True)
+
+
+def traverse(data: dict, nots: str) -> dict:
+    for n in nots.split("."):
+        if n.isdigit():
+            n = int(n, 10)
+        data = data[n]
+    return data
 
 
 def get_server() -> str:

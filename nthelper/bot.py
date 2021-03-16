@@ -10,6 +10,7 @@ import discord
 import discord_slash.utils.manage_commands
 from discord.ext import commands
 from discord_slash import SlashCommand
+from tesaurus import TesaurusAsync
 
 from .anibucket import AnilistBucket
 from .fsdb import FansubDBBridge
@@ -99,6 +100,7 @@ class naoTimesBot(commands.Bot):
         self.kbbi: KBBI = None
         self.redisdb: RedisBridge = None
         self.jisho: JishoAPI = None
+        self.tesaurus: TesaurusAsync = None
 
         self.showtimes_resync: list = []
         self.copy_of_commands: Dict[str, commands.Command] = {}

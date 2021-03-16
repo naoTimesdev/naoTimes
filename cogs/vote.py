@@ -133,6 +133,17 @@ class VoteApp(commands.Cog):
                 final_data.append(
                     {"id": "n", "tally": len(voter_data_n), "voter": voter_data_n, "name": "Tidak"}
                 )
+            elif vote_meta["type"] == "giveaway":
+                self.logger.info("Detected giveaway type")
+                popper_react: discord.Reaction = reactions[0]
+
+                users_reacted: List[
+                    Union[discord.User, discord.Member]
+                ] = await popper_react.users().flatten()
+                voter_data_real = [user.id for user in users_reacted if user.id not in disallowed_ids]
+                final_data.append(
+                    {"id": "join", "tally": len(voter_data_real), "voter": voter_data_real, "name": "Join"}
+                )
             else:
                 self.logger.info("detected other type")
                 for reaction in reactions:
@@ -157,6 +168,9 @@ class VoteApp(commands.Cog):
                 return final_data
         if vote_meta["type"] == "kickban":
             return vote_meta["vote_data"]
+        elif vote_meta["type"] == "giveaway":
+            participants = vote_meta["participants"]
+            return [{"id": "join", "tally": len(participants), "voter": participants, "name": "Join"}]
         else:
             return vote_meta["answers"]
 
@@ -184,6 +198,15 @@ class VoteApp(commands.Cog):
                     vote_meta["user_target"],
                     vote_meta["timeout"],
                     vote_meta["limit"],
+                    await self.count_reactions(vote_meta),
+                )
+            elif vote_meta["type"] == "giveaway":
+                self.logger.info(f"appending msg `{vote_meta['id']}` to giveaway watcher")
+                await self.vote_backend.start_watching_giveaway(
+                    vote_meta["initiator"],
+                    {"id": vote_meta["id"], "channel": vote_meta["channel_id"]},
+                    vote_meta["item"],
+                    vote_meta["timeout"],
                     await self.count_reactions(vote_meta),
                 )
             else:
@@ -244,11 +267,13 @@ class VoteApp(commands.Cog):
                 try:
                     message: discord.Message = await channel.fetch_message(exported_data["id"])
                     embed: discord.Embed = discord.Embed.from_dict(message.embeds[0].to_dict())
+                    content_txt = ""
                     if exported_data["type"] == "giveaway":
                         embed.set_footer(text="Giveaway selesai!")
+                        content_txt = "🎉 **Giveaway selesai** 🎉"
                     else:
                         embed.set_footer(text="Voting Selesai!")
-                    await message.edit(content="🎉 **Giveaway selesai** 🎉", embed=embed)
+                    await message.edit(content=content_txt, embed=embed)
                 except discord.NotFound:
                     self.logger.warning(f"{exported_data['id']}: message missing, will send results...")
                     pass

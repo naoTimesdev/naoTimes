@@ -1262,31 +1262,31 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
                 return None
 
         staff_data["TL"] = {
-            "id": json_tables["tlor_id"],
+            "id": str(json_tables["tlor_id"]),
             "name": get_username_of_user(json_tables["tlor_id"]),
         }
         staff_data["TLC"] = {
-            "id": json_tables["tlcer_id"],
+            "id": str(json_tables["tlcer_id"]),
             "name": get_username_of_user(json_tables["tlcer_id"]),
         }
         staff_data["ENC"] = {
-            "id": json_tables["encoder_id"],
+            "id": str(json_tables["encoder_id"]),
             "name": get_username_of_user(json_tables["encoder_id"]),
         }
         staff_data["ED"] = {
-            "id": json_tables["editor_id"],
+            "id": str(json_tables["editor_id"]),
             "name": get_username_of_user(json_tables["editor_id"]),
         }
         staff_data["TM"] = {
-            "id": json_tables["timer_id"],
+            "id": str(json_tables["timer_id"]),
             "name": get_username_of_user(json_tables["timer_id"]),
         }
         staff_data["TS"] = {
-            "id": json_tables["tser_id"],
+            "id": str(json_tables["tser_id"]),
             "name": get_username_of_user(json_tables["tser_id"]),
         }
         staff_data["QC"] = {
-            "id": json_tables["qcer_id"],
+            "id": str(json_tables["qcer_id"]),
             "name": get_username_of_user(json_tables["qcer_id"]),
         }
         new_anime_data["staff_assignment"] = staff_data

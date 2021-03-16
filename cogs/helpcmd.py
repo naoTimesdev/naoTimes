@@ -1,5 +1,5 @@
 import logging
-from typing import List
+from typing import List, Union
 
 import discord
 from discord.ext import commands
@@ -184,6 +184,34 @@ class Helper(commands.Cog):
             return True
         return False
 
+    async def help_command_fallback(self, ctx: commands.Context, messages: str):
+        split_msg = messages.split(" ", 1)
+        if len(split_msg) < 2:
+            return None
+        cmd_data: Union[commands.Command, None] = self.bot.get_command(split_msg[1])
+        if cmd_data is None:
+            return None
+        cmd_opts = []
+        for key, val in cmd_data.clean_params.items():
+            cmd_sample = {"name": key}
+            if val.default is val.empty:
+                cmd_sample["type"] = "r"
+                cmd_sample["desc"] = f"Parameter `{key}` dibutuhkan untuk menjalankan perintah ini!"
+            else:
+                cmd_sample["desc"] = f"Parameter `{key}` opsional dan bisa diabaikan!"
+                cmd_sample["type"] = "o"
+            cmd_opts.append(cmd_sample)
+        extra_kwargs = {"cmd_name": cmd_data.qualified_name}
+        if cmd_data.description:
+            extra_kwargs["desc"] = cmd_data.description
+        helpcmd = HelpGenerator(self.bot, ctx, **extra_kwargs)
+        if cmd_opts:
+            await helpcmd.generate_field(cmd_data.qualified_name, cmd_opts)
+        else:
+            await helpcmd.generate_field(cmd_data.qualified_name, desc="Cukup jalankan perintah!")
+        await helpcmd.generate_aliases(cmd_data.aliases)
+        return helpcmd.get()
+
     @commands.command(aliases=["bantuan"])
     async def help(self, ctx):
         new_help_msg = "Dokumentasi telah dipindah ke website baru!\n"
@@ -194,7 +222,7 @@ class Helper(commands.Cog):
         await ctx.send(new_help_msg)
 
     @commands.group(aliases=["bantuanlama"])
-    async def oldhelp(self, ctx):
+    async def oldhelp(self, ctx: commands.Context):
         msg = ctx.message.content
         channel = ctx.message.channel
         is_nsfw = False
@@ -203,6 +231,9 @@ class Helper(commands.Cog):
         loaded_cogs = list(dict(self.bot.extensions).keys())
         if ctx.invoked_subcommand is None:
             if not self.is_msg_empty(msg, 2):
+                gen_help = await self.help_command_fallback(ctx, msg)
+                if isinstance(gen_help, discord.Embed):
+                    return await ctx.send(embed=gen_help)
                 return await ctx.send("Tidak dapat menemukan bantuan perintah tersebut.")
             is_owner = await self.bot.is_owner(ctx.author)
             helpcmd = HelpGenerator(self.bot, ctx, desc=f"Versi {self._ver}")

@@ -9,7 +9,7 @@ from discord.ext import commands
 
 from nthelper.bot import naoTimesBot
 from nthelper.cmd_args import Arguments, CommandArgParse
-from nthelper.utils import DiscordPaginator, HelpGenerator
+from nthelper.utils import DiscordPaginator, HelpGenerator, traverse
 
 VTUBER_QUERY_OBJECT = """
 query VTuberLive($cursor:String,$platforms:[PlatformName],$chIds:[ID],$groups:[String]) {
@@ -195,14 +195,6 @@ channel_args.add_args(*vt_chids_args, **vt_chids_kwargs)
 live_converter = CommandArgParse(live_args)
 schedule_converter = CommandArgParse(schedule_args)
 channel_converter = CommandArgParse(channel_args)
-
-
-def traverse(data: dict, nots: str) -> dict:
-    for n in nots.split("."):
-        if n.isdigit():
-            n = int(n, 10)
-        data = data[n]
-    return data
 
 
 class VTuberAPI(commands.Cog):
