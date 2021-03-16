@@ -5,6 +5,7 @@ import time
 
 import discord
 from discord.ext import commands, tasks
+from discord.embeds import EmptyEmbed
 
 from nthelper.bot import naoTimesBot
 from nthelper.showtimes_helper import ShowtimesQueueData
@@ -440,7 +441,7 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
         poster_image = poster_data["url"]
 
         if (
-            str(ctx.message.author.id) != program_info["staff_assignment"][posisi]["id"]
+            str(ctx.message.author.id) != str(program_info["staff_assignment"][posisi]["id"])
             and str(ctx.message.author.id) not in srv_owner
         ):
             self.logger.warning(f"{matches[0]}: no access to set to done.")
@@ -503,7 +504,8 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                     if not target_chan:
                         self.logger.warning(f"{announce_chan}: unknown channel.")
                         continue
-                    embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=0x1EB5A6,)
+                    embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=0x1EB5A6)
+                    embed.description = f"✅ {self.normalize_role_to_name(posisi)}"
                     embed.add_field(
                         name="Status", value=self.parse_status(current_ep_status), inline=False,
                     )
@@ -523,10 +525,12 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                 )
                 announce_chan = -1
             target_chan = self.bot.get_channel(announce_chan)
+            embed.description = f"✅ {self.normalize_role_to_name(posisi)}"
             embed.set_footer(text=f"Pada: {get_current_time()}")
             self.logger.info(f"{server_message}: sending progress to everyone...")
             if target_chan:
                 await target_chan.send(embed=embed)
+        embed.description = EmptyEmbed
         embed.add_field(name="Update Terakhir", value="Baru saja", inline=False)
         embed.set_footer(
             text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
@@ -774,7 +778,7 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
         poster_image = poster_data["url"]
 
         if (
-            str(ctx.message.author.id) != program_info["staff_assignment"][posisi]["id"]
+            str(ctx.message.author.id) != str(program_info["staff_assignment"][posisi]["id"])
             and str(ctx.message.author.id) not in srv_owner
         ):
             self.logger.warning(f"{matches[0]}: no access to set to undone.")
@@ -838,6 +842,7 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                     self.logger.warning(f"{announce_chan}: unknown channel.")
                     continue
                 embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=0xB51E1E,)
+                embed.description = f"❌ {self.normalize_role_to_name(posisi)}"
                 embed.add_field(
                     name="Status", value=self.parse_status(current_ep_status), inline=False,
                 )
@@ -857,10 +862,12 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
                 )
                 announce_chan = -1
             target_chan = self.bot.get_channel(announce_chan)
+            embed.description = f"❌ {self.normalize_role_to_name(posisi)}"
             embed.set_footer(text=f"Pada: {get_current_time()}")
             self.logger.info(f"{server_message}: sending progress to everyone...")
             if target_chan:
                 await target_chan.send(embed=embed)
+        embed.description = EmptyEmbed
         embed.add_field(name="Update Terakhir", value="Baru saja", inline=False)
         embed.set_footer(
             text="Dibawakan oleh naoTimes™®", icon_url="https://p.n4o.xyz/i/nao250px.png",
@@ -936,7 +943,7 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
 
         # Toggle status section
         if (
-            str(ctx.message.author.id) != program_info["staff_assignment"][posisi]["id"]
+            str(ctx.message.author.id) != str(program_info["staff_assignment"][posisi]["id"])
             and str(ctx.message.author.id) not in srv_owner
         ):
             self.logger.warning(f"{matches[0]}: no access to set to mark it.")

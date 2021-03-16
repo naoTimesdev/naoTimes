@@ -7,7 +7,7 @@ import discord
 from discord.ext import commands
 
 from nthelper.bot import naoTimesBot
-from nthelper.utils import DiscordPaginator
+from nthelper.utils import DiscordPaginator, traverse
 
 IMAGEBOORU_SCHEMAS = """
 query BooruSearch($tags:[String],$page:Int! = 1,$engine:[BoardEngine!]! = [danbooru],$safe:Boolean) {
@@ -40,14 +40,6 @@ query BooruRandom($tags:[String],$page:Int! = 1,$engine:[BoardEngine!]! = [danbo
     }
 }
 """
-
-
-def traverse(data: dict, nots: str) -> dict:
-    for n in nots.split("."):
-        if n.isdigit():
-            n = int(n, 10)
-        data = data[n]
-    return data
 
 
 async def nsfw_channel(ctx):
