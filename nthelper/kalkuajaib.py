@@ -1,9 +1,10 @@
+import math
+import operator
 import typing as t
-from string import digits, ascii_letters
 
-safe_symbols = "+=-/*."
-concat_symbol = "()[]"
-symbols = safe_symbols + concat_symbol
+import pyparsing as pp
+
+EPSILON = 1e-12
 
 
 class GagalKalkulasi(SyntaxError):
@@ -12,20 +13,11 @@ class GagalKalkulasi(SyntaxError):
         super().__init__(f"Gagal melakukan kalkulasi pada `{teks}`")
 
 
-def issymbol(text: str) -> bool:
-    """Cek jika teks mengandung simbol matematika atau semacamnya"""
-    valid = True
-    for txt in text:
-        if txt not in safe_symbols:
-            valid = False
-            break
-    return valid
-
-
 class KalkulatorAjaib:
     """Sebuah objek Kalkulator yang dapat melakukan kalkulasi dari string
 
-    Sangat sampah, karena gak mau pake external module.
+    Menggunakan modul pyparsing, base code merupakan contoh dari example fourFn
+    https://github.com/pyparsing/pyparsing/blob/master/examples/fourFn.py
 
     Cara pakai:
     ```py
@@ -34,106 +26,102 @@ class KalkulatorAjaib:
     ```
     """
 
-    @staticmethod
-    def _tokenize(string_val: str) -> t.List[str]:
-        """Tokenisasi string menjadi koleksi string
+    e = pp.CaselessKeyword("E")
+    pi = pp.CaselessKeyword("PI")
 
-        :param string_val: string input
-        :type string_val: str
-        :return: hasil tokenisasi
-        :rtype: t.List[str]
-        """
-        explode_str = list(string_val)
-        token = []
-        current_txt = ""
-        current_type = ""
-        for txt in explode_str:
-            if txt in digits:
-                if current_txt and current_type not in ["d", "c"]:
-                    token.append(current_txt)
-                    current_txt = txt
-                    current_type = "d"
-                else:
-                    current_txt += txt
-                    current_type = "d"
-            elif txt in ascii_letters:
-                if current_txt and current_type not in ["s", "c"]:
-                    token.append(current_txt)
-                    current_txt = txt
-                    current_type = "s"
-                else:
-                    current_txt += txt
-                    current_type = "s"
-            elif txt in concat_symbol:
-                current_type = "c"
-                token.append(current_txt)
-                current_txt = txt
-            elif txt in safe_symbols:
-                if txt == "." and current_type == "d":
-                    current_txt += txt
-                    continue
-                if current_txt and current_txt not in ["b", "c"]:
-                    token.append(current_txt)
-                    current_txt = txt
-                    current_type = "b"
-                else:
-                    current_txt += txt
-                    current_type = "b"
-            elif txt == " ":
-                if current_txt and current_type not in ["sp", "c"]:
-                    token.append(current_txt)
-                    current_txt = ""
-                    current_type = "sp"
-                else:
-                    current_txt += txt
-                    current_type = "sp"
-        if current_txt:
-            token.append(current_txt)
-        return token
+    fnumber = pp.Regex(r"[+-]?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?")
+    ident = pp.Word(pp.alphas, pp.alphanums + "_$")
 
-    def __sanitize(self, string_val: str) -> t.List[str]:
-        """Sanitasi string input
-        Mempastikan tidak ada input yang memungkinkan eksekusi RCE.
+    plus, minus, mul, div = map(pp.Literal, "+-*/")
+    lpar, rpar = map(pp.Suppress, "()")
+    addop = plus | minus
+    mulop = mul | div
+    expop = pp.Literal("^")
 
-        :param string_val: string input
-        :type string_val: str
-        :return: sanitized input
-        :rtype: t.List[str]
-        """
-        tokenized = self._tokenize(string_val)
-        sanitized = []
-        allowed_func = ["round"]
-        for token in tokenized:
-            token = token.strip()
-            if token in ["", " "]:
-                continue
-            if token in concat_symbol:
-                sanitized.append(token)
-                continue
-            append_start = ""
-            append_end = ""
-            if token.startswith("(") or token.startswith("["):
-                append_start = token[0]
-                token = token[1:]
-            if token.endswith(")") or token.endswith("]"):
-                append_end = token[-1]
-                token = token[:-1]
+    opn = {
+        "+": operator.add,
+        "-": operator.sub,
+        "*": operator.mul,
+        "/": operator.truediv,
+        "^": operator.pow,
+    }
+
+    fn = {
+        "sin": math.sin,
+        "cos": math.cos,
+        "tan": math.tan,
+        "exp": math.exp,
+        "abs": abs,
+        "trunc": int,
+        "round": round,
+        "sgn": lambda a: -1 if a < -EPSILON else 1 if a > EPSILON else 0,
+        "multiply": lambda a, b: a * b,
+        "hypot": math.hypot,
+    }
+
+    def __init__(self) -> None:
+        self.expr_stack = []
+
+        def push_first(toks):
+            self.expr_stack.append(toks[0])
+
+        def push_unary_minus(tokens):
+            for token in tokens:
+                if token == "-":
+                    self.expr_stack.append("unary -")
+                else:
+                    break
+
+        expr = pp.Forward()
+        expr_list = pp.delimitedList(pp.Group(expr))
+
+        def insert_fn_argcount_tuple(t):
+            fn = t.pop(0)
+            num_args = len(t[0])
+            t.insert(0, (fn, num_args))
+
+        fn_call = (self.ident + self.lpar - pp.Group(expr_list) + self.rpar).setParseAction(
+            insert_fn_argcount_tuple
+        )
+
+        atom = (
+            self.addop[...]
+            + (
+                (fn_call | self.pi | self.e | self.fnumber | self.ident).setParseAction(push_first)
+                | pp.Group(self.lpar + expr + self.rpar)
+            )
+        ).setParseAction(push_unary_minus)
+
+        factor = pp.Forward()
+        factor <<= atom + (self.expop + factor).setParseAction(push_first)[...]
+        term = factor + (self.mulop + factor).setParseAction(push_first)[...]
+        expr <<= term + (self.addop + term).setParseAction(push_first)[...]
+        self.expr: pp.Forward = expr
+
+    def _evaluate_stack(self, stack):
+        op, num_args = stack.pop(), 0
+        if isinstance(op, tuple):
+            op, num_args = op
+        if op == "unary -":
+            return -self._evaluate_stack(stack)
+        if op in "+-*/^":
+            op2 = self._evaluate_stack(stack)
+            op1 = self._evaluate_stack(stack)
+            return self.opn[op](op1, op2)
+        elif op == "PI":
+            return math.pi
+        elif op == "E":
+            return math.e
+        elif op in self.fn:
+            args = reversed([self._evaluate_stack(stack) for _ in range(num_args)])
+            return self.fn[op](*args)
+        elif op[0].isalpha():
+            raise SyntaxError("Identifier '%s' tidak diketahui" % op)
+        else:
             try:
-                float(token)
-                sanitized.append(f"{append_start}{token}{append_end}")
-                continue
+                return int(op)
             except ValueError:
-                pass
-            if issymbol(token):
-                sanitized.append(token)
-                continue
-            if len(token) == 1:
-                sanitized.append(f"{append_start}{token}{append_end}")
-                continue
-            if token in allowed_func:
-                sanitized.append(f"{append_start}{token}{append_end}")
-                continue
-        return sanitized
+                return float(op)
 
     @classmethod
     def kalkulasi(cls, kalkulasikan: str) -> t.Union[int, float]:
@@ -146,9 +134,12 @@ class KalkulatorAjaib:
         :rtype: t.Union[int, float]
         """
         calc = cls()
-        sanitized = calc.__sanitize(kalkulasikan)
         try:
-            hasil = eval("".join(sanitized))
+            calc.expr.parseString(kalkulasikan, parseAll=True)
+        except pp.ParseException as pe:
+            raise SyntaxError("Gagal melakukan parsing, " + str(pe))
+        try:
+            results = calc._evaluate_stack(calc.expr_stack)
         except SyntaxError:
-            raise GagalKalkulasi("".join(sanitized))
-        return hasil
+            raise GagalKalkulasi(kalkulasikan)
+        return results
