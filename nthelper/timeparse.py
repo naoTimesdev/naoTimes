@@ -137,7 +137,6 @@ class TimeString:
         build_suffix = ""
         current = ""
         for t in texts:
-            print(t, current, current_num, build_suffix)
             if t in [" ", ""]:
                 if build_suffix.rstrip() and current_num.rstrip():
                     suf = normalize_suffix(build_suffix)
@@ -162,7 +161,6 @@ class TimeString:
                 current = "s"
                 build_suffix += t
 
-        print(current, current_num, build_suffix)
         if build_suffix.rstrip() and current_num.rstrip():
             suf = normalize_suffix(build_suffix)
             if suf is not None:

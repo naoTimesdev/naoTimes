@@ -21,6 +21,7 @@ numpy==1.19.4
 PyNaCl==1.4.0
 schema==0.7.4
 aiographql-client==1.0.2
+pyparsing==2.4.7
 
 youtube-dl
 dnspython
