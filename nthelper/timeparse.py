@@ -76,6 +76,9 @@ class TimeStringValidationError(TimeStringError):
 
 
 def normalize_suffix(suffix: str) -> Union[str, None]:
+    if suffix in ["", " "]:
+        # Default to seconds
+        return "s"
     if suffix in ["s", "sec", "secs", "second", "seconds", "detik"]:
         return "s"
     if suffix in [
@@ -114,8 +117,7 @@ class TimeString:
     def __validate(self):
         if not isinstance(self._data, list):
             raise TimeStringValidationError()
-        self.__check_limit(self._data)
-        self.__check_dupes(self._data)
+        self._data = self.__concat_dupes(self._data)
         try:
             TimeStringSchema.validate(self._data)
         except sc.SchemaError as se:
@@ -161,7 +163,7 @@ class TimeString:
                 current = "s"
                 build_suffix += t
 
-        if build_suffix.rstrip() and current_num.rstrip():
+        if current_num.rstrip():
             suf = normalize_suffix(build_suffix)
             if suf is not None:
                 nt = {"t": int(current_num, 10), "s": suf}
@@ -169,39 +171,17 @@ class TimeString:
         return time_sets
 
     @staticmethod
-    def __check_dupes(time_sets: TimeSets):
+    def __concat_dupes(time_sets: TimeSets):
         occured = {}
         for time in time_sets:
             if time["s"] not in occured:
                 occured[time["s"]] = time["t"]
             else:
-                nama = _NAME_MAPS.get(time["s"])
-                raise TimeStringParseError(
-                    f"Ada duplikat pada {nama}.\nData baru yaitu {time['t']} tetapi ada data "
-                    f"lama yaitu {occured[time['s']]}"
-                )
-
-    @staticmethod
-    def __check_limit(time_sets: TimeSets):
-        limits = {
-            "ms": 1000,
-            "s": 60,
-            "m": 60,
-            "h": 24,
-            "w": -1,
-            "d": -1,
-            "mo": -1,
-            "y": -1,
-        }
-        for time in time_sets:
-            limit = limits.get(time["s"], -1)
-            if limit == -1:
-                continue
-            if time["t"] > limit:
-                nama = _NAME_MAPS.get(time["s"])
-                raise TimeStringParseError(
-                    f"{nama} melebihi batas waktu {limit} {nama} (yang diberikan: {time['t']})"
-                )
+                occured[time["s"]] += time["t"]
+        concatted = []
+        for suf, am in occured.items():
+            concatted.append({"t": am, "s": suf})
+        return concatted
 
     @staticmethod
     def __multiplier(t, s):
