@@ -33,6 +33,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Union
 
 import schema as sc
+from discord.ext import commands
 
 TimeSets = List[Dict[str, Union[str, int]]]
 
@@ -220,3 +221,22 @@ class TimeString:
         delta = timedelta(seconds=self.timestamp())
         combined = dt_start + delta
         return combined
+
+
+class TimeConverter(commands.Converter):
+    """
+    A converter Class that will convert a string-formatted text of time into a proper time data
+    that can be used.
+
+    This will convert the string into `:class:`TimeString
+
+    Example Usage:
+    ```py
+        async def to_seconds(self, ctx, timething: TimeConverter):
+            print(timething.timestamp())
+    ```
+    """
+
+    async def convert(self, ctx, argument: str):
+        converted = TimeString.parse(argument)
+        return converted

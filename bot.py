@@ -6,13 +6,11 @@ import gc
 import logging
 import os
 import pathlib
-import random
 import sys
 import time
 import traceback
 from datetime import datetime, timezone
 from functools import partial
-from itertools import cycle
 from typing import Optional
 
 import aiohttp
@@ -307,54 +305,12 @@ async_loop = asyncio.get_event_loop()
 bot: naoTimesBot = async_loop.run_until_complete(init_bot(async_loop))
 if bot is None:
     sys.exit(1)
-presence_status = [
-    "Mengamati rilisan fansub | !help",
-    "Membantu Fansub | !help",
-    "Menambah utang | !help",
-    "Membersihkan nama baik | !help",
-    "Ngememe | !help",
-    "Membersihkan sampah masyarakat | !help",
-    "Mengikuti event wibu | !help",
-    "Menjadi babu | !help",
-    "Memantau hal yang berbau Yuri | !help",
-    "!help | !help",
-    "Apa Kabar Fansub Indonesia? | !help",
-    "Memantau drama | !help",
-    "Bot ini masih belum legal | !help",
-    "Mengoleksi berhala | !help",
-    "Memburu buronan 1001 Fansub | !help",
-    "Menagih utang | !help",
-    "Menunggu Fanshare bubar | !help",
-    "Mencatat Delayan Fansub | !help",
-    "Mengintai waifu orang | !help",
-    "Waifu kalian sampah | !help",
-    "Membeli waifu di toko terdekat | !help",
-    "Reinkarnasi Fansub mati | !help",
-    "Menuju Isekai | !help",
-    "Leecher harap menagih dalam 120x24 jam | !help",
-    "Membuka donasi | !help",
-    "Menunggu rilisan | !help",
-    "Mengelus kepala owner bot | !help",
-    "Membuat Fansub | !help",
-    "Membuli Fansub | !help",
-    "Membuat Meme berstandar SNI",
-    "Mengembalikan kode etik Fansub | !help",
-    "Meniduri waifu anda | !help",
-    "Mengamati paha | !help",
-    "Berternak dolar | !help",
-    "Kapan nikah? Ngesub mulu. | !help",
-    "Kapan pensi? | !help",
-    "Gagal pensi | !help",
-    "Judul Anime - Episode (v9999) | !help",
-]
 
 
 @bot.event
 async def on_ready():
     """Bot loaded here"""
     bot.logger.info("Connected to discord.")
-    activity = discord.Game(name=presence_status[0], type=3)
-    await bot.change_presence(activity=activity)
     bot.logger.info("Checking bot team status...")
     await bot.detect_teams_bot()
     await bot.populate_data()
@@ -366,6 +322,8 @@ async def on_ready():
         bot.prefix = precall[0]
     else:
         bot.prefix = precall
+    activity = discord.Game(name=f"Halo Dunia! | {bot.prefix}help", type=3)
+    await bot.change_presence(activity=activity)
     if "mongodb" in bot.botconf:
         mongos = bot.botconf["mongodb"]
         bot.ntdb = naoTimesDB(
@@ -449,21 +407,6 @@ async def on_ready():
     if commit_info["hash"] is not None:
         bot.logger.info(f"With Commit Hash: {commit_info['full_hash']} ({commit_info['date']})")
     bot.logger.info("---------------------------------------------------------------")
-
-
-async def change_bot_presence():
-    await bot.wait_until_ready()
-    bot.logger.info("Loaded auto-presence.")
-    presences = cycle(presence_status)
-
-    while not bot.is_closed():
-        await asyncio.sleep(30)
-        try:
-            current_status = next(presences)
-        except StopIteration:
-            current_status = random.choice(presences)
-        activity = discord.Game(name=current_status, type=3)
-        await bot.change_presence(activity=activity)
 
 
 @tasks.loop(hours=12)
@@ -1362,7 +1305,6 @@ future = asyncio.ensure_future(run_bot(bot.botconf["bot_token"], bot=True, recon
 future.add_done_callback(stop_stuff_on_completion)
 try:
     garbage_collector.start()
-    bot.loop.create_task(change_bot_presence())
     async_loop.run_forever()
     # bot.run()
 except (KeyboardInterrupt, SystemExit, SystemError):
