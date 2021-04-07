@@ -6,6 +6,7 @@ from typing import Optional, Union
 
 import aiohttp
 import discord
+import timeago
 
 from nthelper.redis import RedisBridge
 
@@ -259,6 +260,9 @@ async def fetch_anilist(
             raise ValueError("airing_start is empty, need more data.")
         return compiled_data
 
+    if compiled_data["airing_start"] is None:
+        raise ValueError("airing_start is empty, need more data")
+
     if isinstance(current_ep, str):
         current_ep = int(current_ep)
     if total_episode is not None and isinstance(total_episode, str):
@@ -316,30 +320,10 @@ def get_last_updated(oldtime: int) -> str:
     Get last updated time from naoTimes database
     and convert it to "passed time"
     """
-    current_time = datetime.now()
-    old_dt = datetime.utcfromtimestamp(oldtime)
-    delta_time = current_time - old_dt
+    current_time = datetime.now(tz=timezone.utc)
+    parsed_time = datetime.fromtimestamp(oldtime, tz=timezone.utc)
 
-    days_passed_by = delta_time.days
-    seconds_passed = delta_time.total_seconds()
-    if seconds_passed < 60:
-        text = "Beberapa detik yang lalu"
-    elif seconds_passed < 180:
-        text = "Beberapa menit yang lalu"
-    elif seconds_passed < 3600:
-        text = "{} menit yang lalu".format(round(seconds_passed / 60))
-    elif seconds_passed < 86400:
-        text = "{} jam yang lalu".format(round(seconds_passed / 3600))
-    elif days_passed_by < 31:
-        text = "{} hari yang lalu".format(days_passed_by)
-    elif days_passed_by < 365:
-        text = "{} bulan yang lalu".format(round(days_passed_by / 30))
-    else:
-        calculate_year = round(days_passed_by / 365)
-        calculate_year = max(calculate_year, 1)
-        text = "{} bulan yang lalu".format(calculate_year)
-
-    return text
+    return timeago.format(parsed_time, current_time, "in_ID")
 
 
 class ShowtimesBase:
@@ -351,6 +335,10 @@ class ShowtimesBase:
     def __init__(self):
         self._async_lock = False
         self.logger = logging.getLogger("cogs.showtimes_module.base.ShowtimesBase")
+
+    @staticmethod
+    def get_unix():
+        return int(round(datetime.now(tz=timezone.utc).timestamp()))
 
     async def __acquire_lock(self):
         while True:
@@ -370,11 +358,9 @@ class ShowtimesBase:
 
     async def fetch_super_admins(self, redisdb: RedisBridge):
         self.logger.info("dumping data...")
-        await self.__acquire_lock()
-        json_data = await redisdb.get("showtimesadmin")
+        json_data = await redisdb.getall("showadmin_*")
         if json_data is None:
             return []
-        await self.__release_lock()
         return json_data
 
     async def fetch_showtimes(self, server_id: str, redisdb: RedisBridge) -> Union[dict, None]:
@@ -435,7 +421,8 @@ class ShowtimesBase:
 
                 format_value = []
                 for n, i in enumerate(matches):
-                    format_value.append("{} **{}**".format(reactmoji[n], i))
+                    ani_title = i["name"] if i["type"] == "real" else i["real_name"]
+                    format_value.append("{} **{}**".format(reactmoji[n], ani_title))
                 format_value.append("❌ **Batalkan**")
                 embed.description = "\n".join(format_value)
 
@@ -480,13 +467,28 @@ class ShowtimesBase:
         await msg.delete()
         if res_matches:
             self.logger.info(f"picked: {res_matches[0]}")
+            if res_matches[0]["type"] == "alias":
+                res_matches[0]["name"] = res_matches[0]["real_name"]
         return res_matches
 
-    async def split_search_id(self, dataset: list, needed_id: str, matching_id: int):
+    @staticmethod
+    def _search_data_index(anilist_datasets: list, need_id: str, match_id: str) -> int:
+        idx = None
+        for n, data in enumerate(anilist_datasets):
+            if str(data[need_id]) == str(match_id):
+                idx = n
+                break
+        return idx
+
+    @staticmethod
+    async def split_search_id(dataset: list, needed_id: str, matching_id: int, sort=False):
         def to_int(x):
             if isinstance(x, str):
                 x = int(x)
             return x
+
+        if sort:
+            dataset.sort(key=lambda x: x[sort])
 
         mid_num = len(dataset) // 2
         mid_data = dataset[mid_num]
@@ -513,7 +515,7 @@ class ShowtimesBase:
         """
         status_list = []
         for work, c_stat in status.items():
-            if c_stat == "y":
+            if c_stat:
                 status_list.append("~~{}~~".format(work))
             else:
                 status_list.append("**{}**".format(work))
@@ -526,9 +528,9 @@ class ShowtimesBase:
         Find episode `not_released` status in showtimes database
         If not exist return None
         """
-        for ep in status_list:
-            if status_list[ep]["status"] == "not_released":
-                return ep
+        for status in status_list:
+            if not status["is_done"]:
+                return status
         return None
 
     @staticmethod
@@ -539,7 +541,7 @@ class ShowtimesBase:
         """
         ep_list = []
         for ep in status_list:
-            if status_list[ep]["status"] == "not_released":
+            if not ep["is_done"]:
                 ep_list.append(ep)
         return ep_list
 
@@ -548,9 +550,19 @@ class ShowtimesBase:
         """
         Find close matches from input target
         Sort everything if there's more than 2 results
+
+        lists must be in this format:
+        [{
+            "index": 0,
+            "name": "Anime title"
+        }]
         """
         target_compiler = re.compile("({})".format(target), re.IGNORECASE)
-        return sorted(list(filter(target_compiler.search, lists)))
+
+        def _match_re(data):
+            return target_compiler.search(data["name"])
+
+        return sorted(list(filter(_match_re, lists)), key=lambda x: x["name"])
 
     @staticmethod
     def check_role(needed_role, user_roles: list) -> bool:
@@ -583,14 +595,12 @@ class ShowtimesBase:
         return "\n".join(t)
 
     @staticmethod
-    def any_progress(status: dict) -> bool:
-        """
-        Check if there's any progress to the project
-        """
-        for _, v in status.items():
-            if v == "y":
-                return False
-        return True
+    def is_progressing(progress: dict) -> bool:
+        """Check if episode is progressing or not"""
+        for _, status in progress.items():
+            if status:
+                return True
+        return False
 
     @staticmethod
     def get_role_name(role_id, roles) -> str:
@@ -602,7 +612,8 @@ class ShowtimesBase:
                 return r.name
         return "Unknown"
 
-    async def get_roles(self, posisi):
+    @staticmethod
+    async def get_roles(posisi):
         posisi_kw = {
             "tl": "tl",
             "translation": "tl",
@@ -650,55 +661,80 @@ class ShowtimesBase:
         max 2000 characters limit
         """
 
-        def split_list(alist, wanted_parts=1):
-            length = len(alist)
-            return [
-                alist[i * length // wanted_parts : (i + 1) * length // wanted_parts]
-                for i in range(wanted_parts)
-            ]
+        text_format = "**Mungkin**: "
+        concat_set = []
+        finalized_sets = []
+        first_run = True
+        for data in dataset:
+            if first_run:
+                concat_set.append(data)
+                check = text_format + ", ".join(concat_set)
+                if len(check) >= 1995:
+                    last_occured = concat_set.pop()
+                    finalized_sets.append(concat_set)
+                    concat_set = [last_occured]
+                    first_run = False
+            else:
+                concat_set.append(data)
+                if len(", ".join(concat_set)) >= 1995:
+                    last_occured = concat_set.pop()
+                    finalized_sets.append(concat_set)
+                    concat_set = [last_occured]
 
-        text_format = "**Mungkin**: {}"
-        start_num = 2
-        new_set = None
+        new_sets = []
         while True:
-            internal_meme = False
-            new_set = split_list(dataset, start_num)
-            for set_ in new_set:
-                if len(text_format.format(", ".join(set_))) > 1995:
-                    internal_meme = True
-
-            if not internal_meme:
+            if len(", ".join(concat_set)) >= 1995:
+                new_sets.append(concat_set.pop())
+            else:
                 break
-            start_num += 1
+        if concat_set:
+            finalized_sets.append(concat_set)
+        if new_sets:
+            finalized_sets.append(new_sets)
 
-        return new_set
+        return finalized_sets
 
-    async def collect_anime_with_alias(self, anime_list, alias_list):
-        srv_anilist = []
-        srv_anilist_alias = []
-        for ani, _ in anime_list.items():
-            srv_anilist.append(ani)
-        for alias, _ in alias_list.items():
-            srv_anilist_alias.append(alias)
-        return srv_anilist, srv_anilist_alias
+    @staticmethod
+    def propagate_anime_with_aliases(anime_lists):
+        propagated_anime = []
+        for index, anime_data in enumerate(anime_lists):
+            propagated_anime.append(
+                {"id": anime_data["id"], "index": index, "name": anime_data["title"], "type": "real"}
+            )
+            if "aliases" in anime_data and anime_data["aliases"]:
+                for alias in anime_data["aliases"]:
+                    propagated_anime.append(
+                        {
+                            "id": anime_data["id"],
+                            "index": index,
+                            "name": alias,
+                            "type": "alias",
+                            "real_name": anime_data["title"],
+                        }
+                    )
+        return propagated_anime
 
-    async def find_any_matches(self, judul, anilist: list, aliases: list, alias_map: dict) -> list:
-        matches = self.get_close_matches(judul, anilist)
-        if aliases:
-            temp_anilias = self.get_close_matches(judul, aliases)
-            for match in temp_anilias:
-                res = self.find_alias_anime(match, alias_map)
-                if res is None:
-                    continue
-                if res not in matches:  # To not duplicate result
-                    matches.append(res)
-        return matches
+    def find_any_matches(self, match_title: str, propagated_lists: list) -> list:
+        matches = self.get_close_matches(match_title, propagated_lists)
+        # Deduplicates
+        deduplicated = []
+        dedup_index = []
+        for match in matches:
+            if str(match["index"]) not in dedup_index:
+                if match["type"] == "alias":
+                    match["name"] = match["real_name"]
+                deduplicated.append(match)
+                dedup_index.append(str(match["index"]))
+        return deduplicated
 
     async def send_all_projects(self, ctx, dataset: list, srv_: str):
         if len(dataset) < 1:
             self.logger.warning(f"{srv_}: no registered data on database.")
             return await ctx.send("**Tidak ada anime yang terdaftar di database**")
-        sorted_data = sorted(dataset)
+        anime_title_set = []
+        for anime in dataset:
+            anime_title_set.append(anime["title"])
+        sorted_data = sorted(anime_title_set)
         self.logger.info(f"{srv_}: sending all registered anime.")
         sorted_data = self.split_until_less_than(sorted_data)
         first_time = True
@@ -709,7 +745,8 @@ class ShowtimesBase:
             else:
                 await ctx.send("{}".format(", ".join(data)))
 
-    async def confirmation_dialog(self, bot, ctx, message: str) -> bool:
+    @staticmethod
+    async def confirmation_dialog(bot, ctx, message: str) -> bool:
         dis_msg = await ctx.send(message)
         to_react = ["✅", "❌"]
         for react in to_react:

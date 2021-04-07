@@ -74,6 +74,10 @@ PRESENSI_DATA = [
     PresensiData("Muse ID", 2),
     PresensiData("with pain"),
     PresensiData("Towa-sama", 2),
+    PresensiData(":AyamePhone:"),
+    PresensiData("with YOUR MOM! HAH"),
+    PresensiData("Akhir Dunia", 2),
+    PresensiData("Keributan", 1),
 ]
 
 

@@ -5,6 +5,14 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 import aioredis
+from bson import ObjectId
+
+
+class BSONEncoderExtended(json.JSONEncoder):
+    def default(self, o: Any) -> Any:
+        if isinstance(o, ObjectId):
+            return str(o)
+        return super().default(o)
 
 
 class RedisBridge:
@@ -61,7 +69,15 @@ class RedisBridge:
         self._is_stopping = False
 
     @staticmethod
-    def stringify(data: Any) -> str:
+    def _clean_bson_objectid(objects: dict) -> dict:
+        readjusted_data = {}
+        for key, value in objects.items():
+            if isinstance(value, ObjectId):
+                continue
+            readjusted_data[key] = value
+        return readjusted_data
+
+    def stringify(self, data: Any) -> str:
         """Stringify `data`
 
         :param data: data to be turn into a string
@@ -76,7 +92,17 @@ class RedisBridge:
         elif isinstance(data, int):
             data = str(data)
         elif isinstance(data, (list, tuple, dict)):
-            data = json.dumps(data, ensure_ascii=False)
+            if isinstance(data, dict):
+                data = self._clean_bson_objectid(data)
+            elif isinstance(data, list):
+                _data = []
+                for d in data:
+                    if isinstance(d, dict):
+                        _data.append(self._clean_bson_objectid(d))
+                    else:
+                        _data.append(d)
+                data = _data
+            data = json.dumps(data, ensure_ascii=False, cls=BSONEncoderExtended)
         return data
 
     @staticmethod

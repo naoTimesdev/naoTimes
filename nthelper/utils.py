@@ -916,3 +916,15 @@ class DiscordPaginator:
                     await message.delete()
                 return is_timeout
         return is_timeout
+
+
+def hex_to_color(hex_str: str) -> discord.Colour:
+    hex_str = hex_str.replace("#", "").upper()
+    r = int(hex_str[0:2], 16)
+    g = int(hex_str[2:4], 16)
+    b = int(hex_str[4:6], 16)
+    return discord.Colour.from_rgb(r, g, b)
+
+
+def rgb_to_color(r: int, g: int, b: int) -> discord.Colour:
+    return discord.Colour.from_rgb(r, g, b)

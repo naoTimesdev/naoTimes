@@ -294,16 +294,3 @@ class FansubDBBridge:
         if results["type"] == "success":
             return True, "Success"
         return False, results["message"]
-
-
-if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    fsdb = FansubDBBridge("", "", loop)
-    # success, fs_id = loop.run_until_complete(fsdb.import_mal())
-    loop.run_until_complete(fsdb.authorize())
-    res, _ = loop.run_until_complete(fsdb.fetch_fansub_projects(18))
-    with open("delima_projects.json", "w", encoding="utf-8") as fp:
-        ujson.dump(
-            res, fp, indent=4, ensure_ascii=False, encode_html_chars=False, escape_forward_slashes=False
-        )
-    loop.run_until_complete(fsdb.close())

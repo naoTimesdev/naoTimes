@@ -34,7 +34,7 @@ kickban_timer_kwargs = {
     "action": "store",
     "help": "Waktu sebelum voting ditutup (Format time string seperti: "
     "'30m 30s' untuk 30 menit 30 detik, minimal 30 detik, default 1 menit)\n"
-    "Referensi time string: https://naoti.me/#/vote_cmd?id=time-string-format",
+    "Referensi time string: https://naoti.me/docs/perintah/vote#time-string-format",
 }
 vote_opsi_args = ["--opsi", "-O"]
 vote_opsi_kwargs = {
@@ -53,7 +53,7 @@ vote_timer_kwargs["default"] = "5m"
 vote_timer_kwargs["help"] = (
     "Waktu sebelum voting ditutup (Format time string seperti: "
     "'30m 30s' untuk 30 menit 30 detik, minimal 3 menit, default 5 menit)\n"
-    "Referensi time string: https://naoti.me/#/vote_cmd?id=time-string-format"
+    "Referensi time string: https://naoti.me/docs/perintah/vote#time-string-format"
 )
 
 giveaway_timer_kwargs = deepcopy(kickban_timer_kwargs)
@@ -61,7 +61,7 @@ giveaway_timer_kwargs["default"] = "1hr"
 giveaway_timer_kwargs["help"] = (
     "Waktu sebelum voting ditutup (Format time string seperti: "
     "'30m 30s' untuk 30 menit 30 detik, minimal 5 menit, default 1 jam)\n"
-    "Referensi time string: https://naoti.me/#/vote_cmd?id=time-string-format"
+    "Referensi time string: https://naoti.me/docs/perintah/vote#time-string-format"
 )
 
 ban_args = Arguments("voteban")

@@ -13,7 +13,7 @@ from discord.ext import commands
 
 from nthelper.bot import naoTimesBot
 from nthelper.showtimes_helper import ShowtimesQueueData
-from nthelper.utils import HelpGenerator, write_files
+from nthelper.utils import HelpGenerator, confirmation_dialog, write_files
 
 from .base import ShowtimesBase
 
@@ -31,8 +31,7 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
         self.bot = bot
         self.ntdb = bot.ntdb
         self.bot_config = bot.botconf
-        self.showqueue = bot.showqueue
-        self.srv_lists = partial(self.fetch_servers, cwd=bot.fcwd)
+        self.srv_lists = partial(self.fetch_servers, redisdb=bot.redisdb)
         self.logger = logging.getLogger("cogs.showtimes_module.owner.ShowtimesOwner")
 
     def __str__(self):
@@ -82,6 +81,16 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
             )
             await helpcmd.generate_aliases(["naotimesadmin", "naoadmin"])
             await ctx.send(embed=helpcmd.get())
+
+    @ntadmin.command(name="showui")
+    async def _showui_owner_cmd(self, ctx: commands.Context):
+        do_continue = await confirmation_dialog(
+            self.bot, ctx, "Perintah ini akan memperlihatkan kode rahasia untuk login di WebUI, lanjutkan?"
+        )
+        if not do_continue:
+            return await ctx.send("Dibatalkan!")
+        _, return_msg = await self.ntdb.generate_login_info(str(ctx.message.author.id), True)
+        await ctx.send(return_msg)
 
     @ntadmin.command()
     async def listserver(self, ctx):  # noqa: D102
@@ -137,17 +146,17 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
             return
 
         async def _internal_fetch(srv_id):
-            data_res = await self.showqueue.fetch_database(srv_id)
+            data_res = await self.bot.showqueue.fetch_database(srv_id)
             return data_res, srv_id
 
         channel = ctx.message.channel
         fetch_jobs = [_internal_fetch(srv) for srv in srv_lists]
 
-        final_dataset = {}
+        final_dataset = {"servers": []}
         for fjob in asyncio.as_completed(fetch_jobs):
-            data_res, srv_id = await fjob
+            data_res, _ = await fjob
             if data_res is not None:
-                final_dataset[srv_id] = data_res
+                final_dataset["servers"].append(data_res)
 
         super_admin = await self.fetch_super_admins(self.bot.redisdb)
         final_dataset["supermod"] = super_admin
@@ -168,13 +177,13 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
         self.logger.info("Forcing local database with remote database.")
         channel = ctx.message.channel
 
-        json_d = await self.ntdb.fetch_all_as_json()
-        for srv, srv_data in json_d.items():
-            if srv == "supermod":
-                await self.dumps_super_admins(srv_data, self.bot.redisdb)
-            else:
-                self.logger.info(f"{srv}: saving...")
-                await self.showqueue.add_job(ShowtimesQueueData(srv_data, srv))
+        js_data = await self.bot.ntdb.fetch_all_as_json()
+        for admins in js_data["supermod"]:
+            self.logger.info(f"saving admin {admins['id']} data to redis")
+            await self.bot.redisdb.set(f"showadmin_{admins['id']}", admins)
+        for server in js_data["servers"]:
+            self.logger.info(f"saving server {server['id']} data to redis")
+            await self.bot.redisdb.set("showtimes_" + server["id"], server)
         await channel.send("Newest database has been pulled and saved to local save")
 
     @ntadmin.command()
@@ -236,11 +245,12 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
             pass
         elif "✅" in str(res.emoji):
             self.logger.info("Patching database...")
-            for srv, srv_data in json_to_patch.items():
-                if srv == "supermod":
-                    await self.dumps_super_admins(srv_data, self.bot.redisdb)
-                else:
-                    await self.showqueue.add_job(ShowtimesQueueData(srv_data, srv))
+            for admins in json_to_patch["supermod"]:
+                self.logger.info(f"saving admin {admins['id']} data to redis")
+                await self.bot.redisdb.set(f"showadmin_{admins['id']}", admins)
+            for server in json_to_patch["servers"]:
+                self.logger.info(f"saving server {server['id']} data to redis")
+                await self.bot.redisdb.set("showtimes_" + server["id"], server)
             self.logger.info("Patching remote database...")
             success = await self.ntdb.patch_all_from_json(json_to_patch)
             await preview_msg.clear_reactions()
@@ -266,7 +276,7 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
         if adm_id is None:
             return await ctx.send("Tidak ada input admin dari user")
 
-        new_server = await self.showqueue.fetch_database(str(srv_id))
+        new_server = await self.bot.showqueue.fetch_database(str(srv_id))
         if new_server is not None:
             return await ctx.send("Server `{}` tersebut telah terdaftar di database".format(srv_id))
 
@@ -275,8 +285,11 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
         new_srv_data["serverowner"] = [str(adm_id)]
         if prog_chan:
             new_srv_data["announce_channel"] = str(prog_chan)
-        new_srv_data["anime"] = {}
-        new_srv_data["alias"] = {}
+        else:
+            new_srv_data["announce_channel"] = None
+        new_srv_data["anime"] = []
+        new_srv_data["konfirmasi"] = []
+        new_srv_data["id"] = str(srv_id)
 
         if "announce_channel" in new_srv_data and new_srv_data["announce_channel"] == "":
             del new_srv_data["announce_channel"]
@@ -287,7 +300,7 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
         self.logger.info(f"Created new server data for: {srv_id}")
 
         self.logger.info(f"{srv_id}: dumping to local db")
-        await self.showqueue.add_job(ShowtimesQueueData(new_srv_data, str(srv_id)))
+        await self.bot.showqueue.add_job(ShowtimesQueueData(new_srv_data, str(srv_id)))
         await self.dumps_super_admins(supermod_lists, self.bot.redisdb)
         if not prog_chan:
             prog_chan = None
@@ -313,7 +326,7 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
         self.logger.info("Initiated server removal from database...")
         if srv_id is None:
             return await ctx.send("Tidak ada input server dari user")
-        srv_data = await self.showqueue.fetch_database(str(srv_id))
+        srv_data = await self.bot.showqueue.fetch_database(str(srv_id))
 
         if srv_data is None:
             self.logger.warning(f"{srv_id}: Unknown server")
@@ -356,7 +369,7 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
         if adm_id is None:
             return await ctx.send("Tidak ada input admin dari user")
 
-        srv_data = await self.showqueue.fetch_database(srv_id)
+        srv_data = await self.bot.showqueue.fetch_database(srv_id)
 
         if srv_data is None:
             return await ctx.send("Server tidak dapat ditemukan dalam database.")
@@ -367,7 +380,7 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
         srv_data["serverowner"].append(adm_id)
 
         self.logger.info(f"{srv_id}: Commiting to database...")
-        await self.showqueue.add_job(ShowtimesQueueData(srv_data, srv_id))
+        await self.bot.showqueue.add_job(ShowtimesQueueData(srv_data, srv_id))
         success, msg = await self.ntdb.update_data_server(srv_id, srv_data)
         if not success:
             self.logger.error(f"{srv_id}: Failed to update main database, reason: {msg}")
@@ -388,8 +401,7 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
         if adm_id is None:
             return await ctx.send("Tidak ada input admin dari user")
 
-        srv_data = await self.showqueue.fetch_database(srv_id)
-        super_admins = await self.fetch_super_admins(self.bot.redisdb)
+        srv_data = await self.bot.showqueue.fetch_database(srv_id)
 
         if srv_data is None:
             return await ctx.send("Server tidak dapat ditemukan dalam database.")
@@ -400,7 +412,7 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
         srv_data["serverowner"].remove(adm_id)
 
         self.logger.info(f"{srv_id}: Commiting to database...")
-        await self.showqueue.add_job(ShowtimesQueueData(srv_data, srv_id))
+        await self.bot.showqueue.add_job(ShowtimesQueueData(srv_data, srv_id))
         success, msg = await self.ntdb.update_data_server(srv_id, srv_data)
         if not success:
             self.logger.error(f"{srv_id}: Failed to update main database, reason: {msg}")
@@ -408,14 +420,6 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
                 self.bot.showtimes_resync.append(srv_id)
         self.logger.info(f"{srv_id}: Admin `{adm_id}` removed from database...")
         await ctx.send("Sukses menghapus admin `{a}` dari server `{s}`".format(s=srv_id, a=adm_id))
-        if str(adm_id) in super_admins:
-            self.logger.info(f"{srv_id}: Commiting to top admin database...")
-            super_admins.remove(str(adm_id))
-            await self.dumps_super_admins(super_admins, self.bot.redisdb)
-            success, msg = await self.ntdb.remove_top_admin(adm_id)
-            if not success:
-                self.logger.error(f"{srv_id}: Failed to update top admin database, reason: {msg}")
-                await ctx.send("Tetapi gagal menghapus admin dari top_admin.")
 
     @ntadmin.command(name="initialisasi", aliases=["init", "initialize"])
     async def ntadmin_initialisasi(self, ctx):
@@ -427,58 +431,3 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
         server_lists = await self.srv_lists()
         if server_lists:
             return await ctx.send("naoTimes Showtimes already initialized.")
-
-    @ntadmin.command()
-    async def modify_db(self, ctx):  # noqa: D102
-        if self.ntdb is None:
-            self.logger.info("owner hasn't enabled naoTimesDB yet.")
-            return
-        self.logger.info("Batch modifying db, this time: mal_id addition...")
-
-        async def _internal_fetch(srv_id):
-            data_res = await self.showqueue.fetch_database(srv_id)
-            return data_res, srv_id
-
-        srv_lists = await self.srv_lists()
-        fetch_jobs = [_internal_fetch(srv) for srv in srv_lists]
-
-        msg_dc = await ctx.send("Fetching all database...")
-        final_dataset = {}
-        for fjob in asyncio.as_completed(fetch_jobs):
-            data_res, srv_id = await fjob
-            if data_res is not None:
-                final_dataset[srv_id] = data_res
-
-        def get_username_of_user(user_id):
-            try:
-                user_data = self.bot.get_user(int(user_id))
-                return user_data.name
-            except AttributeError:
-                return None
-
-        await msg_dc.edit(content="Monkey-patching DB...")
-        for srv_id, srv_data in final_dataset.items():
-            for ani, ani_data in srv_data["anime"].items():
-                staffes = ani_data["staff_assignment"]
-                new_staffes = {}
-                for staff_pos, staff_id in staffes.items():
-                    if isinstance(staff_id, dict):
-                        new_staffes[staff_pos] = staff_id
-                    else:
-                        new_staffes[staff_pos] = {"id": staff_id, "name": get_username_of_user(staff_id)}
-                final_dataset[srv_id]["anime"][ani]["staff_assignment"] = new_staffes
-
-        super_admins = await self.fetch_super_admins(self.bot.redisdb)
-        final_dataset["supermod"] = super_admins
-
-        self.logger.info("Patching database...")
-        await msg_dc.edit(content="Patching to database...")
-        for srv, srv_data in final_dataset.items():
-            if srv == "supermod":
-                await self.dumps_super_admins(srv_data, self.bot.redisdb)
-            else:
-                await self.showqueue.add_job(ShowtimesQueueData(srv_data, srv))
-        self.logger.info("Patching remote database...")
-        success = await self.ntdb.patch_all_from_json(final_dataset)
-        if success:
-            await ctx.send("Success!")

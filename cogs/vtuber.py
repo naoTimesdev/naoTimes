@@ -427,7 +427,6 @@ class VTuberAPI(commands.Cog):
 
     @vtuber_main.command(name="live", aliases=["lives"])
     async def vtuber_live(self, ctx: commands.Context, *, args=""):
-        print(args)
         args = await live_converter.convert(ctx, args)
         if isinstance(args, str):
             args = f"```py\n{args}\n```"

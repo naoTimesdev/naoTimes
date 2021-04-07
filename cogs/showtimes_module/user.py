@@ -5,6 +5,7 @@ import logging
 from copy import deepcopy
 from datetime import datetime, timezone
 from functools import partial
+from typing import Union
 
 import discord
 from discord.ext import commands
@@ -50,15 +51,13 @@ class ShowtimesUser(commands.Cog, ShowtimesBase):
             return
         self.logger.info(f"{server_message}: data found.")
 
-        srv_anilist, srv_anilist_alias = await self.collect_anime_with_alias(
-            srv_data["anime"], srv_data["alias"]
-        )
+        propagated_anilist = self.propagate_anime_with_aliases(srv_data["anime"])
 
         if not judul:
-            return await self.send_all_projects(ctx, srv_anilist, server_message)
+            return await self.send_all_projects(ctx, srv_data["anime"], server_message)
 
         self.logger.info(f"{server_message}: getting close matches...")
-        matches = await self.find_any_matches(judul, srv_anilist, srv_anilist_alias, srv_data["alias"])
+        matches = self.find_any_matches(judul, propagated_anilist)
         if not matches:
             self.logger.warning(f"{server_message}: no matches.")
             return await ctx.send("Tidak dapat menemukan judul tersebut di database")
@@ -68,21 +67,25 @@ class ShowtimesUser(commands.Cog, ShowtimesBase):
             if not matches:
                 return await ctx.send("**Dibatalkan!**")
 
-        self.logger.info(f"{server_message}: matched {matches[0]}")
-        program_info = srv_data["anime"][matches[0]]
+        matched_anime = matches[0]
+        indx = matched_anime["index"]
+        ani_title = matched_anime["name"] if matched_anime["type"] == "real" else matched_anime["real_name"]
+
+        self.logger.info(f"{server_message}: matched {matched_anime}")
+        program_info = srv_data["anime"][indx]
         last_update = int(program_info["last_update"])
         status_list = program_info["status"]
 
         current = self.get_current_ep(status_list)
-        if not current:
+        if current is None:
             self.logger.info(f"{matches[0]}: no episode left to be worked on.")
             return await ctx.send("**Sudah beres digarap!**")
 
         poster_data = program_info["poster_data"]
         poster_image, poster_color = poster_data["url"], poster_data["color"]
 
-        if self.any_progress(status_list[current]["staff_status"]):
-            anilist_data = await fetch_anilist(program_info["anilist_id"], current)
+        if not self.is_progressing(current["progress"]):
+            anilist_data = await fetch_anilist(program_info["id"], current["episode"])
             if isinstance(anilist_data, str):
                 last_status = "Tidak diketahui..."
             else:
@@ -92,10 +95,10 @@ class ShowtimesUser(commands.Cog, ShowtimesBase):
             last_status = get_last_updated(last_update)
             last_text = "Update Terakhir"
 
-        current_ep_status = self.parse_status(status_list[current]["staff_status"])
+        current_ep_status = self.parse_status(current["progress"])
 
         self.logger.info(f"{matches[0]} sending current episode progress...")
-        embed = discord.Embed(title="{} - #{}".format(matches[0], current), color=poster_color)
+        embed = discord.Embed(title="{} - #{}".format(ani_title, current["episode"]), color=poster_color)
         embed.set_thumbnail(url=poster_image)
         embed.add_field(name="Status", value=current_ep_status, inline=False)
         embed.add_field(name=last_text, value=last_status, inline=False)
@@ -122,22 +125,21 @@ class ShowtimesUser(commands.Cog, ShowtimesBase):
         self.logger.info(f"{server_message}: data found.")
 
         time_data_list = {}
-        total_anime = len(list(srv_data["anime"].keys()))
+        total_anime = len(srv_data["anime"])
         self.logger.info(f"{server_message}: collecting {total_anime} jadwal...")
 
         def calculate_needed(status_list):
-            all_ep = list(status_list.keys())[-1]
-            return 7 * int(all_ep) * 24 * 60 * 60
+            final_ep = status_list[-1]
+            return 7 * final_ep["episode"] * 24 * 60 * 60
 
         simple_queue = asyncio.Queue()
         fetch_anime_jobs = []
         current_date = datetime.now(tz=timezone.utc).timestamp()
-        for ani, ani_data in srv_data["anime"].items():
-            if ani == "alias":
-                continue
+        for ani_data in srv_data["anime"]:
+            ani = ani_data["title"]
             current = self.get_current_ep(ani_data["status"])
             if current is None:
-                self.logger.warning(f"{ani}: anime already done worked on.")
+                self.logger.warning(f"{ani_data['title']}: anime already done worked on.")
                 continue
             try:
                 start_time = ani_data["start_time"]
@@ -150,7 +152,7 @@ class ShowtimesUser(commands.Cog, ShowtimesBase):
                 self.logger.warning(f"{ani}: anime already ended, skipping...")
                 continue
             self.logger.info(f"{server_message}: requesting {ani}")
-            fetch_anime_jobs.append(fetch_anilist(ani_data["anilist_id"], jadwal_only=True))
+            fetch_anime_jobs.append(fetch_anilist(ani_data["id"], jadwal_only=True))
 
         self.logger.info(f"{server_message}: running jobs...")
         is_error = False
@@ -195,9 +197,9 @@ class ShowtimesUser(commands.Cog, ShowtimesBase):
         if is_error:
             await ctx.send("Ada kemungkinan Anilist gagal dihubungi, mohon coba lagi nanti.")
 
-    @commands.command(aliases=["tukangdelay", "pendelay"])
+    @commands.command(aliases=["tukangdelay", "pendelay", "staf"])
     @commands.guild_only()
-    async def staff(self, ctx, *, judul):
+    async def staff(self, ctx: commands.Context, *, judul):
         """
         Menagih utang fansub tukang diley maupun
         tidak untuk memberikan mereka tekanan
@@ -216,15 +218,13 @@ class ShowtimesUser(commands.Cog, ShowtimesBase):
         self.logger.info(f"{server_message}: data found.")
 
         srv_owner = srv_data["serverowner"]
-        srv_anilist, srv_anilist_alias = await self.collect_anime_with_alias(
-            srv_data["anime"], srv_data["alias"]
-        )
+        propagated_anilist = self.propagate_anime_with_aliases(srv_data["anime"])
 
         if not judul:
-            return await self.send_all_projects(ctx, srv_anilist, server_message)
+            return await self.send_all_projects(ctx, srv_data["anime"], server_message)
 
         self.logger.info(f"{server_message}: getting close matches...")
-        matches = await self.find_any_matches(judul, srv_anilist, srv_anilist_alias, srv_data["alias"])
+        matches = self.find_any_matches(judul, propagated_anilist)
         if not matches:
             self.logger.warning(f"{server_message}: no matches.")
             return await ctx.send("Tidak dapat menemukan judul tersebut di database")
@@ -234,17 +234,23 @@ class ShowtimesUser(commands.Cog, ShowtimesBase):
             if not matches:
                 return await ctx.send("**Dibatalkan!**")
 
-        staff_assignment = srv_data["anime"][matches[0]]["staff_assignment"]
+        matched_anime = matches[0]
+        indx = matched_anime["index"]
+        ani_title = matched_anime["name"] if matched_anime["type"] == "real" else matched_anime["real_name"]
+
+        self.logger.info(f"{server_message}: matched {matched_anime}")
+        program_info = srv_data["anime"][indx]
+        staff_assignment = program_info["assignments"]
         self.logger.info(f"{server_message}: parsing staff data...")
 
-        rtext = "Staff yang mengerjakaan **{}**\n**Admin**: ".format(matches[0])
+        rtext = "Staff yang mengerjakaan **{}**\n**Admin**: ".format(ani_title)
         rtext += ""
 
         async def get_user_name(user_id):
             try:
                 user_data = self.bot.get_user(int(user_id))
                 return "{}#{}".format(user_data.name, user_data.discriminator)
-            except AttributeError:
+            except (AttributeError, ValueError, TypeError):
                 return "[Rahasia]"
 
         new_srv_owner = []
@@ -254,13 +260,20 @@ class ShowtimesUser(commands.Cog, ShowtimesBase):
 
         rtext += ", ".join(new_srv_owner)
 
-        rtext += "\n**Role**: {}".format(
-            self.get_role_name(srv_data["anime"][matches[0]]["role_id"], ctx.message.guild.roles,)
-        )
+        guild: discord.Guild = ctx.message.guild
+        role_name = "Tidak Diketahui"
+        try:
+            realrole: Union[discord.Role, None] = guild.get_role(int(program_info["role_id"]))
+            if realrole is not None:
+                role_name = realrole.name
+        except ValueError:
+            role_name = "Tidak Dikethui"
 
-        if "kolaborasi" in srv_data["anime"][matches[0]]:
+        rtext += f"\n**Role**: {role_name}"
+
+        if "kolaborasi" in program_info:
             k_list = []
-            for other_srv in srv_data["anime"][matches[0]]["kolaborasi"]:
+            for other_srv in program_info["kolaborasi"]:
                 if server_message == other_srv:
                     continue
                 server_data = self.bot.get_guild(int(other_srv))

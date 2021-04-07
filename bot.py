@@ -290,7 +290,7 @@ async def init_bot(loop) -> naoTimesBot:
         bot.redisdb = redis_conn
         bot.logger.info("Success Loading Discord.py")
         bot.logger.info("Binding interactions...")
-        SlashCommand(bot, sync_commands=True, override_type=True)
+        SlashCommand(bot, sync_commands=False, override_type=True)
     except Exception as exc:  # skipcq: PYL-W0703
         bot.logger.error("Failed to load Discord.py")
         announce_error(exc)
@@ -339,21 +339,20 @@ async def on_ready():
             if not args_parsed.showtimes_fetch:
                 bot.logger.info("Fetching nao_showtimes from server db to local json")
                 js_data = await bot.ntdb.fetch_all_as_json()
-                showtimes_folder = os.path.join(bot.fcwd, "showtimes_folder")
-                if not os.path.isdir(showtimes_folder):
-                    os.makedirs(showtimes_folder)
-                for fn, fdata in js_data.items():
-                    svfn = f"showtimes_{fn}"
-                    bot.logger.info(f"showtimes: saving to file {fn}")
-                    if fn == "supermod":
-                        svfn = "showtimesadmin"
-                    await bot.redisdb.set(svfn, fdata)
+                for admins in js_data["supermod"]:
+                    bot.logger.info(f"showtimes: saving admin {admins['id']} data to redis")
+                    await bot.redisdb.set(f"showadmin_{admins['id']}", admins)
+                for server in js_data["servers"]:
+                    bot.logger.info(f"showtimes: saving server {server['id']} data to redis")
+                    svfn = f"showtimes_{server['id']}"
+                    await bot.redisdb.set(svfn, server)
                 bot.logger.info("File fetched and saved to local json")
                 bot.logger.info(
                     "---------------------------------------------------------------"
                 )  # noqa: E501
-        except Exception:  # skipcq: PYL-W0703
+        except Exception as exc:  # skipcq: PYL-W0703
             bot.logger.error("Failed to validate if database is up and running.")
+            bot.echo_error(exc)
             bot.logger.error("IP:Port: {}:{}".format(mongos["ip_hostname"], mongos["port"]))
             bot.ntdb = None
             bot.logger.info("---------------------------------------------------------------")  # noqa: E501

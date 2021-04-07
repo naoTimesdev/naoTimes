@@ -30,6 +30,7 @@ SOFTWARE.
 """
 
 import asyncio
+import json
 from typing import Any, Dict, List, Mapping, NamedTuple, Union
 
 import aiohttp
@@ -143,10 +144,9 @@ class WolframAPI:
                     elif resp.status == 404:
                         return {"error": "Tidak dapat hasil"}
                     return {"error": f"Mendapatkan error status {resp.status}"}
-                if "application/json" not in resp.headers["content-type"]:
-                    return {"error": "Mendapatkan jawaban selain JSON dari API"}
+                raw_resp = await resp.text()
                 try:
-                    responses = await resp.json()
+                    responses = json.loads(raw_resp)
                     return responses
                 except ValueError:
                     return {"error": "Tidak dapat memproses hasil dari API"}
