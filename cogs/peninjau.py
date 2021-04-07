@@ -6,7 +6,7 @@ import logging
 import os
 import re
 from datetime import datetime
-from typing import List, Tuple, Union
+from typing import Tuple
 from urllib.parse import urlencode
 
 import aiohttp
@@ -19,6 +19,7 @@ from discord_slash.utils import manage_commands
 
 from nthelper.bot import naoTimesBot
 from nthelper.jisho import JishoWord
+from nthelper.kateglo import KategloError, KategloTipe, kateglo_relasi
 from nthelper.utils import DiscordPaginator
 
 logger = logging.getLogger("cogs.peninjau")
@@ -494,29 +495,6 @@ async def chunked_translate(sub_data, number, target_lang, untranslated, mode=".
     return sub_data, untranslated
 
 
-async def persamaankata(cari: str, mode: str = "sinonim") -> Union[List[str], str]:
-    """Mencari antonim/sinonim dari persamaankata.com"""
-    async with aiohttp.ClientSession() as sesi:
-        async with sesi.get("http://m.persamaankata.com/search.php?q={}".format(cari)) as resp:
-            response = await resp.text()
-            if resp.status > 299:
-                return "Tidak dapat terhubung dengan API."
-
-    soup_data = BS4(response, "html.parser")
-    tesaurus = soup_data.find_all("div", attrs={"class": "thesaurus_group"})
-
-    if not tesaurus:
-        return "Tidak ada hasil."
-
-    if mode == "antonim" and len(tesaurus) < 2:
-        return "Tidak ada hasil."
-    if mode == "antonim" and len(tesaurus) > 1:
-        result = tesaurus[1].text.strip().splitlines()[1:]
-        return list(filter(None, result))
-    result = tesaurus[0].text.strip().splitlines()[1:]
-    return list(filter(None, result))
-
-
 async def yahoo_finance(from_, to_):
     data_ = {
         "data": {"base": from_.upper(), "period": "day", "term": to_.upper()},
@@ -733,24 +711,24 @@ class PeninjauWeb(commands.Cog):
             mode = "crypto"
             crypto_from = str(self.crypto_data[dari_cur]["id"])
             crypto_to = "2781"
+            if ke_cur not in self.currency_data:
+                return f"Tidak dapat menemukan kode negara mata utang **{ke_cur}** di database"
             curr_sym_from = self.crypto_data[dari_cur]["symbol"]
             curr_sym_to = self.currency_data[ke_cur]["symbols"][0]
             curr_name_from = self.crypto_data[dari_cur]["name"]
             curr_name_to = self.currency_data[ke_cur]["name"]
             dari_cur = "USD"
-            if ke_cur not in self.currency_data:
-                return f"Tidak dapat menemukan kode negara mata utang **{ke_cur}** di database"
         elif ke_cur in self.crypto_data:
             mode = "crypto"
             crypto_from = "2781"
+            if dari_cur not in self.currency_data:
+                return f"Tidak dapat menemukan kode negara mata utang **{dari_cur}** di database"
             crypto_to = str(self.crypto_data[ke_cur]["id"])
             curr_sym_from = self.currency_data[dari_cur]["symbols"][0]
             curr_sym_to = self.crypto_data[ke_cur]["symbol"]
             curr_name_from = self.currency_data[dari_cur]["name"]
             curr_name_to = self.crypto_data[ke_cur]["name"]
             ke_cur = "USD"
-            if dari_cur not in self.currency_data:
-                return f"Tidak dapat menemukan kode negara mata utang **{dari_cur}** di database"
 
         if mode == "normal":
             if dari_cur not in self.currency_data:
@@ -843,40 +821,64 @@ class PeninjauWeb(commands.Cog):
 
         await ctx.send(embed=embed)
 
-    @commands.command(aliases=["persamaankata", "persamaan"])
-    async def sinonim(self, ctx, *, q_):
-        self.logger.info(f"searching {q_}")
+    @commands.command(name="sinonim", aliases=["persamaankata", "persamaan"])
+    async def _sinonim_cmd(self, ctx: commands.Context, *, kata: str):
+        self.logger.info(f"searching {kata}")
 
-        result = await persamaankata(q_, "Sinonim")
-        if not isinstance(result, list):
-            self.logger.warning("no results.")
-            return await ctx.send(result)
-        result = "\n".join(result)
-        embed = discord.Embed(title="Sinonim: {}".format(q_), color=0x81E28D)
-        embed.set_footer(text="Diprakasai dengan: persamaankata.com")
+        try:
+            results = await kateglo_relasi(kata)
+        except KategloError as ke:
+            return await ctx.send(str(ke))
+
+        match_sinonim = filter(lambda x: x.tipe == KategloTipe.Sinonim, results)
+
+        result_txt = []
+        for sinonim in match_sinonim:
+            result_txt.append(sinonim.kata)
+
+        if len(result_txt) < 1:
+            return await ctx.send(f"Tidak ada sinonim untuk kata `{kata}`")
+
+        URL_KATEGLO = "https://kateglo.com/?mod=dictionary&action=view&phrase={}#panelRelated"
+
+        result = ", ".join(result_txt)
+        embed = discord.Embed(title=f"Sinonim: {kata}", color=0x81E28D, url=URL_KATEGLO.format(kata))
+        embed.set_footer(text="Diprakasai dengan: Kateglo.com")
         if not result:
-            embed.add_field(name=q_, value="Tidak ada hasil", inline=False)
+            embed.add_field(name=kata, value="Tidak ada hasil", inline=False)
             return await ctx.send(embed=embed)
 
-        embed.add_field(name=q_, value=result, inline=False)
+        embed.add_field(name=kata, value=result, inline=False)
         await ctx.send(embed=embed)
 
-    @commands.command(aliases=["lawankata"])
-    async def antonim(self, ctx, *, q_):
-        self.logger.info(f"searching {q_}")
+    @commands.command(name="antonim", aliases=["lawankata"])
+    async def _antonim_cmd(self, ctx: commands.Context, *, kata: str):
+        self.logger.info(f"searching {kata}")
 
-        result = await persamaankata(q_, "antonim")
-        if not isinstance(result, list):
-            self.logger.warning("no results.")
-            return await ctx.send(result)
-        result = "\n".join(result)
-        embed = discord.Embed(title="Antonim: {}".format(q_), color=0x81E28D)
-        embed.set_footer(text="Diprakasai dengan: persamaankata.com")
+        try:
+            results = await kateglo_relasi(kata)
+        except KategloError as ke:
+            return await ctx.send(str(ke))
+
+        match_antonim = filter(lambda x: x.tipe == KategloTipe.Antonim, results)
+
+        result_txt = []
+        for antonim in match_antonim:
+            result_txt.append(antonim.kata)
+
+        if len(result_txt) < 1:
+            return await ctx.send(f"Tidak ada antonim untuk kata `{kata}`")
+
+        URL_KATEGLO = "https://kateglo.com/?mod=dictionary&action=view&phrase={}#panelRelated"
+
+        result = ", ".join(result_txt)
+        embed = discord.Embed(title=f"Antonim: {kata}", color=0x81E28D, url=URL_KATEGLO.format(kata))
+        embed.set_footer(text="Diprakasai dengan: Kateglo.com")
         if not result:
-            embed.add_field(name=q_, value="Tidak ada hasil", inline=False)
+            embed.add_field(name=kata, value="Tidak ada hasil", inline=False)
             return await ctx.send(embed=embed)
 
-        embed.add_field(name=q_, value=result, inline=False)
+        embed.add_field(name=kata, value=result, inline=False)
         await ctx.send(embed=embed)
 
     @staticmethod

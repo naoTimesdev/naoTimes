@@ -698,6 +698,9 @@ class AutoMod(commands.Cog):
             return
         user_data: discord.Member = before.author
         channel_data: discord.TextChannel = before.channel
+        # Possibly just Embed edit
+        if before.content == after.content:
+            return
         dict_data = {
             "kanal": channel_data.name,
             "author": {

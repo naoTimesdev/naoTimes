@@ -1,10 +1,12 @@
 import logging
+
 import discord
 from discord.ext import commands, tasks
 
 from nthelper.bot import naoTimesBot
-from nthelper.kalkuajaib import KalkulatorAjaib, GagalKalkulasi
-from nthelper.wolfram import WolframAPI
+from nthelper.kalkuajaib import GagalKalkulasi, KalkulatorAjaib
+from nthelper.utils import DiscordPaginator, quote, rgb_to_color
+from nthelper.wolfram import WolframAPI, WolframPod
 
 
 class Matematika(commands.Cog):
@@ -49,6 +51,42 @@ class Matematika(commands.Cog):
             text=f"Ini merupakan command experimental, mohon lapor kepada {owner} jika ada masalah."
         )
         await ctx.send(embed=embed)
+
+    @commands.command(name="wolfram", aliases=["wolframalpha", "wa"])
+    async def wolfram_cmd(self, ctx: commands.Context, *, query: str):
+        if self.wolfram is None:  # Ignore if no WolframAlpha thing
+            return
+        results = await self.wolfram.query(query)
+        if isinstance(results, str):
+            return await ctx.send(results)
+        SEARCH_URL = "https://www.wolframalpha.com/input/?i={}"
+        QUERY_STRINGIFY = query.replace(" ", "+")
+
+        def _create_embed(pod: WolframPod):
+            embed = discord.Embed(title=pod.title, color=rgb_to_color(202, 103, 89))
+            embed.set_author(
+                name="WolframAlpha",
+                url=SEARCH_URL.format(QUERY_STRINGIFY),
+                icon_url="https://p.n4o.xyz/i/wa_icon.png",
+            )
+            embed.description = f"**Kueri**: `{query}`"
+            first_image = None
+            for n, subpod in enumerate(pod.pods, 1):
+                embed.add_field(name=pod.scanner + f" ({n})", value=quote(subpod.plaintext, True))
+                if subpod.image and first_image is None:
+                    first_image = subpod.image
+            if first_image is not None:
+                embed.set_image(url=first_image)
+            embed.set_footer(
+                text="Diprakasai dengan WolframAlpha™", icon_url="https://p.n4o.xyz/i/wa_icon.png"
+            )
+            return embed
+
+        paginator = DiscordPaginator(self.bot, ctx)
+        paginator.checker()
+        paginator.breaker()
+        paginator.set_generator(_create_embed)
+        await paginator.start(results.pods, 30.0)
 
 
 def setup(bot: naoTimesBot):

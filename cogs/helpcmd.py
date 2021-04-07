@@ -184,6 +184,15 @@ class Helper(commands.Cog):
             return True
         return False
 
+    @staticmethod
+    def _owner_only_command(command: commands.Command):
+        if command.checks:
+            for check in command.checks:
+                fn_primitive_name = check.__str__()
+                if "is_owner" in fn_primitive_name:
+                    return True
+        return False
+
     async def help_command_fallback(self, ctx: commands.Context, messages: str):
         split_msg = messages.split(" ", 1)
         if len(split_msg) < 2:
@@ -191,8 +200,14 @@ class Helper(commands.Cog):
         cmd_data: Union[commands.Command, None] = self.bot.get_command(split_msg[1])
         if cmd_data is None:
             return None
+        is_owner = await self.bot.is_owner(ctx.author)
+        if self._owner_only_command(cmd_data) and not is_owner:
+            return None
         cmd_opts = []
         for key, val in cmd_data.clean_params.items():
+            anotasi = val.annotation if val.annotation is not val.empty else None
+            if anotasi is not None:
+                anotasi = anotasi.__name__
             cmd_sample = {"name": key}
             if val.default is val.empty:
                 cmd_sample["type"] = "r"
@@ -200,6 +215,8 @@ class Helper(commands.Cog):
             else:
                 cmd_sample["desc"] = f"Parameter `{key}` opsional dan bisa diabaikan!"
                 cmd_sample["type"] = "o"
+            if anotasi is not None and "desc" in cmd_sample:
+                cmd_sample["desc"] += f"\n`{key}` akan dikonversi ke format `{anotasi}` nanti."
             cmd_opts.append(cmd_sample)
         extra_kwargs = {"cmd_name": cmd_data.qualified_name}
         if cmd_data.description:

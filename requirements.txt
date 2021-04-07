@@ -3,7 +3,7 @@ aiohttp>=3.6.2
 aiofiles==0.5.0
 ujson==1.35
 
-discord.py[voice]>=1.5
+discord.py[voice]>=1.6
 discord-py-slash-command==1.0.9.5
 motor==2.2.0
 beautifulsoup4==4.8.0
@@ -22,6 +22,7 @@ PyNaCl==1.4.0
 schema==0.7.4
 aiographql-client==1.0.2
 pyparsing==2.4.7
+timeago==1.0.15
 
 youtube-dl
 dnspython
