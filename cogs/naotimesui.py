@@ -44,12 +44,17 @@ class naoTimesUIBridge(commands.Cog):
         self._event_map = {
             "authenticate": self.authenticate_user,
             "pull data": self.on_pull_data,
+            "pull admin": self.on_pull_admin_data,
             "get server": self.get_server_info,
             "get user": self.get_user_info,
             "get channel": self.on_channel_info_request,
             "get user perms": self.get_user_server_permission,
             "create role": self.show_create_role,
             "announce drop": self.on_announce_request,
+            "delete server": self.on_delete_server_request,
+            "delete admin": self.on_delete_supermod_request,
+            "delete role": self.on_delete_roles_request,
+            "delete roles": self.on_delete_roles_request,
             "ping": self.on_ping,
         }
 
@@ -118,6 +123,22 @@ class naoTimesUIBridge(commands.Cog):
         await self.bot.redisdb.set(f"showtimes_{remote_data['id']}", remote_data)
         return "ok"
 
+    async def on_pull_admin_data(self, sid, data):
+        self.logger.info(f"{sid}: requested pull supermod data for {data}")
+        remote_data = await self.bot.ntdb.get_top_admin()
+        if not remote_data:
+            self.logger.error(f"{sid}:{data}: unknown server, ignoring!")
+            return
+        selected_data = None
+        for remote in remote_data:
+            if remote["id"] == data:
+                selected_data = remote
+        if not selected_data:
+            self.logger.error(f"{sid}:{data}: unknown server, ignoring!")
+            return
+        await self.bot.redisdb.set(f"showadmin_{selected_data['id']}", selected_data)
+        return "ok"
+
     def on_ping(self, sid, data):
         self.logger.info(f"{sid}: requested ping")
         return "pong"
@@ -154,6 +175,16 @@ class naoTimesUIBridge(commands.Cog):
         parsed_user["name"] = user_data.name
         parsed_user["avatar_url"] = str(user_data.avatar_url)
         return parsed_user
+
+    async def on_delete_server_request(self, sid, data):
+        self.logger.info(f"{sid}: requested server removal for {data}")
+        await self.bot.redisdb.rm(f"showtimes_{data}")
+        return "ok"
+
+    async def on_delete_supermod_request(self, sid, data):
+        self.logger.info(f"{sid}: requested supermod removal for {data}")
+        await self.bot.redisdb.rm(f"showadmin_{data}")
+        return "ok"
 
     async def on_announce_request(self, sid, data):
         self.logger.info(f"{sid}: requested anime drop announcement for {data}")
@@ -208,6 +239,36 @@ class naoTimesUIBridge(commands.Cog):
         if not isinstance(channel_info, discord.TextChannel):
             return {"message": "Channel bukan TextChannel", "success": 0}
         return {"id": str(channel_info.id), "name": channel_info.name}
+
+    async def on_delete_roles_request(self, sid, data):
+        self.logger.info(f"{sid}: requested role deletions for {data}")
+        try:
+            server_id = int(data["id"])
+            roles_list = data["roles"]
+            if isinstance(roles_list, str):
+                roles_list = [roles_list]
+            fixed_roles = []
+            for role in roles_list:
+                try:
+                    fixed_roles.append(int(role))
+                except ValueError:
+                    pass
+        except (KeyError, ValueError, IndexError):
+            return {"message": "ID bukanlah angka", "success": 0}
+
+        guild_info: Union[discord.Guild, None] = self.bot.get_guild(server_id)
+        if guild_info is None:
+            return {"message": "Tidak dapat menemukan server", "success": 0}
+
+        for role in fixed_roles:
+            try:
+                role_info = guild_info.get_role(role)
+                if isinstance(role_info, discord.Role):
+                    await role_info.delete(reason="Show removed")
+            except (discord.Forbidden, discord.HTTPException):
+                pass
+
+        return "ok"
 
     async def show_create_role(self, sid, data):
         self.logger.info(f"{sid}: requested role creation for {data}")
