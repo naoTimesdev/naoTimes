@@ -497,28 +497,27 @@ async def chunked_translate(sub_data, number, target_lang, untranslated, mode=".
 
 async def yahoo_finance(from_, to_):
     data_ = {
-        "data": {"base": from_.upper(), "period": "day", "term": to_.upper()},
+        "data": {"base": from_.upper(), "period": "week", "term": to_.upper()},
         "method": "spotRateHistory",
     }
     base_head = {
-        "Host": "adsynth-ofx-quotewidget-prod.herokuapp.com",
         "Origin": "https://widget-yahoo.ofx.com",
         "Referer": "https://widget-yahoo.ofx.com/",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.97 Safari/537.36",  # noqa: E501
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.114 Safari/537.36",  # noqa: E501
     }
     async with aiohttp.ClientSession(headers=base_head) as sesi:
-        async with sesi.post("https://adsynth-ofx-quotewidget-prod.herokuapp.com/api/1", json=data_,) as resp:
+        async with sesi.post(
+            "https://api.rates-history-service.prd.aws.ofx.com/rate-history/api/1", json=data_,
+        ) as resp:
             try:
-                response = await resp.json()
-                if response["data"]["HistoricalPoints"]:
-                    latest = response["data"]["HistoricalPoints"][-1]
-                else:
-                    return response["data"]["CurrentInterbankRate"]
+                try:
+                    response = await resp.json()
+                except (aiohttp.ContentTypeError):
+                    return "Gagal memproses hasil, mengekspetasi JSON tetapi mendapatkan HTML"
+                return response["data"]["CurrentInterbankRate"]
             except (KeyError, json.JSONDecodeError, ValueError):
                 response = await resp.text()
                 return "Tidak dapat terhubung dengan API.\nAPI Response: ```\n" + response + "\n```"
-
-    return latest["InterbankRate"]
 
 
 async def coinmarketcap(from_, to_) -> float:
