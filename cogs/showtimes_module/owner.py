@@ -37,7 +37,7 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
     def __str__(self):
         return "Showtimes Owner"
 
-    @commands.group(aliases=["naotimesadmin", "naoadmin"])
+    @commands.group(aliases=["naotimesadmin", "naoadmin"], case_insensitive=True)
     @commands.is_owner()
     @commands.guild_only()
     async def ntadmin(self, ctx):  # noqa: D102
