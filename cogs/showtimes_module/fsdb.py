@@ -27,7 +27,7 @@ class ShowtimesFansubDB(commands.Cog, ShowtimesBase):
     def __str__(self):
         return "Showtimes FansubDB"
 
-    @commands.group(name="fsdb")
+    @commands.group(name="fsdb", case_insensitive=True)
     async def fsdb_cmd(self, ctx):
         if self.ntdb is None:
             self.logger.info("owner hasn't enabled naoTimesDB yet.")

@@ -631,6 +631,25 @@ class ShowtimesData(commands.Cog, ShowtimesBase):
             except KeyError:
                 announce_it = True
 
+            role_anime = program_info["role_id"]
+            try:
+                role_int_id = int(role_anime)
+                self.logger.info(f"{ani_title}: Trying to remove role ID {role_int_id}")
+                role_info = ctx.message.guild.get_role(role_int_id)
+                if isinstance(role_info, discord.Role):
+                    self.logger.info(
+                        f"{ani_title}: Found role {role_int_id} with name {role_info.name}, deleting..."
+                    )
+                    try:
+                        await role_info.delete()
+                        self.logger.warning(f"{ani_title}:{role_int_id}: role removed!")
+                    except (discord.Forbidden, discord.HTTPException):
+                        self.logger.warning(
+                            f"{ani_title}:{role_int_id}: failed to remove role, exception occured!"
+                        )
+            except (ValueError, IndexError, KeyError, AttributeError):
+                pass
+
             srv_data["anime"].pop(indx)
             for osrv in koleb_list:
                 osrv_data = await self.showqueue.fetch_database(osrv)

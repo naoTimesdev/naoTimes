@@ -29,7 +29,7 @@ class ShowtimesAlias(commands.Cog, ShowtimesBase):
     def __str__(self):
         return "Showtimes Alias"
 
-    @commands.group()
+    @commands.group(case_insensitive=True)
     @commands.guild_only()
     async def alias(self, ctx):
         """
@@ -553,7 +553,7 @@ class ShowtimesKolaborasi(commands.Cog, ShowtimesBase):
     def __str__(self):
         return "Showtimes Kolaborasi"
 
-    @commands.group(aliases=["joint", "join", "koleb"])
+    @commands.group(aliases=["joint", "join", "koleb"], case_insensitive=True)
     @commands.guild_only()
     async def kolaborasi(self, ctx):
         if self.ntdb is None:

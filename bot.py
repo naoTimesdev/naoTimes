@@ -255,10 +255,16 @@ async def init_bot(loop) -> naoTimesBot:
         if discord_ver_tuple >= (1, 5, 0):
             # Insert intents
             bot = naoTimesBot(
-                command_prefix=prefixes, description=description, intents=DISCORD_INTENTS, loop=loop
+                command_prefix=prefixes,
+                description=description,
+                intents=DISCORD_INTENTS,
+                case_insensitive=True,
+                loop=loop,
             )
         else:
-            bot = naoTimesBot(command_prefix=prefixes, description=description, loop=loop)
+            bot = naoTimesBot(
+                command_prefix=prefixes, description=description, case_insensitive=True, loop=loop
+            )
         bot.remove_command("help")
         bot.logger.info("Bot loaded, now using bot logger for logging.")
         # if not hasattr(bot, "logger"):
@@ -520,10 +526,13 @@ async def on_command_error(ctx: commands.Context, error):
             msg = await send_hastebin(msg)
         else:
             await bot.send_error_log(msg)
-    await ctx.send(
-        "**Error**: Insiden internal ini telah dilaporkan "
-        f"ke **{bot.owner.name}#{bot.owner.discriminator}**, mohon tunggu jawabannya kembali."
-    )
+    try:
+        await ctx.send(
+            "**Error**: Insiden ini telah dilaporkan, mohon buka Issue baru di GitHub untuk "
+            "mempercepat penyelesaian: <https://github.com/naoTimesdev/naoTimes/issues/new/choose>"
+        )
+    except (discord.HTTPException, discord.Forbidden):
+        pass
     bot.echo_error(error)
 
 
