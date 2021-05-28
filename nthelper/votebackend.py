@@ -53,7 +53,7 @@ class VotingBase:
         """
         return self._mid
 
-    def get_tiemout(self) -> Union[int, float]:
+    def get_timeout(self) -> Union[int, float]:
         """Get max wait time or timeout
 
         :return: Timeout
@@ -315,6 +315,12 @@ class VoteWatcher:
         self._clock_task: asyncio.Task = asyncio.Task(self._clock_tick())
         self._voter_task: asyncio.Task = asyncio.Task(self._handle_voter())
 
+    def exist(self, message_id: Union[str, int]):
+        msg_id = str(message_id)
+        if msg_id in list(self.vote_holding.keys()):
+            return True
+        return False
+
     async def stop_and_flush(self):
         """
         This will halt every process and wait for everything to finish tallying,
@@ -427,11 +433,14 @@ class VoteWatcher:
         while True:
             try:
                 to_remove = []
+                current_time = utc_time()
                 for n, vote_handler in enumerate(self.vote_holding.values()):
                     if vote_handler.get_id() in self._vote_lock:
                         continue
                     vote_handler.refresh()
                     if vote_handler.is_timeout():
+                        await self.stop_watching_vote(str(vote_handler.get_id()))
+                    if current_time > vote_handler.get_timeout():
                         await self.stop_watching_vote(str(vote_handler.get_id()))
 
                 for rem in to_remove:
@@ -445,7 +454,7 @@ class VoteWatcher:
         while True:
             try:
                 handle_vote: UserVote = await self._voter_queue.get()
-                self._vote_lock.append(handle_vote.msg_id)
+                self.logger.info(f"Handling incoming vote data for {handle_vote.msg_id}")
                 if str(handle_vote.msg_id) in self.vote_holding:
                     try:
                         if handle_vote.is_remove:

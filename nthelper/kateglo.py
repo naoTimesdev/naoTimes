@@ -42,13 +42,31 @@ class KategloRelasi(NamedTuple):
 
 
 def cherry_pick_safe(dataset: dict, note: str) -> Union[Any, None]:
+    """A safe traversal that basically return None if not found.
+
+    :param dataset: dataset to be propagated
+    :type dataset: dict
+    :param note: the dot notation of the keys
+    :type note: str
+    :return: content of provided `note` if found.
+    :rtype: Union[Any, None]
+    """
     try:
         return traverse(dataset, note)
     except (ValueError, KeyError, AttributeError):
         return None
 
 
-def collect_relations(dataset, tipe: KategloTipe) -> List[KategloRelasi]:
+def collect_relations(dataset: Any, tipe: KategloTipe) -> List[KategloRelasi]:
+    """Collect type of relations from a dataset.
+
+    :param dataset: data from Kateglo
+    :type dataset: Any
+    :param tipe: Type of word relations to be matched
+    :type tipe: KategloTipe
+    :return: A collected relation of the provided type
+    :rtype: List[KategloRelasi]
+    """
     relasidata: Union[Dict[str, dict], None] = cherry_pick_safe(dataset, tipe.value)
     if not isinstance(relasidata, dict):
         return []
@@ -56,15 +74,27 @@ def collect_relations(dataset, tipe: KategloTipe) -> List[KategloRelasi]:
     for key, relasi in relasidata.items():
         if not key.isdigit():
             continue
+        phrase = cherry_pick_safe(relasi, "related_phrase")
+        if phrase is None:
+            continue
         uuid = cherry_pick_safe(relasi, "rel_uid")
         if uuid is None:
             uuid = key
-        phrase = cherry_pick_safe(relasi, "related_phrase")
         collected.append(KategloRelasi(uuid, tipe, phrase))
     return collected
 
 
 async def kateglo_relasi(kata: str) -> List[KategloRelasi]:
+    """Mencari relasi kata di Kateglo.com
+
+    :param kata: kata yang ingin dicari relasinya
+    :type kata: str
+    :raises KategloTidakDitemukan: Jika kata tidak ditemukan
+    :raises KategloTidakAdaRelasi: Jika tidak ada relasi pada kata tersebut
+    :raises KategloError: Error lainnya, biasanya untuk gagal koneksi
+    :return: Relasi untuk kata yang dicari
+    :rtype: List[KategloRelasi]
+    """
     query_params = {"format": "json", "phrase": kata}
     logger.info(f"searching for {kata}")
     async with aiohttp.ClientSession(

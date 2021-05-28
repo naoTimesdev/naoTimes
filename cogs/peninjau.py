@@ -7,7 +7,7 @@ import os
 import re
 from datetime import datetime
 from typing import Tuple
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 import aiohttp
 import discord
@@ -800,6 +800,7 @@ class PeninjauWeb(commands.Cog):
                     content="Bukan jumlah uang yang valid (jangan memakai koma, pakai titik)"
                 )
 
+        await ctx.defer()
         embed = await self._process_kurs(dari, ke, jumlah)
         if isinstance(embed, str):
             return await ctx.send(content=embed)
@@ -836,12 +837,14 @@ class PeninjauWeb(commands.Cog):
             result_txt.append(sinonim.kata)
 
         if len(result_txt) < 1:
+            self.logger.warning(f"can't find any match for {kata}")
             return await ctx.send(f"Tidak ada sinonim untuk kata `{kata}`")
 
+        self.logger.info(f"found {len(result_txt)} matches for {kata}")
         URL_KATEGLO = "https://kateglo.com/?mod=dictionary&action=view&phrase={}#panelRelated"
 
         result = ", ".join(result_txt)
-        embed = discord.Embed(title=f"Sinonim: {kata}", color=0x81E28D, url=URL_KATEGLO.format(kata))
+        embed = discord.Embed(title=f"Sinonim: {kata}", color=0x81E28D, url=URL_KATEGLO.format(quote(kata)))
         embed.set_footer(text="Diprakasai dengan: Kateglo.com")
         if not result:
             embed.add_field(name=kata, value="Tidak ada hasil", inline=False)
@@ -866,12 +869,14 @@ class PeninjauWeb(commands.Cog):
             result_txt.append(antonim.kata)
 
         if len(result_txt) < 1:
+            self.logger.warning(f"can't find any match for {kata}")
             return await ctx.send(f"Tidak ada antonim untuk kata `{kata}`")
 
+        self.logger.info(f"found {len(result_txt)} matches for {kata}")
         URL_KATEGLO = "https://kateglo.com/?mod=dictionary&action=view&phrase={}#panelRelated"
 
         result = ", ".join(result_txt)
-        embed = discord.Embed(title=f"Antonim: {kata}", color=0x81E28D, url=URL_KATEGLO.format(kata))
+        embed = discord.Embed(title=f"Antonim: {kata}", color=0x81E28D, url=URL_KATEGLO.format(quote(kata)))
         embed.set_footer(text="Diprakasai dengan: Kateglo.com")
         if not result:
             embed.add_field(name=kata, value="Tidak ada hasil", inline=False)
@@ -989,6 +994,7 @@ class PeninjauWeb(commands.Cog):
     async def _jisho_cmd_slash(self, ctx: SlashContext, kata: str):
         self.logger.info(f"searching: {kata}")
 
+        await ctx.defer()
         jisho_results, error_msg = await self.bot.jisho.search(kata)
         if len(jisho_results) < 1:
             return await ctx.send(content=error_msg)

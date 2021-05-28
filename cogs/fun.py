@@ -19,6 +19,36 @@ def setup(bot):
     bot.add_cog(Fun(bot))
 
 
+def fallback_custom_icons(icon_name: str, customable: bool) -> str:
+    icon_name_maps = {
+        "mfa_none": "<:ntMFAL0:761931842923266050>",
+        "mfa_low": "<:ntMFAL1:761931852788924418>",
+        "mfa_medium": "<:ntMFAL2:761931862695870475>",
+        "mfa_high": "<:ntMFAL3:761931871708905483>",
+        "mfa_extreme": "<:ntMFAL4:761931880949219388>",
+        "boost": "<:ntIconBoost:761958456865062923>",
+        "s_ol": "<:ntStatL3:761945479511670794>",
+        "s_off": "<:ntStatL0:761945452987285545>",
+        "s_idle": "<:ntStatL2:761945472432209940>",
+        "s_dnd": "<:ntStatL1:761945462424338493>",
+    }
+    fallback_name_maps = {
+        "mfa_none": "0️⃣",
+        "mfa_low": "1️⃣",
+        "mfa_medium": "2️⃣",
+        "mfa_high": "3️⃣",
+        "mfa_extreme": "4️⃣",
+        "boost": "🚀",
+        "s_ol": "🟢",
+        "s_off": "⚫",
+        "s_idle": "🟡",
+        "s_dnd": "🔴",
+    }
+    if customable:
+        return icon_name_maps.get(icon_name, "")
+    return fallback_name_maps.get(icon_name, "")
+
+
 def get_user_status(mode: str) -> str:
     statuses_list = {
         "OL": [
@@ -264,11 +294,21 @@ class Fun(commands.Cog):
 
     @commands.command(aliases=["si"])
     @commands.guild_only()
-    async def serverinfo(self, ctx):
+    async def serverinfo(self, ctx: commands.Context):
         guilds_data: discord.Guild = ctx.message.guild
         channels_data: List[
             Union[discord.TextChannel, discord.VoiceChannel, discord.CategoryChannel]
         ] = guilds_data.channels
+        bot_member: discord.Member = guilds_data.get_member(self.bot.user.id)
+        bot_perms: discord.Permissions = bot_member.permissions_in(ctx.message.channel)
+        real_bot_perms = []
+        for perm_name, perm_val in bot_perms:
+            if perm_val:
+                real_bot_perms.append(perm_name)
+        can_use_custom = False
+        emote_guild = self.bot.get_guild(761916689113284638)
+        if "external_emojis" in real_bot_perms and emote_guild is not None:
+            can_use_custom = True
 
         def _humanize_size(num, mul=1024.0, suffix="B"):
             for unit in ["", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi"]:
@@ -276,11 +316,6 @@ class Fun(commands.Cog):
                     return "%3.1f%s%s" % (num, unit, suffix)
                 num /= mul
             return "%.1f%s %s" % (num, "Yi", suffix)
-
-        def _is_role_mentionable(role_data: discord.Role) -> str:
-            if role_data.mentionable:
-                return f"<@&{role_data.id}>"
-            return f"**{role_data.name}**"
 
         def _localize_time(dt_time: datetime) -> str:
             month_en = dt_time.strftime("%B")
@@ -304,11 +339,11 @@ class Fun(commands.Cog):
             return final_data
 
         mfa_levels_map = {
-            "none": "<:ntMFAL0:761931842923266050> Tidak ada",
-            "low": "<:ntMFAL1:761931852788924418> Rendah (Surel harus terverifikasi)",
-            "medium": "<:ntMFAL2:761931862695870475> Menengah (Terdaftar di Discord selama 5 menit)",
-            "high": "<:ntMFAL3:761931871708905483> Tinggi (Berada di peladen ini selama 10 menit)",
-            "extreme": "<:ntMFAL4:761931880949219388> Tertinggi (Nomor telepon harus terverifikasi)",
+            "none": f"{fallback_custom_icons('mfa_none', can_use_custom)} Tidak ada",
+            "low": f"{fallback_custom_icons('mfa_low', can_use_custom)} Rendah (Surel harus terverifikasi)",
+            "medium": f"{fallback_custom_icons('mfa_medium', can_use_custom)} Menengah (Terdaftar di Discord selama 5 menit)",  # noqa: E501
+            "high": f"{fallback_custom_icons('mfa_high', can_use_custom)} Tinggi (Berada di peladen ini selama 10 menit)",  # noqa: E501
+            "extreme": f"{fallback_custom_icons('mfa_extreme', can_use_custom)} Tertinggi (Nomor telepon harus terverifikasi)",  # noqa: E501
         }
         region_map = {
             "amsterdam": "🇳🇱 Amsterdam",
@@ -339,6 +374,7 @@ class Fun(commands.Cog):
         text_channels = []
         voice_channels = []
         news_channels = []
+        stage_channels = []
         for channel in channels_data:
             ctype = str(channel.type)
             if ctype == "voice":
@@ -347,14 +383,18 @@ class Fun(commands.Cog):
                 text_channels.append(channel)
             elif ctype == "news":
                 news_channels.append(channel)
+            elif ctype == "stage_voice":
+                stage_channels.append(channel)
 
-        total_channels = len(text_channels) + len(voice_channels) + len(news_channels)
+        total_channels = len(text_channels) + len(voice_channels) + len(news_channels) + len(stage_channels)
 
         channels_data = []
         channels_data.append(f"⌨ **{len(text_channels)}** kanal teks")
         channels_data.append(f"🔉 **{len(voice_channels)}** kanal suara")
-        if news_channels:
+        if len(news_channels) > 0:
             channels_data.append(f"📰 **{len(news_channels)}** kanal berita")
+        if len(stage_channels) > 0:
+            channels_data.append(f"📽 **{len(stage_channels)}** kanal panggung")
 
         verification_lvl = mfa_levels_map.get(str(guilds_data.verification_level))
         twofa_status = "✔" if guilds_data.mfa_level == 1 else "❌"
@@ -399,7 +439,7 @@ class Fun(commands.Cog):
         if boost_count > 0:
             boost_lvl = guilds_data.premium_tier
             extras_info_datas.append(
-                f"<:ntIconBoost:761958456865062923> Level **{boost_lvl}** (**{boost_count}** boosts)"
+                f"{fallback_custom_icons('boost', can_use_custom)} Level **{boost_lvl}** (**{boost_count}** boosts)"  # noqa: E501
             )
         extras_info_datas.append(
             "☺ **{}** emojis limit | 🎞 **{}** file limit | 🎵 **{}** bitrate limit".format(
@@ -418,12 +458,12 @@ class Fun(commands.Cog):
         description.append(vc_region)
         user_data = []
         user_data.append(
-            f"<:ntStatL3:761945479511670794> **{len(online_users)}** Daring | "
-            f"<:ntStatL0:761945452987285545> **{len(offline_users)}** Luring"
+            f"{fallback_custom_icons('s_ol', can_use_custom)} **{len(online_users)}** Daring | "
+            f"{fallback_custom_icons('s_off', can_use_custom)} **{len(offline_users)}** Luring"
         )
         user_data.append(
-            f"<:ntStatL2:761945472432209940> **{len(idle_users)}** Idle | "
-            f"<:ntStatL1:761945462424338493> **{len(dnd_users)}** DnD"
+            f"{fallback_custom_icons('s_idle', can_use_custom)} **{len(idle_users)}** Idle | "
+            f"{fallback_custom_icons('s_dnd', can_use_custom)} **{len(dnd_users)}** DnD"
         )
         user_data.append(f"🤖 **{len(bot_accounts)}** Bot")
         embed.description = "\n".join(description)
@@ -455,7 +495,7 @@ class Fun(commands.Cog):
                     user = ctx.message.mentions[0]
             except IndexError:
                 user = ctx.guild.get_member_named(name)
-            if not user:
+            if not user and name.isdigit():
                 user = self.bot.get_user(int(name))
             if not user:
                 await ctx.send("Tidak bisa mencari user tersebut")

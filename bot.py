@@ -47,7 +47,7 @@ cogs_list = ["cogs." + x.replace(".py", "") for x in os.listdir("cogs") if x.end
 logger = logging.getLogger()
 logging.basicConfig(
     level=logging.DEBUG,
-    handlers=[logging.FileHandler("naotimes.log", "w", "utf-8")],
+    handlers=[],
     format="[%(asctime)s] - (%(name)s)[%(levelname)s](%(funcName)s): %(message)s",  # noqa: E501
     datefmt="%Y-%m-%d %H:%M:%S",
 )
@@ -472,6 +472,25 @@ async def on_command_error(ctx: commands.Context, error):
         except discord.HTTPException:
             bot.logger.error("Failed to sent private message about it, ignoring...")
             return
+    if isinstance(error, commands.errors.MissingPermissions):
+        missing_perms = error.missing_perms
+        missing = [perm.replace("_", " ").replace("guild", "server").title() for perm in missing_perms]
+        try:
+            await ctx.send(
+                "Anda tidak memiliki hak untuk menjalankan perintah tersebut di Server ini!\n"
+                f"Kurang: `{missing.join(',')}`"
+            )
+        except discord.HTTPException:
+            bot.logger.error("Failed to send message about missing permission!")
+    if isinstance(error, commands.errors.BotMissingPermissions):
+        missing_perms = error.missing_perms
+        missing = [perm.replace("_", " ").replace("guild", "server").title() for perm in missing_perms]
+        try:
+            await ctx.send(
+                "Bot tidak memiliki hak untuk menjalankan perintah ini!\n" f"Butuh: `{missing.join(',')}`"
+            )
+        except discord.HTTPException:
+            bot.logger.error("Failed to send message about missing bot permission!")
 
     current_time = datetime.now(tz=timezone.utc).timestamp()
 
@@ -529,7 +548,7 @@ async def on_command_error(ctx: commands.Context, error):
     try:
         await ctx.send(
             "**Error**: Insiden ini telah dilaporkan, mohon buka Issue baru di GitHub untuk "
-            "mempercepat penyelesaian: <https://github.com/naoTimesdev/naoTimes/issues/new/choose>"
+            "mempercepat penyelesaian: <https://github.com/naoTimesdev/naoTimes/issues/new/choose>\n"
         )
     except (discord.HTTPException, discord.Forbidden):
         pass

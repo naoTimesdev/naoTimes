@@ -6,14 +6,57 @@ import platform
 import socket
 from base64 import b64encode
 from inspect import iscoroutinefunction
-from typing import Union
+from typing import List, Union
+from urllib.parse import urlparse
 
 import discord
+import feedparser
+import schema as sc
 import ujson
 from discord.ext import commands, tasks
 
+from cogs.fansubrss import filter_data
 from nthelper.bot import naoTimesBot
-from nthelper.utils import get_current_time
+from nthelper.utils import generate_custom_code, get_current_time
+
+NoneStr = sc.Or(str, None)
+
+# Schemas
+fansubRSSSchemas = sc.Schema(
+    {
+        "feeds": [
+            {
+                "id": sc.Or(str, int),
+                "channel": sc.Or(str, int),
+                "feedUrl": str,
+                sc.Optional("message"): NoneStr,
+                sc.Optional("lastEtag"): str,
+                sc.Optional("lastModified"): str,
+                sc.Optional("embed"): sc.Or(
+                    {
+                        "title": NoneStr,
+                        "description": NoneStr,
+                        "url": NoneStr,
+                        "thumbnail": NoneStr,
+                        "image": NoneStr,
+                        "footer": NoneStr,
+                        "footer_img": NoneStr,
+                        "color": sc.Or(str, int, None),
+                        "timestamp": bool,
+                    },
+                    {},
+                ),
+            }
+        ],
+        sc.Optional("premium"): bool,
+    }
+)
+
+
+def generate_rss_hash(srv_id: Union[str, int]):
+    srv_hash = str(srv_id)[5:]
+    gen_id = generate_custom_code(10, True) + srv_hash  # nosec
+    return gen_id
 
 
 def maybe_int(data, fallback=None):
@@ -48,6 +91,7 @@ class naoTimesUIBridge(commands.Cog):
             "get server": self.get_server_info,
             "get user": self.get_user_info,
             "get channel": self.on_channel_info_request,
+            "get server channel": self.on_channel_list_request,
             "get user perms": self.get_user_server_permission,
             "create role": self.show_create_role,
             "announce drop": self.on_announce_request,
@@ -56,7 +100,14 @@ class naoTimesUIBridge(commands.Cog):
             "delete role": self.on_delete_roles_request,
             "delete roles": self.on_delete_roles_request,
             "ping": self.on_ping,
+            "fsrss get": self.fsrss_get_event,
+            "fsrss parse": self.fsrss_parse_event,
+            "fsrss update": self.fsrss_update_event,
+            "fsrss create": self.fsrss_create_event,
+            "fsrss delete": self.fsrss_delete_event,
         }
+
+        self._fsrss_defaults = r":newspaper: | Rilisan Baru: **{title}**\n{link}"
 
     def cog_unload(self):
         self.run_server.cancel()
@@ -150,6 +201,215 @@ class naoTimesUIBridge(commands.Cog):
             return False
         return True
 
+    # FansubRSS stuff
+    async def fsrss_get_event(self, sid, data):
+        self.logger.info(f"{sid}: requested info for {data}")
+        try:
+            server_id = data["id"]
+        except (KeyError, ValueError, IndexError):
+            return {"message": "missing data", "success": 0}
+        try:
+            hash_id = data["hash"]
+        except (KeyError, ValueError, IndexError):
+            hash_id = None
+
+        rss_metadata = await self.bot.redisdb.get(f"ntfsrss_{server_id}")
+        if rss_metadata is None:
+            return {"message": None, "success": 1}
+
+        if hash_id is None:
+            return {"message": rss_metadata, "success": 1}
+
+        rss_feeds = rss_metadata["feeds"]
+        for feed in rss_feeds:
+            if feed["id"] == hash_id:
+                return {"message": {"feeds": [feed], "premium": rss_metadata["premium"]}, "success": 1}
+        return {"message": None, "success": 1}
+
+    async def fsrss_parse_event(self, sid, data):
+        self.logger.info(f"{sid}: requested parsing")
+        parsed = feedparser.parse(data)
+        if parsed is None:
+            return {"message": "RSS tidak valid", "success": 0}
+        if not parsed.entries:
+            return {"message": "RSS tidak ada entri", "success": 0}
+
+        base_url = parsed["feed"]["link"]
+        parsed_base_url = urlparse(base_url)
+
+        skema_uri = parsed_base_url.scheme
+        if skema_uri == "":
+            skema_uri = "http"
+        base_url_for_real = f"{skema_uri}://{parsed_base_url.netloc}"
+
+        entries = parsed.entries
+
+        filtered_entries = []
+        for entry in entries:
+            filtered_entries.append(filter_data(entry, base_url_for_real))
+
+        return {"message": filtered_entries, "success": 1}
+
+    async def fsrss_update_event(self, sid, data):
+        self.logger.info(f"{sid}: requested update for {data}")
+        try:
+            server_id = data["id"]
+        except (KeyError, ValueError, IndexError):
+            return {"message": "missing server ID", "success": 0}
+        try:
+            hash_id = data["hash"]
+        except (KeyError, ValueError, IndexError):
+            return {"message": "missing hash ID", "success": 0}
+        try:
+            changes: dict = data["changes"]
+            if not isinstance(changes, dict):
+                return {"message": "`changes` are not a dict", "success": 0}
+        except (KeyError, ValueError, IndexError):
+            return {"message": "missing `changes` data", "success": 0}
+
+        rss_metadata = await self.bot.redisdb.get(f"ntfsrss_{server_id}")
+        if rss_metadata is None:
+            return {"message": "Tidak dapat menemukan server tersebut", "success": 0}
+
+        rss_feeds = rss_metadata["feeds"]
+        feed_index = -1
+        for n, feed in enumerate(rss_feeds):
+            if feed["id"] == hash_id:
+                feed_index = n
+        if feed_index == -1:
+            return {"message": "Tidak dapat menemukan hash untuk RSS tersebut", "success": 0}
+
+        allowed_keys = ["channel", "feedUrl", "message", "embed"]
+        expected_data = {
+            "channel": str,
+            "feedUrl": str,
+            "embed": dict,
+            "message": str,
+        }
+        for change_key, change_value in changes.items():
+            if change_key in allowed_keys:
+                expected_fmt = expected_data[change_key]
+                if not isinstance(change_value, expected_fmt):
+                    return {"message": f"Data `{change_key}` memiliki value yang salah", "success": 0}
+                rss_metadata["feeds"][feed_index][change_key] = change_value
+
+        try:
+            fansubRSSSchemas.validate(rss_metadata)
+        except sc.SchemaError:
+            self.logger.error(f"Failed to validate feeds meta for {server_id}")
+            return {
+                "message": "Gagal memvalidasi hasil perubahan baru, kemungkinan ada yang salah",
+                "success": 0,
+            }
+        await self.bot.redisdb.set(f"ntfsrss_{server_id}", rss_metadata)
+        return "ok"
+
+    async def fsrss_create_event(self, sid, data):
+        self.logger.info(f"{sid}: requested creation for {data}")
+        try:
+            channel_id = data["channel"]
+            feed_url = data["url"]
+            server_id = data["id"]
+        except (KeyError, ValueError, IndexError):
+            return {"message": "Missing data", "success": 0}
+        valid_parsed = []
+        try:
+            sample_url = data["sample"]
+            if isinstance(sample_url, list):
+                correct_url = []
+                for sample in sample_url:
+                    if isinstance(sample, str):
+                        correct_url.append(sample)
+                valid_parsed.extend(correct_url)
+        except (KeyError, ValueError, IndexError):
+            pass
+        try:
+            guild_id = int(server_id)
+        except (KeyError, ValueError, IndexError):
+            return {"message": "id is not a number", "success": 0}
+        try:
+            kanal_id = int(channel_id)
+        except (KeyError, ValueError, IndexError):
+            return {"message": "channel is not a number", "success": 0}
+
+        server: Union[discord.Guild, None] = self.bot.get_guild(guild_id)
+        if server is None:
+            return {"message": "Tidak dapat menemukan server, mohon invite Bot!", "success": 0}
+        channel: Union[discord.TextChannel, None] = server.get_channel(kanal_id)
+        if channel is None:
+            return {"message": "Tidak dapat menemukan kanal tersebut di Server!", "success": 0}
+        if channel.type != discord.ChannelType.text:
+            return {"message": "Kanal tersebut bukan merupakan kanal teks", "success": 0}
+        rss_metadata = await self.bot.redisdb.get(f"ntfsrss_{server_id}")
+        should_register = False
+        if rss_metadata is None:
+            rss_metadata = {"feeds": [], "premium": False}
+            should_register = True
+        registered_hash = generate_rss_hash(server_id)
+        new_feeds = {
+            "id": registered_hash,
+            "channel": channel_id,
+            "feedUrl": feed_url,
+            "message": self._fsrss_defaults,
+            "lastEtag": "",
+            "lastModified": "",
+            "embed": {},
+        }
+        rss_metadata["feeds"].append(new_feeds)
+
+        try:
+            fansubRSSSchemas.validate(rss_metadata)
+        except sc.SchemaError:
+            self.logger.error(f"Failed to validate feeds meta for {server_id}")
+            return {
+                "message": "Gagal memvalidasi hasil perubahan baru, kemungkinan ada yang salah",
+                "success": 0,
+            }
+        await self.bot.redisdb.set(f"ntfsrss_{server_id}", rss_metadata)
+        await self.bot.redisdb.set(f"ntfsrssd_{server_id}_{registered_hash}", {"fetchedURL": valid_parsed})
+        tipe_regis = "normal"
+        if rss_metadata["premium"]:
+            tipe_regis = "premium"
+        if should_register:
+            await self.bot.fsrss_register_new({"type": tipe_regis, "id": server_id, "event": "add"})
+        return {"message": {"id": registered_hash}, "success": 1}
+
+    async def fsrss_delete_event(self, sid, data):
+        self.logger.info(f"{sid}: requested deletion for {data}")
+        try:
+            hash_id = data["hash"]
+            server_id = data["id"]
+        except (KeyError, ValueError, IndexError):
+            return {"message": "Missing data", "success": 0}
+        rss_metadata = await self.bot.redisdb.get(f"ntfsrss_{server_id}")
+        if rss_metadata is None:
+            return {"message": "Tidak dapat menemukan server tersebut", "success": 0}
+        hash_index = -1
+        for idx, rss in enumerate(rss_metadata["feeds"]):
+            if rss["id"] == hash_id:
+                hash_index = idx
+        if hash_index == -1:
+            return {"message": "Tidak dapat menemukan hash untuk RSS tersebut", "success": 0}
+        try:
+            rss_metadata["feeds"].pop(hash_index)
+        except IndexError:
+            return {
+                "message": "Tidak dapat menghapus hash tersebut karena tidak dapat menemukannya!",
+                "success": 0,
+            }
+
+        try:
+            fansubRSSSchemas.validate(rss_metadata)
+        except sc.SchemaError:
+            self.logger.error(f"Failed to validate feeds meta for {server_id}")
+            return {
+                "message": "Gagal memvalidasi hasil perubahan baru, kemungkinan ada yang salah",
+                "success": 0,
+            }
+        await self.bot.redisdb.rm(f"ntfsrssd_{server_id}_{hash_id}")
+        await self.bot.redisdb.set(f"ntfsrss_{server_id}", rss_metadata)
+        return "ok"
+
     def authenticate_user(self, sid, data):
         self.logger.info(f"trying to authenticating {sid}, comparing s::{data} and t::{self._auth_passwd}")
         if self._auth_passwd is None:
@@ -174,6 +434,7 @@ class naoTimesUIBridge(commands.Cog):
         parsed_user["id"] = str(user_data.id)
         parsed_user["name"] = user_data.name
         parsed_user["avatar_url"] = str(user_data.avatar_url)
+        parsed_user["is_bot"] = user_data.bot
         return parsed_user
 
     async def on_delete_server_request(self, sid, data):
@@ -239,6 +500,22 @@ class naoTimesUIBridge(commands.Cog):
         if not isinstance(channel_info, discord.TextChannel):
             return {"message": "Channel bukan TextChannel", "success": 0}
         return {"id": str(channel_info.id), "name": channel_info.name}
+
+    def on_channel_list_request(self, sid, data):
+        self.logger.info(f"{sid}: requested channel info for {data}")
+        try:
+            server_id = int(data["id"])
+        except (KeyError, ValueError, IndexError):
+            return {"message": "ID bukanlah angka", "success": 0}
+        guild_info: Union[discord.Guild, None] = self.bot.get_guild(server_id)
+        if guild_info is None:
+            return {"message": "Tidak dapat menemukan server", "success": 0}
+        guild_channels: List[discord.abc.GuildChannel] = guild_info.channels
+        text_channel = []
+        for kanal in guild_channels:
+            if kanal.type == discord.ChannelType.text:
+                text_channel.append({"id": str(kanal.id), "name": kanal.name})
+        return {"message": text_channel, "success": 1}
 
     async def on_delete_roles_request(self, sid, data):
         self.logger.info(f"{sid}: requested role deletions for {data}")
@@ -382,7 +659,13 @@ class naoTimesUIBridge(commands.Cog):
             parsed["data"] = None
         is_auth = self._check_auth(sid)
         if not is_auth and event != "authenticate":
-            return {"message": "not authenticated", "success": -1, "event": event}
+            auth_key = parsed.get("auth")
+            if not auth_key and event != "authenticate":
+                return {"message": "not authenticated", "success": -1, "event": event}
+            res = await self.maybe_asyncute(self.authenticate_user, sid, auth_key)
+            if isinstance(res, dict):
+                res["event"] = event
+                return res
         if "data" not in parsed:
             return {"message": "no data received", "success": 0, "event": event}
         data = parsed["data"]
@@ -420,6 +703,7 @@ class naoTimesUIBridge(commands.Cog):
             self.logger.error("incomplete data acquired")
             answer = {"message": "incomplete data received", "status": 0}
         writer.write(self.encode_message(answer))
+        self.logger.info(f"answering back request to {self.hash_ip(addr)} on event {answer['event']}")
         await writer.drain()
         writer.close()
 

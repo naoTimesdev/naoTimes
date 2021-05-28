@@ -12,7 +12,7 @@ from discord.ext import commands, tasks
 from nthelper.bot import naoTimesBot
 from nthelper.cmd_args import Arguments, CommandArgParse
 from nthelper.timeparse import TimeString, TimeStringParseError
-from nthelper.votebackend import VoteWatcher, VotingData, VotingKickBan
+from nthelper.votebackend import VoteWatcher, VotingData, VotingGiveaway, VotingKickBan
 
 reactions_num = ["1⃣", "2⃣", "3⃣", "4⃣", "5⃣", "6⃣", "7⃣", "8⃣", "9⃣", "🔟"]
 res2num = dict(zip(reactions_num, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]))
@@ -113,7 +113,10 @@ class VoteApp(commands.Cog):
         msg_data: discord.Message = await channel_data.fetch_message(message_id)
         reactions: List[discord.Reaction] = msg_data.reactions
 
-        disallowed_ids: List[int] = [vote_meta["requester"], self.bot.user.id]
+        disallowed_ids: List[int] = [
+            vote_meta.get("requester", vote_meta.get("initiator", -1)),
+            self.bot.user.id,
+        ]
 
         final_data = []
         if reactions:
@@ -258,17 +261,29 @@ class VoteApp(commands.Cog):
         self.logger.info("starting vote done task handling...")
         while True:
             try:
-                vote_handler: Union[VotingData, VotingKickBan] = await self.vote_backend.done_queue.get()
+                vote_handler: Union[
+                    VotingData, VotingKickBan, VotingGiveaway
+                ] = await self.vote_backend.done_queue.get()
                 exported_data = vote_handler.export_data()
                 self.logger.info(f"{exported_data['id']}: handling vote data...")
+                collect_final_reactions = await self.count_reactions(exported_data)
                 final_tally = vote_handler.tally_all()
+                if exported_data["type"] == "giveaway":
+                    # Properly collect all giveaway voter :)
+                    collect_final_reactions = await self.count_reactions(exported_data)
+                    final_tally = collect_final_reactions[0]["voter"]
                 self.logger.info(f"{exported_data['id']}: fetching channel/msg data...")
                 channel: discord.TextChannel = self.bot.get_channel(exported_data["channel_id"])
+                if channel is None:
+                    self.logger.info("Cannot find the specified channel, ignoring...")
+                    self.vote_backend.done_queue.task_done()
+                    continue
                 try:
                     message: discord.Message = await channel.fetch_message(exported_data["id"])
                     embed: discord.Embed = discord.Embed.from_dict(message.embeds[0].to_dict())
                     content_txt = ""
                     if exported_data["type"] == "giveaway":
+                        embed.add_field(name="Initiator", value=str(exported_data["initiator"]))
                         embed.set_footer(text="Giveaway selesai!")
                         content_txt = "🎉 **Giveaway selesai** 🎉"
                     else:
@@ -312,10 +327,29 @@ class VoteApp(commands.Cog):
                     else:
                         winner_member: discord.Member = None
                         while True:
-                            selected_winner = random.choice(final_tally)
+                            for _ in range(3):
+                                # Shuffle 3 times for good luck
+                                random.shuffle(final_tally)
+                            try:
+                                selected_index = random.randint(0, len(final_tally) - 1)
+                                selected_winner = final_tally[selected_index]
+                            except IndexError:
+                                break
+                            if not hasattr(channel, "guild"):
+                                self.logger.info(
+                                    f"{exported_data['id']}: There's no guild attributes "
+                                    "for this, ignoring..."
+                                )
+                                break
+                            if channel.guild is None:
+                                self.logger.warning(
+                                    f"{exported_data['id']}: This guild attributes is empty, ignoring..."
+                                )
+                                break
                             winner_member = channel.guild.get_member(selected_winner)
                             if winner_member is not None:
                                 break
+                        self.logger.info(f"{exported_data['id']}: winner decided!")
                         if winner_member is None:
                             await channel.send(
                                 f"Giveaway **__{exported_data['item']}__** selesai! Tetapi bot "
@@ -422,14 +456,15 @@ class VoteApp(commands.Cog):
                 )
                 await message.edit(embed=embed)
 
-    @commands.Cog.listener(name="on_reaction_add")
+    @commands.Cog.listener("on_reaction_add")
     async def vote_added(self, reaction: discord.Reaction, user: Union[discord.Member, discord.User]):
         if user.bot:
             # Ignore bot vote.
             return
-        if str(reaction.message.id) not in self.vote_backend.vote_holding:
+        if not self.vote_backend.exist(reaction.message.id):
             # Ignore other msg vote.
             return
+        self.logger.info(f"Adding vote from user {user.id} for message {reaction.message.id}")
         try:
             if "✅" in str(reaction.emoji) or "🎉" in str(reaction.emoji):
                 await self.vote_backend.add_vote(reaction.message.id, user.id, 0)
@@ -441,14 +476,15 @@ class VoteApp(commands.Cog):
         except KeyError:
             pass
 
-    @commands.Cog.listener(name="on_reaction_remove")
-    async def vote_removed(self, reaction, user):
+    @commands.Cog.listener("on_reaction_remove")
+    async def vote_removed(self, reaction: discord.Reaction, user: Union[discord.Member, discord.User]):
         if user.bot:
             # Ignore bot vote.
             return
-        if str(reaction.message.id) not in self.vote_backend.vote_holding:
+        if not self.vote_backend.exist(reaction.message.id):
             # Ignore other msg vote.
             return
+        self.logger.info(f"Removing vote from user {user.id} for message {reaction.message.id}")
         try:
             if "✅" in str(reaction.emoji) or "🎉" in str(reaction.emoji):
                 await self.vote_backend.remove_vote(reaction.message.id, user.id, 0)
@@ -746,6 +782,27 @@ class VoteApp(commands.Cog):
                 break
         if giveaway_embed is None:
             return await ctx.send("Pesan tersebut bukanlah embed giveaway naoTimes")
+
+        the_real_embed: discord.Embed = None
+        for embed in giveaway_embed.embeds:
+            test: discord.Embed = discord.Embed.from_dict(embed.to_dict())
+            if (
+                isinstance(test.title, str)
+                and test.title.startswith("Giveaway: ")
+                and pesan.author.id == self.bot.user.id
+            ):
+                the_real_embed = pesan
+                break
+        if the_real_embed is None:
+            return await ctx.send("Pesan tersebut bukanlah embed giveaway naoTimes")
+
+        initiator = the_real_embed.fields[1].value
+        try:
+            initiator = int(initiator)
+            if initiator != ctx.message.author.id:
+                return await ctx.send("Hanya yang memulai Giveaway yang bisa reroll!")
+        except (ValueError, KeyError, IndexError, AttributeError):
+            return await ctx.send("Tidak dapat menemukan yang memulai Giveaway!")
 
         reactions = pesan.reactions
         if len(reactions) < 1:

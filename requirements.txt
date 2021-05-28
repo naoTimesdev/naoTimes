@@ -3,8 +3,8 @@ aiohttp>=3.6.2
 aiofiles==0.5.0
 ujson==1.35
 
-discord.py[voice]>=1.6
-discord-py-slash-command==1.0.9.5
+discord.py[voice]==1.7.2
+discord-py-slash-command==1.1.2
 motor==2.2.0
 beautifulsoup4==4.8.0
 feedparser==5.2.1

@@ -159,6 +159,7 @@ class KBBICog(commands.Cog):
             return await ctx.send(content=txt)
 
         self.logger.info(f"searching {kata}")
+        await ctx.defer()
         pranala, hasil_entri, saran_entri = await query_requests_kbbi(kata, self.kbbi_conn)
 
         if isinstance(hasil_entri, str):
