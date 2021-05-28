@@ -233,7 +233,7 @@ class Helper(commands.Cog):
     async def help(self, ctx):
         new_help_msg = "Dokumentasi telah dipindah ke website baru!\n"
         new_help_msg += "Silakan kunjungi untuk melihat bantuan\n"
-        new_help_msg += "https://naoti.me/\n\n"
+        new_help_msg += "<https://naoti.me/docs>\n\n"
         new_help_msg += "Untuk melihat bantuan lama, ketik "
         new_help_msg += f"`{self._pre}oldhelp` di DM Bot"
         await ctx.send(new_help_msg)
@@ -1686,7 +1686,9 @@ class Helper(commands.Cog):
             description="[Invite](https://ihateani.me/andfansub)"
             "\n[Support Server](https://discord.gg/7KyYecn) atau ketik "
             f"`{self.bot.prefixes(ctx)}tiket` di DM Bot."
-            "\n[Dukung Dev-nya](https://trakteer.id/noaione)",
+            "\n[Dukung Dev-nya](https://trakteer.id/noaione)"
+            "\n[Syarat dan Ketentuan](https://naoti.me/terms) | "
+            "[Kebijakan Privasi](https://naoti.me/privasi)",
             color=0x1,
         )
         invi.set_thumbnail(url="https://p.n4o.xyz/i/naotimes_ava.png")

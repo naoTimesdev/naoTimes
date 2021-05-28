@@ -3,7 +3,7 @@
 import logging
 from datetime import datetime, timezone
 from functools import partial
-from typing import List, Union
+from typing import Any, List, Union
 
 import aiohttp
 import discord
@@ -239,6 +239,18 @@ def truncate(text: str, m: str) -> str:
     return text
 
 
+def walk(data: Any, notations: str) -> Union[Any, None]:
+    split_not = notations.split(".")
+    for nota in split_not:
+        if nota.isdigit():
+            nota = int(nota)
+        try:
+            data = data[nota]
+        except KeyError:
+            return None
+    return data
+
+
 class NotNSFWChannel(Exception):
     pass
 
@@ -400,7 +412,16 @@ class nHController(commands.Cog):
             ) as resp:
                 try:
                     gql_raw = await resp.json()
-                    response = gql_raw["data"]["nhentai"][nh_mode]
+                    response = walk(gql_raw, f"data.nhentai.{nh_mode}")
+                    if response is None:
+                        error_msg = walk(gql_raw, "errors.0.message")
+                        if error_msg is None:
+                            return await ctx.send("Terjadi kesalahan ketika ingin menghubungi API")
+                        if "404" in error_msg:
+                            return await ctx.send("Tidak dapat menemukan apa-apa dengan kata tersebut.")
+                        return await ctx.send(
+                            f"Terjadi kesalahan ketika memproses data dari API\n`{error_msg}`"
+                        )
                 except aiohttp.client_exceptions.ContentTypeError:
                     return await ctx.send("Terjadi kesalahan ketika menghubungi server.")
                 if resp.status != 200:
@@ -468,7 +489,16 @@ class nHController(commands.Cog):
             ) as resp:
                 try:
                     gql_raw = await resp.json()
-                    data2 = gql_raw["data"]["nhentai"]["info"]
+                    data2 = walk(gql_raw, "data.nhentai.info")
+                    if data2 is None:
+                        error_msg = walk(gql_raw, "errors.0.message")
+                        if error_msg is None:
+                            return await ctx.send("Terjadi kesalahan ketika ingin menghubungi API")
+                        if "404" in error_msg:
+                            return await ctx.send("Tidak dapat menemukan doujin tersebut!")
+                        return await ctx.send(
+                            f"Terjadi kesalahan ketika memproses data dari API\n`{error_msg}`"
+                        )
                 except aiohttp.client_exceptions.ContentTypeError:
                     return await ctx.send("Terjadi kesalahan ketika menghubungi server.")
                 if resp.status != 200:
@@ -519,7 +549,16 @@ class nHController(commands.Cog):
             ) as resp:
                 try:
                     gql_raw = await resp.json()
-                    data2 = gql_raw["data"]["nhentai"]["info"]
+                    data2 = walk(gql_raw, "data.nhentai.info")
+                    if data2 is None:
+                        error_msg = walk(gql_raw, "errors.0.message")
+                        if error_msg is None:
+                            return await ctx.send("Terjadi kesalahan ketika ingin menghubungi API")
+                        if "404" in error_msg:
+                            return await ctx.send("Tidak dapat menemukan doujin tersebut!")
+                        return await ctx.send(
+                            f"Terjadi kesalahan ketika memproses data dari API\n`{error_msg}`"
+                        )
                 except aiohttp.client_exceptions.ContentTypeError:
                     return await ctx.send("Terjadi kesalahan ketika menghubungi server.")
                 if resp.status != 200:
@@ -584,7 +623,16 @@ class nHController(commands.Cog):
             ) as resp:
                 try:
                     gql_raw = await resp.json()
-                    data2 = gql_raw["data"]["nhentai"]["info"]
+                    data2 = walk(gql_raw, "data.nhentai.info")
+                    if data2 is None:
+                        error_msg = walk(gql_raw, "errors.0.message")
+                        if error_msg is None:
+                            return await ctx.send("Terjadi kesalahan ketika ingin menghubungi API")
+                        if "404" in error_msg:
+                            return await ctx.send("Tidak dapat menemukan doujin tersebut!")
+                        return await ctx.send(
+                            f"Terjadi kesalahan ketika memproses data dari API\n`{error_msg}`"
+                        )
                 except aiohttp.client_exceptions.ContentTypeError:
                     return await ctx.send("Terjadi kesalahan ketika menghubungi server.")
                 if resp.status != 200:

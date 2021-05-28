@@ -431,3 +431,38 @@ class ShowtimesOwner(commands.Cog, ShowtimesBase):
         server_lists = await self.srv_lists()
         if server_lists:
             return await ctx.send("naoTimes Showtimes already initialized.")
+
+    @ntadmin.command(name="nameproper")
+    async def ntadmin_nameproper(self, ctx: commands.Context):
+        if self.ntdb is None:
+            self.logger.info("owner hasn't enabled naoTimesDB yet.")
+            return await ctx.send(
+                "naoTimesDB are not connected, please restart bot or use reloadconf to try and reconnect it."
+            )
+
+        server_lists = await self.srv_lists()
+        self.logger.info(f"Fetching info on {len(server_lists)} servers")
+
+        for server in server_lists:
+            srv_data = await self.bot.showqueue.fetch_database(server)
+            if srv_data is None:
+                continue
+            self.logger.info(f"{server}: Checking if has name...")
+            if "name" in srv_data:
+                self.logger.info(f"{server}: has name, skipping...")
+                continue
+            self.logger.info(f"{server}: doesn't have name, adding one...")
+
+            guild_data: discord.Guild = self.bot.get_guild(int(server))
+            if guild_data is None:
+                self.logger.warning(f"{server}: guild data is empty, ignoring...")
+                continue
+
+            guild_name = guild_data.name
+            self.logger.info(f"{server}: setting name into {guild_name}")
+            srv_data["name"] = guild_name
+            await self.bot.redisdb.set(f"showtimes_{server}", srv_data)
+            res, msg = await self.bot.ntdb.update_data_server(server, srv_data)
+            self.logger.info(f"{server}: pushed into server, success? {res} ({msg})")
+
+        await ctx.send("Done adding name into every database!")

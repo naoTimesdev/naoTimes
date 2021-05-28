@@ -62,6 +62,7 @@ class ImageBooru(commands.Cog):
         return False
 
     async def request_gql(self, board, tags, safe_version=False, is_random=False) -> Union[str, List[dict]]:
+        self.logger.info(f"Querying {tags} on board {board}")
         query_to_send = {
             "query": IMAGEBOORU_SCHEMAS,
             "variables": {"tags": tags, "engine": [board], "safe": safe_version},
@@ -69,7 +70,7 @@ class ImageBooru(commands.Cog):
         }
         if not tags and is_random:
             see_page = random.randint(1, 10)
-            query_to_send["page"] = see_page
+            query_to_send["variables"]["page"] = see_page
         async with aiohttp.ClientSession(
             headers={"User-Agent": f"naoTimes/v{self.bot.semver} (https://github.com/noaione/naoTimes)"}
         ) as session:
@@ -140,7 +141,7 @@ class ImageBooru(commands.Cog):
         is_random = False
         if tags_query:
             split_query = tags_query.split(" ")
-            real_query = tags_query
+            real_query = split_query
             randomize = False
             if len(split_query) > 1:
                 if split_query[0].lower() in ["r", "rng", "random", "order:random", "order:r", "rand"]:
@@ -151,8 +152,6 @@ class ImageBooru(commands.Cog):
                     real_query = split_query
                     randomize = True
                     is_random = True
-            else:
-                real_query = split_query
             self.logger.info(f"Searching {engine} with tags: {real_query} (safe: {safe_version})")
             results = await self.request_gql(engine, real_query, safe_version, randomize)
         else:

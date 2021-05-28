@@ -1,12 +1,11 @@
 import asyncio
 import functools
 import logging
-import os
 import re
 import time
 from datetime import datetime, timezone
-from shutil import rmtree as remove_dir
 from typing import List, Optional, Tuple, Union
+from urllib.parse import urlparse
 
 import aiohttp
 import discord
@@ -26,6 +25,7 @@ from nthelper.utils import (
 
 asyncfeed = sync_wrap(feedparser.parse)
 fsrsslog = logging.getLogger("cogs.fansubrss")
+ImageExtract = re.compile(r"!\[[^\]]*\]\((?P<filename>.*?)(?=\"|\))(?P<optionalpart>\".*\")?\)")
 NoneStr = sc.Or(str, None)
 
 # Schemas
@@ -39,17 +39,20 @@ fansubRSSSchemas = sc.Schema(
                 sc.Optional("message"): NoneStr,
                 sc.Optional("lastEtag"): str,
                 sc.Optional("lastModified"): str,
-                "embed": {
-                    "title": NoneStr,
-                    "description": NoneStr,
-                    "url": NoneStr,
-                    "thumbnail": NoneStr,
-                    "image": NoneStr,
-                    "footer": NoneStr,
-                    "footer_img": NoneStr,
-                    "color": sc.Or(str, int, None),
-                    "timestamp": bool,
-                },
+                sc.Optional("embed"): sc.Or(
+                    {
+                        "title": NoneStr,
+                        "description": NoneStr,
+                        "url": NoneStr,
+                        "thumbnail": NoneStr,
+                        "image": NoneStr,
+                        "footer": NoneStr,
+                        "footer_img": NoneStr,
+                        "color": sc.Or(str, int, None),
+                        "timestamp": bool,
+                    },
+                    {},
+                ),
             }
         ],
         sc.Optional("premium"): bool,
@@ -65,7 +68,7 @@ def clean_text(text_data: str) -> str:
     }
     for src, dest in replace_data.items():
         text_data = text_data.replace(src, dest)
-    return text_data
+    return text_data.strip()
 
 
 def month_in_text(t: int) -> str:
@@ -151,7 +154,17 @@ def time_struct_dt(time_struct: time.struct_time) -> Tuple[str, datetime]:
     return strftime_str, dt_data
 
 
-def filter_data(entries: dict) -> dict:
+def first_match_key_list(tobelooped: list, key_match):
+    for data in tobelooped:
+        try:
+            valid = data[key_match]
+            return valid
+        except Exception:
+            pass
+    return None
+
+
+def filter_data(entries: dict, base_url: str = "") -> dict:
     """Remove unnecessary tags that just gonna trashed the data"""
     remove_data = [
         "title_detail",
@@ -167,6 +180,9 @@ def filter_data(entries: dict) -> dict:
         "wfw_commentrss",
         "slash_comments",
     ]
+
+    if base_url.endswith("/"):
+        base_url = base_url[:-1]
 
     for r in remove_data:
         try:
@@ -185,21 +201,53 @@ def filter_data(entries: dict) -> dict:
 
     if "media_thumbnail" in entries:
         try:
-            entries["media_thumbnail"] = entries["media_thumbnail"][0]["url"]
+            matching_image = first_match_key_list(entries["media_thumbnail"], "url")
+            if matching_image is None:
+                entries["media_thumbnail"] = ""
+            else:
+                entries["media_thumbnail"] = matching_image
         except IndexError:
             entries["media_thumbnail"] = ""
         except KeyError:
             entries["media_thumbnail"] = ""
 
     if "summary" in entries:
-        entries["summary"] = clean_text(mdparse(entries["summary"]))
+        parsed_summary = clean_text(mdparse(entries["summary"]))
+        extracted_images = list(ImageExtract.finditer(parsed_summary))
+        first_image_link = None
+        for extracted in extracted_images:
+            if extracted:
+                filename_match = extracted.group("filename")
+                all_match = extracted.group()
+                parsed_summary = parsed_summary.replace(all_match, "")
+                parse_url = urlparse(filename_match)
+                if parse_url.netloc == "":
+                    real_url = parse_url.path
+                    if real_url.startswith("/"):
+                        real_url = real_url[1:]
+                    query_params = parse_url.query
+                    first_image_link = f"{base_url}/{real_url}"
+                    if query_params != "":
+                        first_image_link += f"?{query_params}"
+                else:
+                    skema_url = parse_url.scheme
+                    if skema_url == "":
+                        skema_url = "http"
+                    first_image_link = f"{skema_url}://{parse_url.netloc}{parse_url.path}"
+                    if parse_url.query != "":
+                        first_image_link += f"?{parse_url.query}"
+        entries["summary"] = clean_text(parsed_summary)
+        if first_image_link is not None:
+            entries["media_thumbnail"] = first_image_link
 
     if "description" in entries:
         entries["description"] = clean_text(mdparse(entries["description"]))
     if "media_content" in entries:
         media_url = entries["media_content"]
         if media_url:
-            entries["media_content"] = media_url[0]["url"]
+            matching_image = first_match_key_list(media_url, "url")
+            if matching_image is not None:
+                entries["media_content"] = matching_image
         else:
             del entries["media_content"]
 
@@ -320,13 +368,21 @@ async def recursive_check_feed(
     if not feed:
         return None, "", ""
 
+    base_url = feed["feed"]["link"]
+    parsed_base_url = urlparse(base_url)
+
+    skema_uri = parsed_base_url.scheme
+    if skema_uri == "":
+        skema_uri = "http"
+    base_url_for_real = f"{skema_uri}://{parsed_base_url.netloc}"
+
     entries = feed.entries
 
     filtered_entry = []
     for n, entry in enumerate(entries):
         if entry["link"] in fetched_data:
             continue
-        filtered_entry.append(filter_data(entries[n]))
+        filtered_entry.append(filter_data(entries[n], base_url_for_real))
 
     etag = ""
     modified_tag = ""
@@ -356,7 +412,6 @@ class FansubRSS(commands.Cog):
         self.bot = bot
         self.logger = logging.getLogger("cogs.fansubrss.FansubRSS")
 
-        self.splitbase = lambda path: os.path.splitext(os.path.basename(path))  # noqa: E731
         self.default_msg = r":newspaper: | Rilisan Baru: **{title}**\n{link}"
 
         self._locked_server: List[str] = []
@@ -371,12 +426,14 @@ class FansubRSS(commands.Cog):
 
         self._bgqueue: asyncio.Queue = asyncio.Queue()
         self._bgtasks: asyncio.Task = asyncio.Task(self.background_rss_saver(), loop=bot.loop)
+        self._bgtasks_ntui: asyncio.Task = asyncio.Task(self.background_ntui_fsrss_watcher(), loop=bot.loop)
 
     def cog_unload(self):
         self.logger.info("Cancelling all tasks...")
         self.servers_rss_checks.cancel()
         self.premium_rss_checks.cancel()
         self._bgtasks.cancel()
+        self._bgtasks_ntui.cancel()
 
     @staticmethod
     def is_msg_empty(msg: str, thr: int = 3) -> bool:
@@ -416,6 +473,13 @@ class FansubRSS(commands.Cog):
 
     async def write_rss(self, server_id: Union[str, int], data: dict):
         await self.bot.redisdb.set(f"ntfsrss_{server_id}", data)
+
+    async def server_rss(self):
+        servers = await self.bot.redisdb.keys("ntfsrss_*")
+        real_servers = []
+        for server in servers:
+            real_servers.append(server[8:])
+        return real_servers
 
     async def write_rss_feeds(self, server_id: Union[str, int], hash_ids: str, feeds_data: list):
         save_data = {"fetchedURL": feeds_data}
@@ -510,6 +574,31 @@ class FansubRSS(commands.Cog):
             except asyncio.CancelledError:
                 return
 
+    async def background_ntui_fsrss_watcher(self):
+        self.logger.info("Starting FansubRSS watcher task...")
+        while True:
+            try:
+                fsh_data = await self.bot.fsdb_ntui.get()
+                if isinstance(fsh_data, dict):
+                    self.logger.info(f"Detected new FansubRSS Registration! {fsh_data['id']}")
+                    if fsh_data["event"] == "add":
+                        if fsh_data["type"] == "premium":
+                            self._server_premium.append(fsh_data["id"])
+                        else:
+                            self._server_normal.append(fsh_data["id"])
+                    elif fsh_data["event"] == "remove":
+                        try:
+                            self._server_normal.remove(str(fsh_data["id"]))
+                        except ValueError:
+                            pass
+                        try:
+                            self._server_premium.remove(str(fsh_data["id"]))
+                        except KeyError:
+                            pass
+                self.bot.fsdb_ntui.task_done()
+            except asyncio.CancelledError:
+                return
+
     async def put_rss_job(self, srv_id, metadata):
         await self._bgqueue.put(FansubRSSDataHolder(srv_id, metadata))
 
@@ -525,6 +614,9 @@ class FansubRSS(commands.Cog):
         jobs_list = [_internal_request(srv) for srv in server_list if srv not in self._locked_server]
         for job in asyncio.as_completed(jobs_list):
             full_metadata, server_id = await job
+            if len(full_metadata["feeds"]) < 1:
+                self.logger.warning(f"{server_id}: has empty feed data, ignoring...")
+                continue
             metadatas_to_fetch = []
             if not full_metadata["premium"]:
                 metadatas_to_fetch.append(full_metadata["feeds"][0])
@@ -537,7 +629,7 @@ class FansubRSS(commands.Cog):
                 )
                 if feed_res:
                     self.logger.info(f"Updating Feed: {metadata['feedUrl']}")
-                    channel = self.bot.get_channel(metadata["channel"])
+                    channel: discord.TextChannel = self.bot.get_channel(metadata["channel"])
                     if not channel:
                         self.logger.warning(
                             f"RSS Feed `{metadata['feedUrl']}` have an invalid channel: {metadata['channel']}"
@@ -551,10 +643,20 @@ class FansubRSS(commands.Cog):
                         if metadata["embed"]:
                             embed_data = await parse_embed(metadata["embed"], entry)
                             kwargs_to_send = {"embed": embed_data}
+                            message_data = None
                             if metadata["message"] is not None and metadata["message"] != "":
                                 message_data = await parse_message(metadata["message"], entry)
                                 kwargs_to_send["content"] = message_data
-                            await channel.send(**kwargs_to_send)
+                            try:
+                                await channel.send(**kwargs_to_send)
+                            except discord.HTTPException:
+                                if message_data is not None:
+                                    self.logger.error("Cannot send Embed, trying to just send the message")
+                                    await channel.send(content=message_data)
+                                else:
+                                    self.logger.warning(
+                                        "Failed to send with embed, and no message found! ignoring..."
+                                    )
                         else:
                             if metadata["message"] is None:
                                 self.logger.warning(
@@ -689,6 +791,9 @@ class FansubRSS(commands.Cog):
             "premium": False,
         }
 
+        if server_id not in self._server_normal:
+            self._server_normal.append(server_id)
+
         await self.write_rss(server_id, json_tables)
         await self.write_rss_feeds(server_id, gen_hash, skip_fetch_url)
         self.logger.info(f"{server_id}: FansubRSS activated.")
@@ -712,16 +817,7 @@ class FansubRSS(commands.Cog):
             return await ctx.send("Dibatalkan.")
 
         self.logger.info(f"{server_id}: start deletion...")
-        feeds_data_path = os.path.join(self.bot.fcwd, "fansubrss_data", f"{server_id}.fsrss")
-        feeds_data_folder_path = os.path.join(self.bot.fcwd, "fansubrss_data", f"{server_id}_data")
-        try:
-            os.remove(feeds_data_path)
-        except FileNotFoundError:
-            self.logger.warning(f"{server_id}: server not found.")
-        try:
-            remove_dir(feeds_data_folder_path)
-        except OSError:
-            self.logger.warning(f"{server_id}: failed to remove rss data.")
+        await self.bot.redisdb.rm(f"ntfsrss_{server_id}")
         self.logger.info(f"{server_id}: removing from rss checker...")
         try:
             self._server_normal.remove(str(server_id))
@@ -825,6 +921,8 @@ class FansubRSS(commands.Cog):
         if not full_rss_metadata:
             self.logger.error(f"{server_id}: cannot find metadata...")
             return await ctx.send("FansubRSS belum diaktifkan.")
+        if len(full_rss_metadata["feeds"]) < 1:
+            return await ctx.send("Tidak ada RSS yang terdaftar")
 
         selected_rss = await self.choose_rss(ctx, full_rss_metadata)
         if selected_rss == -1:
@@ -1102,6 +1200,8 @@ class FansubRSS(commands.Cog):
         if not full_rss_metadata:
             self.logger.error(f"{server_id}: cannot find metadata...")
             return await ctx.send("FansubRSS belum diaktifkan.")
+        if len(full_rss_metadata["feeds"]) < 1:
+            return await ctx.send("Tidak ada RSS yang terdaftar")
 
         selected_rss = await self.choose_rss(ctx, full_rss_metadata)
         if selected_rss == -1:
@@ -1157,10 +1257,7 @@ class FansubRSS(commands.Cog):
         rss_data = full_rss_metadata["feeds"].pop(selected_rss)
         self.logger.info(f"Removing RSS: {rss_data['feedUrl']}")
 
-        feeds_data_path = os.path.join(
-            self.bot.fcwd, "fansubrss_data", f"{server_id}_data", f"{rss_data['id']}.fsdata"
-        )
-        os.remove(feeds_data_path)
+        await self.bot.redisdb.rm(f"ntfsrssd_{server_id}_{rss_data['id']}")
         await self.put_rss_job(server_id, full_rss_metadata)
         await ctx.send(f"Berhasil menghapus RSS: <{rss_data['feedUrl']}>")
 
@@ -1176,6 +1273,8 @@ class FansubRSS(commands.Cog):
         if not full_rss_metadata:
             self.logger.error(f"{server_id}: cannot find metadata...")
             return await ctx.send("FansubRSS belum diaktifkan.")
+        if len(full_rss_metadata["feeds"]) < 1:
+            return await ctx.send("Tidak ada RSS yang terdaftar")
 
         self.logger.info(f"{server_id}: waiting for user pick.")
         selected_rss = await self.choose_rss(ctx, full_rss_metadata)

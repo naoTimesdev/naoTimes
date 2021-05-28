@@ -23,6 +23,7 @@ ShowtimesSchemas = sc.Schema(
     {
         "id": str,
         "serverowner": [str],
+        sc.Optional("name"): NoneStr,
         sc.Optional("announce_channel"): NoneStr,
         sc.Optional("fsdb_id"): sc.Or(int, str),
         "anime": [

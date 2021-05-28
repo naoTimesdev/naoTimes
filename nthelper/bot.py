@@ -105,6 +105,7 @@ class naoTimesBot(commands.Bot):
         self.showtimes_resync: list = []
         self.copy_of_commands: Dict[str, commands.Command] = {}
         self.ntdb: naoTimesDB = None
+        self.fsdb_ntui: asyncio.Queue = asyncio.Queue()
 
         self.uptime: float
         self.owner: Union[discord.User, discord.TeamMember]
@@ -365,3 +366,6 @@ class naoTimesBot(commands.Bot):
                 self.user.id, self.http.token, None, cmd.id
             )
         self.logger.info("all slash commands removed.")
+
+    async def fsrss_register_new(self, data: dict):
+        await self.fsdb_ntui.put(data)
