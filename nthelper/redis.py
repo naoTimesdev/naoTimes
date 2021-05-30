@@ -347,3 +347,6 @@ class RedisBridge:
         if res > 0:
             return True
         return False
+
+    # Aliases
+    delete = rm
