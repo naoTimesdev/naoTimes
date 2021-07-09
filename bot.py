@@ -38,6 +38,7 @@ from nthelper.utils import (
     write_files,
 )
 from nthelper.vndbsocket import VNDBSockIOManager
+from nthelper.webster import MerriamWebsterClient
 
 # Silent some imported module
 logging.getLogger("websockets").setLevel(logging.WARNING)
@@ -246,6 +247,14 @@ async def init_bot(loop) -> naoTimesBot:
         headers={"User-Agent": f"naoTimes/v{__version__} (https://github.com/noaione/naoTimes)"}, loop=loop
     )
     te_model = TesaurusAsync(te_session, loop)
+    merriam_bridge = None
+    if "merriam_webster" in config and isinstance(config["merriam_webster"], dict):
+        mwapi_config = config["merriam_webster"]
+        if "dictionary" in mwapi_config and "thesaurus" in mwapi_config:
+            if mwapi_config["dictionary"] and mwapi_config["thesaurus"]:
+                merriam_bridge = MerriamWebsterClient(
+                    {"words": mwapi_config["dictionary"], "thesaurus": mwapi_config["thesaurus"]}
+                )
 
     try:
         logger.info("Initiating discord.py")
@@ -294,6 +303,9 @@ async def init_bot(loop) -> naoTimesBot:
         bot.anibucket = AnilistBucket()
         bot.logger.info("Binding Redis...")
         bot.redisdb = redis_conn
+        if merriam_bridge is not None:
+            bot.logger.info("Binding MerriamWebster API")
+            bot.merriam = merriam_bridge
         bot.logger.info("Success Loading Discord.py")
         bot.logger.info("Binding interactions...")
         SlashCommand(bot, sync_commands=False, override_type=True)

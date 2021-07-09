@@ -246,7 +246,7 @@ def walk(data: Any, notations: str) -> Union[Any, None]:
             nota = int(nota)
         try:
             data = data[nota]
-        except KeyError:
+        except (TypeError, ValueError, KeyError, AttributeError):
             return None
     return data
 
@@ -378,9 +378,11 @@ class nHController(commands.Cog):
                 tzinfo=timezone.utc
             ),
         )
-        embed.description = "Klik link dibawah ini untuk mendownload\n<https://nh.ihateani.me/download/{}>\n\nJika gambar banyak, akan memakan waktu lebih lama ketika proses sebelum download.".format(  # noqa: E501
-            data["id"]
-        )
+        description = "Klik link dibawah ini untuk mulai mengunduh Doujin\n"
+        description += f"https://nh.ihateani.me/read/{data['id']}/download\n\n"
+        description += "It will start fetching a list of image to download that you can use\n"
+        description += "If there is a lot of pages or images, it might take a while."
+        embed.description = description
         embed.set_footer(text="Diprakasai oleh api.ihateani.me")
         embed.set_thumbnail(url=data["cover_art"]["url"])
         return embed
@@ -575,9 +577,11 @@ class nHController(commands.Cog):
                 tzinfo=timezone.utc
             ),
         )
-        embed.description = "Klik link dibawah ini untuk mendownload\n<https://api.ihateani.me/nh/unduh?id={}>\n\nJika gambar banyak, akan memakan waktu lebih lama ketika proses sebelum download.".format(  # noqa: E501
-            kode_nuklir
-        )
+        description = "Klik link dibawah ini untuk mulai mengunduh Doujin\n"
+        description += f"https://nh.ihateani.me/read/{kode_nuklir}/download\n\n"
+        description += "It will start fetching a list of image to download that you can use\n"
+        description += "If there is a lot of pages or images, it might take a while."
+        embed.description = description
         embed.set_footer(text="Diprakasai oleh api.ihateani.me")
         embed.set_thumbnail(url=data2["cover_art"]["url"])
 

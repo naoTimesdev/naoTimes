@@ -33,5 +33,12 @@
     "weather_data": {
         "openweatherapi": "",
         "opencageapi": ""
+    },
+    "wolfram": {
+        "app_id": ""
+    },
+    "merriam_webster": {
+        "dictionary": "",
+        "thesaurus": ""
     }
 }

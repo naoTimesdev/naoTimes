@@ -20,6 +20,7 @@ from .redis import RedisBridge
 from .showtimes_helper import ShowtimesQueue, naoTimesDB
 from .utils import __version__
 from .vndbsocket import VNDBSockIOManager
+from .webster import MerriamWebsterClient
 
 discord_semver = tuple([int(ver) for ver in discord.__version__.split(".")])
 
@@ -101,6 +102,7 @@ class naoTimesBot(commands.Bot):
         self.redisdb: RedisBridge = None
         self.jisho: JishoAPI = None
         self.tesaurus: TesaurusAsync = None
+        self.merriam: MerriamWebsterClient = None
 
         self.showtimes_resync: list = []
         self.copy_of_commands: Dict[str, commands.Command] = {}

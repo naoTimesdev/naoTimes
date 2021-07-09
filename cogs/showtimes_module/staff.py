@@ -159,6 +159,9 @@ class ShowtimesStaff(commands.Cog, ShowtimesBase):
             embed_text_data = "{} #{} telah dirilis!".format(ani_title, current["episode"])
         elif data[0] == "batch":
             self.logger.info(f"{server_message}: using batch mode.")
+            if len(data) < 2:
+                return await ctx.send("Mohon masukan jumlah episode yang ingin di rilis")
+
             if not data[1].isdigit():
                 await self.send_all_projects(ctx, srv_data["anime"], server_message)
                 return await ctx.send("Lalu tulis jumlah terlebih dahulu baru judul")
