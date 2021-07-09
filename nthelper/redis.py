@@ -159,7 +159,7 @@ class RedisBridge:
         self._conn.close()
         await self._conn.wait_closed()
 
-    async def get(self, key: str) -> Any:
+    async def get(self, key: str, fallback: Any = None) -> Any:
         """Get a key from the database
 
         :param key: The key of the object
@@ -173,6 +173,8 @@ class RedisBridge:
         self._need_execution.append("get_" + uniq_id)
         try:
             res = await self._conn.get(key, encoding="utf-8")
+            if res is None:
+                return fallback
             res = self.to_original(res)
         except aioredis.errors.RedisError:
             res = None
