@@ -18,6 +18,7 @@ from .jisho import JishoAPI
 from .kbbiasync import KBBI
 from .redis import RedisBridge
 from .showtimes_helper import ShowtimesQueue, naoTimesDB
+from .usercard import UserCardGenerator
 from .utils import __version__
 from .vndbsocket import VNDBSockIOManager
 from .webster import MerriamWebsterClient
@@ -103,6 +104,7 @@ class naoTimesBot(commands.Bot):
         self.jisho: JishoAPI = None
         self.tesaurus: TesaurusAsync = None
         self.merriam: MerriamWebsterClient = None
+        self.usercard: UserCardGenerator = None
 
         self.showtimes_resync: list = []
         self.copy_of_commands: Dict[str, commands.Command] = {}

@@ -49,7 +49,6 @@ class VNDBSockIOManager:
 
     async def close(self):
         self.logger.warning("emptying reader...")
-        await self._sock_reader.read()
         self._sock_writer.close()
 
     async def login(self):

@@ -27,6 +27,7 @@ from nthelper.jisho import JishoAPI
 from nthelper.kbbiasync import KBBI, AutentikasiKBBI
 from nthelper.redis import RedisBridge
 from nthelper.showtimes_helper import ShowtimesQueue, naoTimesDB
+from nthelper.usercard import UserCardGenerator
 from nthelper.utils import (
     HelpGenerator,
     __version__,
@@ -74,6 +75,7 @@ if discord_ver_tuple >= (1, 5, 0):
 parser = argparse.ArgumentParser("naotimesbot")
 parser.add_argument("-dcog", "--disable-cogs", default=[], action="append", dest="cogs_skip")
 parser.add_argument("-skbbi", "--skip-kbbi-check", action="store_true", dest="kbbi_check")
+parser.add_argument("-sslash", "--skip-slash-check", action="store_true", dest="slash_check")
 parser.add_argument("-sshow", "--skip-showtimes-fetch", action="store_true", dest="showtimes_fetch")
 args_parsed = parser.parse_args()
 
@@ -240,6 +242,9 @@ async def init_bot(loop) -> naoTimesBot:
 
     cwd = str(pathlib.Path(__file__).parent.absolute())
 
+    user_card_gen = UserCardGenerator(loop)
+    await user_card_gen.init()
+
     default_prefix = config["default_prefix"]
 
     # Custom tesaurus binding :>
@@ -306,6 +311,8 @@ async def init_bot(loop) -> naoTimesBot:
         if merriam_bridge is not None:
             bot.logger.info("Binding MerriamWebster API")
             bot.merriam = merriam_bridge
+        bot.logger.info("Binding the user card generator (Pupeeter)")
+        bot.usercard = user_card_gen
         bot.logger.info("Success Loading Discord.py")
         bot.logger.info("Binding interactions...")
         SlashCommand(bot, sync_commands=False, override_type=True)
@@ -398,8 +405,9 @@ async def on_ready():
             bot.echo_error(enoff)
     bot_hostdata = bot.get_hostdata
     bot.logger.info("[#][@][!] All cogs/extensions loaded.")
-    bot.logger.info("Preparing command registration")
-    await bot.slash.sync_all_commands()
+    if not args_parsed.slash_check:
+        bot.logger.info("Preparing command registration")
+        await bot.slash.sync_all_commands()
     # await bot.slash.register_all_commands()
     bot.logger.info("---------------------------------------------------------------")
     bot.logger.info("Bot Ready!")
@@ -508,13 +516,21 @@ async def on_command_error(ctx: commands.Context, error):
 
     bot.logger.error("Ignoring exception in command {}:".format(ctx.command))
     tb = traceback.format_exception(type(error), error, error.__traceback__)
+    bot.echo_error(error)
+
+    server_info = "Server: Private Message"
+    if hasattr(ctx.message, "guild") and isinstance(ctx.message.guild, discord.Guild):
+        server_info = "Server: {0.guild.name} ({0.guild.id})".format(ctx.message)
+    channel_info = "Kanal: Private Message"
+    if hasattr(ctx.message, "channel") and isinstance(ctx.message.channel, discord.TextChannel):
+        channel_info = "Kanal: #{0.channel.name} ({0.channel.id})".format(ctx.message)
 
     error_info = "\n".join(
         [
             "Perintah: {0.command}".format(ctx),
             "Pesan: {0.message.clean_content}".format(ctx),
-            "Server: {0.guild.name} ({0.guild.id})".format(ctx.message),
-            "Kanal: #{0.channel.name} ({0.channel.id})".format(ctx.message),
+            server_info,
+            channel_info,
             "Author: {0.author.name}#{0.author.discriminator} ({0.author.id})".format(ctx.message),
         ]
     )
@@ -535,11 +551,12 @@ async def on_command_error(ctx: commands.Context, error):
         value="{0.command}\n`{0.message.clean_content}`".format(ctx),
         inline=False,
     )
-    embed.add_field(
-        name="Server Insiden",
-        value="{0.guild.name} ({0.guild.id})\n#{0.channel.name} ({0.channel.id})".format(ctx.message),
-        inline=False,
-    )
+    lokasi_insiden = "Private Message"
+    if hasattr(ctx.message, "guild") and isinstance(ctx.message.guild, discord.Guild):
+        lokasi_insiden = "{0.guild.name} ({0.guild.id})".format(ctx.message)
+        if hasattr(ctx.message, "channel") and isinstance(ctx.message.channel, discord.TextChannel):
+            lokasi_insiden += "\n#{0.channel.name} ({0.channel.id})".format(ctx.message)
+    embed.add_field(name="Lokasi Insiden", value=lokasi_insiden, inline=False)
     embed.add_field(
         name="Orang yang memakainya",
         value="{0.author.name}#{0.author.discriminator} ({0.author.id})".format(ctx.message),  # noqa: E501
@@ -564,7 +581,6 @@ async def on_command_error(ctx: commands.Context, error):
         )
     except (discord.HTTPException, discord.Forbidden):
         pass
-    bot.echo_error(error)
 
 
 def ping_emote(t_t):
@@ -1272,26 +1288,28 @@ async def run_bot(*args, **kwargs):
         await bot.close()
 
 
-def stop_stuff_on_completion(_):
+def stop_stuff_on_completion(loop: asyncio.AbstractEventLoop):
     bot.logger.info("Closing queue loop.")
     if hasattr(bot, "showqueue") and bot.showqueue is not None:
-        async_loop.run_until_complete(bot.showqueue.shutdown())
+        loop.run_until_complete(bot.showqueue.shutdown())
     bot.logger.info("Shutting down fsdb connection...")
     if hasattr(bot, "fsdb") and bot.fsdb is not None:
-        async_loop.run_until_complete(bot.fsdb.close())
+        loop.run_until_complete(bot.fsdb.close())
     bot.logger.info("Shutting down KBBI and VNDB connection...")
     if hasattr(bot, "kbbi") and bot.kbbi is not None:
-        async_loop.run_until_complete(bot.kbbi.tutup())
+        loop.run_until_complete(bot.kbbi.tutup())
     if hasattr(bot, "vndb_socket") and bot.vndb_socket is not None:
-        async_loop.run_until_complete(bot.vndb_socket.close())
+        loop.run_until_complete(bot.vndb_socket.close())
     if hasattr(bot, "jisho") and bot.jisho is not None:
-        async_loop.run_until_complete(bot.jisho.close())
+        loop.run_until_complete(bot.jisho.close())
     if hasattr(bot, "tesaurus") and bot.tesaurus is not None:
-        async_loop.run_until_complete(bot.tesaurus.tutup())
+        loop.run_until_complete(bot.tesaurus.tutup())
+    if hasattr(bot, "usercard") and bot.usercard is not None:
+        loop.run_until_complete(bot.usercard.close())
     bot.logger.info("Closing Redis Connection...")
-    async_loop.run_until_complete(bot.redisdb.close())
+    loop.run_until_complete(bot.redisdb.close())
     garbage_collector.stop()
-    async_loop.stop()
+    loop.stop()
 
 
 def cancel_all_tasks(loop):
@@ -1341,7 +1359,6 @@ def cancel_all_tasks(loop):
 
 
 future = asyncio.ensure_future(run_bot(bot.botconf["bot_token"], bot=True, reconnect=True))
-future.add_done_callback(stop_stuff_on_completion)
 try:
     garbage_collector.start()
     async_loop.run_forever()
@@ -1349,9 +1366,9 @@ try:
 except (KeyboardInterrupt, SystemExit, SystemError):
     bot.logger.info("Received signal to terminate bot.")
 finally:
-    future.remove_done_callback(stop_stuff_on_completion)
     bot.logger.info("Cleaning up tasks.")
     cancel_all_tasks(async_loop)
+    stop_stuff_on_completion(async_loop)
 
 if not future.cancelled():
     try:

@@ -150,10 +150,16 @@ class RedisBridge:
         and then set it to stopping mode, halting any new function call.
         """
         self.logger.info(f"Closing connection, waiting for {len(self._need_execution)} tasks...")
+        timeout_delta = 10
+        current_timeout = 0
         while len(self._need_execution) > 0:
             await asyncio.sleep(0.2)
             if len(self._need_execution) < 1:
                 break
+            if timeout_delta > current_timeout:
+                self.logger.info("Timeout after waiting for 10 seconds, shutting down anyway...")
+                break
+            current_timeout += 0.2
         self._is_stopping = True
         self.logger.info("All tasks executed, closing connection!")
         self._conn.close()
