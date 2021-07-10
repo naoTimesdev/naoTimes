@@ -207,7 +207,7 @@ class Fun(commands.Cog):
             ans.set_image(url=ava)
             await channeru.send(embed=ans)
 
-    @commands.command(name="uic")
+    @commands.command(name="uic", aliases=["ui", "user", "uinfo", "userinfo"])
     async def user_card_nicer(self, ctx: commands.Context, *, name=""):
         if name:
             try:
@@ -254,9 +254,39 @@ class Fun(commands.Cog):
                 real_status = "off"
 
         joined_at = None
-        if hasattr(user, "joined_at") and user.joined_at is not None:
-            joined_at = translate_date(user.joined_at.__format__("%A, %d. %B %Y @ %H:%M:%S"))
-        created_at = translate_date(user.created_at.__format__("%A, %d. %B %Y @ %H:%M:%S"))
+        if isinstance(user, discord.Member):
+            joined_at = translate_date(user.joined_at.__format__("%A, %d %B %Y @ %H:%M:%S"))
+        created_at = translate_date(user.created_at.__format__("%A, %d %B %Y @ %H:%M:%S"))
+
+        all_flags = []
+        pub_flags: discord.flags.PublicUserFlags = user.public_flags
+        if pub_flags.staff:
+            all_flags.append("staff")
+        if pub_flags.partner:
+            all_flags.append("partner")
+        if pub_flags.hypesquad:
+            all_flags.append("hype-event")
+        if pub_flags.hypesquad_balance:
+            all_flags.append("hype-balance")
+        if pub_flags.hypesquad_bravery:
+            all_flags.append("hype-bravery")
+        if pub_flags.hypesquad_brilliance:
+            all_flags.append("hype-briliance")
+        if pub_flags.bug_hunter and not pub_flags.bug_hunter_level_2:
+            all_flags.append("bug-l1")
+        elif pub_flags.bug_hunter and pub_flags.bug_hunter_level_2:
+            all_flags.append("bug-l2")
+        elif pub_flags.bug_hunter_level_2:
+            all_flags.append("bug-l2")
+        if pub_flags.verified_bot_developer:
+            all_flags.append("verified-dev")
+        if pub_flags.early_supporter:
+            all_flags.append("nitro-early")
+
+        if user.bot:
+            all_flags.append("bot")
+            if pub_flags.verified_bot:
+                all_flags.append("verified-bot")
 
         user_status = UserCardStatus(real_status, status_flavor)
         highest_role = UserCardHighRole(role_name, f"rgb({str(role_color)})")
@@ -269,6 +299,7 @@ class Fun(commands.Cog):
             highest_role,
             user_status,
             base64_avi,
+            all_flags,
         )
 
         try:
@@ -278,94 +309,6 @@ class Fun(commands.Cog):
 
         df_file = discord.File(io.BytesIO(generated_img), f"UserCard.{user.id}.png")
         await ctx.send(file=df_file)
-
-    @commands.command(aliases=["user", "uinfo", "userinfo"])
-    async def ui(self, ctx, *, name=""):
-        if name:
-            try:
-                if name.isdigit():
-                    user = ctx.message.guild.get_member(int(name))
-                else:
-                    user = ctx.message.mentions[0]
-            except IndexError:
-                user = ctx.guild.get_member_named(name)
-            if not user:
-                user = ctx.guild.get_member_named(name)
-            if not user:
-                return await ctx.send("Tidak bisa mencari user tersebut")
-        else:
-            user = ctx.message.author
-
-        avi = user.avatar_url
-
-        if isinstance(user, discord.Member):
-            role = user.top_role.name
-            if role in ["@everyone", "semuanya"]:
-                role = "N/A"
-
-        try:
-            status = user.status
-            status = str(status).capitalize()
-            if "Online" in status:
-                status = get_user_status("OL")
-                if status not in ("Aktif", "Online", "OL"):
-                    status += "\n`(Online)`"
-            elif "Idle" in status:
-                status = get_user_status("IDL")
-                if status not in ("Idle"):
-                    status += "\n`(Idle)`"
-            elif "Dnd" in status:
-                status = get_user_status("DND")
-                if status not in ("Do not disturb", "Jangan ganggu"):
-                    status += "\n`(DnD)`"
-            elif "Offline" in status:
-                status = get_user_status("OFF")
-                if status not in ("Offline", "Off"):
-                    status += "\n`(Offline/Invisible)`"
-            if user.nick is None:
-                nickname = "Tidak ada"
-            else:
-                nickname = user.nick
-            em = discord.Embed(timestamp=ctx.message.created_at, color=0x708DD0)
-            em.add_field(name="ID Pengguna", value=user.id, inline=True)
-            if isinstance(user, discord.Member):
-                em.add_field(name="Panggilan", value=nickname, inline=True)
-                em.add_field(name="Status", value=status, inline=True)
-                em.add_field(name="Takhta Tertinggi", value=role, inline=True)
-                em.add_field(
-                    name="Akun dibuat",
-                    value=translate_date(user.created_at.__format__("%A, %d. %B %Y @ %H:%M:%S")),
-                )
-            if isinstance(user, discord.Member):
-                em.add_field(
-                    name="Bergabung di server ini",
-                    value=translate_date(user.joined_at.__format__("%A, %d. %B %Y @ %H:%M:%S")),
-                )
-            em.set_thumbnail(url=avi)
-            em.set_author(name=user, icon_url="https://p.n4o.xyz/i/naotimes_ava.png")
-            await ctx.send(embed=em)
-        except discord.errors.HTTPException:
-            if isinstance(user, discord.Member):
-                msg = (
-                    "**User Info:** ```User ID: %s\nNick: %s\nStatus: %s\nGame: %s\nHighest Role: %s\nAccount Created: %s\nJoin Date: %s\nAvatar url:%s```"  # noqa: E501
-                    % (
-                        user.id,
-                        user.nick,
-                        user.status,
-                        user.activity,
-                        role,
-                        translate_date(user.created_at.__format__("%A, %d. %B %Y @ %H:%M:%S")),
-                        translate_date(user.joined_at.__format__("%A, %d. %B %Y @ %H:%M:%S")),
-                        avi,
-                    )
-                )
-            else:
-                msg = "**User Info:** ```User ID: %s\nAccount Created: %s\nAvatar url:%s```" % (  # noqa: E501
-                    user.id,
-                    user.created_at.__format__("%A, %d. %B %Y @ %H:%M:%S"),
-                    avi,
-                )
-            await ctx.send(msg)
 
     @commands.command(aliases=["si"])
     @commands.guild_only()
