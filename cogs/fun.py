@@ -1,3 +1,4 @@
+import io
 import logging
 import random
 import re
@@ -5,10 +6,12 @@ from datetime import datetime
 from typing import List, Union
 
 import discord
+from discord.utils import _bytes_to_base64_data
 import numpy as np
 from discord.ext import commands
 
 from nthelper.bot import naoTimesBot
+from nthelper.usercard import UserCard, UserCardGenerationFailure, UserCardHighRole, UserCardStatus
 from nthelper.utils import StealedEmote
 
 logger = logging.getLogger("cogs.fun")
@@ -203,6 +206,78 @@ class Fun(commands.Cog):
             )
             ans.set_image(url=ava)
             await channeru.send(embed=ans)
+
+    @commands.command(name="uic")
+    async def user_card_nicer(self, ctx: commands.Context, *, name=""):
+        if name:
+            try:
+                if name.isdigit():
+                    user: discord.User = ctx.message.guild.get_member(int(name))
+                else:
+                    user: discord.User = ctx.message.mentions[0]
+            except IndexError:
+                user: discord.User = ctx.guild.get_member_named(name)
+            if not user:
+                user: discord.User = ctx.guild.get_member_named(name)
+            if not user:
+                return await ctx.send("Tidak bisa mencari user tersebut")
+        else:
+            user: discord.User = ctx.message.author
+
+        avi_bytes = await user.avatar_url.read()
+        base64_avi = _bytes_to_base64_data(avi_bytes)
+
+        role_name = None
+        role_color = (185, 187, 190)
+        if isinstance(user, discord.Member):
+            role_name = user.top_role.name
+            role_color = user.top_role.color.to_rgb()
+            if role_name in ["@everyone", "semuanya"]:
+                role_name = "N/A"
+
+        nickname = None
+        if hasattr(user, "nick") and user.nick:
+            nickname = user.nick
+
+        real_status = "off"
+        status_flavor = "Tidak diketahui"
+        if hasattr(user, "status") and user.status:
+            real_status = str(user.status).lower()
+            if "online" in real_status:
+                status_flavor = get_user_status("OL")
+            elif "idle" in real_status:
+                status_flavor = get_user_status("IDL")
+            elif "dnd" in real_status:
+                status_flavor = get_user_status("DND")
+            elif "offline" in real_status:
+                status_flavor = get_user_status("OFF")
+                real_status = "off"
+
+        joined_at = None
+        if hasattr(user, "joined_at") and user.joined_at is not None:
+            joined_at = translate_date(user.joined_at.__format__("%A, %d. %B %Y @ %H:%M:%S"))
+        created_at = translate_date(user.created_at.__format__("%A, %d. %B %Y @ %H:%M:%S"))
+
+        user_status = UserCardStatus(real_status, status_flavor)
+        highest_role = UserCardHighRole(role_name, f"rgb({str(role_color)})")
+        user_card = UserCard(
+            user.name,
+            user.discriminator,
+            nickname,
+            created_at,
+            joined_at,
+            highest_role,
+            user_status,
+            base64_avi,
+        )
+
+        try:
+            generated_img = await self.bot.usercard.generate(user_card)
+        except UserCardGenerationFailure:
+            return await ctx.send("Gagal membuat gambar untuk User card")
+
+        df_file = discord.File(io.BytesIO(generated_img), f"UserCard.{user.id}.png")
+        await ctx.send(file=df_file)
 
     @commands.command(aliases=["user", "uinfo", "userinfo"])
     async def ui(self, ctx, *, name=""):
