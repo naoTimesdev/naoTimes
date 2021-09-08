@@ -23,7 +23,7 @@ schema==0.7.4
 aiographql-client==1.0.2
 pyparsing==2.4.7
 timeago==1.0.15
-Pillow==8.3.1
+Pillow==8.3.2
 pyppeteer==0.2.5
 
 youtube-dl
