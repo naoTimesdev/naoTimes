@@ -2,6 +2,7 @@
     "bot_id": "",
     "bot_token": "",
     "default_prefix": "!",
+    "slash_test_guild": null,
     "vndb": {
         "username": "",
         "password": ""
@@ -22,6 +23,10 @@
         "port": 6379,
         "password": null
     },
+    "socketserver": {
+        "port": 25670,
+        "password": null
+    },
     "kbbi": {
         "email": "",
         "password": ""
@@ -40,5 +45,6 @@
     "merriam_webster": {
         "dictionary": "",
         "thesaurus": ""
-    }
+    },
+    "steam_api_key": ""
 }
