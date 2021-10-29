@@ -1,0 +1,28 @@
+# Constraints file for most of my deps
+# This is to make pip run faster because holy fucking shit it's slow as fuck.
+# Run: pip install -c constraints.txt -r requirements.txt
+
+aiohttp==3.7.4.post0
+motor==2.3.1
+pymongo==3.12.1
+pydantic==1.8.2
+soupsieve==2.2.1
+beautifulsoup4==4.10.0
+sgmllib3k==1.0.0
+
+six==1.16.0
+requests==2.26.0
+appdirs==1.4.4
+
+pyee==8.2.2
+tqdm==4.62.3
+websockets==9.1
+
+jaconv==0.3
+mojimoji==0.0.11
+fugashi==1.1.1
+python-dateutil==2.8.2
+
+# Some dev deps
+pycodestyle==2.8.0
+pyflakes==2.4.0

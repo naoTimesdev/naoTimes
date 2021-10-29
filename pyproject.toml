@@ -1,0 +1,10 @@
+[tool.black]
+line-length = 110
+target-version = ["py38"]
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+extend_skip = ["_dataset/**"]
+line_length = 110
+skip_gitignore = true
