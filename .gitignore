@@ -1,20 +1,37 @@
-__pycache__
-*.bat
-*.log
+# Config
+config.json
+kbbi_auth.json
+nao_showtimes.json
+fsdb_login.json
+server_prefixes.json
+
 .vscode
 
-# Enviroment
-discordpy
+# Caches
+__pycache__
+.mypy_cache
+.pytest_cache
 
-# Don't commit this .json
-nao_showtimes.json
-fansubrss.json
-config.json
-prefixes.json
-vote_data.json
+# Logs
+*.log
+*.log.*
+
+# Generated
+automod
+fansubrss_data
+premium_code
+showtimes_folder
+ticketing
+vote_data
+vthell
+.nox
+
+# Scripts
+*.bat
+
+# Dataset
+_dataset
 streaming_lists.json
+env
 
-# webhost
-webhost/rute/modul/*.jpg
-webhost/rute/modul/*.png
-webhost/rute/modul/*.json
+authorize_prod
