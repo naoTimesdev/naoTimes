@@ -266,7 +266,7 @@ class FunCustomReactions(commands.Cog):
         name="lrk", aliases=["lihatreaksikustom", "liatreaksikustom", "lcr", "listcustomreaction"]
     )
     @commands.guild_only()
-    async def _fun_reaction_listall(self, ctx: commands.Context):
+    async def _fun_reaction_listall(self, ctx: naoTimesContext):
         guild_id = ctx.guild.id
         if not self._MANAGER.has_child(guild_id):
             rdb_get = await self.bot.redisdb.getall(f"ntreact_{guild_id}_*")

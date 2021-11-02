@@ -1,6 +1,10 @@
 import ctypes
 import logging
+from dataclasses import dataclass, field
+from html import unescape
+from typing import Literal, Optional, Tuple, Union
 from urllib.parse import urlencode
+from uuid import uuid4
 
 import aiohttp
 import discord
@@ -8,6 +12,7 @@ import orjson
 from discord.ext import app, commands
 
 from naotimes.bot import naoTimesBot
+from naotimes.context import naoTimesAppContext, naoTimesContext
 
 LANGUAGES_LIST = [
     ("aa", "Afar"),
@@ -94,6 +99,7 @@ LANGUAGES_LIST = [
     ("it", "Italia"),
     ("jv", "Jawa"),
     ("ja", "Jepang"),
+    ("jp", ["ja", "Jepang"]),
     ("kl", "Kalaallisut"),
     ("kn", "Kannada"),
     ("ks", "Kashmiri"),
@@ -209,15 +215,45 @@ LANGUAGES_LIST = [
 _IKON = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d7/Google_Translate_logo.svg/480px-Google_Translate_logo.svg.png"  # noqa: E501
 
 
-class AsyncTranslator:
-    def __init__(self, target_lang=None, session: aiohttp.ClientSession = None):
-        self.target_l = target_lang
-        if self.target_l is None:
-            self.target_l = "id"
-        self.source_l = None
-        self.logger = logging.getLogger("AsyncTranslator")
+@dataclass
+class TLRequest:
+    input: str
+    output: Optional[str] = None
 
-        self.url = "http://translate.google.com/translate_a/t?client=webapp&dt=bd&dt=ex&dt=ld&dt=md&dt=qca&dt=rw&dt=rm&dt=ss&dt=t&dt=at&ie=UTF-8&oe=UTF-8&otf=2&ssel=0&tsel=0&kc=1"  # noqa: E501
+    source: str = "auto"
+    target: Optional[str] = None
+
+    translator: Literal["gtl"] = "gtl"
+
+    id: str = field(default_factory=uuid4)
+
+    def __post_init__(self):
+        self.source = self.source.lower()
+        if self.target:
+            self.target = self.target.lower()
+        self.id = str(self.id)
+
+        self.output = None
+
+
+class TranslationFailed(Exception):
+    def __init__(self, engine: str, *args: object):
+        self.engine: str = engine
+        super().__init__(*args)
+
+
+class SameTranslatedMessage(TranslationFailed):
+    def __init__(self, engine: str, request: TLRequest):
+        self.request: TLRequest = request
+        self.engine: str = engine
+        super().__init__(f"Translasi dari {engine} menghasilkan output yang sama seperti input")
+
+
+class AsyncTranslatorV2:
+    URL = "http://translate.google.com/translate_a/t?client=webapp&dt=bd&dt=ex&dt=ld&dt=md&dt=qca&dt=rw&dt=rm&dt=ss&dt=t&dt=at&ie=UTF-8&oe=UTF-8&otf=2&ssel=0&tsel=0&kc=1"  # noqa: E501
+
+    def __init__(self, session: aiohttp.ClientSession = None):
+        self.logger = logging.getLogger("AsyncTranslator")
 
         self._DEFAULT_HEADERS = {
             "Accept": "*/*",
@@ -228,22 +264,13 @@ class AsyncTranslator:
             ),
         }
 
+        self.session: aiohttp.ClientSession = session
         if session is None:
-            self.logger.info("Spawning new Session...")
+            self.logger.info("Spawning in new session...")
             self.session = aiohttp.ClientSession(headers=self._DEFAULT_HEADERS)
-        else:
-            self.session = session
-        # await self.detect_language()
-
-    def set_target(self, target_lang):
-        self.target_l = target_lang
-
-    @property
-    def source_language(self) -> str:
-        return self.source_l
 
     @staticmethod
-    def _calculate_tk(source):
+    def _calculate_tk(source: str) -> str:
         """Reverse engineered cross-site request protection."""
         # Source: http://www.liuxiatool.com/t.php
 
@@ -252,7 +279,7 @@ class AsyncTranslator:
 
         d = source.encode("utf-8")
 
-        def RL(a, b):
+        def RL(a: int, b: str):
             for c in range(0, len(b) - 2, 3):
                 d = b[c + 2]
                 d = ord(d) - 87 if d >= "a" else int(d)
@@ -274,50 +301,49 @@ class AsyncTranslator:
         tk = "{0:d}.{1:d}".format(a, a ^ b)
         return tk
 
-    async def close_connection(self):
-        await self.session.close()
+    def _build_url(self, request: TLRequest) -> str:
+        query_data = {"q": request.input}
+        url = self.URL
+        url += f"&sl={request.source}&tl={request.target}&hl={request.target}"
+        url += f"&tk={self._calculate_tk(request.input)}&{urlencode(query_data)}"
+        url += "&client=te&format=html"
+        return url
 
-    async def detect_language(self, test_string: str):
-        if self.source_l:
-            return None
-        data = {"q": test_string}
-        url = "{url}&sl=auto&tk={tk}&{q}".format(
-            url=self.url, tk=self._calculate_tk(test_string), q=urlencode(data)
-        )
-        self.logger.info("detecting source language...")
-        response = await self.session.get(url, headers=self._DEFAULT_HEADERS)
-        resp = await response.text()
-        _, language = orjson.loads(resp)
-        self.source_l = language
-        self.logger.info(f"source language: {self.source_l}")
+    async def translate(self, request: TLRequest) -> Tuple[Optional[TLRequest], Optional[str]]:
+        if request.source is None:
+            request.source = await self._detect_auto_language(request)
+        build_url = self._build_url(request)
 
-        return language
+        self.logger.info(f"Translating<{request.id}>: {request.input} ({request.source} => {request.target})")
+        real_result = None
+        try:
+            async with self.session.get(build_url, headers=self._DEFAULT_HEADERS) as response:
+                text_res = await response.text()
+                try:
+                    real_result = orjson.loads(text_res)
+                except orjson.JSONDecodeError as jde:
+                    self.logger.error(f"Failed to decode response: {text_res}", exc_info=jde)
+                    return None, "Gagal memproses hasil translasi dari Google, mohon coba lagi!"
+        except aiohttp.ClientResponseError as cre:
+            self.logger.error(f"Failed to get response: {cre}", exc_info=cre)
+            return None, f"{cre.message} ({cre.status})"
 
-    async def translate(self, string_=None):
-        data = {"q": string_}
-        url = "{url}&sl={from_lang}&tl={to_lang}&hl={to_lang}&tk={tk}&{q}&client={client}&format={format}".format(  # noqa: E501
-            url=self.url,
-            from_lang="auto",
-            to_lang=self.target_l,
-            tk=self._calculate_tk(string_),
-            q=urlencode(data),
-            client="te",
-            format="html",
-        )
-        self.logger.info(f"Translating {string_} ({self.source_l} => {self.target_l})")
-        response = await self.session.get(url, headers=self._DEFAULT_HEADERS)
-        resp = await response.text()
-        result = orjson.loads(resp)
-        self.logger.info(f"Result: {result}")
-        if isinstance(result, list):
+        self.logger.info(f"Translated<{request.id}>: {real_result}")
+        if isinstance(real_result, list):
+            tl_output: str
+            tl_source: str
             try:
-                result, source_lang = result
-                if result.strip() == string_.strip():
-                    raise SyntaxError("Translation is the same!")
-                return result, source_lang
-            except (IndexError, ValueError):
-                raise ValueError("An error detected while translating...")
-        raise ValueError("An error detected while translating...")
+                tl_output, tl_source = real_result
+                tl_output = unescape(tl_output.strip())
+                if tl_output == request.input:
+                    raise SameTranslatedMessage(request.translator, request)
+                request.output = tl_output
+                request.source = tl_source
+                return request, None
+            except (IndexError, ValueError) as cvv:
+                self.logger.error(f"Failed to get output: {cvv}", exc_info=cvv)
+                return None, str(cvv)
+        return None, "Gagal memproses hasil translasi dari Google, mohon coba lagi!"
 
 
 class KutubukuTranslator(commands.Cog):
@@ -326,44 +352,65 @@ class KutubukuTranslator(commands.Cog):
     def __init__(self, bot: naoTimesBot):
         self.bot = bot
         self.logger = logging.getLogger("Kutubuku.Translator")
-        self._TLProg = AsyncTranslator(session=self.bot.aiosession)
+        self.DICT_LANG = dict(LANGUAGES_LIST)
+
+        self.gtl = AsyncTranslatorV2(session=self.bot.aiosession)
+
+    def pick_lang(self, lang: str) -> str:
+        if lang in self.DICT_LANG:
+            data_lang = self.DICT_LANG[lang]
+            if isinstance(data_lang, str):
+                return data_lang
+            return data_lang[1]
+        return lang.upper()
+
+    async def _actually_translate(self, request: TLRequest) -> Union[str, discord.Embed]:
+        try:
+            request, error_msg = await self.gtl.translate(request)
+        except SameTranslatedMessage:
+            return "Translasi yang didapatkan sama dengan request input anda!"
+        except Exception as e:
+            self.logger.error(f"Translasi<{request.id}>: Exception occured", exc_info=e)
+            return self._BASE_ERROR
+        if error_msg is None:
+            embed = discord.Embed(
+                title="Translasi", color=discord.Colour.random(), timestamp=self.bot.now().datetime
+            )
+            description_sec = f"**Masukan (`{self.pick_lang(request.source)}`)**\n{request.input}"
+            description_sec += f"\n\n**Hasil (`{self.pick_lang(request.target)}`)**\n{request.output}"
+            embed.description = description_sec
+            embed.set_footer(text="Diprakasai oleh Google Translate", icon_url=_IKON)
+            embed.set_thumbnail(url=_IKON)
+            return embed
+        return error_msg
 
     @commands.command(name="translasi", aliases=["tl", "alihbahasa"])
-    async def _kutubuku_translasi(self, ctx: commands.Context, *, full_query: str):
-        server_message = str(ctx.message.guild.id)
-        self.logger.info(f"running command at {server_message}")
-        DICT_LANG = dict(LANGUAGES_LIST)
+    async def _kutubuku_translasi(self, ctx: naoTimesContext, *, full_query: str):
         DEFAULT_TARGET = "id"
 
         split_query = full_query.split(" ", 1)
         lang = DEFAULT_TARGET
         if len(split_query) > 1:
             lang = split_query[0]
-            if lang not in DICT_LANG:
+            if lang not in self.DICT_LANG:
                 lang = DEFAULT_TARGET
                 full_query = full_query
             else:
+                internal_lang = self.DICT_LANG[lang]
+                if isinstance(internal_lang, list):
+                    lang = internal_lang[0]
                 full_query = split_query[1]
 
         if len(full_query) > 1000:
+            self.logger.warning(f"Translasi<{ctx.message.id}>: Text input is way too long")
             return await ctx.send("Teks terlalu panjang, maksimal adalah 1000 karakter!")
 
-        self.logger.info(f"Translating to {lang}...")
-        self._TLProg.set_target(lang)
-        try:
-            result, source_lang = await self._TLProg.translate(full_query)
-            embed = discord.Embed(title="Translasi", color=discord.Colour.random())
-            embed.add_field(name=f"Masukan ({source_lang.upper()})", value=full_query, inline=False)
-            embed.add_field(name=f"Hasil ({lang.upper()})", value=result, inline=False)
-            embed.set_footer(text="Diprakasai oleh Google Translate", icon_url=_IKON)
-            embed.set_thumbnail(url=_IKON)
-            await ctx.send(embed=embed)
-        except SyntaxError:
-            return await ctx.send("Hasil translasi sama dengan input!")
-        except ValueError:
-            return await ctx.send(self._BASE_ERROR)
-        except Exception:
-            return await ctx.send(self._BASE_ERROR)
+        tl_request = TLRequest(full_query, target=lang)
+        self.logger.info(f"Translating: {tl_request}")
+        embed_or_string = await self._actually_translate(tl_request)
+        if isinstance(embed_or_string, str):
+            return await ctx.send(embed_or_string)
+        await ctx.send(embed=embed_or_string)
 
     @app.slash_command(
         name="translasi",
@@ -371,33 +418,27 @@ class KutubukuTranslator(commands.Cog):
     )
     @app.option("kalimat", str, description="Kalimat/kata yang ingin di alih bahasakan")
     @app.option("target", str, description="Target bahasa translasi", default="id")
-    async def _kutubuku_translasi_slash(self, ctx: app.ApplicationContext, kalimat: str, target: str = "id"):
+    async def _kutubuku_translasi_slash(self, ctx: naoTimesAppContext, kalimat: str, target: str = "id"):
         if not target:
             target = "id"
-        DICT_LANG = dict(LANGUAGES_LIST)
-        if target not in DICT_LANG:
+        if target not in self.DICT_LANG:
             return await ctx.send("Target bahasa tidak dapat dimengerti!")
+        target_data = self.DICT_LANG[target]
+        if isinstance(target_data, list):
+            target = target_data[0]
         self.logger.info(f"Trying to translate: {kalimat} (=> {target})")
 
         if len(kalimat) > 1000:
+            self.logger.warning(f"Translasi<{ctx.interaction.id}>: Text input is way too long")
             return await ctx.send("Teks terlalu panjang, maksimal adalah 1000 karakter!")
 
         await ctx.defer()
-        self._TLProg.set_target(target)
-        try:
-            result, source_lang = await self._TLProg.translate(kalimat)
-            embed = discord.Embed(title="Translasi", color=discord.Colour.random())
-            embed.add_field(name=f"Masukan ({source_lang.upper()})", value=kalimat, inline=False)
-            embed.add_field(name=f"Hasil ({target.upper()})", value=result, inline=False)
-            embed.set_footer(text="Diprakasai oleh Google Translate", icon_url=_IKON)
-            embed.set_thumbnail(url=_IKON)
-            await ctx.send(embed=embed)
-        except SyntaxError:
-            return await ctx.send("Hasil translasi sama dengan input!")
-        except ValueError:
-            return await ctx.send("Gagal memproses translasi, mohon coba lagi!")
-        except Exception:
-            return await ctx.send("Gagal memproses translasi, mohon coba lagi!")
+        tl_request = TLRequest(kalimat, target=target)
+        self.logger.info(f"Translating(Slash): {tl_request}")
+        embed_or_string = await self._actually_translate(tl_request)
+        if isinstance(embed_or_string, str):
+            return await ctx.send(embed_or_string)
+        await ctx.send(embed=embed_or_string)
 
 
 def setup(bot: naoTimesBot):

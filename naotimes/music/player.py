@@ -330,7 +330,7 @@ class naoTimesPlayer:
 
     # Listeners
     # Call to this function later :)
-    async def play_next(self, player: Player, track: RealTrack):
+    async def play_next(self, player: Player):
         self._set_current(player, None)
 
         # Try to get new track.
@@ -355,6 +355,11 @@ class naoTimesPlayer:
 
         self.logger.info(f"Player: <{player.guild}> got new track: {new_track.track}")
         self._set_current(player, new_track)
-        await player.play(new_track.track)
+        try:
+            await player.play(new_track.track)
+        except Exception as e:
+            # Dispatch failed to play event
+            self._client.dispatch("naotimes_playback_failed", player, new_track, e)
+            return
         wrapped_entry = TrackEntry(player.source, new_track.requester, new_track.channel)
         self._set_current(player, wrapped_entry)

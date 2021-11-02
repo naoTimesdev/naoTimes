@@ -51,7 +51,7 @@ def ensure_voice():
             ctx.bot.ntplayer.change_dj(player, author)
             ctx.bot.ntplayer.set_channel(player, vc_channel)
             ctx.bot.loop.create_task(
-                ctx.bot.ntplayer.play_next(player, None),
+                ctx.bot.ntplayer.play_next(player),
                 name=f"naotimes-player-instance-creation-{player.guild.id}-init",
             )
         return True
@@ -81,7 +81,7 @@ def is_god(ctx: naoTimesContext, _p: wavelink.Player, _i: GuildMusicInstance):
 
 
 def is_host(ctx: naoTimesContext, _p, instance: GuildMusicInstance):
-    if ctx.author == instance.host:
+    if instance.host and ctx.author == instance.host:
         return None
     return "Bukan host atau DJ utama"
 
@@ -270,12 +270,12 @@ class MusikPlayerCommand(commands.Cog):
         self.bot.ntplayer.change_dj(player, author)
         self.bot.ntplayer.set_channel(player, channel)
         self.bot.loop.create_task(
-            self.bot.ntplayer.play_next(player, None),
+            self.bot.ntplayer.play_next(player),
             name=f"naotimes-track-end-{player.guild.id}_init",
         )
         return player
 
-    async def select_track(self, ctx: commands.Context, all_tracks: List[wavelink.Track]):
+    async def select_track(self, ctx: naoTimesContext, all_tracks: List[wavelink.Track]):
         """Select a track"""
 
         messages = []
@@ -454,7 +454,7 @@ class MusikPlayerCommand(commands.Cog):
 
         if instance.current is None and instance.queue.empty():
             return await ctx.send("Tidak ada lagu yang diputar saat ini!", reference=ctx.message)
-        if instance.host == author:
+        if instance.host and instance.host == author:
             await vc.stop()
             return await ctx.send("DJ melewati lagu ini!", reference=ctx.message)
         if self._check_perms(author.guild_permissions):
@@ -472,7 +472,7 @@ class MusikPlayerCommand(commands.Cog):
         if author.id in instance.skip_votes:
             return await ctx.send("Anda sudah voting untuk melewati lagu!", reference=ctx.message)
 
-        self.bot.ntplayer.add_vote(vc, instance)
+        self.bot.ntplayer.add_vote(vc, author.id)
         current_vote = len(instance.skip_votes)
 
         required = self.bot.ntplayer.get_requirements(vc)
@@ -511,29 +511,39 @@ class MusikPlayerCommand(commands.Cog):
         embed.description = f"{self._vol_emote(volume)} Volume diatur ke {volume}%"
         return await ctx.send(embed=embed)
 
-    @musik_player.command(name="repeat", aliases=["ulang", "ulangi"])
+    def _loop_emote(self, mode: TrackRepeat):
+        if mode == TrackRepeat.all:
+            return "🔁"
+        elif mode == TrackRepeat.single:
+            return "🔂"
+        return "🚫"
+
+    @musik_player.command(name="repeat", aliases=["ulang", "ulangi", "loop"])
     @is_in_voice()
     @user_in_vc()
     @check_requirements(is_god, is_host)
-    async def musik_player_repeat(self, ctx: naoTimesContext, mode: str = "off"):
+    async def musik_player_repeat(self, ctx: naoTimesContext, mode: str = ""):
         vc: wavelink.Player = ctx.voice_client
         _mode_off = ["off", "no", "matikan", "mati"]
         _mode_single = ["single", "satu", "ini"]
         _mode_all = ["all", "semua"]
         _mode_repeat = [*_mode_off, *_mode_single, *_mode_all]
+        instance = self.bot.ntplayer.get(vc)
+        if not mode:
+            embed = discord.Embed(colour=discord.Color.from_rgb(98, 66, 225))
+            embed.description = f"{self._loop_emote(instance.repeat)} {instance.repeat.nice}"
+            return await ctx.send(embed=embed)
 
         mode = mode.lower()
         if mode not in _mode_repeat:
             return await ctx.send("Mode tidak diketahui!")
 
         mode_change = TrackRepeat.disable
-        emote_change = "🚫"
         if mode in _mode_single:
-            emote_change = "🔂"
             mode_change = TrackRepeat.single
         elif mode in _mode_all:
-            emote_change = "🔁"
             mode_change = TrackRepeat.all
+        emote_change = self._loop_emote(mode_change)
 
         change_res = self.bot.ntplayer.change_repeat_mode(vc, mode_change)
         if change_res is None:
@@ -571,9 +581,13 @@ class MusikPlayerCommand(commands.Cog):
             spoti_emote = "🎶 **Spotify**"
             via_yt = "YouTube"
 
+        host_name = "*Tidak ada host, mohon join VC*"
+        if instance.host is not None:
+            host_name = instance.host.mention
+
         description = []
         description.append(f"🪧 **Peladen**: {ctx.guild.name}")
-        description.append(f"🧑‍🦱 **Host**: {instance.host.mention}")
+        description.append(f"🧑‍🦱 **Host**: {host_name}")
         description.append(f"🎵 **Aktif**? `{is_playing}`")
         volume = int(vc.volume)
         description.append(f"{self._vol_emote(volume)} {volume}%")
@@ -601,6 +615,9 @@ class MusikPlayerCommand(commands.Cog):
 
         if member.guild != ctx.guild:
             return await ctx.send("Member tersebut bukan member peladen ini!")
+
+        if member.bot:
+            return await ctx.send("Member adalah bot, tidak bisa mengubah DJ/host ke bot.")
 
         self.bot.ntplayer.change_dj(vc, member)
         await ctx.send(f"{member.mention} sekarang menjadi DJ utama!", reference=ctx.message)
@@ -784,7 +801,7 @@ class MusikPlayerCommand(commands.Cog):
         success = False
         if track.requester == ctx.author:
             success = self.bot.ntplayer.delete_track(vc, index)
-        elif instance.host == ctx.author:
+        elif instance.host and instance.host == ctx.author:
             success = self.bot.ntplayer.delete_track(vc, index)
         elif self._check_perms(ctx.author.guild_permissions):
             success = self.bot.ntplayer.delete_track(vc, index)

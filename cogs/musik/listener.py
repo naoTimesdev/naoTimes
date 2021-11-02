@@ -1,13 +1,21 @@
+import asyncio
 import logging
 import random
-from typing import List, Optional, Union
+import traceback
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 import arrow
 import discord
 import wavelink
+from discord.backoff import ExponentialBackoff
 from discord.ext import commands
 
 from naotimes.bot import naoTimesBot
+from naotimes.music.queue import TrackEntry, TrackRepeat
+from naotimes.utils import quote
+
+if TYPE_CHECKING:
+    from cogs.botbrain.error import BotBrainErrorHandler
 
 VocalChannel = Union[discord.VoiceChannel, discord.StageChannel]
 
@@ -17,6 +25,25 @@ class MusikPlayerListener(commands.Cog):
         self.bot = bot
         self.logger = logging.getLogger("MusicP.Listener")
 
+        self.error_backoff: Dict[str, ExponentialBackoff] = {}
+
+    def delay_next(self, guild_id: str):
+        guild_id = str(guild_id)
+        if guild_id not in self.error_backoff:
+            # Dont delay first try
+            self.error_backoff[guild_id] = ExponentialBackoff()
+            return None
+        delay = self.error_backoff[guild_id].delay()
+        return delay
+
+    def clean_delay(self, guild_id: int):
+        guild_id = str(guild_id)
+        if guild_id in self.error_backoff:
+            try:
+                del self.error_backoff[guild_id]
+            except KeyError:
+                pass
+
     @commands.Cog.listener("on_wavelink_node_ready")
     async def on_node_ready(self, node: wavelink.Node):
         self.logger.info(f"Node: <{node.identifier}> [{node.region.name}] is ready!")
@@ -25,7 +52,9 @@ class MusikPlayerListener(commands.Cog):
     async def on_track_end(self, player: wavelink.Player, track: wavelink.Track, reason: str):
         ctime = self.bot.now().int_timestamp
         current = self.bot.ntplayer.get(player)
-        current_track = current.current.track or track
+        current_track = player.source or track
+        if current.current:
+            current_track = current.current.track
         node = player.node
         track_title = None
         if current_track:
@@ -35,22 +64,31 @@ class MusikPlayerListener(commands.Cog):
         )
         # Dispatch task
         self.bot.loop.create_task(
-            self.bot.ntplayer.play_next(player, current_track),
+            self.bot.ntplayer.play_next(player),
             name=f"naotimes-track-end-{player.guild.id}_{ctime}_{reason}",
         )
 
     @commands.Cog.listener("on_wavelink_track_exception")
     async def on_track_exception(self, player: wavelink.Player, track: wavelink.Track, error: Exception):
         node = player.node
+        real_track = player.source or track
         self.logger.warning(
-            f"Player: <{player.guild}> [{node.identifier}] track [{track.title}] has exception: {error}"
+            f"Player: <{player.guild}> [{node.identifier}] track [{real_track.title}] has exception: {error}"
         )
         vc_player = self.bot.ntplayer.get(player)
         channel = None
+        determine_announce = True
+        # Determine if we should announce error
+        # If the current position is around 5 seconds before the track end, dont announce it.
         if vc_player.current:
             channel = vc_player.current.channel
+            cpos = player.position
+            duration = vc_player.current.track.duration
+            grace_period = duration - 5
+            if cpos >= grace_period:
+                determine_announce = False
 
-        if channel:
+        if channel and determine_announce:
             try:
                 await channel.send(
                     f"Terjadi kesalahan ketika menyetel lagu `{track.title}`, mohon kontak Owner Bot!"
@@ -61,6 +99,7 @@ class MusikPlayerListener(commands.Cog):
     @commands.Cog.listener("on_wavelink_track_start")
     async def on_track_start(self, player: wavelink.Player, track: wavelink.Track):
         instance = self.bot.ntplayer.get(player)
+        self.clean_delay(player.guild.id)
 
         # Temporary update the position.
         last_update = arrow.utcnow().datetime
@@ -78,6 +117,78 @@ class MusikPlayerListener(commands.Cog):
             await current.channel.send(embed=embed)
         except (discord.Forbidden, discord.HTTPException):
             pass
+
+    async def _dispatch_playback_next_later(
+        self, player: wavelink.Player, delay: Optional[float], ctime: int
+    ):
+        self.logger.info(f"Player: Delaying playback of next track by {delay} seconds")
+        if delay:
+            await asyncio.sleep(delay)
+        self.bot.loop.create_task(
+            self.bot.ntplayer.play_next(player),
+            name=f"naotimes-playback-retries-{player.guild.id}_{ctime}_{delay}",
+        )
+
+    @commands.Cog.listener("on_naotimes_playback_failed")
+    async def on_playback_failed(self, player: wavelink.Player, entry: TrackEntry, exception: Exception):
+        ctime = self.bot.now().int_timestamp
+        instance = self.bot.ntplayer.get(player)
+        self.logger.error(f"Player: <{player.guild}> failed to play track: {entry.track}", exc_info=exception)
+        delay_next = self.delay_next(player.guild.id)
+        if instance.repeat != TrackRepeat.single:
+            delay_next = None
+        # Dispatch play_next agane
+        self.bot.loop.create_task(
+            self._dispatch_playback_next_later(player, delay_next, ctime),
+            name=f"naotimes-playback-retries-delayed-{player.guild.id}_{ctime}_{str(exception)}",
+        )
+        channel = entry.channel
+        if channel:
+            error_msg_delay = f"Lagu `{entry.track.title}` gagal diputar, bot akan melewati lagu tersebut!"
+            if delay_next:
+                error_msg_delay += (
+                    f"\nBot akan mencoba menyetel lagu selanjutnya dalam {round(delay_next, 2)} detik"
+                )
+            try:
+                await channel.send(error_msg_delay)
+            except (discord.Forbidden, discord.HTTPException, Exception):
+                pass
+
+        # Push to log channel
+        embed = discord.Embed(
+            title="🎵 Music Error Log",
+            colour=0xFF253E,
+            description="Terjadi kesalahan ketika ingin memutar musik!",
+            timestamp=self.bot.now().datetime,
+        )
+        track = entry.track
+        _source = getattr(track, "source", "Unknown")
+        track_info = f"**Judul**: `{track.title}`\n**Artis**: `{track.author}`"
+        track_info += f"\n**Link**: [Link]({track.uri})\n**Source**: `{_source}`"
+        embed.add_field(name="Lagu", value=track_info, inline=False)
+        peladen_info = f"{player.guild.name} ({player.guild.id})"
+        author_info = f"{str(entry.requester)} ({entry.requester.id})"
+        embed.add_field(
+            name="Pemutar", value=f"**Peladen**: {peladen_info}\n**Pemutar**: {author_info}", inline=False
+        )
+
+        error_info = [
+            f"Lagu: {track.author} - {track.title}",
+            f"URL: {track.uri} ({_source})",
+            f"Peladen: {peladen_info}",
+            f"Pemutar: {author_info}",
+        ]
+        tb = traceback.format_exception(type(exception), exception, exception.__traceback__)
+        tb_fmt = "".join(tb).replace("`", "")
+        tb_fmt_quote = quote(tb_fmt, True, "py")
+
+        full_pesan = "**Terjadi kesalahan pada pemutar musik**\n\n"
+        full_pesan += quote("\n".join(error_info), True, "py") + "\n\n"
+        full_pesan += tb_fmt_quote
+        embed.add_field(name="Traceback", value=tb_fmt_quote, inline=False)
+
+        error_cog: BotBrainErrorHandler = self.bot.get_cog("BotBrainErrorHandler")
+        await error_cog._push_bot_log_or_cdn(embed, full_pesan)
 
     def _select_members(
         self, members: List[discord.Member], id_check: int = None

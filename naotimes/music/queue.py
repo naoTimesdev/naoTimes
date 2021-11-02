@@ -72,6 +72,9 @@ class TrackQueueImpl(asyncio.Queue[NT]):
     _maxsize: int
     _original_queue: Deque[NT]
 
+    def __len__(self):
+        return self.qsize()
+
     def _init(self, maxsize: int):
         self._maxsize = maxsize
         self._queue = deque[NT]()

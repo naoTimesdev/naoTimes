@@ -10,6 +10,7 @@ orjson==3.6.4
 Brotli==1.0.9
 cchardet==2.1.7
 uvloop==0.16.0; os_name == "posix"
+hiredis==2.0.0; implementation_name == "cpython"
 
 # Bot helper
 aiofiles==0.7.0
