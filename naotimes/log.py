@@ -15,6 +15,14 @@ __all__ = ("RollingFileHandler", "setup_log")
 
 
 class RollingFileHandler(RotatingFileHandler):
+    """
+    A log file handler that follows the same format as RotatingFileHandler,
+    but automatically roll over to the next numbering without needing to worry
+    about maximum file count or something.
+
+    At startup, we check the last file in the directory and start from there.
+    """
+
     def __init__(
         self,
         filename: str,
@@ -75,6 +83,7 @@ def setup_log(log_path: Path):
     logging.getLogger("websockets").setLevel(logging.WARNING)
     logging.getLogger("chardet").setLevel(logging.WARNING)
     logging.getLogger("async_rediscache").setLevel(logging.WARNING)
+    logging.getLogger("wavelink.websocket").setLevel(logging.WARNING)
 
     # Set back to the default of INFO even if asyncio's debug mode is enabled.
     logging.getLogger("asyncio").setLevel(logging.INFO)

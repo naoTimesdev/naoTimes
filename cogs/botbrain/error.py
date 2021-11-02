@@ -343,6 +343,33 @@ class BotBrainErrorHandler(commands.Cog):
                 app_command = "application_command"
             await self._push_to_sentry(ctx, e, app_command)
 
+    async def _push_bot_log_or_cdn(self, embed: discord.Embed, fallback_message: str):
+        ctime = self.bot.now().int_timestamp
+        try:
+            await self.bot.send_error_log(embed=embed)
+        except discord.HTTPException:
+            self.logger.error("Failed to send bot error log to provided channel!")
+            if len(fallback_message) > 1950:
+                iha_link, err_msg = await self.bot.send_ihateanime(fallback_message, "naoTimesErrorLog_")
+                if iha_link is not None:
+                    finalized_text = "**Terjadi kesalahan**\n"
+                    finalized_text += "Dikarenakan traceback dan sebagainya mencapai limit discord, log dapat"
+                    finalized_text += f" diakses di sini: <{iha_link}>"
+                    finalized_text += "\n\nLog valid selama kurang lebih 2.5 bulan"
+                    await self.bot.send_error_log(finalized_text)
+                else:
+                    self.logger.error("Failed to upload log to ihateani.me CDN, using discord upload...")
+                    fallback_message += f"\n\nihateani.me Error log: {err_msg}"
+                    the_file = discord.File(
+                        io.BytesIO(fallback_message.encode("utf-8")),
+                        filename=f"naoTimesErrorLog_{ctime}.txt",
+                    )
+                    await self.bot.send_error_log(
+                        "Dikarenakan log terlalu panjang, ini adalah log errornya", file=the_file
+                    )
+            else:
+                await self.bot.send_error_log(fallback_message)
+
     async def _actual_push_to_bot_log(self, ctx: naoTimesContext, e: Exception) -> None:
         is_dm = ctx.guild is None
         guild_id = ctx.guild.id if ctx.guild is not None else None
@@ -363,30 +390,7 @@ class BotBrainErrorHandler(commands.Cog):
 
         full_pesan = error_handle.create_text()
 
-        try:
-            await self.bot.send_error_log(embed=error_handle.create_embed())
-        except discord.HTTPException:
-            self.logger.error("Failed to send bot error log to provided channel!")
-            if len(full_pesan) > 1950:
-                iha_link, err_msg = await self.bot.send_ihateanime(full_pesan, "naoTimesErrorLog_")
-                if iha_link is not None:
-                    finalized_text = "**Terjadi kesalahan**\n"
-                    finalized_text += "Dikarenakan traceback dan sebagainya mencapai limit discord, log dapat"
-                    finalized_text += f" diakses di sini: <{iha_link}>"
-                    finalized_text += "\n\nLog valid selama kurang lebih 2.5 bulan"
-                    await self.bot.send_error_log(finalized_text)
-                else:
-                    self.logger.error("Failed to upload log to ihateani.me CDN, using discord upload...")
-                    full_pesan += f"\n\nihateani.me Error log: {err_msg}"
-                    the_file = discord.File(
-                        io.BytesIO(full_pesan.encode("utf-8")),
-                        filename=f"naoTimesErrorLog_{error_handle.timestamp.int_timestamp}.txt",
-                    )
-                    await self.bot.send_error_log(
-                        "Dikarenakan log terlalu panjang, ini adalah log errornya", file=the_file
-                    )
-            else:
-                await self.bot.send_error_log(full_pesan)
+        await self._push_bot_log_or_cdn(error_handle.create_embed(), full_pesan)
 
     async def _push_to_bot_log(self, ctx: naoTimesContext, e: Exception) -> None:
         ts = self.bot.now().int_timestamp

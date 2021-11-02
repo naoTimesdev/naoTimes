@@ -7,6 +7,7 @@ import discord
 from discord.ext import app, commands
 
 from naotimes.bot import naoTimesBot
+from naotimes.context import naoTimesContext
 from naotimes.http import ParserReplacer, WebsterDefinedWord, WebsterTokenParser, WebsterWordThesaurus
 from naotimes.http.webster import parse_link_default
 from naotimes.paginator import DiscordPaginatorUI
@@ -131,7 +132,7 @@ class KutubukuWebster(commands.Cog):
         return embed
 
     @commands.command(name="define", aliases=["mw"])
-    async def word_define_cmd(self, ctx: commands.Context, *, word: str):
+    async def word_define_cmd(self, ctx: naoTimesContext, *, word: str):
         if not word:
             return await ctx.send("Mohon berikan kata yang ingin dicari!")
 
@@ -187,7 +188,7 @@ class KutubukuWebster(commands.Cog):
         await ctx.send(content=f"Info lebih lanjut: {_DF_URL}{quote(first_word)}", embed=generate_data)
 
     @commands.command(name="thesaurus", aliases=["mwth", "mwt", "merriamthesaurize", "thesaurize"])
-    async def thesaurus_cmd(self, ctx: commands.Context, *, word: str):
+    async def thesaurus_cmd(self, ctx: naoTimesContext, *, word: str):
         if not word:
             return await ctx.send("Mohon berikan kata yang ingin dicari!")
 

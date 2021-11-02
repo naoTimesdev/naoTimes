@@ -26,13 +26,13 @@ This implements some extra tracks for the music player.
 
 from __future__ import annotations
 
+import re
 import time
-from typing import List, Literal, Optional, Type, Union
-from urllib.parse import quote_plus
+from typing import List, Literal, Match, Optional, Tuple, Type, Union
+from urllib.parse import quote_plus, urlparse
 
 import aiohttp
 import wavelink
-from wavelink.ext.spotify import URLREGEX as SPOTIFY_REGEX
 from wavelink.ext.spotify import SpotifyClient, SpotifySearchType, SpotifyTrack
 from wavelink.pool import Node
 from wavelink.utils import MISSING
@@ -51,6 +51,8 @@ __all__ = (
     "SpotifyPartialTrackFilled",
     "SpotifyDirectTrack",
 )
+
+SPOTIFY_REGEX2 = re.compile(r"https://open\.spotify\.com/(?P<entity>.+)/(?P<identifier>.+)")
 
 
 def _parse_playlist(data: dict):
@@ -269,6 +271,7 @@ class SpotifyPartialTrack(wavelink.PartialTrack):
         self.title = extra_info["title"]
         self.author = ", ".join(extra_info.get("artists", [])) or "Unknown Artist"
         self.duration = extra_info["duration"]
+        self.uri = f"https://open.spotify.com/track/{extra_info['id']}"
         self.source = "spotify"
 
     def __str__(self):
@@ -337,6 +340,15 @@ class SpotifyDirectTrack(SpotifyTrack, SpotifyPartialTrackFilled):
     def _build_track_url(self, track_id: str, spoti_url: str):
         return self._clean_url(spoti_url, f"{track_id}/listen")
 
+    def _match_spotify_url(url: str) -> Tuple[Optional[Match[str]], str]:
+        if "open.spotify.com" not in url:
+            return None, url
+
+        parsed_url = urlparse(url)
+        recreate_url = f"{parsed_url.scheme}://{parsed_url.netloc}{parsed_url.path}"
+        regex_res = SPOTIFY_REGEX2.match(recreate_url)
+        return regex_res, recreate_url
+
     @classmethod
     async def search(
         cls: Type[SpotifyDirectTrack],
@@ -357,9 +369,9 @@ class SpotifyDirectTrack(SpotifyTrack, SpotifyPartialTrackFilled):
         if spoti is None and spotify is not MISSING:
             spoti = spotify
 
-        regex_res = SPOTIFY_REGEX.match(query)
+        regex_res, new_query_url = cls._match_spotify_url(query)
         if not regex_res:
-            raise UnsupportedURLFormat(query, "Unable to match the URL to another Spotify URL.")
+            raise UnsupportedURLFormat(query, "Link Spotify yang diberikan tidak valid!")
 
         entity: Literal["track", "album", "playlist"] = regex_res["entity"]
         identifier: str = regex_res["identifier"]
@@ -367,7 +379,9 @@ class SpotifyDirectTrack(SpotifyTrack, SpotifyPartialTrackFilled):
         spotify_url: Optional[str] = getattr(spoti, "_url_host", None)
         if spotify_url is None:
             # Use Youtube mirroring
-            results = await SpotifyTrack.search(query, type=type, node=node, return_first=return_first)
+            results = await SpotifyTrack.search(
+                new_query_url + "?si=123", type=type, node=node, return_first=return_first
+            )
             if not isinstance(results, list):
                 results = [results]
             for res in results:
