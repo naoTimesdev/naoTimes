@@ -42,6 +42,7 @@ from inspect import signature
 from time import struct_time
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypedDict, Union
 
+import arrow
 import orjson
 from bson import ObjectId
 
@@ -94,7 +95,12 @@ class SocketServer:
     """
 
     def __init__(
-        self, port, password: Optional[str] = None, loop: Optional[asyncio.AbstractEventLoop] = None
+        self,
+        port: int,
+        password: Optional[str] = None,
+        *,
+        logger: Optional[logging.Logger] = None,
+        loop: Optional[asyncio.AbstractEventLoop] = None,
     ):
         """
         A simple external socket server
@@ -112,9 +118,27 @@ class SocketServer:
         self._port = port
         self._password = password
 
+        self._access_logger = logger or logging.getLogger("naoTimes.SocketAccess")
+        # Remove parent logger
+        self._access_logger.parent = None
+
         self._INTERNAL_EVENT = ["ping", "authenticate"]
         self._event_map["authenticate"] = SocketEvent(self.on_authenticate)
         self._internal_task = asyncio.Task(self._start_server(), loop=self._loop)
+
+    def log(self, uuid: str, event: str, success: int, data: Any, time: float):
+        now = arrow.utcnow().shift(seconds=-time).to("local")
+        start_time = now.format("DD[/]MMM[/]YYYY[:]HH[:]mm[:]ss[.]SSS Z")
+        body_len = len(orjson.dumps(data))
+        fmt_str = f'{uuid} [{start_time}] EVENT "{event}" {success} {body_len} (Done in {time}s)'
+        if success == 1:
+            self.logger.info(fmt_str)
+        elif success == 0:
+            self.logger.error(fmt_str)
+        elif success == -1:
+            self.logger.warning(fmt_str)
+        else:
+            self.logger.debug(fmt_str)
 
     async def _start_server(self):
         """
@@ -286,8 +310,9 @@ class SocketServer:
 
     async def _handle_message(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         self.logger.info("Message received, reading message...")
+        start = arrow.utcnow().timestamp()
         uuid = "UNKNOWN_UUID"
-        answer = {"message": "An unknown error occured", "status": 0}
+        answer = {"message": "An unknown error occured", "success": 0}
         try:
             data = await reader.readuntil(b"\x04")
             addr = writer.get_extra_info("peername")
@@ -295,11 +320,14 @@ class SocketServer:
             answer = await self._on_message(uuid, data)
         except asyncio.IncompleteReadError:
             self.logger.error("incomplete data acquired")
-            answer = {"message": "incomplete data received", "status": 0}
+            answer = {"message": "incomplete data received", "success": 0}
         writer.write(self._encode_message(answer))
         event_name = answer.get("event", "UNKNOWN")
         self.logger.info(f"answering back request to {uuid} on event {event_name}")
         await writer.drain()
+        end = arrow.utcnow().timestamp()
+        # Log access
+        self.log(uuid, event_name, answer["success"], answer, end - start)
         writer.close()
 
     def _bind_function_attr(

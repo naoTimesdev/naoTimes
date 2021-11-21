@@ -28,9 +28,13 @@ import os
 import pathlib
 import sys
 
+from arrow._version import __version__ as arrow_version
+from packaging.version import parse as parse_version
+
 from naotimes.bot import StartupError, naoTimesBot
 from naotimes.config import naoTimesBotConfig, naoTimesNamespace
 from naotimes.log import setup_log
+from naotimes.monke import monkeypatch_arrow_id_locale, monkeypatch_message_delete
 from naotimes.version import version_info
 
 if sys.version_info < (3, 8):
@@ -45,7 +49,13 @@ if sys.version_info >= (3, 7) and os.name == "posix":
     except ImportError:
         pass
 
-log_file = pathlib.Path("logs", "naotimes.log")
+
+# If arrow version is less than equal to 1.2.1, monkeypatch it
+if parse_version(arrow_version) <= parse_version("1.2.1"):
+    monkeypatch_arrow_id_locale()
+monkeypatch_message_delete()
+cwd = pathlib.Path(__file__).parent.absolute()
+log_file = cwd / "logs" / "naotimes.log"
 logger = setup_log(log_file)
 
 parser = argparse.ArgumentParser("naotimesbot")
@@ -60,7 +70,6 @@ parser.add_argument(
 args_parsed = parser.parse_args(namespace=naoTimesNamespace())
 
 logger.info("Looking up config...")
-cwd = pathlib.Path(__file__).parent.absolute()
 
 try:
     bot_config = naoTimesBotConfig.from_file(cwd / "config.json", parsed_ns=args_parsed)

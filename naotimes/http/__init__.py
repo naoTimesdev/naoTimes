@@ -15,6 +15,7 @@ from .gql import *
 from .jisho import *
 from .kateglo import *
 from .kbbiasync import *
+from .server import *
 from .vndbsocket import *
 from .webster import *
 from .wolfram import *

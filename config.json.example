@@ -27,6 +27,11 @@
         "port": 25670,
         "password": null
     },
+    "http_server": {
+        "host": "localhost",
+        "port": 25671,
+        "password": null
+    },
     "kbbi": {
         "email": "",
         "password": ""
