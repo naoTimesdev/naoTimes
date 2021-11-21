@@ -22,13 +22,19 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
+import logging
 from typing import Optional
 
 import discord.message
 from arrow.locales import Locale, _locale_map
 from discord.enums import MessageType
 
-__all__ = ("monkeypatch_message_delete",)
+__all__ = (
+    "monkeypatch_message_delete",
+    "monkeypatch_arrow_id_locale",
+)
+
+_log = logging.getLogger("naoTimes.Monke")
 
 
 class MessageTypeNew(MessageType):
@@ -46,87 +52,92 @@ def monkeypatch_message_delete():
 
         await ORIGINAL_DELETE(self, delay=delay)
 
+    _log.info("Monkeypatching discord.message.Message.delete with new function")
     discord.message.Message.delete = delete_strategy
 
 
-try:
-    del _locale_map["id"]
-    del _locale_map["id-id"]
-except Exception:
-    print("Failed to monkeypatch ID extended locale")
+def monkeypatch_arrow_id_locale():
+    try:
+        _log.info("Trying to monkeypatch ID locale...")
+        del _locale_map["id"]
+        del _locale_map["id-id"]
+    except Exception as e:
+        _log.error("Failed to monkeypatch ID extended locale", exc_info=e)
+        return
 
+    class IndonesianExtendedLocale(Locale):
 
-class IndonesianExtendedLocale(Locale):
+        names = ["id", "id-id"]
 
-    names = ["id", "id-id"]
+        past = "{0} yang lalu"
+        future = "dalam {0}"
+        and_word = "dan"
 
-    past = "{0} yang lalu"
-    future = "dalam {0}"
-    and_word = "dan"
+        timeframes = {
+            "now": "baru saja",
+            "second": "sedetik",
+            "seconds": "{0} detik",
+            "minute": "1 menit",
+            "minutes": "{0} menit",
+            "hour": "1 jam",
+            "hours": "{0} jam",
+            "day": "1 hari",
+            "days": "{0} hari",
+            "week": "1 minggu",
+            "weeks": "{0} minggu",
+            "month": "1 bulan",
+            "months": "{0} bulan",
+            "quarter": "1 kuartal",
+            "quarters": "{0} kuartal",
+            "year": "1 tahun",
+            "years": "{0} tahun",
+        }
 
-    timeframes = {
-        "now": "baru saja",
-        "second": "sedetik",
-        "seconds": "{0} detik",
-        "minute": "1 menit",
-        "minutes": "{0} menit",
-        "hour": "1 jam",
-        "hours": "{0} jam",
-        "day": "1 hari",
-        "days": "{0} hari",
-        "week": "1 minggu",
-        "weeks": "{0} minggu",
-        "month": "1 bulan",
-        "months": "{0} bulan",
-        "quarter": "1 kuartal",
-        "quarters": "{0} kuartal",
-        "year": "1 tahun",
-        "years": "{0} tahun",
-    }
+        meridians = {"am": "", "pm": "", "AM": "", "PM": ""}
 
-    meridians = {"am": "", "pm": "", "AM": "", "PM": ""}
+        month_names = [
+            "",
+            "Januari",
+            "Februari",
+            "Maret",
+            "April",
+            "Mei",
+            "Juni",
+            "Juli",
+            "Agustus",
+            "September",
+            "Oktober",
+            "November",
+            "Desember",
+        ]
 
-    month_names = [
-        "",
-        "Januari",
-        "Februari",
-        "Maret",
-        "April",
-        "Mei",
-        "Juni",
-        "Juli",
-        "Agustus",
-        "September",
-        "Oktober",
-        "November",
-        "Desember",
-    ]
+        month_abbreviations = [
+            "",
+            "Jan",
+            "Feb",
+            "Mar",
+            "Apr",
+            "Mei",
+            "Jun",
+            "Jul",
+            "Ags",
+            "Sept",
+            "Okt",
+            "Nov",
+            "Des",
+        ]
 
-    month_abbreviations = [
-        "",
-        "Jan",
-        "Feb",
-        "Mar",
-        "Apr",
-        "Mei",
-        "Jun",
-        "Jul",
-        "Ags",
-        "Sept",
-        "Okt",
-        "Nov",
-        "Des",
-    ]
+        day_names = ["", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
 
-    day_names = ["", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
+        day_abbreviations = [
+            "",
+            "Senin",
+            "Selasa",
+            "Rabu",
+            "Kamis",
+            "Jumat",
+            "Sabtu",
+            "Minggu",
+        ]
 
-    day_abbreviations = [
-        "",
-        "Senin",
-        "Selasa",
-        "Rabu",
-        "Kamis",
-        "Jumat",
-        "Sabtu",
-        "Minggu",
-    ]
+    _log.info(f"Monkeypatched ID locale with {IndonesianExtendedLocale.__name__}")

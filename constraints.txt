@@ -2,7 +2,7 @@
 # This is to make pip run faster because holy fucking shit it's slow as fuck.
 # Run: pip install -c constraints.txt -r requirements.txt
 
-aiohttp==3.7.4.post0
+aiohttp==3.8.1
 motor==2.3.1
 pymongo==3.12.1
 pydantic==1.8.2
@@ -19,7 +19,7 @@ tqdm==4.62.3
 websockets==9.1
 
 jaconv==0.3
-mojimoji==0.0.11
+mojimoji==0.0.12
 fugashi==1.1.1
 python-dateutil==2.8.2
 

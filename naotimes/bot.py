@@ -43,6 +43,8 @@ from discord import Interaction
 from discord.ext import commands
 from tesaurus import TesaurusAsync
 
+from naotimes.log import RollingFileHandler
+
 try:
     from sentry_sdk import push_scope
 except ImportError:
@@ -70,8 +72,9 @@ from .http import (
     VNDBSockIOManager,
     WolframAPI,
 )
+from .http.server import Route as RouteDef
+from .http.server import naoTimesHTTPServer
 from .modlog import ModLog, ModLogFeature, ModLogSetting
-from .monke import monkeypatch_message_delete
 from .music import GeniusAPI, naoTimesPlayer
 from .placeholder import PlaceHolderCommand
 from .redis import RedisBridge
@@ -126,7 +129,6 @@ class naoTimesBot(commands.Bot):
 
     def __init__(self, base_path: Path, bot_config: naoTimesBotConfig, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        monkeypatch_message_delete()
 
         self.logger: logging.Logger = logging.getLogger("naoTimesBot")
         self.semver: str = version_info.text
@@ -156,7 +158,6 @@ class naoTimesBot(commands.Bot):
         self.wolfram: WolframAPI = None
         self.aiosession: aiohttp.ClientSession = None
         self.ntevent: EventManager = None
-        self.ntsocket: SocketServer = None
         self.ntplayer: naoTimesPlayer = None
         self.genius: GeniusAPI = None
 
@@ -192,6 +193,43 @@ class naoTimesBot(commands.Bot):
         self._host_region = ""
         self._host_tz = ""
 
+        http_log_path = self.fcwd / "logs" / "http.log"
+        http_log_path.parent.mkdir(exist_ok=True)
+        http_fh = RollingFileHandler(http_log_path, maxBytes=5_242_880, backupCount=5, encoding="utf-8")
+        socket_fh = RollingFileHandler(
+            self.fcwd / "logs" / "socket.log", maxBytes=5_242_880, backupCount=5, encoding="utf-8"
+        )
+
+        http_log_fmt = logging.Formatter(
+            "[%(asctime)s] - (%(name)s) [%(levelname)s]: %(message)s",
+            "%Y-%m-%d %H:%M:%S",
+        )
+        http_fh.setFormatter(http_log_fmt)
+        socket_fh.setFormatter(http_log_fmt)
+
+        http_logger = logging.getLogger("naoTimes.HTTPAccess")
+        http_logger.handlers = []
+        http_logger.addHandler(http_fh)
+        http_logger.setLevel(logging.DEBUG)
+
+        socket_logger = logging.getLogger("naoTimes.SocketAccess")
+        socket_logger.handlers = []
+        socket_logger.addHandler(socket_fh)
+        socket_logger.setLevel(logging.DEBUG)
+
+        self.__http_server: naoTimesHTTPServer = naoTimesHTTPServer(
+            bot_config.http_server.host,
+            bot_config.http_server.port,
+            bot_config.http_server.password,
+            logger=http_logger,
+            loop=self.loop,
+        )
+        self.ntsocket: SocketServer = SocketServer(
+            self.config.socket.port,
+            self.config.socket.password,
+            logger=socket_logger,
+            loop=self.loop,
+        )
         self.__first_time_ready = False
         self.__last_disconnection: T.Optional[arrow.Arrow] = None
 
@@ -258,6 +296,10 @@ class naoTimesBot(commands.Bot):
     @property
     def owner(self):
         return self._owner
+
+    @property
+    def http_server(self) -> naoTimesHTTPServer:
+        return self.__http_server
 
     def now(self) -> arrow.Arrow:
         return arrow.utcnow()
@@ -542,8 +584,6 @@ class naoTimesBot(commands.Bot):
                 self.logger.info("Binding WolframAlpha...")
                 self.wolfram = WolframAPI(wolfram_app_id)
 
-        self.logger.info("Binding Socket server...")
-        self.ntsocket = SocketServer(self.config.socket.port, self.config.socket.password, self.loop)
         self.logger.info("Binding Event manager...")
         self.ntevent = EventManager(self.loop)
 
@@ -653,11 +693,6 @@ class naoTimesBot(commands.Bot):
         await self.initialize()
         await super().login(*args, **kwargs)
         self.load_extensions()
-        self.logger.info("Binding interactions...")
-        slash_guild = self.config.slash_test_guild
-        test_guilds = []
-        if isinstance(slash_guild, int):
-            test_guilds.append(slash_guild)
 
     async def close(self):
         """Close discord connection and all other stuff that I opened!"""
@@ -721,6 +756,9 @@ class naoTimesBot(commands.Bot):
             self.logger.info("Closing music player...")
             await self.ntplayer.close()
 
+        self.logger.info("Closing HTTP server...")
+        await self.__http_server.close()
+
         if self.aiosession:
             self.logger.info("Closing aiohttp Session...")
             await self.aiosession.close()
@@ -780,6 +818,8 @@ class naoTimesBot(commands.Bot):
                 self.logger.info(f"It took {delta_time} seconds to reconnect")
             return
         self.logger.info("Connected to Discord!")
+        self.logger.info("Dispatching start event for HTTP server...")
+        self.__http_server.start()
         self.logger.info("Checking bot team status...")
         await self.detect_teams_bot()
         self._start_time = self.now()
@@ -864,26 +904,30 @@ class naoTimesBot(commands.Bot):
         for func in all_functions:
             socket_cmd = getattr(func, "__nt_socket__", None)
             event_cmd = getattr(func, "__nt_event__", None)
+            web_server_route: RouteDef = getattr(func, "__nt_webserver_route__", None)
             if socket_cmd is not None:
                 if isinstance(socket_cmd, list):
                     for cmd in socket_cmd:
                         if not cmd["installed"]:
-                            self.logger.info(f"Registering {cmd['name']} into SocketServer")
+                            self.logger.debug(f"Registering {cmd['name']} into SocketServer")
                             socket_cb = SocketEvent(func, cmd["locked"])
                             self.ntsocket.on(cmd["name"], socket_cb)
                 elif isinstance(socket_cmd, dict) and not socket_cmd["installed"]:
-                    self.logger.info(f"Registering {socket_cmd['name']} into SocketServer")
+                    self.logger.debug(f"Registering {socket_cmd['name']} into SocketServer")
                     socket_cb = SocketEvent(func, socket_cmd["locked"])
                     self.ntsocket.on(socket_cmd["name"], socket_cb)
             if event_cmd is not None:
                 if isinstance(event_cmd, list):
                     for cmd in event_cmd:
                         if not cmd["installed"]:
-                            self.logger.info(f"Registering {cmd['name']} into EventManager")
+                            self.logger.debug(f"Registering {cmd['name']} into EventManager")
                             self.ntevent.on(cmd["name"], func)
                 elif isinstance(event_cmd, dict) and not event_cmd["installed"]:
-                    self.logger.info(f"Registering {event_cmd['name']} into EventManager")
+                    self.logger.debug(f"Registering {event_cmd['name']} into EventManager")
                     self.ntevent.on(event_cmd["name"], func)
+            if web_server_route is not None:
+                web_server_route.cog = cog
+                self.__http_server.add_route(web_server_route)
 
     def _uninject_ntsocketevent(self, cog: commands.Cog):
         all_functions = self._fetch_cog_function(cog)
@@ -894,19 +938,19 @@ class naoTimesBot(commands.Bot):
                 if isinstance(socket_cmd, list):
                     for cmd in socket_cmd:
                         if cmd["installed"]:
-                            self.logger.info(f"Removing {cmd['name']} from SocketServer")
+                            self.logger.debug(f"Removing {cmd['name']} from SocketServer")
                             self.ntsocket.off(cmd["name"])
                 elif isinstance(socket_cmd, dict) and socket_cmd["installed"]:
-                    self.logger.info(f"Removing {socket_cmd['name']} from SocketServer")
+                    self.logger.debug(f"Removing {socket_cmd['name']} from SocketServer")
                     self.ntsocket.off(socket_cmd["name"])
             if event_cmd is not None:
                 if isinstance(event_cmd, list):
                     for cmd in event_cmd:
                         if cmd["installed"]:
-                            self.logger.info(f"Removing {cmd['name']} from EventManager")
+                            self.logger.debug(f"Removing {cmd['name']} from EventManager")
                             self.ntevent.off(cmd["name"])
                 elif isinstance(event_cmd, dict) and event_cmd["installed"]:
-                    self.logger.info(f"Removing {event_cmd['name']} from EventManager")
+                    self.logger.debug(f"Removing {event_cmd['name']} from EventManager")
                     self.ntevent.off(event_cmd["name"])
 
     def add_cog(self, cog: commands.Cog):
@@ -1147,7 +1191,6 @@ class naoTimesBot(commands.Bot):
         if real_message is None and modlog.embed is None:
             self.logger.warning(f"Got empty modlog data? {modlog} ({channel})")
             return
-        self.logger.info(f"Content: {real_message}, embed: {modlog.embed}")
         await channel.send(content=real_message, embed=modlog.embed)
 
     def should_modlog(

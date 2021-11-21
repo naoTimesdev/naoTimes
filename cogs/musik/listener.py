@@ -10,8 +10,13 @@ import wavelink
 from discord.backoff import ExponentialBackoff
 from discord.ext import commands
 
+try:
+    from sentry_sdk import push_scope
+except ImportError:
+    pass
+
 from naotimes.bot import naoTimesBot
-from naotimes.music.queue import TrackEntry, TrackRepeat
+from naotimes.music import TrackEntry, TrackRepeat
 from naotimes.utils import quote
 
 if TYPE_CHECKING:
@@ -87,6 +92,7 @@ class MusikPlayerListener(commands.Cog):
             grace_period = duration - 5
             if cpos >= grace_period:
                 determine_announce = False
+            await self._push_error_to_sentry(player, vc_player.current, error, "track-exc")
 
         if channel and determine_announce:
             try:
@@ -133,7 +139,9 @@ class MusikPlayerListener(commands.Cog):
     async def on_playback_failed(self, player: wavelink.Player, entry: TrackEntry, exception: Exception):
         ctime = self.bot.now().int_timestamp
         instance = self.bot.ntplayer.get(player)
-        self.logger.error(f"Player: <{player.guild}> failed to play track: {entry.track}", exc_info=exception)
+        self.logger.warning(
+            f"Player: <{player.guild}> failed to play track: {entry.track}", exc_info=exception
+        )
         delay_next = self.delay_next(player.guild.id)
         if instance.repeat != TrackRepeat.single:
             delay_next = None
@@ -153,6 +161,11 @@ class MusikPlayerListener(commands.Cog):
                 await channel.send(error_msg_delay)
             except (discord.Forbidden, discord.HTTPException, Exception):
                 pass
+
+        _do_not_log = (wavelink.errors.LoadTrackError, wavelink.errors.BuildTrackError)
+
+        if isinstance(exception, _do_not_log):
+            return
 
         # Push to log channel
         embed = discord.Embed(
@@ -189,6 +202,36 @@ class MusikPlayerListener(commands.Cog):
 
         error_cog: BotBrainErrorHandler = self.bot.get_cog("BotBrainErrorHandler")
         await error_cog._push_bot_log_or_cdn(embed, full_pesan)
+        await self._push_error_to_sentry(player, entry, exception)
+
+    async def _push_error_to_sentry(
+        self, player: wavelink.Player, track: TrackEntry, e: Exception, handler: str = "playback"
+    ):
+        if self.bot._use_sentry:
+            with push_scope() as scope:
+                scope.user = {
+                    "id": track.requester.id,
+                    "username": str(track.requester),
+                }
+
+                scope.set_tag("cog", "music-backend")
+                scope.set_tag("command", f"music-{handler}-handler")
+                track_src = getattr(track.track, "source", "Unknown")
+                scope.set_context(
+                    "track",
+                    {
+                        "title": track.track.title,
+                        "artist": track.track.author,
+                        "source": track_src,
+                        "link": track.track.uri,
+                    },
+                )
+                scope.set_tag("command_type", "music")
+                scope.set_tag("guild_id", str(player.guild.id))
+                scope.set_tag("channel_id", str(player.channel.id))
+                self.logger.error(
+                    f"Player: <{player.guild}> failed to play track: <{track.track}>", exc_info=e
+                )
 
     def _select_members(
         self, members: List[discord.Member], id_check: int = None
