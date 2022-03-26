@@ -4,8 +4,8 @@ A helper module for premium stuff.
 
 import logging
 
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesContext
@@ -49,9 +49,9 @@ class BotBrainPremium(commands.Cog):
 
     @_bb_premium.command(name="fansubrss", aliases=["fsrss"])
     async def _bb_premium_fansubrss(self, ctx: naoTimesContext, guild: commands.GuildConverter, durasi: str):
-        if not isinstance(guild, discord.Guild):
+        if not isinstance(guild, disnake.Guild):
             return await ctx.send("Guild yang diberikan bukanlah guild yang valid!")
-        guild: discord.Guild = guild
+        guild: disnake.Guild = guild
         rss_metadata = await self.bot.redisdb.get(f"ntfsrss_{guild.id}")
         if rss_metadata is None:
             return await ctx.send("Guild belum mengaktifkan fitur FansubRSS!")

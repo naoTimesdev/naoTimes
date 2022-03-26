@@ -1,8 +1,8 @@
 import logging
 from typing import List
 
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesContext
@@ -82,11 +82,11 @@ class ShowtimesKolaborasi(commands.Cog):
     async def _showkoleb_dengan(
         self, ctx: naoTimesContext, guild: commands.GuildConverter, *, judul: str = None
     ):
-        if not isinstance(guild, discord.Guild):
+        if not isinstance(guild, disnake.Guild):
             self.logger.error(f"{ctx.guild.id}: Bot tidak dapat menemukan peladen tersebut")
             return await ctx.send("Bot tidak dapat menemukan peladen tersebut?")
         server_id = ctx.guild.id
-        target_guild: discord.Guild = guild
+        target_guild: disnake.Guild = guild
         srv_data = await self.queue.fetch_database(server_id)
         if srv_data is None:
             self.logger.error(f"{server_id}: server not registered in Showtimes")
@@ -127,7 +127,7 @@ class ShowtimesKolaborasi(commands.Cog):
 
         random_confirm = generate_custom_code(16)
         self.logger.info(f"{server_id}:{target_guild.id}: confirming collaboration...")
-        embed = discord.Embed(
+        embed = disnake.Embed(
             title="Kolaborasi",
             description="Periksa data!\nReact jika ingin diubah.",
             color=0xE7E363,
@@ -152,7 +152,7 @@ class ShowtimesKolaborasi(commands.Cog):
         koleb_data = ShowtimesKonfirmasi(random_confirm, server_id, project.id)
         target_data.add_konfirm(koleb_data)
 
-        embed = discord.Embed(title="Kolaborasi", color=0x56ACF3)
+        embed = disnake.Embed(title="Kolaborasi", color=0x56ACF3)
         embed.add_field(name="Memproses!", value="Mengirim data...", inline=True)
         embed.set_footer(
             text="Dibawakan oleh naoTimes™",
@@ -163,7 +163,7 @@ class ShowtimesKolaborasi(commands.Cog):
         self.logger.info(f"{server_id}-{project.id}: storing data...")
         await self.queue.add_job(target_data)
 
-        embed = discord.Embed(title="Kolaborasi", color=0x96DF6A)
+        embed = disnake.Embed(title="Kolaborasi", color=0x96DF6A)
         embed.add_field(
             name="Sukses!",
             value=f"Berikan kode berikut `{random_confirm}` kepada fansub/server lain.\n"
@@ -224,7 +224,7 @@ class ShowtimesKolaborasi(commands.Cog):
             self.logger.warning(f"{get_confirm.anime}: anime not found")
             return await ctx.send("Tidak dapat menemukan anime yang akan diajak kolaborasi.")
 
-        embed = discord.Embed(title="Konfirmasi Kolaborasi", color=0xE7E363)
+        embed = disnake.Embed(title="Konfirmasi Kolaborasi", color=0xE7E363)
         embed.add_field(name="Anime/Garapan", value=project_info.title, inline=False)
         embed.add_field(name="Server", value=source_name, inline=False)
         embed.add_field(name="Lain-Lain", value="✅ Konfirmasi!\n❌ Tolak!", inline=False)
@@ -258,7 +258,7 @@ class ShowtimesKolaborasi(commands.Cog):
         if not old_role:
             self.logger.info(f"{server_id}: creating roles...")
             c_role = await ctx.guild.create_role(
-                name=project_info.title, colour=discord.Colour.random(), mentionable=True
+                name=project_info.title, colour=disnake.Colour.random(), mentionable=True
             )
             old_role = c_role.id
 
@@ -294,7 +294,7 @@ class ShowtimesKolaborasi(commands.Cog):
             update_queue.append(joint_srv)
 
         self.logger.info(f"{project_info.id}-{server_id}: now updating database...")
-        embed = discord.Embed(title="Kolaborasi", color=0x56ACF3)
+        embed = disnake.Embed(title="Kolaborasi", color=0x56ACF3)
         embed.add_field(name="Memproses!", value="Mengirim data...", inline=True)
         embed.set_footer(
             text="Dibawakan oleh naoTimes™",
@@ -305,7 +305,7 @@ class ShowtimesKolaborasi(commands.Cog):
         for srv in update_queue:
             await self.queue.add_job(srv)
 
-        embed = discord.Embed(title="Kolaborasi", color=0x96DF6A)
+        embed = disnake.Embed(title="Kolaborasi", color=0x96DF6A)
         embed.add_field(
             name="Sukses!",
             value=f"Berhasil konfirmasi dengan server **{source_name}**.\n"
@@ -368,7 +368,7 @@ class ShowtimesKolaborasi(commands.Cog):
         target_srv.remove_konfirm(kode_konfirmasi)
         self.logger.info(f"{server_id}: now updating database...")
         await self.queue.add_job(target_srv)
-        embed = discord.Embed(title="Kolaborasi", color=0x96DF6A)
+        embed = disnake.Embed(title="Kolaborasi", color=0x96DF6A)
         embed.add_field(
             name="Sukses!",
             value=f"Berhasil membatalkan kode konfirmasi **{kode_konfirmasi}**.\n"
@@ -463,7 +463,7 @@ class ShowtimesKolaborasi(commands.Cog):
         for server in update_queue:
             await self.queue.add_job(server)
 
-        embed = discord.Embed(title="Kolaborasi", color=0x96DF6A)
+        embed = disnake.Embed(title="Kolaborasi", color=0x96DF6A)
         embed.add_field(
             name="Sukses!",
             value=f"Berhasil memputuskan kolaborasi **{project.title}**.\n"

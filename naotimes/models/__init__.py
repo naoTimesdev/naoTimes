@@ -7,8 +7,6 @@ A collection of naoTimes models.
 :license: MIT, see LICENSE for more details.
 """
 
-# flake8: noqa
-
 from .fsdb import *
 from .nh import *
 from .saus import *

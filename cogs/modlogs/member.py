@@ -3,8 +3,8 @@ from datetime import datetime
 from typing import Union
 
 import arrow
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.modlog import ModLog, ModLogAction, ModLogFeature
@@ -25,7 +25,7 @@ class ModLogMember(commands.Cog):
         return to_arrow.format("MMMM DD YYYY, HH:mm:ss UTC", "id")
 
     def _generate_log(self, action: ModLogAction, data: dict) -> ModLog:
-        user_data: discord.Member = data["user_data"]
+        user_data: disnake.Member = data["user_data"]
         desc_data = []
         current_time = self.bot.now()
         desc_data.append(f"**• Pengguna**: {user_data.name}#{user_data.discriminator}")
@@ -39,7 +39,7 @@ class ModLogMember(commands.Cog):
         }
         modlog = ModLog(action=action, timestamp=current_time.timestamp())
         if action == ModLogAction.MEMBER_JOIN:
-            embed = discord.Embed(
+            embed = disnake.Embed(
                 title="📥 Anggota Bergabung", color=0x83D66B, timestamp=current_time.datetime
             )
             embed.description = "\n".join(desc_data)
@@ -48,14 +48,14 @@ class ModLogMember(commands.Cog):
             embed.set_thumbnail(url=str(user_data.avatar))
             modlog.embed = embed
         elif action == ModLogAction.MEMBER_LEAVE:
-            embed = discord.Embed(title="📥 Anggota Keluar", color=0xD66B6B, timestamp=current_time.datetime)
+            embed = disnake.Embed(title="📥 Anggota Keluar", color=0xD66B6B, timestamp=current_time.datetime)
             embed.description = "\n".join(desc_data)
             embed.set_footer(text="🚪 Keluar")
             embed.set_author(**author_data)
             embed.set_thumbnail(url=str(user_data.avatar))
             modlog.embed = embed
         elif action == ModLogAction.MEMBER_KICK:
-            embed = discord.Embed(
+            embed = disnake.Embed(
                 title="🦶 Anggota ditendang", color=0xD66B6B, timestamp=current_time.datetime
             )
             embed.description = "\n".join(desc_data)
@@ -68,7 +68,7 @@ class ModLogMember(commands.Cog):
             embed.set_thumbnail(url=str(user_data.avatar))
             modlog.embed = embed
         elif action == ModLogAction.MEMBER_BAN:
-            embed = discord.Embed(
+            embed = disnake.Embed(
                 title="🔨 Anggota terbanned", color=0x8B0E0E, timestamp=current_time.datetime
             )
             ban_data = data["details"]
@@ -81,7 +81,7 @@ class ModLogMember(commands.Cog):
             embed.set_thumbnail(url=str(user_data.avatar))
             modlog.embed = embed
         elif action == ModLogAction.MEMBER_UNBAN:
-            embed = discord.Embed(
+            embed = disnake.Embed(
                 title="🔨👼 Anggota diunbanned", color=0x2BCEC2, timestamp=current_time.datetime
             )
             embed.description = "\n".join(desc_data)
@@ -97,7 +97,7 @@ class ModLogMember(commands.Cog):
         elif action == ModLogAction.MEMBER_UPDATE:
             details = data["details"]
             role_change = "added" in details
-            embed = discord.Embed(timestamp=current_time.datetime)
+            embed = disnake.Embed(timestamp=current_time.datetime)
             if role_change:
                 embed.title = "🤵 Perubahan Role"
                 embed.colour = 0x832D64
@@ -123,7 +123,7 @@ class ModLogMember(commands.Cog):
         return modlog
 
     @commands.Cog.listener("on_member_join")
-    async def _modlog_member_join(self, member: discord.Member):
+    async def _modlog_member_join(self, member: disnake.Member):
         should_log, server_setting = self.bot.should_modlog(member.guild, member, [ModLogFeature.MEMBER_JOIN])
         if not should_log:
             return
@@ -133,7 +133,7 @@ class ModLogMember(commands.Cog):
         await self.bot.add_modlog(modlog_data, server_setting)
 
     @commands.Cog.listener("on_member_remove")
-    async def _modlog_member_leave(self, member: discord.Member):
+    async def _modlog_member_leave(self, member: disnake.Member):
         should_log, server_setting = self.bot.should_modlog(
             member.guild, member, [ModLogFeature.MEMBER_LEAVE]
         )
@@ -144,7 +144,7 @@ class ModLogMember(commands.Cog):
         reason = "Tidak ada alasan."
         if self.have_audit_perm(member.guild):
             async for guild_log in member.guild.audit_logs(
-                action=discord.AuditLogAction.kick,
+                action=disnake.AuditLogAction.kick,
             ):
                 backward_time = self.bot.now().shift(seconds=-5)
                 if backward_time.timestamp() > guild_log.created_at.timestamp():
@@ -164,7 +164,7 @@ class ModLogMember(commands.Cog):
         await self.bot.add_modlog(modlog_data, server_setting)
 
     @commands.Cog.listener("on_member_ban")
-    async def _modlog_member_banned(self, guild: discord.Guild, user: Union[discord.User, discord.Member]):
+    async def _modlog_member_banned(self, guild: disnake.Guild, user: Union[disnake.User, disnake.Member]):
         should_log, server_setting = self.bot.should_modlog(guild, user, [ModLogFeature.MEMBER_BAN])
         if not should_log:
             return
@@ -172,7 +172,7 @@ class ModLogMember(commands.Cog):
         reason = "Tidak ada alasan."
         banned_by = None
         if self.have_audit_perm(guild):
-            async for entry in guild.audit_logs(action=discord.AuditLogAction.ban):
+            async for entry in guild.audit_logs(action=disnake.AuditLogAction.ban):
                 backward_time = self.bot.now().shift(seconds=-5)
                 if backward_time.timestamp() > entry.created_at.timestamp():
                     continue
@@ -192,20 +192,20 @@ class ModLogMember(commands.Cog):
         )
         await self.bot.add_modlog(modlog_data, server_setting)
 
-    def have_audit_perm(self, guild: discord.Guild):
-        bot_member: discord.Member = guild.get_member(self.bot.user.id)
+    def have_audit_perm(self, guild: disnake.Guild):
+        bot_member: disnake.Member = guild.get_member(self.bot.user.id)
         if bot_member.guild_permissions.view_audit_log:
             return True
         return False
 
     @commands.Cog.listener("on_member_unban")
-    async def _member_unban_logging(self, guild: discord.Guild, user: discord.User):
+    async def _member_unban_logging(self, guild: disnake.Guild, user: disnake.User):
         should_log, server_setting = self.bot.should_modlog(guild, user, [ModLogFeature.MEMBER_UNBAN])
         if not should_log:
             return
         details_data = {}
         if self.have_audit_perm(guild):
-            async for entry in guild.audit_logs(action=discord.AuditLogAction.unban):
+            async for entry in guild.audit_logs(action=disnake.AuditLogAction.unban):
                 backward_time = arrow.utcnow().shift(seconds=-10)
                 if backward_time.timestamp() > entry.created_at.timestamp():
                     continue
@@ -225,7 +225,7 @@ class ModLogMember(commands.Cog):
         await self.bot.add_modlog(modlog_data, server_setting)
 
     @commands.Cog.listener("on_member_update")
-    async def _member_update_logging(self, before: discord.Member, after: discord.Member):
+    async def _member_update_logging(self, before: disnake.Member, after: disnake.Member):
         should_log, server_setting = self.bot.should_modlog(
             before.guild, before, [ModLogFeature.MEMBER_UPDATE]
         )

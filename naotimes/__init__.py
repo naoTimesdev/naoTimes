@@ -7,14 +7,12 @@ The framework of the naoTimes bot.
 :license: MIT, see LICENSE for more details.
 """
 
-# flake8: noqa
-
 __title__ = "naoTimes"
 __author__ = "naoTimesdev (noaione)"
 __license__ = "MIT"
 __copyright__ = "Copyright 2019-2021 naoTimesdev"
 
-from . import card, http, models, music, paginator, showtimes, watch
+from . import card, http, models, music, paginator, showtimes
 from .bot import *
 from .config import *
 from .context import *

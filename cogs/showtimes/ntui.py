@@ -2,9 +2,9 @@ import logging
 from typing import Any, List, Union
 from urllib.parse import urlparse
 
-import discord
+import disnake
 import feedparser
-from discord.ext import commands
+from disnake.ext import commands
 from schema import SchemaError
 
 from naotimes.bot import naoTimesBot
@@ -55,10 +55,14 @@ class ShowtimesUIBridge(commands.Cog):
         if guild_info is None:
             return {"message": "Unknown server", "success": 0}
 
+        ikon = guild_info.icon
+        if ikon is not None:
+            ikon = str(ikon)
+
         guild_parsed = {}
         guild_parsed["id"] = str(guild_info.id)
         guild_parsed["name"] = guild_info.name
-        guild_parsed["icon_url"] = str(guild_info.icon)
+        guild_parsed["icon_url"] = ikon
         owner_data = guild_info.owner
         owner_info = {}
         if owner_data is not None:
@@ -131,7 +135,7 @@ class ShowtimesUIBridge(commands.Cog):
         for perm_name, perm_val in perms_sets:
             if perm_val:
                 user_perms.append(perm_name)
-        if isinstance(guild_info.owner, discord.Member):
+        if isinstance(guild_info.owner, disnake.Member):
             if guild_info.owner == member_info:
                 user_perms.append("owner")
         return {"message": user_perms, "success": 1}
@@ -151,7 +155,7 @@ class ShowtimesUIBridge(commands.Cog):
         channel_info = guild_info.get_channel(channel_id)
         if channel_info is None:
             return {"message": "Kanal tidak dapat ditemukan", "success": 0}
-        if not isinstance(channel_info, discord.TextChannel):
+        if not isinstance(channel_info, disnake.TextChannel):
             return {"message": "Kanal yang dipilih bukanlah kanal teks", "success": 0}
         channel_parsed = {}
         channel_parsed["id"] = str(channel_info.id)
@@ -171,7 +175,7 @@ class ShowtimesUIBridge(commands.Cog):
             return {"message": "Guild tidak dapat ditemukan", "success": 0}
         text_channels = []
         for kanal in guild_info.channels:
-            if isinstance(kanal, discord.TextChannel):
+            if isinstance(kanal, disnake.TextChannel):
                 text_channels.append({"id": str(kanal.id), "name": kanal.name})
         return {"message": text_channels, "success": 1}
 
@@ -211,14 +215,14 @@ class ShowtimesUIBridge(commands.Cog):
         # Role not found, let's create it
         try:
             new_guild_role = await guild_info.create_role(
-                name=role_name, mentionable=True, colour=discord.Color.random()
+                name=role_name, mentionable=True, colour=disnake.Color.random()
             )
-        except discord.Forbidden:
+        except disnake.Forbidden:
             return {
                 "message": "Bot naoTimes tidak memiliki akses untuk membuat role di server anda.",
                 "success": 0,
             }
-        except discord.HTTPException:
+        except disnake.HTTPException:
             return {
                 "message": "Bot naoTimes tidak dapat membuat role tersebut, mohon coba sesaat lagi.",
                 "success": 0,
@@ -258,7 +262,7 @@ class ShowtimesUIBridge(commands.Cog):
         channel_info = guild_info.get_channel(kanal_id)
         if channel_info is None:
             return {"message": "Kanal tidak dapat ditemukan", "success": 0}
-        embed = discord.Embed(title=anime_title, color=0xB51E1E)
+        embed = disnake.Embed(title=anime_title, color=0xB51E1E)
         embed.add_field(
             name="Dropped...",
             value=f"{anime_title} telah di drop dari Fansub ini :(",
@@ -267,7 +271,7 @@ class ShowtimesUIBridge(commands.Cog):
         embed.set_footer(text=f"Pada: {get_current_time()}")
         try:
             await channel_info.send(embed=embed)
-        except (discord.Forbidden, discord.HTTPException):
+        except (disnake.Forbidden, disnake.HTTPException):
             pass
         return "ok"
 
@@ -313,7 +317,7 @@ class ShowtimesUIBridge(commands.Cog):
             if role_info is not None:
                 try:
                     await role_info.delete(reason="Showtimes project got deleted")
-                except (discord.Forbidden, discord.HTTPException):
+                except (disnake.Forbidden, disnake.HTTPException):
                     pass
         return "ok"
 
@@ -408,7 +412,7 @@ class ShowtimesUIBridge(commands.Cog):
         if server is None:
             return {"message": "Tidak dapat menemukan server, mohon invite Bot!", "success": 0}
         channel = server.get_channel(kanal_id)
-        if not isinstance(channel, discord.TextChannel):
+        if not isinstance(channel, disnake.TextChannel):
             return {"message": "Kanal tersebut bukan merupakan kanal teks", "success": 0}
 
         rss_metadata = await self.bot.redisdb.get(f"ntfsrss_{server_id}")
@@ -537,7 +541,7 @@ class ShowtimesUIBridge(commands.Cog):
         except (KeyError, ValueError, IndexError):
             return {"message": "Missing data", "success": 0}
 
-        target_srvdis: Union[discord.Guild, None] = None
+        target_srvdis: Union[disnake.Guild, None] = None
         try:
             server_id = int(server_id)
             target_srvdis = self.bot.get_guild(server_id)
@@ -579,9 +583,9 @@ class ShowtimesUIBridge(commands.Cog):
             self.logger.info(f"{sid}: no role, creating roles...")
             col = selected_anime.poster.color
             if col is None:
-                real_color = discord.Color.random()
+                real_color = disnake.Color.random()
             else:
-                real_color = discord.Color(col)
+                real_color = disnake.Color(col)
             c_role = await target_srvdis.create_role(
                 name=selected_anime.title,
                 color=real_color,

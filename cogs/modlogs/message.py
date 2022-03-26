@@ -1,8 +1,8 @@
 import logging
 from typing import List, Union
 
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.modlog import ModLog, ModLogAction, ModLogFeature, ModLogSetting
@@ -17,7 +17,7 @@ class ModLogMessage(commands.Cog):
         if not isinstance(content, str):
             return "", False
         if len(content) > 1995 or force_upload:
-            url, _ = await self.bot.send_ihateanime(content, "ModLog_")
+            url, _ = await self.bot.send_ihateanime(content, "ModLog_", "15")
             return url, True
         return content, False
 
@@ -34,7 +34,7 @@ class ModLogMessage(commands.Cog):
         if action == ModLogAction.MESSAGE_DELETE:
             channel_info = data["channel"]
             uinfo = data["author"]
-            embed = discord.Embed(title="🚮 Pesan dihapus", color=0xD66B6B, timestamp=current.datetime)
+            embed = disnake.Embed(title="🚮 Pesan dihapus", color=0xD66B6B, timestamp=current.datetime)
             embed.description = data["content"]
             embed.set_author(name=f"{uinfo['name']}", icon_url=uinfo["avatar"])
             embed.set_footer(text=f"❌ Kanal #{channel_info['name']}")
@@ -48,9 +48,9 @@ class ModLogMessage(commands.Cog):
                 embed.add_field(name="Attachments", value=attachments, inline=False)
             mod_log.embed = embed
         elif action == ModLogAction.MESSAGE_DELETE_BULK:
-            embed = discord.Embed(
+            embed = disnake.Embed(
                 title=f"🚮 {data['count']} Pesan dihapus",
-                color=discord.Color.from_rgb(199, 46, 69),
+                color=disnake.Color.from_rgb(199, 46, 69),
                 timestamp=current.datetime,
             )
             channel_info = data["channel"]
@@ -68,7 +68,7 @@ class ModLogMessage(commands.Cog):
             user_data = data["author"]
             kanal_name = data["channel"]["name"]
             before, after = data["before"], data["after"]
-            embed = discord.Embed(title="📝 Pesan diubah", color=0xE7DC8C, timestamp=current.datetime)
+            embed = disnake.Embed(title="📝 Pesan diubah", color=0xE7DC8C, timestamp=current.datetime)
             embed.add_field(name="Sebelum", value=self.truncate(before, 1024), inline=False)
             embed.add_field(name="Sesudah", value=self.truncate(after, 1024), inline=False)
             embed.set_footer(text=f"📝 Kanal #{kanal_name}")
@@ -79,7 +79,7 @@ class ModLogMessage(commands.Cog):
         return mod_log
 
     @commands.Cog.listener("on_message_edit")
-    async def _modlog_message_edit(self, before: discord.Message, after: discord.Message):
+    async def _modlog_message_edit(self, before: disnake.Message, after: disnake.Message):
         should_log, server_setting = self.bot.should_modlog(
             before.guild, before.author, [ModLogFeature.EDIT_MSG]
         )
@@ -120,14 +120,14 @@ class ModLogMessage(commands.Cog):
         mod_log = self._generate_log(ModLogAction.MESSAGE_EDIT, details)
         await self.bot.add_modlog(mod_log, server_setting)
 
-    def have_audit_perm(self, guild: discord.Guild):
-        bot_member: discord.Member = guild.get_member(self.bot.user.id)
+    def have_audit_perm(self, guild: disnake.Guild):
+        bot_member: disnake.Member = guild.get_member(self.bot.user.id)
         if bot_member.guild_permissions.view_audit_log:
             return True
         return False
 
     @commands.Cog.listener("on_message_delete")
-    async def _modlog_message_delete(self, message: discord.Message):
+    async def _modlog_message_delete(self, message: disnake.Message):
         should_log, server_setting = self.bot.should_modlog(
             message.guild, message.author, [ModLogFeature.DELETE_MSG]
         )
@@ -143,9 +143,9 @@ class ModLogMessage(commands.Cog):
             # Dont try to log system messages
             return
 
-        guild: discord.Guild = message.guild
-        initiator: Union[discord.Member, discord.User] = None
-        async for guild_log in guild.audit_logs(action=discord.AuditLogAction.message_delete):
+        guild: disnake.Guild = message.guild
+        initiator: Union[disnake.Member, disnake.User] = None
+        async for guild_log in guild.audit_logs(action=disnake.AuditLogAction.message_delete):
             backward_time = self.bot.now().shift(seconds=-10)
             if backward_time.timestamp() > guild_log.created_at.timestamp():
                 continue
@@ -199,9 +199,9 @@ class ModLogMessage(commands.Cog):
         await self.bot.add_modlog(log_gen, server_setting)
 
     @commands.Cog.listener("on_bulk_message_delete")
-    async def _log_bulk_message_delete(self, messages: List[discord.Message]):
+    async def _log_bulk_message_delete(self, messages: List[disnake.Message]):
         server_setting: ModLogSetting = None
-        valid_messages: List[discord.Message] = []
+        valid_messages: List[disnake.Message] = []
         for message in messages:
             should_log, server_setting = self.bot.should_modlog(
                 message.guild, message.author, [ModLogFeature.DELETE_MSG]
@@ -217,14 +217,14 @@ class ModLogMessage(commands.Cog):
             # Dont log if message empty
             return
 
-        guild: discord.Guild = valid_messages[0].guild
+        guild: disnake.Guild = valid_messages[0].guild
         can_audit = self.have_audit_perm(guild)
         if not can_audit:
             # Dont try to log if we don't have the audit permission
             return
 
         executor = {}
-        async for audit in guild.audit_logs(action=discord.AuditLogAction.message_bulk_delete):
+        async for audit in guild.audit_logs(action=disnake.AuditLogAction.message_bulk_delete):
             backward_time = self.bot.now().shift(seconds=-15)
             if backward_time.timestamp() > audit.created_at.timestamp():
                 continue
@@ -257,12 +257,16 @@ class ModLogMessage(commands.Cog):
                     )
             full_upload_text.append("\n".join(current))
 
+        ikon_guild = guild.icon
+        if ikon_guild is not None:
+            ikon_guild = str(ikon_guild)
+
         real_content, _ = await self._upload_or_not("\n\n".join(full_upload_text), True)
         full_details = {
             "count": len(messages),
             "url": real_content,
             "channel": {"id": channel.id, "name": channel.name},
-            "guild": {"icon": str(guild.icon)},
+            "guild": {"icon": ikon_guild},
         }
         if len(executor.keys()) > 0:
             full_details["executor"] = executor

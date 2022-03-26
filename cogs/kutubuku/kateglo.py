@@ -1,8 +1,8 @@
 import logging
 from urllib.parse import quote
 
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesContext
@@ -35,7 +35,7 @@ class KutubukuKateglo(commands.Cog):
         URL_KATEGLO = "https://kateglo.com/?mod=dictionary&action=view&phrase={}#panelRelated"
 
         result = ", ".join(results_txt)
-        embed = discord.Embed(title=f"Sinonim: {kata}", color=0x81E28D, url=URL_KATEGLO.format(quote(kata)))
+        embed = disnake.Embed(title=f"Sinonim: {kata}", color=0x81E28D, url=URL_KATEGLO.format(quote(kata)))
         embed.set_footer(text="Diprakasai oleh Kateglo.com")
         if not result:
             embed.add_field(name=kata, value="Tidak ada hasil", inline=False)
@@ -65,7 +65,7 @@ class KutubukuKateglo(commands.Cog):
         URL_KATEGLO = "https://kateglo.com/?mod=dictionary&action=view&phrase={}#panelRelated"
 
         result = ", ".join(results_txt)
-        embed = discord.Embed(title=f"Antonim: {kata}", color=0x81E28D, url=URL_KATEGLO.format(quote(kata)))
+        embed = disnake.Embed(title=f"Antonim: {kata}", color=0x81E28D, url=URL_KATEGLO.format(quote(kata)))
         embed.set_footer(text="Diprakasai oleh Kateglo.com")
         if not result:
             embed.add_field(name=kata, value="Tidak ada hasil", inline=False)

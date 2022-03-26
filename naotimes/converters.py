@@ -26,11 +26,12 @@ from __future__ import annotations
 
 import argparse
 import shlex
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from discord.ext import commands
+from disnake.ext import commands
 
 from .context import naoTimesContext
+from .showtimes import ShowtimesProject
 from .timeparse import TimeString
 
 if TYPE_CHECKING:
@@ -102,7 +103,7 @@ class Arguments:
         return new_self
 
 
-class CommandArgParse(commands.Converter):
+class CommandArgParse(commands.Converter[argparse.Namespace]):
     def __init__(self, args: Arguments):
         self._args: Arguments = args
         self._defaults_map: Dict[str, Any] = {}
@@ -160,7 +161,7 @@ class CommandArgParse(commands.Converter):
         return self._parse_args("-h")
 
 
-class TimeConverter(commands.Converter):
+class TimeConverter(commands.Converter[TimeString]):
     """
     A converter Class that will convert a string-formatted text of time into a proper time data
     that can be used.
@@ -286,7 +287,7 @@ class StealedEmote(commands.Converter):
         return results
 
 
-class ShowtimesConverter(commands.Converter):
+class ShowtimesConverter(commands.Converter[List[ShowtimesProject]]):
     """
     A converter class that will try to match the a title
     of a Showtimes project.

@@ -24,7 +24,7 @@ SOFTWARE.
 
 from typing import Optional
 
-from discord.ext.commands import Context
+from disnake.ext.commands import Context
 
 __all__ = ("PlaceHolderCommand",)
 

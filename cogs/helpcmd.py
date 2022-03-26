@@ -1,8 +1,8 @@
 import logging
 from typing import List, Union
 
-import discord
-from discord.ext import commands
+import disnake as discord
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.helpgenerator import HelpGenerator
@@ -1369,7 +1369,7 @@ class Helper(commands.Cog):
         await ctx.send(embed=helpcmd.get())
 
     @oldhelp.group(name="nyaa")
-    async def nyaahelp(self, ctx):
+    async def nyaahelp(self, ctx: commands.Context):
         cogs_set = self.bot.get_cog("NyaaTorrentsV2")
         if not cogs_set:
             return

@@ -1,9 +1,9 @@
 import logging
 from typing import List
 
-import discord
+import disnake
 import magic
-from discord.ext import commands
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesContext
@@ -66,8 +66,8 @@ class PeninjauSausGambar(commands.Cog):
             return "Tidak dapat menemukan hasil yang yakin untuk gambar tersebut."
         return merged_results
 
-    def _generate_embed_result(self, data: sausmodel.SausResultItem) -> discord.Embed:
-        embed = discord.Embed(title=cutoff_text(data["title"], 256), color=0x19212D)
+    def _generate_embed_result(self, data: sausmodel.SausResultItem) -> disnake.Embed:
+        embed = disnake.Embed(title=cutoff_text(data["title"], 256), color=0x19212D)
         description = ""
         if data["extra_info"]:
             for key, value in data["extra_info"].items():
@@ -87,7 +87,7 @@ class PeninjauSausGambar(commands.Cog):
     @commands.command(name="saus", aliases=["sauce", "sausnao", "sauce-nao"])
     async def _peninjau_saus(self, ctx: naoTimesContext, *, image_url: str = ""):
         self.logger.info("Invoking saus command, checking attachments...")
-        attachments: List[discord.Attachment] = ctx.message.attachments
+        attachments: List[disnake.Attachment] = ctx.message.attachments
         if len(attachments) > 0:
             first_attach = attachments[0]
             if not first_attach.content_type.startswith("image"):
@@ -128,7 +128,7 @@ class PeninjauSausGambar(commands.Cog):
         self.logger.info("Initiated saucenao last 75 message mechanism")
         if img_pos > 75:
             img_pos = 1
-        channel: discord.TextChannel = ctx.channel
+        channel: disnake.TextChannel = ctx.channel
 
         match_count = 0
         final_url = None
@@ -146,7 +146,7 @@ class PeninjauSausGambar(commands.Cog):
         if not final_url:
             return await ctx.send("Tidak dapat menemukan gambar di 75 pesan terakhir.")
 
-        temp_msg: discord.Message = await ctx.send("Memproses gambar berikut...", reference=reference)
+        temp_msg: disnake.Message = await ctx.send("Memproses gambar berikut...", reference=reference)
         result = await self._request_sauce(final_url)
         if isinstance(result, str):
             self.logger.info(f"Received error when contacting API, message: {result}")

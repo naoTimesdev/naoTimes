@@ -31,7 +31,7 @@ SOFTWARE.
 import asyncio
 import logging
 import uuid
-from typing import Any, Dict, List, NoReturn, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import aioredis
 import orjson
@@ -408,7 +408,7 @@ class RedisBridge:
     exist = exists
     delete = rm
 
-    async def bulkrm(self, keys: str) -> NoReturn:
+    async def bulkrm(self, keys: str) -> None:
         if self._is_stopping:
             return False
         collection = await self.keys(keys)

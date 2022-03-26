@@ -31,9 +31,9 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 import arrow
 import wavelink
-from discord.channel import StageChannel, VoiceChannel
-from discord.colour import Colour
-from discord.embeds import Embed
+from disnake.channel import StageChannel, VoiceChannel
+from disnake.colour import Colour
+from disnake.embeds import Embed
 from wavelink import Player
 from wavelink.errors import NodeOccupied, NoMatchingNode
 from wavelink.ext import spotify
@@ -51,18 +51,19 @@ from .queue import (
     TrackQueueSingle,
     TrackRepeat,
 )
-from .track import (
+from .tracks import (
     BandcampDirectLink,
     SoundcloudDirectLink,
     SpotifyDirectTrack,
     SpotifyTrack,
+    TidalDirectLink,
     TwitchDirectLink,
     YoutubeDirectLinkTrack,
 )
 
 if TYPE_CHECKING:
-    from discord.guild import Guild
-    from discord.member import Member
+    from disnake.guild import Guild
+    from disnake.member import Member
 
     from naotimes.bot import naoTimesBot
     from naotimes.config import naoTimesLavanodes
@@ -218,7 +219,9 @@ class naoTimesPlayer:
         self.get(vc).channel = channel
 
     def reset_vote(self, vc: Player):
-        self.get(vc).skip_votes.clear()
+        instance = self.get(vc)
+        instance.skip_votes.clear()
+        self.set(vc, instance)
 
     def add_vote(self, vc: Player, user: Member):
         self.get(vc).skip_votes.add(user)
@@ -249,8 +252,10 @@ class naoTimesPlayer:
         description = []
         track = entry.track
         track_url = track.uri
-        if hasattr(track, "internal_id"):
+        if hasattr(track, "internal_id") and getattr(track, "source", None) == "spotify":
             track_url = f"https://open.spotify.com/track/{track.internal_id}"
+        elif hasattr(track, "internal_id") and getattr(track, "source", None) == "tidal":
+            track_url = f"https://tidal.com/track/{track.internal_id}"
         description.append(f"[{track.title}]({track_url})")
         if track.author:
             description.append(f"**Artis**: {track.author}")
@@ -304,6 +309,9 @@ class naoTimesPlayer:
             elif "twitch.tv" in query:
                 ttv_results = await TwitchDirectLink.search(query, node=node, return_first=True)
                 return ttv_results
+            elif "tidal.com" in query:
+                tidal_results = await TidalDirectLink.search(query, node=node)
+                return tidal_results
             else:
                 return_first = "/playlist" not in query
                 results = await YoutubeDirectLinkTrack.search(
@@ -335,6 +343,7 @@ class naoTimesPlayer:
 
         if new_track is None:
             self.logger.info(f"Player: <{player.guild}> no more tracks, clearing queue and stopping player.")
+            self._client.dispatch("naotimes_music_timeout", player)
             self.delete(player)
             await player.disconnect(force=True)
             return

@@ -3,8 +3,8 @@ from functools import partial
 from typing import List
 
 import arrow
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesContext
@@ -214,8 +214,8 @@ class NSFWCogNH(commands.Cog):
         eng_or_jp = japanese or english or ""
         return eng_or_jp.replace(simple, f"**{simple}**")
 
-    def _fmt_search_embed(self, data: nhmodel.NHDoujinInfo, query: str) -> discord.Embed:
-        embed = discord.Embed(title=f"Pencarian: {query}", color=0x1F1F1F, url=data["url"])
+    def _fmt_search_embed(self, data: nhmodel.NHDoujinInfo, query: str) -> disnake.Embed:
+        embed = disnake.Embed(title=f"Pencarian: {query}", color=0x1F1F1F, url=data["url"])
         embed.set_author(
             name="nh", url=data["url"], icon_url="https://nh.ihateani.me/android-icon-192x192.png"
         )
@@ -224,8 +224,8 @@ class NSFWCogNH(commands.Cog):
         embed.set_footer(text=f"Kode: {data['id']} | Diprakasai oleh api.ihateani.me")
         return embed
 
-    def _fmt_info_embed(self, data: nhmodel.NHDoujinInfo) -> discord.Embed:
-        embed = discord.Embed(
+    def _fmt_info_embed(self, data: nhmodel.NHDoujinInfo) -> disnake.Embed:
+        embed = disnake.Embed(
             color=0x1F1F1F,
             timestamp=arrow.get(data.publishedAt).datetime,
         )
@@ -250,7 +250,7 @@ class NSFWCogNH(commands.Cog):
     def _fmt_read_embed(
         self, image: nhmodel._NHDoujinImageInfo, pos: int, data: nhmodel.NHDoujinInfo, image_total: int
     ):
-        embed = discord.Embed(
+        embed = disnake.Embed(
             color=0x1F1F1F,
             timestamp=arrow.get(data["publishedAt"]).datetime,
         )
@@ -265,8 +265,8 @@ class NSFWCogNH(commands.Cog):
         embed.set_footer(text=f"Kode: {data['id']} | Diprakasai oleh api.ihateani.me")
         return embed
 
-    def _fmt_download_embed(self, data: nhmodel.NHDoujinInfo) -> discord.Embed:
-        embed = discord.Embed(
+    def _fmt_download_embed(self, data: nhmodel.NHDoujinInfo) -> disnake.Embed:
+        embed = disnake.Embed(
             color=0x1F1F1F,
             timestamp=arrow.get(data["publishedAt"]).datetime,
         )
@@ -280,7 +280,7 @@ class NSFWCogNH(commands.Cog):
         return embed
 
     async def wrap_start_image(
-        self, dataset: dict, _, message: discord.Message, ctx: naoTimesContext, break_apart=False
+        self, dataset: dict, _, message: disnake.Message, ctx: naoTimesContext, break_apart=False
     ):
         total_img = len(dataset["images"])
         img_embed_gen = partial(
@@ -295,7 +295,7 @@ class NSFWCogNH(commands.Cog):
         return None, message
 
     async def wrap_start_dl(
-        self, dataset: dict, _, message: discord.Message, ctx: naoTimesContext, break_apart=False
+        self, dataset: dict, _, message: disnake.Message, ctx: naoTimesContext, break_apart=False
     ):
         dl_gen = DiscordPaginator(self.bot, ctx, [dataset])
         dl_gen.remove_at_trashed = break_apart
@@ -305,7 +305,7 @@ class NSFWCogNH(commands.Cog):
         return None, message
 
     async def wrap_start_info(
-        self, dataset: dict, _, message: discord.Message, ctx: naoTimesContext, break_apart=False
+        self, dataset: dict, _, message: disnake.Message, ctx: naoTimesContext, break_apart=False
     ):
         info_gen = DiscordPaginator(self.bot, ctx, [dataset])
         info_gen.remove_at_trashed = break_apart

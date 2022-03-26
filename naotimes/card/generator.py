@@ -156,9 +156,50 @@ class CardGenerator:
         wrapped_expression = "() => {" + base_function + "; return '';}"
         return wrapped_expression
 
+    async def _restart_all_page(self):
+        new_navigator: Dict[str, CardGeneratorNav] = {}
+        for page_name, page_nav in self._page_navigator.items():
+            try:
+                await page_nav.page.close()
+            except Exception:
+                self.logger.warning(f"Failed to close page {page_name}", exc_info=True)
+            new_page = await self._browser.newPage()
+            await new_page.goto(f"data:text/html;charset=utf-8,{page_nav.card.html}")
+            self.logger.info(f"Restarted page {page_name}")
+            new_navigator[page_name] = CardGeneratorNav(page_nav.card, new_page)
+        self._page_navigator = new_navigator
+
+    async def _keepalive(self, specific_page: str):
+        if self._launcher.chromeClosed:
+            self.logger.debug("Chrome is closed, trying to restart...")
+            try:
+                await self._internal_close_chrome()
+            except Exception:
+                pass
+            self._browser = await self._launcher.launch()
+            self.logger.debug("Chrome restarted, trying to restart pages...")
+            await self._restart_all_page()
+            self.logger.debug("All pages restarted")
+            return
+
+        page_info = self._page_navigator.get(specific_page)
+        if page_info is None:
+            self.logger.debug(f"Page {specific_page} is not binded")
+            return
+
+        if page_info.page.isClosed():
+            self.logger.debug(f"Page {specific_page} is closed, reopening")
+            new_page = await self._browser.newPage()
+            await new_page.goto(f"data:text/html;charset=utf-8,{page_info.card.html}")
+            page_info.page = new_page
+            self._page_navigator[specific_page] = page_info
+            return
+
     async def generate(self, name: str, data: CardBase) -> bytes:
         if name not in self._page_navigator:
             raise CardGenerationFailure(name, "Unknown template name")
+
+        await self._keepalive(name)
 
         page_data = self._page_navigator[name]
         max_width = page_data.card.max_width
@@ -166,19 +207,31 @@ class CardGenerator:
 
         self.logger.info("Evaluating expression and function...")
         generated_eval = self._generate_expression(data.serialize())
-        await page_data.page.evaluate(generated_eval)
+        try:
+            await page_data.page.evaluate(generated_eval)
+        except Exception as e:
+            self.logger.debug(f"Failed to evaluate expression: {e}", exc_info=e)
+            raise CardGenerationFailure(name, f"Failed to evaluate expression: {e}")
 
-        dimensions = await page_data.page.evaluate(
-            """() => {
-                return {
-                    width: document.body.clientWidth,
-                    height: document.body.clientHeight,
+        try:
+            dimensions = await page_data.page.evaluate(
+                """() => {
+                    return {
+                        width: document.body.clientWidth,
+                        height: document.body.clientHeight,
+                    }
                 }
-            }
-            """
-        )
+                """
+            )
+        except Exception as e:
+            self.logger.debug(f"Failed to evaluate dimensions: {e}", exc_info=e)
+            raise CardGenerationFailure(name, f"Failed to evaluate dimensions: {e}")
         self.logger.info("Taking a screenshot and cropping the image...")
-        screenies = await page_data.page.screenshot()
+        try:
+            screenies = await page_data.page.screenshot()
+        except Exception as e:
+            self.logger.debug(f"Failed to take screenshot: {e}", exc_info=e)
+            raise CardGenerationFailure(name, f"Failed to take screenshot: {e}")
 
         im = Image.open(BytesIO(screenies))
         im = im.crop((0, 0, max_width, dimensions["height"] + pad_height))

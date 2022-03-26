@@ -8,7 +8,5 @@ This exposes a simple webserver with aiohttp that you can query.
 :license: MIT, see LICENSE for more details.
 """
 
-# flake8: noqa
-
 from .app import *
 from .routes import *

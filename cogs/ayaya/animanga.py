@@ -2,8 +2,8 @@ import logging
 from typing import Dict, List, Union
 
 import arrow
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesContext
@@ -586,8 +586,8 @@ class AyayaAnimeManga(commands.Cog):
         return sorted_mapped_airing, season_info
 
     @staticmethod
-    def _generate_anime_embed(data: AnilistResult) -> discord.Embed:
-        embed = discord.Embed(color=data.color)
+    def _generate_anime_embed(data: AnilistResult) -> disnake.Embed:
+        embed = disnake.Embed(color=data.color)
         if data.poster_url:
             embed.set_thumbnail(url=data.poster_url)
         embed.set_author(
@@ -609,8 +609,8 @@ class AyayaAnimeManga(commands.Cog):
         return embed
 
     @staticmethod
-    def _generate_manga_embed(data: AnilistResult) -> discord.Embed:
-        embed = discord.Embed(color=data.color)
+    def _generate_manga_embed(data: AnilistResult) -> disnake.Embed:
+        embed = disnake.Embed(color=data.color)
         if data.poster_url:
             embed.set_thumbnail(url=data.poster_url)
         embed.set_author(
@@ -632,17 +632,17 @@ class AyayaAnimeManga(commands.Cog):
         return embed
 
     @staticmethod
-    def _next_episode_embed(data: AnilistResult) -> discord.Embed:
-        embed = discord.Embed(color=data.color)
+    def _next_episode_embed(data: AnilistResult) -> disnake.Embed:
+        embed = disnake.Embed(color=data.color)
         embed.set_author(name=data.title, url=data.url, icon_url="https://p.ihateani.me/wtelbjmn.png")
         embed.set_footer(text=f"Akan tayang pada {data.extras.airdate}")
         embed.add_field(name=f"Episode {data.extras.episode}", value=data.extras.time_remain, inline=False)
         return embed
 
     def _check_bot_perms(self, ctx: naoTimesContext):
-        the_guild: discord.Guild = ctx.guild
+        the_guild: disnake.Guild = ctx.guild
         is_guild = the_guild is not None
-        the_channel: discord.TextChannel = ctx.channel
+        the_channel: disnake.TextChannel = ctx.channel
         bot_member = the_guild.get_member(self.bot.user.id)
         bbperms = the_channel.permissions_for(bot_member)
 
@@ -675,7 +675,7 @@ class AyayaAnimeManga(commands.Cog):
             return await ctx.send("Tidak ada hasil!")
         self.logger.info(f"Got {len(parsed_result)} hits")
 
-        async def handle_episode_table(dataset: EpisodeInfo, _, message: discord.Message):
+        async def handle_episode_table(dataset: EpisodeInfo, _, message: disnake.Message):
             nextep_gen = DiscordPaginator(self.bot, ctx, [dataset])
             nextep_gen.remove_at_trashed = False
             nextep_gen.paginateable = False
@@ -769,7 +769,7 @@ class AyayaAnimeManga(commands.Cog):
         ]
 
         def generate_embed_for_real(dataset: EpisodeInfoWrap):
-            embed = discord.Embed(color=0x19212D)
+            embed = disnake.Embed(color=0x19212D)
             embed.set_author(
                 name="Anichart",
                 url="https://anichart.net/",
@@ -783,7 +783,7 @@ class AyayaAnimeManga(commands.Cog):
             return embed
 
         def generate_embed_wrapper(dataset: Dict[str, EpisodeInfoWrap]):
-            embed = discord.Embed(title="Listing Jadwal Tayang - " + season, color=0x19212D)
+            embed = disnake.Embed(title="Listing Jadwal Tayang - " + season, color=0x19212D)
             embed.set_author(
                 name="Anichart",
                 url="https://anichart.net/",
@@ -797,7 +797,7 @@ class AyayaAnimeManga(commands.Cog):
             return embed
 
         async def _generator_jadwal(
-            dataset: Dict[str, EpisodeInfoWrap], _, message: discord.Message, emote: str
+            dataset: Dict[str, EpisodeInfoWrap], _, message: disnake.Message, emote: str
         ):
             try:
                 emote_pos = emote_list.index(emote)

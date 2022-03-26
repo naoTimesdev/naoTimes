@@ -30,8 +30,8 @@ SOFTWARE.
 import logging
 from typing import Dict, List, NamedTuple, Union
 
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from .utils import bold, quote
 
@@ -132,15 +132,15 @@ class HelpGenerator:
             self.color = 0xCEBDBD  # rgb(206, 189, 189) / HEX #CEBDBD
         self.desc_cmd = desc
 
-        self.embed: discord.Embed = None
+        self.embed: disnake.Embed = None
         self._added_count = 0
         self._alias_gen = False
         self.__init_generate()
 
-    def __call__(self) -> discord.Embed:
+    def __call__(self) -> disnake.Embed:
         return self.get()
 
-    def get(self) -> discord.Embed:
+    def get(self) -> disnake.Embed:
         """Return the final embed.
         -----
 
@@ -148,7 +148,7 @@ class HelpGenerator:
         :return: Final embed
         :rtype: discord.Embed
         """
-        if not isinstance(self.embed, discord.Embed):
+        if not isinstance(self.embed, disnake.Embed):
             self.logger.warning("Embed are not generated yet.")
             raise ValueError("Embed are not generated yet.")
         if not self._alias_gen:
@@ -195,7 +195,7 @@ class HelpGenerator:
     def __init_generate(self):
         """Start generating embed"""
         self.logger.info(f"Start generating embed for: {self.cmd_name}")
-        embed = discord.Embed(color=self.color)
+        embed = disnake.Embed(color=self.color)
         embed.set_author(name=self.bot.user.display_name, icon_url=self.bot.user.avatar)
         embed.set_footer(text=f"@author N4O#8868 | Versi {self._ver}")
         title = "Bantuan Perintah"

@@ -1,8 +1,8 @@
 import logging
 from typing import List, Union
 
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot, naoTimesContext
 from naotimes.helpgenerator import HelpField, HelpOption
@@ -81,12 +81,12 @@ class BotBrainHelper(commands.Cog):
     @commands.dm_only()
     async def _bbhelp(self, ctx: naoTimesContext):
         is_nsfw = False
-        if isinstance(ctx.channel, discord.TextChannel):
+        if isinstance(ctx.channel, disnake.TextChannel):
             is_nsfw = ctx.channel.is_nsfw()
         if ctx.invoked_subcommand is None:
             if not ctx.empty_subcommand(2):
                 gen_help = await self._fallback_help(ctx)
-                if isinstance(gen_help, discord.Embed):
+                if isinstance(gen_help, disnake.Embed):
                     return await ctx.send(embed=gen_help)
                 return await ctx.send("Tidak dapat menemukan bantuan perintah tersebut.")
             is_owner = await self.bot.is_owner(ctx.author)

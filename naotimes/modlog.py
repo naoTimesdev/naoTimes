@@ -27,7 +27,7 @@ from enum import Enum
 from typing import List, Optional, Union
 
 import arrow
-import discord
+import disnake
 
 __all__ = ("ModLog", "ModLogAction", "ModLogFeature", "ModLogSetting")
 
@@ -72,7 +72,7 @@ class ModLog:
         self,
         action: ModLogAction,
         message: str = "",
-        embed: discord.Embed = None,
+        embed: disnake.Embed = None,
         timestamp: Union[int, arrow.Arrow] = None,
     ) -> None:
         self._action = action
@@ -105,7 +105,7 @@ class ModLog:
         return getattr(self, "_message", "")
 
     @property
-    def embed(self) -> Optional[discord.Embed]:
+    def embed(self) -> Optional[disnake.Embed]:
         return getattr(self, "_embed", None)
 
     @action.setter
@@ -128,8 +128,8 @@ class ModLog:
             self._timestamp = arrow.utcnow().int_timestamp
 
     @embed.setter
-    def embed(self, embed: discord.Embed):
-        if isinstance(embed, discord.Embed):
+    def embed(self, embed: disnake.Embed):
+        if isinstance(embed, disnake.Embed):
             self._embed = embed
 
 

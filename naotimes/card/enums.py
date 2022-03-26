@@ -22,7 +22,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
-from typing import Any, Dict, NamedTuple, Union, get_args, get_origin
+from dataclasses import dataclass, field
+from typing import Any, Dict, Union, get_args, get_origin
 
 from pyppeteer.page import Page
 
@@ -89,13 +90,15 @@ class CardBase:
         return self._factual_data
 
 
-class CardTemplate(NamedTuple):
+@dataclass
+class CardTemplate:
     name: str
-    html: str
-    max_width: int
+    html: str = field(repr=False)
+    max_width: int = field(repr=True)
     pad_height: int = 0
 
 
-class CardGeneratorNav(NamedTuple):
+@dataclass
+class CardGeneratorNav:
     card: CardTemplate
-    page: Page
+    page: Page = field(repr=False)

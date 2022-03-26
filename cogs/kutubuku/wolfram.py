@@ -1,7 +1,7 @@
 import logging
 
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot, naoTimesContext
 from naotimes.http import WolframPod
@@ -28,7 +28,7 @@ class KutubukuWolfram(commands.Cog):
         QUERY_STRINGIFY = query.replace(" ", "+")
 
         def _create_embed(pod: WolframPod):
-            embed = discord.Embed(title=pod.title, color=rgb_to_color(202, 103, 89))
+            embed = disnake.Embed(title=pod.title, color=rgb_to_color(202, 103, 89))
             embed.set_author(
                 name="WolframAlpha",
                 url=SEARCH_URL.format(QUERY_STRINGIFY),

@@ -1,11 +1,13 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 from functools import partial
-from typing import Callable, List, Optional, Union
+from typing import TYPE_CHECKING, Callable, List, Optional, Union
 
-import discord
+import disnake
 import wavelink
-from discord.ext import commands
+from disnake.ext import commands
 from wavelink.errors import ZeroConnectedNodes
 from wavelink.utils import MISSING
 
@@ -22,12 +24,16 @@ from naotimes.music.errors import (
 )
 from naotimes.music.genius import GeniusLyricHit
 from naotimes.music.queue import GuildMusicInstance, TrackEntry, TrackRepeat
-from naotimes.music.track import TwitchDirectLink
+from naotimes.music.tracks import SpotifyDirectTrack, TwitchDirectLink
 from naotimes.paginator import DiscordPaginatorUI
 from naotimes.timeparse import TimeString
 from naotimes.utils import cutoff_text
 
+if TYPE_CHECKING:
+    from wavelink.pool import Node
+
 GENIUS_ICON = "https://assets.genius.com/images/apple-touch-icon.png"
+MXM_ICON = "https://s.mxmcdn.net/site/images/mxm_icn_114.png"
 
 
 def is_in_voice():
@@ -264,7 +270,7 @@ class MusikPlayerCommand(commands.Cog):
         paginator = DiscordPaginatorUI(ctx, help_collect)
         await paginator.interact(30.0)
 
-    def _check_perms(self, permission: discord.Permissions):
+    def _check_perms(self, permission: disnake.Permissions):
         if permission.administrator:
             return True
         if permission.manage_guild:
@@ -274,7 +280,7 @@ class MusikPlayerCommand(commands.Cog):
         return False
 
     async def _create_player_instance(
-        self, channel: Union[discord.VoiceChannel, discord.StageChannel], author: discord.Member
+        self, channel: Union[disnake.VoiceChannel, disnake.StageChannel], author: disnake.Member
     ):
         player = await channel.connect(cls=wavelink.Player)
         self.bot.ntplayer.create(player)
@@ -299,7 +305,7 @@ class MusikPlayerCommand(commands.Cog):
         await ctx.send("\n".join(messages), reference=ctx.message)
         _CANCEL_MSG = ["cancel", "batal", "batalkan"]
 
-        def check(m: discord.Message):
+        def check(m: disnake.Message):
             return (
                 m.author == ctx.author
                 and m.channel == ctx.channel
@@ -309,7 +315,7 @@ class MusikPlayerCommand(commands.Cog):
                 )
             )
 
-        res: discord.Message
+        res: disnake.Message
         self.logger.info(f"Now waiting for {ctx.author} to select one of the tracks")
         try:
             res = await self.bot.wait_for("message", check=check, timeout=30.0)
@@ -333,8 +339,8 @@ class MusikPlayerCommand(commands.Cog):
             )
 
         author = ctx.author
-        vc_channel: Union[discord.VoiceChannel, discord.StageChannel] = None
-        if not isinstance(channel, (discord.VoiceChannel, discord.StageChannel)):
+        vc_channel: Union[disnake.VoiceChannel, disnake.StageChannel] = None
+        if not isinstance(channel, (disnake.VoiceChannel, disnake.StageChannel)):
             vc_me = author.voice
             if vc_me is None:
                 return await ctx.send("Mohon join VC atau mention VC yang anda mau!")
@@ -452,7 +458,7 @@ class MusikPlayerCommand(commands.Cog):
     @check_requirements(is_god, is_host)
     async def musik_player_leave(self, ctx: naoTimesContext):
         vc: wavelink.Player = ctx.voice_client
-        self.bot.ntplayer.clear(vc)
+        self.bot.ntplayer.delete(vc)
         await vc.stop()
         await vc.disconnect(force=True)
         await ctx.message.add_reaction("👍")
@@ -512,7 +518,7 @@ class MusikPlayerCommand(commands.Cog):
         vc: wavelink.Player = ctx.voice_client
         if not volume:
             vol_real = int(vc.volume)
-            embed = discord.Embed(colour=discord.Color.from_rgb(98, 66, 225))
+            embed = disnake.Embed(colour=disnake.Color.from_rgb(98, 66, 225))
             embed.description = f"{self._vol_emote(vol_real)} Volume sekarang adalah {vol_real}%"
             return await ctx.send(embed=embed)
 
@@ -520,7 +526,7 @@ class MusikPlayerCommand(commands.Cog):
             return await ctx.send("Volume harus antara 1-100!")
 
         await vc.set_volume(volume)
-        embed = discord.Embed(colour=discord.Color.from_rgb(98, 66, 225))
+        embed = disnake.Embed(colour=disnake.Color.from_rgb(98, 66, 225))
         embed.description = f"{self._vol_emote(volume)} Volume diatur ke {volume}%"
         return await ctx.send(embed=embed)
 
@@ -543,7 +549,7 @@ class MusikPlayerCommand(commands.Cog):
         _mode_repeat = [*_mode_off, *_mode_single, *_mode_all]
         instance = self.bot.ntplayer.get(vc)
         if not mode:
-            embed = discord.Embed(colour=discord.Color.from_rgb(98, 66, 225))
+            embed = disnake.Embed(colour=disnake.Color.from_rgb(98, 66, 225))
             embed.description = f"{self._loop_emote(instance.repeat)} {instance.repeat.nice}"
             return await ctx.send(embed=embed)
 
@@ -571,7 +577,7 @@ class MusikPlayerCommand(commands.Cog):
             if change_res.current is not None:
                 change_res.queue.put_nowait(change_res.current)
 
-        embed = discord.Embed(colour=discord.Color.from_rgb(98, 66, 225))
+        embed = disnake.Embed(colour=disnake.Color.from_rgb(98, 66, 225))
         embed.description = f"{emote_change} {change_res.repeat.nice}"
         await ctx.send(embed=embed)
 
@@ -585,7 +591,7 @@ class MusikPlayerCommand(commands.Cog):
         if vc.is_playing():
             is_playing = "Ya"
 
-        embed = discord.Embed(colour=discord.Color.from_rgb(227, 150, 64))
+        embed = disnake.Embed(colour=disnake.Color.from_rgb(227, 150, 64))
         embed.set_author(name="🎶 Pemutar Musik", icon_url=self.bot.user.avatar)
 
         spoti_emote = "<:ntSpotifyX:903302923474337802>"
@@ -623,7 +629,7 @@ class MusikPlayerCommand(commands.Cog):
     @check_requirements(is_god, is_host)
     async def musik_player_delegasi(self, ctx: naoTimesContext, member: commands.MemberConverter = None):
         vc: wavelink.Player = ctx.voice_client
-        if not isinstance(member, discord.Member):
+        if not isinstance(member, disnake.Member):
             return await ctx.send("Tidak dapat menemukan member tersebut!")
 
         if member.guild != ctx.guild:
@@ -634,6 +640,70 @@ class MusikPlayerCommand(commands.Cog):
 
         self.bot.ntplayer.change_dj(vc, member)
         await ctx.send(f"{member.mention} sekarang menjadi DJ utama!", reference=ctx.message)
+
+    @staticmethod
+    def _clean_url(url: str, append: str) -> str:
+        if url.endswith("/"):
+            url = url[:-1]
+        if append.startswith("/"):
+            append = append[1:]
+        return f"{url}/{append}"
+
+    async def _spotify_lyrics_version(self, track: SpotifyDirectTrack, node: Node):
+        # Check if actual spotify and not faux spotify
+        if not track.direct_spotify:
+            return None
+
+        track_id = track.internal_id
+        spotify = node._spotify
+        spotify_url = getattr(spotify, "_url_host", None)
+        if not spotify_url:
+            self.logger.warning(f"SpotifyLyrics<{track_id}>: Internal Spotify URL cannot be found!")
+            return None
+
+        fetch_url = self._clean_url(spotify_url, f"{track_id}/lyrics")
+        async with self.bot.aiosession.get(fetch_url) as resp:
+            if resp.status != 200:
+                self.logger.warning(
+                    f"SpotifyLyrics<{track_id}>: Cannot fetch lyrics from Spotify! ({resp.status})"
+                )
+                return None
+            data = await resp.json()
+
+        split_lyrics = data["data"]
+        # Split lyrics by line, merged together if it's still in 2000 char limit
+        joined_lyrics = []
+        temp_lyrics = []
+        for line in split_lyrics:
+            temp_join = "\n".join(temp_lyrics)
+            if len(temp_join) >= 2000:
+                joined_lyrics.append(temp_join)
+                temp_lyrics = []
+            temp_lyrics.append(line)
+            temp_join = "\n".join(temp_lyrics)
+            if len(temp_join) >= 2000:
+                temp_lyrics.pop(-1)
+                joined_lyrics.append("\n".join(temp_lyrics))
+                temp_lyrics = []
+
+        if temp_lyrics:
+            joined_lyrics.append("\n".join(temp_lyrics))
+
+        embed_sets: List[disnake.Embed] = []
+        for number, lyrics_part in enumerate(joined_lyrics, 1):
+            embed = disnake.Embed(colour=disnake.Color.from_rgb(251, 48, 62))
+            add_numbering = f" ({number}/{len(joined_lyrics)})"
+            if len(joined_lyrics) < 2:
+                add_numbering = ""
+            embed.set_author(
+                name=cutoff_text(f"{track.title}{add_numbering}", 250),
+                url=f"https://open.spotify.com/track/{track_id}",
+                icon_url=self.bot.user.avatar,
+            )
+            embed.description = lyrics_part
+            embed.set_footer(text="Lirik diambil dari Spotify/MusixMatch", icon_url=MXM_ICON)
+            embed_sets.append(embed)
+        return embed_sets
 
     @musik_player.command(name="lirik", aliases=["lyrics", "lyric"])
     @is_in_voice()
@@ -648,6 +718,13 @@ class MusikPlayerCommand(commands.Cog):
         current = instance.current.track
         if isinstance(current, TwitchDirectLink):
             return await ctx.send("Twitch stream tidak support untuk pencarian lirik!")
+        if isinstance(current, SpotifyDirectTrack):
+            embed_sets = await self._spotify_lyrics_version(current, vc.node)
+            if embed_sets is not None:
+                self.logger.info(f"SpotifyLyrics<{vc.guild}>: Sending lyric <{current.title}>")
+                paginator = DiscordPaginatorUI(ctx, embed_sets)
+                await paginator.interact()
+                return
         search_query = f"{current.author} - {current.title}"
         if getattr(current, "source", None) == "youtube":
             search_query = f"{current.title}"
@@ -664,7 +741,7 @@ class MusikPlayerCommand(commands.Cog):
             )
             return await ctx.send(error)
 
-        embed = discord.Embed(colour=discord.Color.from_rgb(227, 150, 64))
+        embed = disnake.Embed(colour=disnake.Color.from_rgb(227, 150, 64))
         embed.set_author(name="🎶 Lirik Lagu", icon_url=self.bot.user.avatar)
         description_data = []
         for nn, matches in enumerate(matching_lyrics, 1):
@@ -719,9 +796,9 @@ class MusikPlayerCommand(commands.Cog):
         if temp_lyrics:
             joined_lyrics.append("\n".join(temp_lyrics))
 
-        embed_sets: List[discord.Embed] = []
+        embed_sets: List[disnake.Embed] = []
         for number, lyrics_part in enumerate(joined_lyrics, 1):
-            embed = discord.Embed(colour=discord.Color.from_rgb(227, 150, 64))
+            embed = disnake.Embed(colour=disnake.Color.from_rgb(227, 150, 64))
             add_numbering = f" ({number}/{len(joined_lyrics)})"
             if len(joined_lyrics) < 2:
                 add_numbering = ""
@@ -736,7 +813,7 @@ class MusikPlayerCommand(commands.Cog):
 
         try:
             await message_temp.delete()
-        except (discord.HTTPException, discord.Forbidden, discord.NotFound):
+        except (disnake.HTTPException, disnake.Forbidden, disnake.NotFound):
             pass
         self.logger.info(f"GeniusLyric<{vc.guild}>: Sending lyric <{current.title}>: {selected.path}")
         paginator = DiscordPaginatorUI(ctx, embed_sets)
@@ -750,7 +827,7 @@ class MusikPlayerCommand(commands.Cog):
         real_total: int,
         total_duration: float,
     ):
-        embed = discord.Embed(colour=discord.Color.random())
+        embed = disnake.Embed(colour=disnake.Colour.random())
         embed.set_author(name="🎶 Pemutar Musik", icon_url=self.bot.user.avatar)
 
         starting_track = ((current + 1) * 5) - 5

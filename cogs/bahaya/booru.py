@@ -2,8 +2,8 @@ import logging
 import random
 from typing import List, Union
 
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesContext
@@ -100,10 +100,10 @@ class NSFWImageBooru(commands.Cog):
             return "Tidak ada hasil"
         return traversed
 
-    def _generate_ib_embed(self, dataset: dict) -> discord.Embed:
+    def _generate_ib_embed(self, dataset: dict) -> disnake.Embed:
         engine = dataset["engine"].capitalize()
         paralink = self.POST_BASE_URL.get(engine.lower()) + str(dataset["id"])
-        embed = discord.Embed(title=cutoff_text(self.clean_title(dataset["title"]), 256), color=0x19212D)
+        embed = disnake.Embed(title=cutoff_text(self.clean_title(dataset["title"]), 256), color=0x19212D)
         embed.set_author(name=engine, url=paralink, icon_url="https://api.ihateani.me/assets/favicon.png")
         description = [f"**Laman**: {paralink}"]
         sources = dataset.get("source")
