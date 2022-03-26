@@ -34,7 +34,7 @@ import logging
 from inspect import signature
 from typing import TYPE_CHECKING, Dict, Generic, List, Optional, Union
 
-import discord
+import disnake
 
 from .common import (
     IT,
@@ -177,7 +177,7 @@ class DiscordPaginator(Generic[IT]):
         return pass_data, pass_position, pass_msg, pass_emote
 
     async def __try_to_generate(
-        self, data: IT, position: int, message: discord.Message = None, emote: str = None
+        self, data: IT, position: int, message: disnake.Message = None, emote: str = None
     ):
         callback = self._default_gen
         if emote is not None:
@@ -198,14 +198,14 @@ class DiscordPaginator(Generic[IT]):
     @staticmethod
     def __generate_message(generated: GeneratorOutput) -> GeneratedKwargs:
         raw_msg: str = None
-        embed: discord.Embed = None
+        embed: disnake.Embed = None
         if isinstance(generated, (list, tuple)):
             for data in generated:
-                if isinstance(data, discord.Embed):
+                if isinstance(data, disnake.Embed):
                     embed = data
                 elif isinstance(data, str):
                     raw_msg = data
-        elif isinstance(generated, discord.Embed):
+        elif isinstance(generated, disnake.Embed):
             embed = generated
         elif isinstance(generated, (str, int)):
             if isinstance(generated, int):
@@ -216,12 +216,12 @@ class DiscordPaginator(Generic[IT]):
         final_kwargs = {}
         if isinstance(raw_msg, str):
             final_kwargs["content"] = raw_msg
-        if isinstance(embed, discord.Embed):
+        if isinstance(embed, disnake.Embed):
             final_kwargs["embed"] = embed
         return final_kwargs
 
     async def __wrap_generator_stuff(
-        self, content: IT, position: int, message: discord.Message, emote: str
+        self, content: IT, position: int, message: disnake.Message, emote: str
     ) -> GeneratedKwargs:
         if not callable(self._default_gen):
             return self.__generate_message(content)
@@ -235,7 +235,7 @@ class DiscordPaginator(Generic[IT]):
     async def paginate(
         self,
         timeout: Optional[Union[int, float]] = None,
-        message: discord.Message = None,
+        message: disnake.Message = None,
     ):
         contents = self.datasets
 
@@ -284,7 +284,7 @@ class DiscordPaginator(Generic[IT]):
             else:
                 dont_reset = False
 
-            def check_reaction(reaction: discord.Reaction, user: discord.User):
+            def check_reaction(reaction: disnake.Reaction, user: disnake.User):
                 if reaction.message.id != message.id:
                     return False
                 if user.id != self.ctx.author.id:
@@ -293,8 +293,8 @@ class DiscordPaginator(Generic[IT]):
                     return False
                 return True
 
-            res: discord.Reaction
-            user: discord.User
+            res: disnake.Reaction
+            user: disnake.User
             try:
                 res, user = await self.bot.wait_for("reaction_add", timeout=timeout, check=check_reaction)
             except asyncio.TimeoutError:

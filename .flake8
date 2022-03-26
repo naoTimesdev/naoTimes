@@ -1,6 +1,6 @@
 [flake8]
-ignore = E203,W503,F405
-max-line-length = 110
+ignore = E203,W503,F405,F403,W0621,W0703,W1203,F722
+max-line-length = 120
 exclude =
     # Auto-generated stuff.
     .git
@@ -17,3 +17,6 @@ exclude =
     # Personal local data.
     _dataset
     vthell
+per-file-ignores =
+    __init__.py: F401,F403
+    *.pyi: E302,E704,E301,E701,E305,F401

@@ -7,8 +7,6 @@ A module to help generate a card for naoTimes using pyppeteer.
 :license: MIT, see LICENSE for more details.
 """
 
-# flake8: noqa
-
 from .enums import *
 from .generator import *
 from .usercard import *

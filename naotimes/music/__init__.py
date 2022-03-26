@@ -7,10 +7,8 @@ A module to help assist with the music modules.
 :license: MIT, see LICENSE for more details.
 """
 
-# flake8: noqa
-
 from .errors import *
 from .genius import *
 from .player import *
 from .queue import *
-from .track import *
+from .tracks import *

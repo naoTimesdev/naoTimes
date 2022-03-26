@@ -3,8 +3,8 @@ from copy import deepcopy
 from typing import List
 
 import arrow
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesContext
@@ -136,7 +136,7 @@ class VoteAppCommand(commands.Cog):
         description = f"**Pertanyaan**: {topik}\n\nMasukan pilihanmu dengan klik reaction di bawah ini!"
         description += f"\nSelesai: <t:{ts_max}> (<t:{ts_max}:R>)"
 
-        embed = discord.Embed(title="Vote!", color=0x2A6968)
+        embed = disnake.Embed(title="Vote!", color=0x2A6968)
         embed.description = description
         if not use_yn:
             for nopsi, opsi in enumerate(options):
@@ -167,7 +167,7 @@ class VoteAppCommand(commands.Cog):
         await self._save_vote_data(vote_data)
 
     def _create_hierarcy_error(
-        self, user_data: discord.Member, author: discord.Member, guild: discord.Guild, is_ban: bool = False
+        self, user_data: disnake.Member, author: disnake.Member, guild: disnake.Guild, is_ban: bool = False
     ):
         tendang = ("menendang", "ditendang")
         ban = ("ngeban", "diban")
@@ -197,8 +197,8 @@ class VoteAppCommand(commands.Cog):
         if isinstance(args, str):
             return await ctx.send(quoteblock(args, code="py"))
 
-        guild: discord.Guild = ctx.guild
-        author: discord.Member = ctx.author
+        guild: disnake.Guild = ctx.guild
+        author: disnake.Member = ctx.author
 
         vote_limit = args.batas
         if isinstance(vote_limit, (str, float)):
@@ -213,7 +213,7 @@ class VoteAppCommand(commands.Cog):
         user_input = args.user
         user_mentions = ctx.message.mentions
 
-        user_data: discord.Member
+        user_data: disnake.Member
         if not user_mentions:
             if user_input.isdigit():
                 user_data = guild.get_member(int(user_input))
@@ -241,7 +241,7 @@ class VoteAppCommand(commands.Cog):
         ts_max = timeout_time.int_timestamp
         real_desc = f"[🦶] React ✅ jika user ingin anda tendang!\nSelesai: <t:{ts_max}> (<t:{ts_max}:R>)"
 
-        embed = discord.Embed(
+        embed = disnake.Embed(
             title=f"Vote Kick - {user_data}",
             description=real_desc,
             color=0x3F0A16,
@@ -272,8 +272,8 @@ class VoteAppCommand(commands.Cog):
         if isinstance(args, str):
             return await ctx.send(quoteblock(args, code="py"))
 
-        guild: discord.Guild = ctx.guild
-        author: discord.Member = ctx.author
+        guild: disnake.Guild = ctx.guild
+        author: disnake.Member = ctx.author
 
         vote_limit = args.batas
         if isinstance(vote_limit, (str, float)):
@@ -288,7 +288,7 @@ class VoteAppCommand(commands.Cog):
         user_input = args.user
         user_mentions = ctx.message.mentions
 
-        user_data: discord.Member
+        user_data: disnake.Member
         if not user_mentions:
             if user_input.isdigit():
                 user_data = guild.get_member(int(user_input))
@@ -316,7 +316,7 @@ class VoteAppCommand(commands.Cog):
         ts_max = timeout_time.int_timestamp
         real_desc = f"[🔨] React ✅ jika user ingin anda ban!\nSelesai: <t:{ts_max}> (<t:{ts_max}:R>)"
 
-        embed = discord.Embed(
+        embed = disnake.Embed(
             title=f"Vote Ban - {user_data}",
             description=real_desc,
             color=0x3F0A16,
@@ -364,11 +364,11 @@ class VoteAppCommand(commands.Cog):
         ts_max = timeout_time.int_timestamp
         real_desc = f"React 🎉 untuk join giveaway!\nSelesai: <t:{ts_max}> (<t:{ts_max}:R>)"
 
-        embed = discord.Embed(title=f"Giveaway: {barang}", description=real_desc, color=0x3D72A8)
+        embed = disnake.Embed(title=f"Giveaway: {barang}", description=real_desc, color=0x3D72A8)
         embed.add_field(name="Partisipasi", value="0 partisipan")
         embed.set_footer(text="Giveaway sedang berlangsung")
 
-        real_msg: discord.Message = await ctx.send(embed=embed)
+        real_msg: disnake.Message = await ctx.send(embed=embed)
         await real_msg.add_reaction("🎉")
 
         choices = [VoteManager("giveaway", barang, "🎉")]

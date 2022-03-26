@@ -4,7 +4,7 @@ import asyncio
 from typing import Callable, Optional
 
 import arrow
-from discord.ext import commands
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesContext

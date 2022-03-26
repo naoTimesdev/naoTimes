@@ -5,15 +5,15 @@ import logging
 from typing import Any, Dict, Generic, List, Literal, NamedTuple, Optional, TypeVar, Union
 
 import arrow
-import discord
-from discord.ext import commands, tasks
+import disnake
+from disnake.ext import commands, tasks
 
 from naotimes.bot import naoTimesBot, naoTimesContext
 from naotimes.modlog import ModLog, ModLogAction
 from naotimes.timeparse import TimeString, TimeStringParseError
 
 ShadowBanList = Dict[str, List[str]]
-RoleMute = Dict[str, discord.Role]
+RoleMute = Dict[str, disnake.Role]
 T = TypeVar("T")
 ManagerT = TypeVar("ManagerT", bound="Union[MuteManagerChild, ShadowbanManagerChild]")
 
@@ -247,12 +247,12 @@ class ModToolsMemberControl(commands.Cog):
         self.watch_mute_timeout.cancel()
         self.watch_ban_timeout.cancel()
 
-    async def _inject_mute_overwrite(self, role: discord.Role, return_error: bool = False):
-        guild: discord.Guild = role.guild
-        all_channel: List[discord.abc.GuildChannel] = guild.channels
+    async def _inject_mute_overwrite(self, role: disnake.Role, return_error: bool = False):
+        guild: disnake.Guild = role.guild
+        all_channel: List[disnake.abc.GuildChannel] = guild.channels
         for channel in all_channel:
             all_overwrites: List[int] = list(map(lambda x: x.id, channel.overwrites.keys()))
-            if isinstance(channel, (discord.TextChannel, discord.VoiceChannel)):
+            if isinstance(channel, (disnake.TextChannel, disnake.VoiceChannel)):
                 force_propagate = False
                 if role.id not in all_overwrites:
                     force_propagate = True
@@ -277,18 +277,18 @@ class ModToolsMemberControl(commands.Cog):
                         await channel.set_permissions(
                             role, overwrite=current_overwrite, reason="Auto set by naoTimes ModTools"
                         )
-                    except discord.Forbidden:
+                    except disnake.Forbidden:
                         self.logger.error("Cannot overwrite the role because missing permission sadge")
                         if return_error:
                             return (
                                 "Gagal membuat permission override, mohon pastikan Bot dapat "
                                 "mengatur permission channel",
                             )
-                    except discord.NotFound:
+                    except disnake.NotFound:
                         self.logger.error("Failed to create overwrite, role is missing for some reason...")
                         if return_error:
                             return "Gagal membuat permission override, role tidak dapat ditemukan"
-                    except discord.HTTPException:
+                    except disnake.HTTPException:
                         self.logger.error("An HTTP exception occured while trying to overwrite perms...")
                         if return_error:
                             return "Gagal membuat permission override dikarenakan kesalahan koneksi"
@@ -327,7 +327,7 @@ class ModToolsMemberControl(commands.Cog):
         for server_id, server_mute_role in mute_roles.items():
             server_id = server_id[20:]
             try:
-                the_guild: discord.Guild = self.bot.get_guild(int(server_id))
+                the_guild: disnake.Guild = self.bot.get_guild(int(server_id))
                 if the_guild is None:
                     self.logger.warning(f"Could not find guild with id {server_id}")
                     continue
@@ -336,7 +336,7 @@ class ModToolsMemberControl(commands.Cog):
                 continue
 
             try:
-                the_role: discord.Role = the_guild.get_role(int(server_mute_role))
+                the_role: disnake.Role = the_guild.get_role(int(server_mute_role))
                 if the_role is None:
                     self.logger.warning(f"Could not find role with id {server_mute_role}")
                     await self.bot.redisdb.rm(f"ntmodtools_muterole_{server_id}")
@@ -354,12 +354,12 @@ class ModToolsMemberControl(commands.Cog):
         mod_log = ModLog(action, timestamp=current.timestamp())
 
         if action == ModLogAction.EVASION_TIMEOUT:
-            embed = discord.Embed(
+            embed = disnake.Embed(
                 title="🏃‍♀️ Mute evasion",
-                colour=discord.Color.from_rgb(113, 57, 66),
+                colour=disnake.Color.from_rgb(113, 57, 66),
                 timestamp=current.datetime,
             )
-            user_data: discord.Member = data["member"]
+            user_data: disnake.Member = data["member"]
             desc_data = []
             desc_data.append(f"**• Pengguna**: {user_data.name}#{user_data.discriminator}")
             desc_data.append(f"**• ID Pengguna**: {user_data.id}")
@@ -377,9 +377,9 @@ class ModToolsMemberControl(commands.Cog):
             embed.set_footer(text="🏃‍♀️ Mute Evasion")
             mod_log.embed = embed
         elif action == ModLogAction.MEMBER_TIMEOUT:
-            embed = discord.Embed(title="🔇 User dimute", colour=discord.Color.from_rgb(163, 82, 94))
-            user_data: discord.Member = data["member"]
-            executor: discord.Member = data["executor"]
+            embed = disnake.Embed(title="🔇 User dimute", colour=disnake.Color.from_rgb(163, 82, 94))
+            user_data: disnake.Member = data["member"]
+            executor: disnake.Member = data["executor"]
             desc_data = []
             desc_data.append(f"**• Pengguna**: {user_data.name}#{user_data.discriminator}")
             desc_data.append(f"**• ID Pengguna**: {user_data.id}")
@@ -397,9 +397,9 @@ class ModToolsMemberControl(commands.Cog):
             embed.set_footer(text="🔇 Muted")
             mod_log.embed = embed
         elif action == ModLogAction.MEMBER_UNTIMEOUT:
-            embed = discord.Embed(title="🔊 User diunmute", colour=discord.Color.from_rgb(56, 112, 173))
-            user_data: discord.Member = data["member"]
-            executor: discord.Member = data["executor"]
+            embed = disnake.Embed(title="🔊 User diunmute", colour=disnake.Color.from_rgb(56, 112, 173))
+            user_data: disnake.Member = data["member"]
+            executor: disnake.Member = data["executor"]
             desc_data = []
             desc_data.append(f"**• Pengguna**: {user_data.name}#{user_data.discriminator}")
             desc_data.append(f"**• ID Pengguna**: {user_data.id}")
@@ -418,9 +418,9 @@ class ModToolsMemberControl(commands.Cog):
             embed.set_footer(text="🔊 Unmuted")
             mod_log.embed = embed
         elif action == ModLogAction.MEMBER_TIMED_BAN:
-            embed = discord.Embed(title="🔨⏱️ Timed ban", colour=0x8B0E0E, timestamp=current.datetime)
-            user_data: discord.Member = data["member"]
-            executor: discord.Member = data["executor"]
+            embed = disnake.Embed(title="🔨⏱️ Timed ban", colour=0x8B0E0E, timestamp=current.datetime)
+            user_data: disnake.Member = data["member"]
+            executor: disnake.Member = data["executor"]
             reason: str = data["reason"]
             durasi: str = data["durasi"]
             desc_data = []
@@ -444,7 +444,7 @@ class ModToolsMemberControl(commands.Cog):
             embed.set_footer(text="🔨⏱️ Banned")
             mod_log.embed = embed
         elif action == ModLogAction.MEMBER_UNBAN_TIMED:
-            embed = discord.Embed(title="👼⏱️ Timed ban (Unban)", colour=0x2BCEC2, timestamp=current.datetime)
+            embed = disnake.Embed(title="👼⏱️ Timed ban (Unban)", colour=0x2BCEC2, timestamp=current.datetime)
             uuid = data["id"]
             desc_data = []
             desc_data.append(f"**• ID Pengguna**: {uuid}")
@@ -456,12 +456,12 @@ class ModToolsMemberControl(commands.Cog):
 
         return mod_log
 
-    async def _dispatch_shadowban_check(self, member: discord.Member):
+    async def _dispatch_shadowban_check(self, member: disnake.Member):
         if self._shadowbanned.get_from_child(member.guild.id, member.id):
             self.logger.info(f"{member} is shadowbanned, banning for real")
             try:
                 await member.ban(delete_message_days=0, reason="Shadowbanned by naoTimes ModTools")
-            except discord.Forbidden:
+            except disnake.Forbidden:
                 pass
             self.logger.info(f"{member}: removing from shadowbanned list")
             self._shadowbanned.remove_from_child(member.guild.id, member.id)
@@ -470,7 +470,7 @@ class ModToolsMemberControl(commands.Cog):
                 self._shadowbanned.get_child(member.guild.id).serialize(),
             )
 
-    async def _dispatch_mute_evasion_check(self, member: discord.Member):
+    async def _dispatch_mute_evasion_check(self, member: disnake.Member):
         muted_member: Optional[GuildMuted] = self._mute_manager.get_from_child(member.guild.id, member.id)
         mute_roles = self._mute_roles.get(str(member.guild.id))
         if muted_member is not None and mute_roles is not None:
@@ -480,7 +480,7 @@ class ModToolsMemberControl(commands.Cog):
                 self.logger.info(f"{member} is muted indefinitely, this person is evasion, remuting...")
                 try:
                     await member.add_roles(mute_roles, reason="Mute evasion by leaving server")
-                except discord.Forbidden:
+                except disnake.Forbidden:
                     pass
                 modlog_setting = self.bot.get_modlog(member.guild.id)
                 if modlog_setting is not None:
@@ -496,7 +496,7 @@ class ModToolsMemberControl(commands.Cog):
                         await member.add_roles(
                             mute_roles, reason=f"Mute evasion by leaving server, have {str(mute_left)} left"
                         )
-                    except discord.Forbidden:
+                    except disnake.Forbidden:
                         pass
                     modlog_setting = self.bot.get_modlog(member.guild.id)
                     if modlog_setting is not None:
@@ -513,7 +513,7 @@ class ModToolsMemberControl(commands.Cog):
                     )
 
     @commands.Cog.listener("on_member_join")
-    async def _modtools_member_evasion_check(self, member: discord.Member):
+    async def _modtools_member_evasion_check(self, member: disnake.Member):
         # Check for shadowban
         ctime = self.bot.now().int_timestamp
         self.bot.loop.create_task(
@@ -524,7 +524,7 @@ class ModToolsMemberControl(commands.Cog):
         )
 
     @commands.Cog.listener("on_member_unban")
-    async def _modtools_member_unban_timed_check(self, guild: discord.Guild, user: discord.User):
+    async def _modtools_member_unban_timed_check(self, guild: disnake.Guild, user: disnake.User):
         manager = self._timed_ban_manager.get_from_child(guild.id, user.id)
         if manager is not None:
             self.logger.info(f"{user} got unbanned and is in timed ban list, removing it...")
@@ -534,7 +534,7 @@ class ModToolsMemberControl(commands.Cog):
                 self._timed_ban_manager.get_child(guild.id).serialize(),
             )
 
-    async def _dispatch_mute_timeout(self, member: discord.Member):
+    async def _dispatch_mute_timeout(self, member: disnake.Member):
         try:
             guild = member.guild
             mute_role = self._mute_roles.get(str(guild.id), self._mute_roles.get(guild.id, None))
@@ -549,11 +549,11 @@ class ModToolsMemberControl(commands.Cog):
                     modlog_data = {"member": member, "executor": "Unmute otomatis oleh Bot"}
                     mod_log = self._generate_modlog(ModLogAction.MEMBER_UNTIMEOUT, modlog_data)
                     await self.bot.add_modlog(mod_log, modlog_set)
-            except discord.Forbidden:
+            except disnake.Forbidden:
                 self.logger.warning(
                     f"Failed to remove role for {member} at {guild!r} because of missing permissions."
                 )
-            except discord.HTTPException:
+            except disnake.HTTPException:
                 self.logger.error(f"An HTTP exception occured while trying to unmute {member} at {guild!r}!")
         except asyncio.CancelledError:
             self.logger.error(f"Task got cancelled, failed to unmute {member} at guild {member.guild}")
@@ -601,18 +601,18 @@ class ModToolsMemberControl(commands.Cog):
             pass
         self._mute_lock = False
 
-    async def _dispatch_timedban_unban(self, guild: discord.Guild, user: int):
+    async def _dispatch_timedban_unban(self, guild: disnake.Guild, user: int):
         try:
             self.logger.info(f"Trying to unban {user} from {guild}")
-            await guild.unban(discord.Object(user), reason="Timed ban expired")
+            await guild.unban(disnake.Object(user), reason="Timed ban expired")
             self.logger.info(f"Unbanned {user} from {guild}")
             modlog_setting = self.bot.get_modlog(guild.id)
             if modlog_setting is not None:
                 mod_log = self._generate_modlog(ModLogAction.MEMBER_UNBAN_TIMED, {"id": user})
                 await self.bot.add_modlog(mod_log, modlog_setting)
-        except discord.Forbidden:
+        except disnake.Forbidden:
             self.logger.warning(f"Failed to unban {user} from {guild}")
-        except discord.HTTPException:
+        except disnake.HTTPException:
             self.logger.error(f"An HTTP exception occured while trying to unban {user} from {guild}!")
 
     @tasks.loop(seconds=1)
@@ -679,7 +679,7 @@ class ModToolsMemberControl(commands.Cog):
         if success_log and self.bot.has_modlog(ctx.guild.id):
             current_time = self.bot.now()
             modlog = ModLog(ModLogAction.MEMBER_SHADOWBAN, timestamp=current_time.timestamp())
-            embed = discord.Embed(title="🔨 Shadowbanned", timestamp=current_time.datetime)
+            embed = disnake.Embed(title="🔨 Shadowbanned", timestamp=current_time.datetime)
             embed.set_author(name=str(self.bot.user), icon_url=self.bot.user.avatar)
             description = f"**• User ID**: {user_id}\n"
             description += f"**• Pada**: <t:{int(round((current_time.timestamp())))}:F>\n"
@@ -700,7 +700,7 @@ class ModToolsMemberControl(commands.Cog):
         if success_log and self.bot.has_modlog(ctx.guild.id):
             current_time = self.bot.now()
             modlog = ModLog(ModLogAction.MEMBER_UNSHADOWBAN, timestamp=current_time.timestamp())
-            embed = discord.Embed(title="🛡🔨 Unshadowban", timestamp=current_time.datetime)
+            embed = disnake.Embed(title="🛡🔨 Unshadowban", timestamp=current_time.datetime)
             embed.set_author(name=str(self.bot.user), icon_url=self.bot.user.avatar)
             description = f"**• User ID**: {user_id}\n"
             description += f"**• Pada**: <t:{int(round((current_time.timestamp())))}:F>\n"
@@ -721,7 +721,7 @@ class ModToolsMemberControl(commands.Cog):
 
         # Create role for muted person
         self.logger.info("Role is missing for this guild, creating a new one...")
-        perms = discord.Permissions.none()
+        perms = disnake.Permissions.none()
         # perms.view_channel = True
         perms.read_message_history = True
         perms.add_reactions = True
@@ -730,7 +730,7 @@ class ModToolsMemberControl(commands.Cog):
         perms.send_messages = False
         perms.send_messages_in_threads = False
         perms.speak = False
-        guild_info: discord.Guild = self.bot.get_guild(guild_id)
+        guild_info: disnake.Guild = self.bot.get_guild(guild_id)
         try:
             mute_roles = await guild_info.create_role(
                 name="Muted by naoTimes",
@@ -739,7 +739,7 @@ class ModToolsMemberControl(commands.Cog):
                 mentionable=False,
                 reason="Auto generated by naoTimes ModTools",
             )
-        except discord.Forbidden:
+        except disnake.Forbidden:
             return None, "Gagal membuat role, mohon pastikan Bot dapat membuat Role baru!"
 
         self._mute_roles[str(guild_id)] = mute_roles
@@ -758,7 +758,7 @@ class ModToolsMemberControl(commands.Cog):
         self, ctx: naoTimesContext, member: commands.MemberConverter, *, full_reasoning: str = None
     ):
         guild_id = ctx.guild.id
-        if not isinstance(member, discord.Member):
+        if not isinstance(member, disnake.Member):
             return await ctx.send("⁉ User yang anda pilih bukanlah member server ini!")
 
         if member.guild.id != ctx.guild.id:
@@ -767,7 +767,7 @@ class ModToolsMemberControl(commands.Cog):
         if member.bot:
             return await ctx.send("🤖 Member tersebut adalah bot! Jadi tidak bisa di mute!")
 
-        bot_member: discord.Member = ctx.guild.get_member(self.bot.user.id)
+        bot_member: disnake.Member = ctx.guild.get_member(self.bot.user.id)
         if not bot_member:
             return await ctx.send(
                 "⁉ Entah mengapa Bot tidak dapat mengambil User bot di peladen yang dimaksud...?"
@@ -801,8 +801,8 @@ class ModToolsMemberControl(commands.Cog):
             except TimeStringParseError:
                 self.logger.error("Failed to parse time, ignoring...")
 
-        target_top_role: discord.Role = member.top_role
-        my_top_role: discord.Role = ctx.author.top_role
+        target_top_role: disnake.Role = member.top_role
+        my_top_role: disnake.Role = ctx.author.top_role
 
         if target_top_role > my_top_role:
             return await ctx.send("🤵 User tersebut memiliki tahkta yang lebih tinggi daripada anda!")
@@ -825,10 +825,10 @@ class ModToolsMemberControl(commands.Cog):
             self.logger.info(f"Muting {str(member)} for {str(timeout)}")
             await member.add_roles(mute_role, reason=reason)
             self.logger.info(f"Successfully muted {str(member)}")
-        except discord.Forbidden:
+        except disnake.Forbidden:
             self.logger.error("Bot doesn't have the access to mute that member")
             return await ctx.send("❌ Bot tidak dapat ngemute member tersebut!")
-        except discord.HTTPException:
+        except disnake.HTTPException:
             return await ctx.send("❌ User gagal dimute, mohon cek bot-log!")
         self._mute_manager.add_to_child(guild_id, muted_data)
         await self.bot.redisdb.set(
@@ -848,7 +848,7 @@ class ModToolsMemberControl(commands.Cog):
     @commands.guild_only()
     async def _modtools_unmute(self, ctx: naoTimesContext, member: commands.MemberConverter):
         guild_id = ctx.guild.id
-        if not isinstance(member, discord.Member):
+        if not isinstance(member, disnake.Member):
             return await ctx.send("⁉ User yang anda pilih bukanlah member server ini!")
 
         if member.guild.id != ctx.guild.id:
@@ -868,10 +868,10 @@ class ModToolsMemberControl(commands.Cog):
 
         try:
             await member.remove_roles(mute_role, reason=f"Manual unmute by {str(ctx.author)}")
-        except discord.Forbidden:
+        except disnake.Forbidden:
             self.logger.error(f"Failed to unmute {str(member)}, missing permission")
             return await ctx.send("❌ Gagal unmute user tersebut, bot tidak memliki role `Manage Role`")
-        except discord.HTTPException:
+        except disnake.HTTPException:
             self.logger.error(f"Failed to unmute {str(member)}, HTTP error")
             return await ctx.send("❌ Gagal unmute user tersebut, mohon coba sesaat lagi!")
         self._mute_manager.remove_from_child(guild_id, member.id)
@@ -892,7 +892,7 @@ class ModToolsMemberControl(commands.Cog):
         self, ctx: naoTimesContext, member: commands.MemberConverter, *, full_reasoning: str
     ):
         guild_id = ctx.guild.id
-        if not isinstance(member, discord.Member):
+        if not isinstance(member, disnake.Member):
             return await ctx.send("⁉ User yang anda pilih bukanlah member server ini!")
 
         if member.guild.id != ctx.guild.id:
@@ -923,8 +923,8 @@ class ModToolsMemberControl(commands.Cog):
         if timeout is None:
             return await ctx.send("⏱️ Mohon berikan durasi ban!")
 
-        target_top_role: discord.Role = member.top_role
-        my_top_role: discord.Role = ctx.author.top_role
+        target_top_role: disnake.Role = member.top_role
+        my_top_role: disnake.Role = ctx.author.top_role
 
         if target_top_role > my_top_role:
             return await ctx.send("🤵 User tersebut memiliki tahkta yang lebih tinggi daripada anda!")
@@ -945,10 +945,10 @@ class ModToolsMemberControl(commands.Cog):
             self.logger.info(f"Timing ban {str(member)} for {str(timeout)}")
             await member.ban(reason=reason)
             self.logger.info(f"Successfully timed ban {str(member)}")
-        except discord.Forbidden:
+        except disnake.Forbidden:
             self.logger.error(f"Failed to timed ban {str(member)}, missing permission")
             return await ctx.send("❌ Gagal timed ban user tersebut, bot tidak memliki role `Ban Members`")
-        except discord.HTTPException:
+        except disnake.HTTPException:
             self.logger.error(f"Failed to timed ban {str(member)}, HTTP error")
             return await ctx.send("❌ Gagal timed ban user tersebut, mohon coba sesaat lagi!")
         self._timed_ban_manager.add_to_child(guild_id, ban_data)

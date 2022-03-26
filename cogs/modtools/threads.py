@@ -1,7 +1,7 @@
 import logging
 
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesContext
@@ -16,10 +16,10 @@ class ModToolsThreads(commands.Cog):
     @commands.guild_only()
     async def _modtools_jointhread(self, ctx: naoTimesContext, thread: commands.ThreadConverter = None):
         self.logger.info("Trying to join threads...")
-        thread: discord.Thread = thread
+        thread: disnake.Thread = thread
         if thread is None:
             return await ctx.send("Mohon berikan thread yang valid!")
-        if not isinstance(thread, discord.Thread):
+        if not isinstance(thread, disnake.Thread):
             return await ctx.send("Kanal yang diberikan bukanlah thread yang valid!")
 
         if thread.me is not None:
@@ -39,7 +39,7 @@ class ModToolsThreads(commands.Cog):
 
         try:
             await thread.join()
-        except discord.Forbidden:
+        except disnake.Forbidden:
             return await ctx.send("Bot tidak dapat bergabung ke thread tersebut!", reference=ctx.message)
         await ctx.send(f"Sukses bergabung ke thread: {thread.mention}")
 
@@ -47,7 +47,7 @@ class ModToolsThreads(commands.Cog):
     @commands.guild_only()
     async def _modtools_leavethread(self, ctx: naoTimesContext):
         channel = ctx.channel
-        if channel.type != (discord.ChannelType.public_thread or discord.ChannelType.private_thread):
+        if channel.type != (disnake.ChannelType.public_thread or disnake.ChannelType.private_thread):
             return await ctx.send("Kanal ini bukanlah thread!")
 
         has_perms = False
@@ -64,7 +64,7 @@ class ModToolsThreads(commands.Cog):
 
         try:
             await channel.leave()
-        except discord.Forbidden:
+        except disnake.Forbidden:
             return await ctx.send("Bot tidak dapat keluar dari thread ini!", reference=ctx.message)
         parent = channel.parent
         if parent is not None:

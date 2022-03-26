@@ -1,11 +1,11 @@
 import logging
 
 import aiohttp
-import discord
-from discord.ext import app, commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
-from naotimes.context import naoTimesContext
+from naotimes.context import naoTimesAppContext, naoTimesContext
 from naotimes.http import JishoWord
 from naotimes.paginator import DiscordPaginatorUI
 
@@ -16,9 +16,9 @@ class KutubukuJisho(commands.Cog):
         self.logger = logging.getLogger("Kutubuku.Jisho")
 
     @staticmethod
-    def _generate_jisho_embed(result: JishoWord) -> discord.Embed:
+    def _generate_jisho_embed(result: JishoWord) -> disnake.Embed:
         entri = result.to_dict()
-        embed = discord.Embed(color=0x41A51D)
+        embed = disnake.Embed(color=0x41A51D)
         entri_nama = entri["word"]
         if entri["numbering"] > 0:
             entri_nama += f" [{entri['numbering'] + 1}]"
@@ -110,12 +110,14 @@ class KutubukuJisho(commands.Cog):
         ui_gen.attach(self._generate_jisho_embed)
         await ui_gen.interact()
 
-    @app.slash_command(
-        name="jisho",
-        description="Melihat informasi atau arti sebuah kata/kanji di Jisho",
-    )
-    @app.option("kata", type=str, description="Kata yang ingin dicari")
-    async def _kutubuku_jisho_slash(self, ctx: app.ApplicationContext, kata: str):
+    @commands.slash_command(name="jisho")
+    async def _kutubuku_jisho_slash(self, ctx: naoTimesAppContext, kata: str):
+        """Melihat informasi atau arti sebuah kata/kanji di Jisho
+
+        Parameters
+        ----------
+        kata: Kata yang ingin dicari
+        """
         self.logger.info(f"searching: {kata}")
 
         await ctx.defer()
@@ -144,7 +146,7 @@ class KutubukuJisho(commands.Cog):
         entries = res["data"]
 
         def _design_kanji_embed(entri: dict):
-            embed = discord.Embed(color=0x41A51D)
+            embed = disnake.Embed(color=0x41A51D)
             entri_nama = entri["query"]
             pranala = f"https://jisho.org/search/{entri_nama}%20%23kanji"
             embed.set_author(

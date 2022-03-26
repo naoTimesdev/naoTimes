@@ -1,9 +1,9 @@
 import logging
 from io import BytesIO
 
-import discord
+import disnake
 import orjson
-from discord.ext import commands
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesContext
@@ -117,7 +117,7 @@ class ShowtimesOwner(commands.Cog):
         dumped_data = orjson.dumps(final_dataset, option=orjson.OPT_INDENT_2)
         save_file_name = f"{self.bot.now().int_timestamp}_naoTimesDB_Snapshot.json"
         self.logger.info("Sending to requester...")
-        await ctx.send(content="Here you go!", file=discord.File(BytesIO(dumped_data), save_file_name))
+        await ctx.send(content="Here you go!", file=disnake.File(BytesIO(dumped_data), save_file_name))
 
     @_showowner_main.command(name="forcepull")
     async def _showowner_forcepull(self, ctx: naoTimesContext):

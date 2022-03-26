@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple, TypeVar, Union
 
 import arrow
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.config import naoTimesTicketConfig
@@ -33,11 +33,11 @@ class naoTixAttachment:
         return cls(data["url"], data["filename"], data["type"])
 
     @classmethod
-    def from_attachment(cls, data: discord.Attachment):
+    def from_attachment(cls, data: disnake.Attachment):
         return cls(data.url, data.filename, data.content_type)
 
     @classmethod
-    def from_sticker(cls, data: discord.StickerItem):
+    def from_sticker(cls, data: disnake.StickerItem):
         return cls(data.url, f"Stiker: {data.name}", data.format.name)
 
     def serialize(self):
@@ -61,7 +61,7 @@ class naoTixUser:
         )
 
     @classmethod
-    def from_user(cls, member: Union[discord.Member, discord.User]):
+    def from_user(cls, member: Union[disnake.Member, disnake.User]):
         return cls(
             id=member.id,
             name=member.name,
@@ -101,7 +101,7 @@ class naoTixMessage:
         )
 
     @classmethod
-    def from_message(cls, data: discord.Message):
+    def from_message(cls, data: disnake.Message):
         content = data.clean_content
         author = naoTixUser.from_user(data.author)
         attachments = [naoTixAttachment.from_attachment(attachment) for attachment in data.attachments]
@@ -130,7 +130,7 @@ class naoTixChannel:
         return cls(id=data["id"], name=data["name"])
 
     @classmethod
-    def from_channel(cls, data: discord.TextChannel):
+    def from_channel(cls, data: disnake.TextChannel):
         return cls(id=data.id, name=data.name)
 
     def serialize(self):
@@ -144,7 +144,7 @@ TicketTarget = TypeVar("TicketTarget", naoTixUser, naoTixChannel)
 class TicketForwarder:
     message: naoTixMessage
     target: TicketTarget
-    raw_message: discord.Message
+    raw_message: disnake.Message
 
 
 class naoTixHandler:
@@ -243,9 +243,9 @@ class BotBrainTicketing(commands.Cog):
         self._ticket_start_task = asyncio.Task(self._ticket_handle_start_task())
         self._ticket_done_task = asyncio.Task(self._ticket_handle_closing_task())
 
-        self._guild: discord.Guild = None
-        self._category: discord.CategoryChannel = None
-        self._log_channel: discord.TextChannel = None
+        self._guild: disnake.Guild = None
+        self._category: disnake.CategoryChannel = None
+        self._log_channel: disnake.TextChannel = None
 
         self._is_ready = False
         self._dont_run = False
@@ -284,7 +284,7 @@ class BotBrainTicketing(commands.Cog):
         self._guild = guild
         self.logger.info("Fetching ticket category channel...")
         kategori = guild.get_channel(ticket.id)
-        if not isinstance(kategori, discord.CategoryChannel):
+        if not isinstance(kategori, disnake.CategoryChannel):
             self.logger.error("Could not find category %s", ticket.id)
             self._dont_run = True
             self._is_ready = True
@@ -293,7 +293,7 @@ class BotBrainTicketing(commands.Cog):
         self._category = kategori
         self.logger.info("Fetching ticket log channel...")
         log_channel = guild.get_channel(ticket.log_id)
-        if not isinstance(log_channel, discord.TextChannel):
+        if not isinstance(log_channel, disnake.TextChannel):
             self.logger.error("Could not find log channel %s", ticket.log_id)
             self._dont_run = True
             self._is_ready = True
@@ -315,7 +315,7 @@ class BotBrainTicketing(commands.Cog):
             await asyncio.sleep(0.2)
 
     def _find_manager(
-        self, author: discord.User = None, channel: discord.TextChannel = None
+        self, author: disnake.User = None, channel: disnake.TextChannel = None
     ) -> Tuple[Optional[naoTixHandler], bool]:
         if author is None and channel is None:
             return None, False
@@ -349,7 +349,7 @@ class BotBrainTicketing(commands.Cog):
         await self.db.rm(f"nttixv3_{manager.id}")
 
     async def _actually_forward_message(self, forward: TicketForwarder):
-        channel_target: Union[discord.DMChannel, discord.TextChannel] = None
+        channel_target: Union[disnake.DMChannel, disnake.TextChannel] = None
         if isinstance(forward.target, naoTixUser):
             self.logger.info(f"Will be sending to user: {forward.target.id}")
             user_target = self.bot.get_user(forward.target.id)
@@ -362,14 +362,14 @@ class BotBrainTicketing(commands.Cog):
         else:
             self.logger.info(f"Will be sending to channel: {forward.target.id}")
             channel_check = self._guild.get_channel(forward.target.id)
-            if not isinstance(channel_check, discord.TextChannel):
+            if not isinstance(channel_check, disnake.TextChannel):
                 return
             channel_target = channel_check
 
         main_msg = forward.message
         timestamp = arrow.get(main_msg.timestamp)
-        embed = discord.Embed(
-            title="Pesan diterima", timestamp=timestamp.datetime, color=discord.Color.dark_orange()
+        embed = disnake.Embed(
+            title="Pesan diterima", timestamp=timestamp.datetime, color=disnake.Color.dark_orange()
         )
         author = forward.message.author
         cut_name = author.name
@@ -395,8 +395,8 @@ class BotBrainTicketing(commands.Cog):
         raw_receiver = forward.raw_message.channel
         embed_dict = embed.to_dict()
         embed_dict["title"] = "Pesan dikirim"
-        embed_dict["color"] = discord.Color.dark_green().value
-        await raw_receiver.send(embed=discord.Embed.from_dict(embed_dict))
+        embed_dict["color"] = disnake.Color.dark_green().value
+        await raw_receiver.send(embed=disnake.Embed.from_dict(embed_dict))
 
     async def _ticket_forwarder_task(self):
         await self.wait_until_ready()
@@ -477,9 +477,9 @@ class BotBrainTicketing(commands.Cog):
         iha_url, _ = await self._upload_ticket_log(handler)
         current_time = self.bot.now()
 
-        embed = discord.Embed(
+        embed = disnake.Embed(
             title="Tiket ditutup",
-            colour=discord.Color.dark_orange(),
+            colour=disnake.Color.dark_orange(),
             timestamp=current_time.datetime,
         )
         name_cut = user.name
@@ -547,14 +547,14 @@ class BotBrainTicketing(commands.Cog):
         ticket_info += f"\nPada: <t:{handler.timestamp}:F>"
 
         ts_start = arrow.get(handler.timestamp)
-        embed = discord.Embed(
-            title="Tiket dibuka!", timestamp=ts_start.datetime, colour=discord.Color.dark_magenta()
+        embed = disnake.Embed(
+            title="Tiket dibuka!", timestamp=ts_start.datetime, colour=disnake.Color.dark_magenta()
         )
         desc = f"Tiket baru telah dibuka oleh **{user.name}#{user.discriminator}**"
         desc += "\nUntuk menutup ticketnya, cukup ketik `=tutuptiket`"
         desc += f"\nTiket dibuat pada <t:{int(handler.timestamp)}>"
         embed.description = desc
-        embed.set_footer(text="📬 Muse Indonesia", icon_url=self._guild.icon)
+        embed.set_footer(text="📬 Sistem Tiket", icon_url=self._guild.icon)
 
         await text_channel.send(
             content=f"Tiket baru oleh **{user.name}#{user.discriminator}**",
@@ -565,8 +565,8 @@ class BotBrainTicketing(commands.Cog):
         )
         await self._update_manager(handler)
 
-        log_embed = discord.Embed(
-            title="Tiket baru", timestamp=ts_start.datetime, colour=discord.Colour.dark_green()
+        log_embed = disnake.Embed(
+            title="Tiket baru", timestamp=ts_start.datetime, colour=disnake.Colour.dark_green()
         )
         log_embed.description = f"\nGunakan kanal <#{text_channel.id}> untuk berbicara dengan user."
         name_cut = user.name
@@ -596,14 +596,14 @@ class BotBrainTicketing(commands.Cog):
                 break
         self.logger.info("Finished ticket start task...")
 
-    def _is_bot_prefix(self, context: discord.Message):
+    def _is_bot_prefix(self, context: disnake.Message):
         pre = self.bot.prefixes(context)
         if context.clean_content.startswith(pre):
             return True
         return False
 
     @commands.Cog.listener("on_message")
-    async def _ticket_register_message(self, message: discord.Message):
+    async def _ticket_register_message(self, message: disnake.Message):
         author = message.author
         if author.bot:
             return
@@ -627,7 +627,7 @@ class BotBrainTicketing(commands.Cog):
             return
         valid_channel = [manager.channel.id, manager.user.id]
         if is_initiator:
-            if message.channel.id not in valid_channel and not isinstance(message.channel, discord.DMChannel):
+            if message.channel.id not in valid_channel and not isinstance(message.channel, disnake.DMChannel):
                 self.logger.warning("Received message from initiator, but it's not from DMChannel!")
                 return
         if len(clean_content) >= 2000:
@@ -684,8 +684,8 @@ class BotBrainTicketing(commands.Cog):
         if not wait_channel.isdigit():
             return await ctx.send("ID kategori bukanlah angka!")
 
-        category: discord.CategoryChannel = self.bot.get_channel(int(wait_channel))
-        if not isinstance(category, discord.CategoryChannel):
+        category: disnake.CategoryChannel = self.bot.get_channel(int(wait_channel))
+        if not isinstance(category, disnake.CategoryChannel):
             return await ctx.send("ID yang dimasukan bukanlah kanal kategori!")
 
         log_channel = await category.create_text_channel(

@@ -2,11 +2,11 @@ import logging
 from typing import List, NamedTuple, Optional, Union
 
 import arrow
-import discord
-from discord.ext import app, commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
-from naotimes.context import naoTimesContext
+from naotimes.context import naoTimesAppContext, naoTimesContext
 from naotimes.utils import complex_walk
 
 
@@ -452,7 +452,7 @@ class PeninjauCuacaDunia(commands.Cog):
     def _create_embed(self, result: OWMResult):
         location = result.geo_info.name.split(", ")
         location = ", ".join(location[:2])
-        embed = discord.Embed(color=0xEC6E4C)
+        embed = disnake.Embed(color=0xEC6E4C)
         embed.set_thumbnail(url=result.current.weather.icon)
 
         description = []
@@ -546,12 +546,14 @@ class PeninjauCuacaDunia(commands.Cog):
         embed, location = self._create_embed(hasil_cuaca)
         await ctx.send(content=f"Cuaca untuk **{location}**", embed=embed)
 
-    @app.slash_command(
-        name="cuaca",
-        description="Lihat informasi cuaca sebuah lokasi",
-    )
-    @app.option("lokasi", str, description="Lokasi yang ingin anda liat informasi cuacanya")
-    async def _peninjau_cuaca_slashcmd(self, ctx: app.ApplicationContext, lokasi: str):
+    @commands.slash_command(name="cuaca")
+    async def _peninjau_cuaca_slashcmd(self, ctx: naoTimesAppContext, lokasi: str):
+        """Lihat informasi cuaca sebuah lokasi
+
+        Parameters
+        ----------
+        lokasi: Lokasi yang ingin anda liat informasi cuacanya
+        """
         self.logger.info("Requested /cuaca command")
         if self.conf is None:
             return await ctx.send("Owner Bot tidak menyiapkan API key untuk perintah ini!")

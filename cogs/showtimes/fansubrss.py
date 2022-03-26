@@ -36,10 +36,10 @@ from typing import List, Optional, Union
 from urllib.parse import urlparse
 
 import aiohttp
-import discord
+import disnake
 import feedparser
 import schema as sc
-from discord.ext import commands, tasks
+from disnake.ext import commands, tasks
 from markdownify import markdownify as mdparse
 
 from naotimes.bot import naoTimesBot, naoTimesContext
@@ -344,7 +344,7 @@ class ShowtimesFansubRSS(commands.Cog):
         return filtered_entry, metadata
 
     async def _actual_internal_feed_rss_checker(
-        self, guild_info: discord.Guild, server: FansubRSS, feed: FansubRSSFeed
+        self, guild_info: disnake.Guild, server: FansubRSS, feed: FansubRSSFeed
     ):
         try:
             self.logger.info(f"Fetching feed: {feed.feed_url}")
@@ -396,11 +396,11 @@ class ShowtimesFansubRSS(commands.Cog):
 
                 try:
                     await channel.send(**kwargs_to_send)
-                except discord.Forbidden:
+                except disnake.Forbidden:
                     self.logger.warning(f"{server!r}: Forbidden to send message to #{channel.name}")
                     is_forbidden = True
                     continue
-                except discord.HTTPException:
+                except disnake.HTTPException:
                     self.logger.warning(f"{server!r}: Failed to send message to #{channel.name}")
                     continue
         except asyncio.CancelledError:
@@ -460,7 +460,7 @@ class ShowtimesFansubRSS(commands.Cog):
         except Exception as e:
             self.logger.error(f"Failed to schedule RSS checker for {server!r}", exc_info=e)
 
-    @tasks.loop(minutes=2.0)
+    @tasks.loop(minutes=2.0, name="showtimes-fansubss-premium")
     async def _loop_check_premium_rss(self):
         """A tasks process that will check premium server"""
         all_servers = await self.get_all_servers()
@@ -475,7 +475,7 @@ class ShowtimesFansubRSS(commands.Cog):
             except asyncio.CancelledError:
                 self.logger.warning("[Premium] Got cancel signal, stopping...")
 
-    @tasks.loop(minutes=5.0)
+    @tasks.loop(minutes=5.0, name="showtimes-fansubss-normal")
     async def _loop_check_basic_rss(self):
         """A tasks that will check non-premium server"""
         all_servers = await self.get_all_servers()
@@ -515,7 +515,7 @@ class ShowtimesFansubRSS(commands.Cog):
             helpcmd.add_aliases(["rss", "fsrss"])
             await ctx.send(embed=helpcmd.get())
 
-    async def _create_rss_singleton(self, ctx: naoTimesContext, channel: discord.TextChannel):
+    async def _create_rss_singleton(self, ctx: naoTimesContext, channel: disnake.TextChannel):
         guild_id = ctx.guild.id
         prefix = self.bot.prefixes(ctx)
         self.logger.info(f"{guild_id}: waiting for RSS URL input...")
@@ -588,7 +588,7 @@ class ShowtimesFansubRSS(commands.Cog):
         guild_id = ctx.guild.id
         if not channel:
             channel = ctx.channel
-        if not isinstance(channel, discord.TextChannel):
+        if not isinstance(channel, disnake.TextChannel):
             return await ctx.send("Kanal yang dipilih bukanlah kanal teks!")
         if channel.guild.id != guild_id:
             return await ctx.send("Kanal yang dipilih tidak ada di peladen ini!")
@@ -636,7 +636,7 @@ class ShowtimesFansubRSS(commands.Cog):
         guild_id = ctx.guild.id
         if not channel:
             channel = ctx.channel
-        if not isinstance(channel, discord.TextChannel):
+        if not isinstance(channel, disnake.TextChannel):
             return await ctx.send("Kanal yang dipilih bukanlah teks kanal!")
         if channel.guild.id != guild_id:
             return await ctx.send("Kanal yang dipilih tidak ada di peladen ini!")
@@ -693,7 +693,7 @@ class ShowtimesFansubRSS(commands.Cog):
         sample_entry = normalize_rss_data(entries_data[0])
 
         def _create_sample_display(entry: dict):
-            embed = discord.Embed(
+            embed = disnake.Embed(
                 title="Contoh data",
                 description=r"Ketik `{nama_data}` untuk memakai data dari RSS, misalkan "
                 "ingin memakai judul dari RSS.\n"
@@ -723,10 +723,10 @@ class ShowtimesFansubRSS(commands.Cog):
 
         first_run = True
         cancelled = False
-        emb_msg: discord.Message
+        emb_msg: disnake.Message
         self.logger.info(f"{guild_id}: start modifying...")
         while True:
-            embed = discord.Embed(title="FansubRSS")
+            embed = disnake.Embed(title="FansubRSS")
             embed.description = f"<#{selected_rss.channel}>: {selected_rss.feed_url}"
             rss_msg = selected_rss.message
             if rss_msg is None:
@@ -752,7 +752,7 @@ class ShowtimesFansubRSS(commands.Cog):
 
             reaction_set = ["1️⃣", "2️⃣", "✅", "❌"]
 
-            def check_reaction(reaction: discord.Reaction, user: discord.User):
+            def check_reaction(reaction: disnake.Reaction, user: disnake.User):
                 return (
                     reaction.message.id == emb_msg.id
                     and user.id == ctx.author.id
@@ -762,8 +762,8 @@ class ShowtimesFansubRSS(commands.Cog):
             for react in reaction_set:
                 await emb_msg.add_reaction(react)
 
-            res: discord.Reaction
-            user: discord.Member
+            res: disnake.Reaction
+            user: disnake.Member
 
             res, user = await self.bot.wait_for("reaction_add", check=check_reaction)
             if user != ctx.author:
@@ -808,12 +808,12 @@ class ShowtimesFansubRSS(commands.Cog):
                 cur_emb_data = embed_data.generate(sample_entry, True)
                 smpl_embed = _create_sample_display(sample_entry)
                 await emb_msg.edit(embed=smpl_embed)
-                cur_emb_msg: discord.Message = await ctx.send(embed=cur_emb_data)
+                cur_emb_msg: disnake.Message = await ctx.send(embed=cur_emb_data)
 
                 first_embed_run = True
                 cancelled_embed = False
                 embed_input: str
-                prompt_msg: discord.Message = None
+                prompt_msg: disnake.Message = None
                 while True:
                     if first_embed_run:
                         first_embed_run = False
@@ -939,10 +939,10 @@ class ShowtimesFansubRSS(commands.Cog):
 
         first_run = True
         is_cancelled = False
-        emb_msg: discord.Message
+        emb_msg: disnake.Message
         self.logger.info(f"{guild_id}: start data modifying...")
         while True:
-            embed = discord.Embed(title="FansubRSS")
+            embed = disnake.Embed(title="FansubRSS")
             embed.add_field(name="1️⃣ Atur URL", value=f"`{selected_rss.feed_url}`", inline=False)
             embed.add_field(
                 name="2️⃣ Atur Channel",
@@ -963,7 +963,7 @@ class ShowtimesFansubRSS(commands.Cog):
 
             reaction_set = ["1️⃣", "2️⃣", "✅", "❌"]
 
-            def check_reaction(reaction: discord.Reaction, user: discord.User):
+            def check_reaction(reaction: disnake.Reaction, user: disnake.User):
                 return (
                     reaction.message.id == emb_msg.id
                     and user.id == ctx.author.id
@@ -973,8 +973,8 @@ class ShowtimesFansubRSS(commands.Cog):
             for react in reaction_set:
                 await emb_msg.add_reaction(react)
 
-            res: discord.Reaction
-            user: discord.Member
+            res: disnake.Reaction
+            user: disnake.Member
 
             res, user = await self.bot.wait_for("reaction_add", check=check_reaction)
             if user.id != ctx.author.id:
@@ -1020,7 +1020,7 @@ class ShowtimesFansubRSS(commands.Cog):
                     converter = commands.TextChannelConverter()
                     try:
                         parsed_channel = await converter.convert(ctx, channel_feed)
-                        if isinstance(parsed_channel, discord.TextChannel):
+                        if isinstance(parsed_channel, disnake.TextChannel):
                             if parsed_channel.guild.id != guild_id:
                                 self.logger.warning(f"{guild_id}: selected channel is not a valid one!")
                                 await ctx.send_timed(

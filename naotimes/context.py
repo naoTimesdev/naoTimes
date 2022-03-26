@@ -27,8 +27,9 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Callable, List, Optional, TypeVar, Union
 
-import discord
-from discord.ext import app, commands
+import disnake
+from disnake import ApplicationCommandInteraction
+from disnake.ext import commands
 
 from .helpgenerator import HelpGenerator
 from .t import T
@@ -72,7 +73,7 @@ class naoTimesContext(commands.Context[BotT]):
         delete_answer: bool = False,
         timeout: int = 30,
         return_all: bool = False,
-        pass_message: discord.Message = None,
+        pass_message: disnake.Message = None,
         allow_cancel: bool = True,
     ) -> Optional[Union[str, bool]]:
         """Sent a message and wait for a response from user
@@ -85,28 +86,28 @@ class naoTimesContext(commands.Context[BotT]):
         bot = self.bot
         if allow_cancel:
             message += "\nUntuk membatalkan, ketik: `cancel`"
-        prompt: discord.Message
+        prompt: disnake.Message
         if pass_message is not None:
             prompt = pass_message
             await prompt.edit(content=message)
         else:
             prompt = await self.send(message)
 
-        def check_author(m: discord.Message):
+        def check_author(m: disnake.Message):
             return m.author == self.message.author and m.channel == self.message.channel
 
         try:
-            await_msg: discord.Message = await bot.wait_for("message", check=check_author, timeout=timeout)
+            await_msg: disnake.Message = await bot.wait_for("message", check=check_author, timeout=timeout)
             msg_content = await_msg.content
             if delete_answer:
                 try:
                     await await_msg.delete(no_log=True)
-                except discord.Forbidden:
+                except disnake.Forbidden:
                     pass
             if delete_prompt:
                 try:
                     await prompt.delete()
-                except discord.Forbidden:
+                except disnake.Forbidden:
                     pass
             if isinstance(msg_content, str) and msg_content.lower() == "cancel" and allow_cancel:
                 if return_all:
@@ -128,14 +129,17 @@ class naoTimesContext(commands.Context[BotT]):
         :param delay: How long the message will be alive
         :type delay: Union[str, float]
         """
-        msg: discord.Message = await self.send(message)
-        await asyncio.sleep(delay)
+        msg: disnake.Message = await self.send(message)
+        try:
+            await asyncio.sleep(delay)
+        except asyncio.CancelledError:
+            return
         try:
             await msg.delete()
-        except (discord.Forbidden, discord.HTTPException, discord.NotFound):
+        except (disnake.Forbidden, disnake.HTTPException, disnake.NotFound):
             pass
 
-    async def confirm(self, message: Union[str, discord.Message], dont_remove: bool = False):
+    async def confirm(self, message: Union[str, disnake.Message], dont_remove: bool = False):
         """Send a confirmation dialog
 
         :param bot: The bot instance
@@ -145,13 +149,17 @@ class naoTimesContext(commands.Context[BotT]):
         """
         bot = self.bot
         if isinstance(message, str):
-            message: discord.Message = await self.send(message)
-        is_dm = isinstance(self.channel, discord.DMChannel)
+            message: disnake.Message = await self.send(message)
+        is_dm = isinstance(self.channel, disnake.DMChannel)
         to_react = ["✅", "❌"]
         for react in to_react:
-            await message.add_reaction(react)
+            try:
+                await message.add_reaction(react)
+            except disnake.Forbidden:
+                await self.send("Tidak dapat menambah reaksi ke pesan konfirmasi!")
+                return False
 
-        def check_react(reaction: discord.Reaction, user: discord.User):
+        def check_react(reaction: disnake.Reaction, user: disnake.User):
             if reaction.message.id != message.id:
                 return False
             if user.id != self.message.author.id:
@@ -160,8 +168,8 @@ class naoTimesContext(commands.Context[BotT]):
                 return False
             return True
 
-        res: discord.Reaction
-        user: discord.Member
+        res: disnake.Reaction
+        user: disnake.Member
         dialog_tick = True
         while True:
             res, user = await bot.wait_for("reaction_add", check=check_react)
@@ -173,7 +181,7 @@ class naoTimesContext(commands.Context[BotT]):
                 try:
                     if not dont_remove:
                         await message.delete()
-                except (discord.Forbidden, discord.HTTPException, discord.NotFound):
+                except (disnake.Forbidden, disnake.HTTPException, disnake.NotFound):
                     pass
                 break
             elif "❌" in str(res.emoji):
@@ -181,7 +189,7 @@ class naoTimesContext(commands.Context[BotT]):
                 try:
                     if not dont_remove:
                         await message.delete()
-                except (discord.Forbidden, discord.HTTPException, discord.NotFound):
+                except (disnake.Forbidden, disnake.HTTPException, disnake.NotFound):
                     pass
                 break
         return dialog_tick
@@ -216,7 +224,7 @@ class naoTimesContext(commands.Context[BotT]):
         first_run = True
         while True:
             if first_run:
-                embed = discord.Embed(title="Pilih:", color=discord.Color.random())
+                embed = disnake.Embed(title="Pilih:", color=disnake.Color.random())
                 formatted_value = []
                 for pos, content in enumerate(choices):
                     parse_content = generator(content)
@@ -227,7 +235,7 @@ class naoTimesContext(commands.Context[BotT]):
                     text="Dibawakan oleh naoTimes™", icon_url="https://naoti.me/assets/img/nt192.png"
                 )
                 first_run = False
-                message: discord.Message = await self.send(embed=embed)
+                message: disnake.Message = await self.send(embed=embed)
 
             reactmote_ext = ["❌"]
             reactmoji_cont = reactmoji[: len(choices)]
@@ -236,7 +244,7 @@ class naoTimesContext(commands.Context[BotT]):
             for react in reactmoji_cont:
                 await message.add_reaction(react)
 
-            def check_reaction(reaction: discord.Reaction, user: discord.User):
+            def check_reaction(reaction: disnake.Reaction, user: disnake.User):
                 if reaction.message.id != message.id:
                     return False
                 if user.id != self.message.author.id:
@@ -245,8 +253,8 @@ class naoTimesContext(commands.Context[BotT]):
                     return False
                 return True
 
-            res: discord.Reaction
-            user: discord.Member
+            res: disnake.Reaction
+            user: disnake.Member
             try:
                 res, user = await bot.wait_for("reaction_add", check=check_reaction)
             except asyncio.TimeoutError:
@@ -265,14 +273,98 @@ class naoTimesContext(commands.Context[BotT]):
         await message.delete()
         return selected
 
+    async def send_chunked(self, message: str, *, limit: int = 2048, fast: bool = False):
+        """Send a string to a channel or target
+        This will try to send it in chunk without breaking the limit.
 
-class naoTimesAppContext(app.ApplicationContext[BotT, CogT]):
+        :param message: The message to be sent
+        :type message: str
+        :param limit: The limit characters to be sent each chunks, defaults to 2048
+        :type limit: int, optional
+        :param fast: Will not split the sentences properly, defaults to False
+        :type fast: bool, optional
+        """
+
+        # Dont chunk if the message is too short to the limit
+        if len(message) < limit:
+            return await self.send(message)
+
+        if fast:
+            # Quick splitting method.
+            # Will split the character according to the limit
+            # So it can split it like "This is a full word" into
+            # "This is a fu" and "ll word". Would be bad
+            # So if we eexpect a really long message just use this chunking method
+            # Or the user can override it.
+            chunks = [message[i : i + limit] for i in range(0, len(message), limit)]
+        else:
+            # Slow chunking operation, basically joining and checking if the chunk
+            # will hit the limit, if we add more sentences or word to it.
+            # If yes, join it and push it into chunks list
+            # Much more easier to read but slower. Example: "This is a full word"
+            # Will be split into "This is a" and "full word"
+            chunks: List[str] = []
+            current_chunk: List[str] = []
+            split_chunks = message.split()
+            for split in split_chunks:
+                current = len(" ".join(current_chunk))
+                if current + len(split) > limit:
+                    chunks.append(" ".join(current_chunk))
+                    current_chunk = []
+                current_chunk.append(split)
+            if current_chunk:
+                chunks.append(" ".join(current_chunk))
+
+        for chunk in chunks:
+            # Actually send the chunked messages
+            await self.send(chunk)
+
+
+class naoTimesAppContext(ApplicationCommandInteraction):
     """A custom naoTimes application command context for most stuff
 
     Mainly for extra typing.
     """
 
-    bot: naoTimesBot
+    client: naoTimesBot
 
-    if TYPE_CHECKING:
-        cog: CogT
+    @property
+    def cog(self) -> CogT:
+        return self.application_command.cog
+
+    @property
+    def bot(self) -> naoTimesBot:
+        return self.client
+
+    def get_cog(self, name: str) -> Optional[CogT]:
+        """Shortcut to get a cog from the bot."""
+        return self.client.get_cog(name)
+
+    async def defer(self, *, ephemeral: bool = False, with_message: bool = False) -> None:
+        """|coro|
+
+        Defers the interaction response.
+
+        This is typically used when the interaction is acknowledged
+        and a secondary action will be done later.
+
+        This is a shortcut to :meth:`ApplicationCommandInteraction.response.defer`.
+
+        Parameters
+        ----------
+        ephemeral: :class:`bool`
+            Whether the deferred message will eventually be ephemeral.
+        with_message: :class:`bool`
+            Whether the response will be a message with thinking state (bot is thinking...).
+            This only applies to interactions of type :attr:`InteractionType.component`.
+
+            .. versionadded:: 2.4
+
+        Raises
+        ------
+        HTTPException
+            Deferring the interaction failed.
+        InteractionResponded
+            This interaction has already been responded to before.
+        """
+        await self.response.defer(ephemeral=ephemeral, with_message=with_message)

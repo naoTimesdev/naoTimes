@@ -29,7 +29,7 @@ from argparse import Namespace
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
 
-from discord.enums import VoiceRegion
+from disnake.enums import VoiceRegion
 
 from .utils import blocking_read_files, blocking_write_files, str_or_none, write_files
 
@@ -80,6 +80,7 @@ class naoTimesNamespace(Namespace):
     showtimes_fetch: bool
     dev_mode: bool
     presence: bool
+    message: bool
 
 
 class ConfigParseError(Exception):

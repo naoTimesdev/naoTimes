@@ -1,8 +1,8 @@
 import logging
 import random
 
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesContext
@@ -25,7 +25,7 @@ class FunTanyaJawab(commands.Cog):
             rtext += f" untuk `{pesan}`"
         rtext += "."
 
-        embed = discord.Embed(timestamp=self.bot.now().datetime, color=discord.Colour.random())
+        embed = disnake.Embed(timestamp=self.bot.now().datetime, color=disnake.Colour.random())
         embed.set_thumbnail(url=_F)
         embed.add_field(name=pemberi_f, value=rtext)
         await ctx.send(embed=embed)
@@ -33,9 +33,9 @@ class FunTanyaJawab(commands.Cog):
     @commands.command(name="kerang", aliases=["kerangajaib"])
     async def _fun_tanya_kerang(self, ctx: naoTimesContext, *, pertanyaan: str):
         rand = random.random()
-        author: discord.User = ctx.author
-        embed = discord.Embed(
-            title="Kerang Ajaib", timestamp=self.bot.now().datetime, color=discord.Colour.random()
+        author: disnake.User = ctx.author
+        embed = disnake.Embed(
+            title="Kerang Ajaib", timestamp=self.bot.now().datetime, color=disnake.Colour.random()
         )
         embed.set_thumbnail(url=_KERANG)
         answer = "Ya"
@@ -44,6 +44,44 @@ class FunTanyaJawab(commands.Cog):
         embed.description = f"**{pertanyaan}**\n{answer}"
         embed.set_footer(text=f"Ditanyakan oleh: {author}", icon_url=author.avatar)
         await ctx.send(embed=embed)
+
+    @commands.command(name="crot")
+    async def _fun_tanya_crot(self, ctx: naoTimesContext, *, orang: commands.MemberConverter = None):
+        if orang is None:
+            orang = ctx.author
+
+        if not isinstance(orang, (disnake.Member, disnake.User)):
+            return await ctx.send(
+                "Bot tidak menemukan orang tersebut, jadi tidak bisa memeriksa kekuatan crot!"
+            )
+
+        waktu = [
+            "1 detik",
+            "5 detik",
+            "20 detik",
+            "1 menit",
+            "5 menit",
+            "15 menit",
+            "30 menit",
+            "1 jam",
+            "4 jam",
+            "12 jam",
+            "24 jam",
+            "sepekan",
+            "1 bulan",
+            "3 bulan",
+            "6 bulan",
+            "1 tahun",
+            "10 tahun",
+            "25 tahun",
+            "50 tahun",
+            "69 tahun",
+        ]
+
+        pilih_waktu = random.choice(waktu)
+
+        pesan = f"**{orang}** bertahan selama {pilih_waktu} lalu akhirnya klimaks dan crot"
+        await ctx.send(pesan)
 
     @commands.command(name="8ball")
     async def _fun_tanya_8ball(self, ctx: naoTimesContext, *, pertanyaan: str):
@@ -80,7 +118,7 @@ class FunTanyaJawab(commands.Cog):
             "netral": 0xFFDC4A,
             "negatif": 0xFF4A4A,
         }
-        author: discord.User = ctx.author
+        author: disnake.User = ctx.author
 
         # chance = 300
         positif_get = ["positif"] * 120
@@ -98,7 +136,7 @@ class FunTanyaJawab(commands.Cog):
 
         tukang_tanya = f"Ditanyakan oleh: {str(author)}"
 
-        embed = discord.Embed(
+        embed = disnake.Embed(
             title="Bola delapan (8 Ball)",
             timestamp=self.bot.now().datetime,
             color=colored,
@@ -125,11 +163,53 @@ class FunTanyaJawab(commands.Cog):
             "Agnostik",
             "Shinto",
             "Yahudi",
+            "Sunda",
         ]
 
         text_to_send = f"Agama {tentang} itu apa?\n"
         text_to_send += f"{random.choice(pilihan_agama)}."
         await ctx.send(text_to_send)
+
+    @commands.command(name="ras")
+    async def _fun_tanya_ras(self, ctx: naoTimesContext, *, tentang: str = ""):
+        if not tentang:
+            tentang = str(ctx.author)
+        tentang = f"**{tentang}**"
+
+        pilihan_ras = [
+            "Jawa",
+            "Sunda",
+            "Batak",
+            "Cina",
+            "Bugis",
+            "Asmat",
+            "Mongoloid",
+            "Melayu",
+            "YOASOBI Gendut",
+            "Samin",
+            "Yahudi",
+            "Arya",
+            "Ngapak",
+            "Madura",
+            "Minang",
+            "Dayak",
+            "Banjar",
+            "Arab",
+            "Wibu",
+            "Gay-mer",
+            "Ras hanip, kontol anjing",
+            "Cebong",
+            "Kampret",
+            "Pembuat mobil",
+            "Kadrun",
+            "Gen Halilintar",
+        ]
+
+        text_to_send = f"Ras {tentang} itu apa?\n"
+        text_to_send += f"{random.choice(pilihan_ras)}."
+        embed = disnake.Embed(description=text_to_send)
+        embed.set_footer(text="Jangan dibawa serius :)")
+        await ctx.send(embed=embed)
 
 
 def setup(bot: naoTimesBot):

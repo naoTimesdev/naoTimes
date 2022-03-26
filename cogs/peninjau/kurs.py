@@ -2,11 +2,11 @@ import logging
 from enum import Enum
 from typing import Tuple
 
-import discord
-from discord.ext import app, commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
-from naotimes.context import naoTimesContext
+from naotimes.context import naoTimesAppContext, naoTimesContext
 from naotimes.utils import complex_walk, quoteblock
 
 
@@ -98,6 +98,8 @@ class PeninjauKursMataUang(commands.Cog):
         before, after = dari.upper(), ke.upper()
         if before == after:
             return "Apakah anda bodoh?"
+        if jumlah is None:
+            jumlah = 1.0
 
         MODE_LIST = {
             KursType.CRYPTO: {
@@ -181,9 +183,12 @@ class PeninjauKursMataUang(commands.Cog):
             else:
                 currency_data = crypto_currency
 
+        if currency_data is None:
+            return "Gagal mengambil informasi kurs mata uang"
+
         self.logger.info("Rounding results...")
         converted_number, _ = self._rounded_nicely(currency_data, jumlah)
-        embed = discord.Embed(
+        embed = disnake.Embed(
             title=":gear: Konversi mata uang", colour=0x50E3C2, timestamp=self.bot.now().datetime
         )
         description = [f":small_red_triangle_down: `{name_from}` ke `{name_to}`"]
@@ -193,14 +198,16 @@ class PeninjauKursMataUang(commands.Cog):
         embed.set_footer(**MODE_LIST.get(MODE, MODE_LIST[KursType.CURRENCY]))
         return embed
 
-    @app.slash_command(
-        name="kurs",
-        description="Konversi mata uang dari satu mata uang ke yang lain",
-    )
-    @app.option("dari", str, description="Mata uang awal")
-    @app.option("ke", str, description="Mata uang tujuan")
-    @app.option("jumlah", str, description="Jumlah yang ingin diubah", required=False)
-    async def _peninjau_kurs_slash(self, ctx: app.ApplicationContext, dari: str, ke: str, jumlah: str = None):
+    @commands.slash_command(name="kurs")
+    async def _peninjau_kurs_slash(self, ctx: naoTimesAppContext, dari: str, ke: str, jumlah: str = None):
+        """Konversi mata uang dari satu mata uang ke yang lain
+
+        Parameters
+        ----------
+        dari: Mata uang awal
+        ke: Mata uang tujuan
+        jumlah: Jumlah yang ingin diubah
+        """
         if jumlah:
             try:
                 jumlah = float(jumlah)

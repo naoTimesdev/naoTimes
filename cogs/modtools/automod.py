@@ -5,8 +5,8 @@ import logging
 import re
 from typing import AnyStr, List, NamedTuple, Optional, Pattern, Union
 
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot, naoTimesContext
 
@@ -258,7 +258,7 @@ class AutomodManager:
 
 
 class AutomodHolding(NamedTuple):
-    msg: discord.Message
+    msg: disnake.Message
     is_edit: bool = False
 
 
@@ -292,9 +292,9 @@ class ModToolsAutomoderator(commands.Cog):
                 try:
                     await msg_queue.msg.delete(no_log=True)
                     is_success = True
-                except discord.NotFound:
+                except disnake.NotFound:
                     self.logger.warning(f"Message {msg_queue.msg.id} is deleted already...")
-                except discord.HTTPException:
+                except disnake.HTTPException:
                     self.logger.warning(f"Failed to delete message {msg_queue.msg.id}")
                 except Exception as e:
                     self.logger.error("An error occured", exc_info=e)
@@ -303,37 +303,37 @@ class ModToolsAutomoderator(commands.Cog):
                     if msg_queue.is_edit:
                         warn_msg += " (Edited message)"
                     warn_msg += f"\n{msg_queue.msg.author.mention}"
-                    the_channel: discord.TextChannel = msg_queue.msg.channel
-                    if isinstance(the_channel, discord.TextChannel):
+                    the_channel: disnake.TextChannel = msg_queue.msg.channel
+                    if isinstance(the_channel, disnake.TextChannel):
                         try:
                             await the_channel.send(warn_msg)
-                        except discord.Forbidden:
+                        except disnake.Forbidden:
                             pass
-                        except discord.HTTPException:
+                        except disnake.HTTPException:
                             pass
                 self._delete_queue.task_done()
             except asyncio.CancelledError:
                 break
         self.logger.info("Task are cancelled or done!")
 
-    def _automod_can_continue(self, message: discord.Message) -> bool:
-        channel: discord.TextChannel = message.channel
-        guild: discord.Guild = message.guild
+    def _automod_can_continue(self, message: disnake.Message) -> bool:
+        channel: disnake.TextChannel = message.channel
+        guild: disnake.Guild = message.guild
         if guild is None:
             return False
-        if not isinstance(channel, discord.TextChannel):
+        if not isinstance(channel, disnake.TextChannel):
             return False
         if guild.id not in self._manager:
             return False
         if message.author.bot:
             return False
-        channel_perm: discord.Permissions = channel.permissions_for(guild.get_member(self.bot.user.id))
+        channel_perm: disnake.Permissions = channel.permissions_for(guild.get_member(self.bot.user.id))
         if not channel_perm.manage_messages:
             return False
         return True
 
     @commands.Cog.listener("on_message")
-    async def _modtools_automod_watcher(self, message: discord.Message):
+    async def _modtools_automod_watcher(self, message: disnake.Message):
         is_valid = self._automod_can_continue(message)
         if not is_valid:
             return
@@ -343,7 +343,7 @@ class ModToolsAutomoderator(commands.Cog):
             await self._delete_queue.put(AutomodHolding(message, False))
 
     @commands.Cog.listener("on_message_edit")
-    async def _modtools_automod_edit_watcher(self, before: discord.Message, after: discord.Message):
+    async def _modtools_automod_edit_watcher(self, before: disnake.Message, after: disnake.Message):
         is_valid = self._automod_can_continue(after)
         if not is_valid:
             return
@@ -451,9 +451,9 @@ class ModToolsAutomoderator(commands.Cog):
         first_run = True
         cancelled = False
         timeout = False
-        react_msg: discord.Message
+        react_msg: disnake.Message
         while True:
-            embed = discord.Embed(title="Automod", color=discord.Color.random())
+            embed = disnake.Embed(title="Automod", color=disnake.Color.random())
             embed.set_thumbnail(url="https://github.com/noaione/potia-muse/raw/master/assets/avatar.png")
             embed.description = design_description()
             embed.add_field(name="*Tambahan*", value="\n".join(react_info), inline=False)
@@ -464,7 +464,7 @@ class ModToolsAutomoderator(commands.Cog):
             else:
                 await react_msg.edit(embed=embed)
 
-            def _check_react(reaction: discord.Reaction, user: discord.Member):
+            def _check_react(reaction: disnake.Reaction, user: disnake.Member):
                 return (
                     reaction.message.id == react_msg.id
                     and user.id == ctx.author.id
@@ -474,8 +474,8 @@ class ModToolsAutomoderator(commands.Cog):
             for react in react_andy:
                 await react_msg.add_reaction(react)
 
-            reaction: discord.Reaction
-            user: discord.Member
+            reaction: disnake.Reaction
+            user: disnake.Member
             try:
                 reaction, user = await self.bot.wait_for("reaction_add", check=_check_react, timeout=60)
             except asyncio.TimeoutError:
@@ -592,7 +592,7 @@ class ModToolsAutomoderator(commands.Cog):
             f"➕ Ingin menambah? Gunakan `{atcmd} tambah`",
             f"❌ Ingin menonaktifkan? Gunakan `{atcmd} matikan`",
         ]
-        embed = discord.Embed(title=f"Automod ({len(automod_info.words)})", color=discord.Color.random())
+        embed = disnake.Embed(title=f"Automod ({len(automod_info.words)})", color=disnake.Color.random())
         embed.set_thumbnail(url="https://github.com/noaione/potia-muse/raw/master/assets/avatar.png")
         embed.description = design_description()
         embed.add_field(name="*Tambahan*", value="\n".join(automod_extra), inline=False)

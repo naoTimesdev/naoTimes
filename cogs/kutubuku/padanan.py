@@ -2,13 +2,13 @@ import logging
 from typing import List, Literal, NamedTuple, Union
 from urllib.parse import quote_plus
 
-import discord
+import disnake
 from bs4 import BeautifulSoup
-from bs4.element import NavigableString, Tag
-from discord.ext import app, commands
+from bs4.element import NavigableString, ResultSet, Tag
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
-from naotimes.context import naoTimesContext
+from naotimes.context import naoTimesAppContext, naoTimesContext
 from naotimes.paginator import DiscordPaginatorUI
 
 BSElement = Union[NavigableString, Tag, None]
@@ -128,7 +128,7 @@ class KutubukuPadananAsing(commands.Cog):
 
         soup = BeautifulSoup(html_page, "html.parser")
         table_body = soup.find("table", {"class": "table table-condensed table-hover"})
-        all_tr_sections = table_body.find_all("tr", recursive=False)
+        all_tr_sections: ResultSet = table_body.find_all("tr", recursive=False)
 
         all_results: List[PadananKata] = []
         for nn, tr_sect in enumerate(all_tr_sections):
@@ -143,7 +143,7 @@ class KutubukuPadananAsing(commands.Cog):
         return PadananCari(kata_asing, all_results)
 
     def _design_padanan_embed(self, hasil: PadananKata):
-        embed = discord.Embed(color=0x110063)
+        embed = disnake.Embed(color=0x110063)
         url_data = self._build_url(hasil.basis)
         embed.set_author(
             name=hasil.basis,
@@ -173,16 +173,14 @@ class KutubukuPadananAsing(commands.Cog):
         ui_paginate.attach(self._design_padanan_embed)
         await ui_paginate.interact()
 
-    @app.slash_command(
-        name="padanan",
-        description="Mencari padanan bahasa Indonesia untuk bahasa asing",
-    )
-    @app.option("kata", type=str, description="Padanan kata yang ingin dicari")
-    async def _kutubuku_padanan_slash(
-        self,
-        ctx: app.ApplicationContext,
-        kata: str,
-    ):
+    @commands.slash_command(name="padanan")
+    async def _kutubuku_padanan_slash(self, ctx: naoTimesAppContext, kata: str):
+        """Mencari padanan bahasa Indonesia untuk bahasa asing.
+
+        Parameters
+        ----------
+        kata: Padanan kata yang ingin dicari
+        """
         kata_pencarian = kata.lower()
         self.logger.info(f"Querying: {kata_pencarian}")
         await ctx.defer()

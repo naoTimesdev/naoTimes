@@ -2,8 +2,8 @@ import asyncio
 import logging
 from typing import List, Optional
 
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesContext
@@ -37,7 +37,7 @@ class ShowtimesAlias(commands.Cog):
                 return await ctx.send("Tidak ada anime yang terdaftar di database")
 
             self.logger.info(f"{server_id}: generating initial data...")
-            embed = discord.Embed(title="Alias", color=0x56ACF3)
+            embed = disnake.Embed(title="Alias", color=0x56ACF3)
             embed.add_field(name="Memulai proses!", value="Mempersiapkan...")
             embed.set_footer(text="Dibawakan oleh naoTimes™", icon_url="https://p.n4o.xyz/i/nao250px.png")
             base_message = await ctx.send(embed=embed)
@@ -47,7 +47,7 @@ class ShowtimesAlias(commands.Cog):
 
             async def _select_project():
                 self.logger.info(f"{server_id}: processing anime...")
-                embed = discord.Embed(title="Alias", color=0x96DF6A)
+                embed = disnake.Embed(title="Alias", color=0x96DF6A)
                 embed.add_field(
                     name="Judul/Garapan Anime", value="Ketik judul animenya (yang asli), bisa disingkat"
                 )
@@ -75,7 +75,7 @@ class ShowtimesAlias(commands.Cog):
                 selected_project = find_match[0]
 
                 self.logger.info(f"{server_id}: selected project {selected_project.title}")
-                embed = discord.Embed(title="Alias", color=0x96DF6A)
+                embed = disnake.Embed(title="Alias", color=0x96DF6A)
                 embed.add_field(name="Apakah benar?", value=f"Judul: **{selected_project.title}**")
                 embed.set_footer(text="Dibawakan oleh naoTimes™", icon_url="https://p.n4o.xyz/i/nao250px.png")
                 await base_message.edit(embed=embed)
@@ -89,7 +89,7 @@ class ShowtimesAlias(commands.Cog):
 
             async def _select_alias():
                 self.logger.info(f"{server_id}: processing alias...")
-                embed = discord.Embed(title="Alias", color=0x96DF6A)
+                embed = disnake.Embed(title="Alias", color=0x96DF6A)
                 embed.add_field(
                     name="Alias",
                     value="Ketik alias yang diinginkan",
@@ -121,7 +121,7 @@ class ShowtimesAlias(commands.Cog):
             first_time = True
             skip_reload = False
             while True:
-                embed = discord.Embed(
+                embed = disnake.Embed(
                     title="Alias",
                     description="Periksa data!\nReact jika ingin diubah.",
                     color=0xE7E363,
@@ -159,15 +159,15 @@ class ShowtimesAlias(commands.Cog):
                 else:
                     skip_reload = False
 
-                def check_reaction(reaction: discord.Reaction, user: discord.Member):
+                def check_reaction(reaction: disnake.Reaction, user: disnake.Member):
                     return (
                         user.id == ctx.author.id
                         and str(reaction.emoji) in to_react
                         and reaction.message.id == base_message.id
                     )
 
-                res: discord.Reaction
-                user: discord.Member
+                res: disnake.Reaction
+                user: disnake.Member
                 res, user = await self.bot.wait_for("reaction_add", check=check_reaction)
                 if user != ctx.author:
                     skip_reload = True
@@ -249,7 +249,7 @@ class ShowtimesAlias(commands.Cog):
             real_value = "\n".join(numbered_aliases)
 
         self.logger.info(f"{server_id}: sending aliases...")
-        embed = discord.Embed(title="List Alias", color=0x47E0A7)
+        embed = disnake.Embed(title="List Alias", color=0x47E0A7)
         embed.add_field(name=matched_anime.title, value=real_value, inline=False)
         embed.set_footer(
             text="Dibawakan oleh naoTimes™",
@@ -300,11 +300,11 @@ class ShowtimesAlias(commands.Cog):
         first_run = True
         current_page = 1
         max_page = len(alias_chunked)
-        base_message: discord.Message
+        base_message: disnake.Message
         self.logger.info(f"{server_id}: sending results...")
         while True:
             chunk = alias_chunked[current_page - 1]
-            embed = discord.Embed(title="List Alias", color=0x47E0A7)
+            embed = disnake.Embed(title="List Alias", color=0x47E0A7)
             embed.add_field(name=matched_anime.title, value=_create_naming_scheme(chunk), inline=False)
             embed.add_field(
                 name="*Informasi*",
@@ -338,7 +338,7 @@ class ShowtimesAlias(commands.Cog):
             for react in base_emotes:
                 await base_message.add_reaction(react)
 
-            def check_reaction(reaction: discord.Reaction, user: discord.Member):
+            def check_reaction(reaction: disnake.Reaction, user: disnake.Member):
                 if user.id != ctx.author.id:
                     return False
                 if reaction.message.id != base_message.id:
@@ -347,10 +347,10 @@ class ShowtimesAlias(commands.Cog):
                     return False
                 return True
 
-            res: discord.Reaction
-            user: discord.Member
+            res: disnake.Reaction
+            # user: disnake.Member
             try:
-                res, user = await self.bot.wait_for("reaction_add", check=check_reaction, timeout=30.0)
+                res, _ = await self.bot.wait_for("reaction_add", check=check_reaction, timeout=30.0)
             except asyncio.TimeoutError:
                 return await base_message.clear_reactions()
             await base_message.clear_reactions()

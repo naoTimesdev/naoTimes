@@ -31,7 +31,7 @@ from datetime import timedelta
 from typing import Any, Generator, List, Literal, NamedTuple, Optional, Tuple, Type, Union
 
 import arrow
-import discord
+import disnake
 from bson import ObjectId
 
 from ..models import showtimes as showmodel
@@ -71,7 +71,7 @@ ShowRolesUx = Literal["TL", "TLC", "ENC", "ED", "TM", "TS", "QC"]
 ShowRolesEx = Literal["tl", "tlc", "enc", "ed", "tm", "ts", "qc"]
 ShowRoles = Union[ShowRolesUx, ShowRolesEx]
 Looped = Generator[T, None, None]
-DiscordUser = (discord.User, discord.Member)
+DiscordUser = (disnake.User, disnake.Member)
 
 
 def to_bool(data: Any) -> bool:
@@ -866,10 +866,10 @@ class ShowtimesProject:
         return self._role_id
 
     @role.setter
-    def role(self, data: Union[discord.Role, int]) -> None:
+    def role(self, data: Union[disnake.Role, int]) -> None:
         if isinstance(data, int):
             self._role_id = data
-        elif isinstance(data, discord.Role):
+        elif isinstance(data, disnake.Role):
             self._role_id = data.id
 
     @property
@@ -1355,8 +1355,8 @@ class Showtimes:
         return self._announce_channel
 
     @announcer.setter
-    def announcer(self, data: Union[int, discord.TextChannel]):
-        if isinstance(data, discord.TextChannel):
+    def announcer(self, data: Union[int, disnake.TextChannel]):
+        if isinstance(data, disnake.TextChannel):
             self._announce_channel = data.id
         elif isinstance(data, int):
             self._announce_channel = data
@@ -1499,7 +1499,8 @@ class ShowtimesAdmin:
 class ShowtimesLock:
     def __init__(self, server_id: Union[str, int]):
         self._id = str(server_id)
-        self._lock = False
+        self._unlocked = asyncio.Event()
+        self._unlocked.set()
         self._log = logging.getLogger(f"ShowtimesLock[{server_id}]")
 
     async def __aenter__(self, *args, **kwargs):
@@ -1511,22 +1512,16 @@ class ShowtimesLock:
 
     async def hold(self):
         timeout_max = 10  # In seconds
-        current_time = 0
-        increment = 0.2
-        while self._lock:
-            if not self._lock:
-                break
-            if current_time > timeout_max:
-                self._log.warning("Waiting timeout occured, relocking!")
-                break
-            await asyncio.sleep(increment)
-            current_time += increment
+        try:
+            await asyncio.wait_for(self._unlocked.wait(), timeout=timeout_max)
+        except asyncio.TimeoutError:
+            self._log.warning("Waiting timeout occured, relocking!")
         self._log.info("Holding access to lock!")
-        self._lock = True
+        self._unlocked.clear()
 
     async def release(self):
         self._log.info("Releasing lock...")
-        self._lock = False
+        self._unlocked.set()
 
 
 #####################
@@ -1630,10 +1625,10 @@ class FansubRSSEmbed:
         return self._color
 
     @color.setter
-    def color(self, data: Union[discord.Color, int]):
+    def color(self, data: Union[disnake.Color, int]):
         if isinstance(data, int):
             self._color = data
-        elif isinstance(data, discord.Color):
+        elif isinstance(data, disnake.Color):
             self._color = data.value
 
     @property
@@ -1678,7 +1673,7 @@ class FansubRSSEmbed:
             return False
         return True
 
-    def generate(self, entry_data: dict, template_mode=False) -> Optional[discord.Embed]:
+    def generate(self, entry_data: dict, template_mode=False) -> Optional[disnake.Embed]:
         if not self.is_valid and not template_mode:
             return None
 
@@ -1704,7 +1699,7 @@ class FansubRSSEmbed:
                     pass
             filtered[key] = value
 
-        embedded = discord.Embed()
+        embedded = disnake.Embed()
         title = filtered.get("title")
         description = filtered.get("description")
         url: str = filtered.get("url")
@@ -1719,7 +1714,7 @@ class FansubRSSEmbed:
         if url is not None and url.startswith("http"):
             embedded.url = url
 
-        embedded.colour = discord.Color(self.color)
+        embedded.colour = disnake.Colour(self.color)
 
         thumbnail: str = filtered.get("thumbnail")
         image: str = filtered.get("image")
@@ -1879,10 +1874,10 @@ class FansubRSSFeed:
         return int(self._channel)
 
     @channel.setter
-    def channel(self, data: Union[str, int, discord.TextChannel]):
+    def channel(self, data: Union[str, int, disnake.TextChannel]):
         if isinstance(data, (int, str)):
             self._channel = str(data)
-        elif isinstance(data, discord.TextChannel):
+        elif isinstance(data, disnake.TextChannel):
             self._channel = str(data.id)
 
     @property
@@ -1968,7 +1963,7 @@ class FansubRSSFeed:
 
         return message.replace("\\n", "\n")
 
-    def generate(self, entry_data: dict) -> Tuple[Optional[str], Optional[discord.Embed]]:
+    def generate(self, entry_data: dict) -> Tuple[Optional[str], Optional[disnake.Embed]]:
         parsed_message = None
         if self.message:
             parsed_message = self.__parse_message(entry_data)

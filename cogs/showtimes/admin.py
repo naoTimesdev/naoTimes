@@ -1,8 +1,8 @@
 import logging
 from typing import Dict, List, Tuple, TypeVar, Union
 
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesContext
@@ -35,7 +35,7 @@ class ShowtimesAdmin(commands.Cog):
     @commands.command(name="tambahutang")
     @commands.guild_only()
     async def _showadmin_tambahutang(self, ctx: naoTimesContext):
-        guild: discord.Guild = ctx.guild
+        guild: disnake.Guild = ctx.guild
         server_id = str(guild.id)
         self.logger.info(f"Requested !tambahutang at {server_id}")
 
@@ -50,7 +50,7 @@ class ShowtimesAdmin(commands.Cog):
             return await ctx.send("Hanya admin yang bisa menambah utang baru!")
 
         self.logger.info(f"{server_id}: creating initial data...")
-        embed = discord.Embed(title="Menambah Utang", color=0x56ACF3)
+        embed = disnake.Embed(title="Menambah Utang", color=0x56ACF3)
         embed.add_field(name="Memulai Proses!", value="Mempersiapkan...", inline=False)
         embed.set_footer(
             text="Dibawakan oleh naoTimes™",
@@ -61,12 +61,12 @@ class ShowtimesAdmin(commands.Cog):
         anilist_cmd = f"{server_pre}anime"
         project_data = ShowtimesProject.factory()
 
-        def check_if_author(m: discord.Message):
+        def check_if_author(m: disnake.Message):
             return m.author.id == ctx.author.id
 
         async def _process_anilist_episode(ani_id: str):
             self.logger.info(f"{server_id}: processing total episodes...")
-            prompt_msg: discord.Message = None
+            prompt_msg: disnake.Message = None
             real_msg: str = None
             real_episode: int = None
             while True:
@@ -102,7 +102,7 @@ class ShowtimesAdmin(commands.Cog):
 
         async def _process_anilist():
             self.logger.info(f"{server_id}: processing anime data...")
-            embed = discord.Embed(title="Menambah utang", color=0x96DF6A)
+            embed = disnake.Embed(title="Menambah utang", color=0x96DF6A)
             embed.add_field(
                 name="Anilist ID",
                 value="Ketik ID Anilist untuk anime yang diinginkan\n\n"
@@ -115,8 +115,8 @@ class ShowtimesAdmin(commands.Cog):
             )
             await base_message.edit(embed=embed)
 
-            prompt_msg: discord.Message = None
-            answered: discord.Message = None
+            prompt_msg: disnake.Message = None
+            answered: disnake.Message = None
             real_content: str = None
             while True:
                 [real_content, prompt_msg, answered] = await ctx.wait_content(
@@ -163,7 +163,7 @@ class ShowtimesAdmin(commands.Cog):
             anilist_id, mal_id = anilist_data["id"], anilist_data["idMal"]
             air_start = anilist_data["airing_start"]
 
-            embed = discord.Embed(title="Menambah utang", color=0x96DF6A)
+            embed = disnake.Embed(title="Menambah utang", color=0x96DF6A)
             embed.set_thumbnail(url=poster_image)
             embed.add_field(name="Apakah benar?", value=f"Judul: **{title}**", inline=False)
             embed.set_footer(
@@ -201,7 +201,7 @@ class ShowtimesAdmin(commands.Cog):
 
         async def _process_role():
             self.logger.info(f"{server_id}: processing roles")
-            embed = discord.Embed(title="Menambah utang", color=0x96DF6A)
+            embed = disnake.Embed(title="Menambah utang", color=0x96DF6A)
             embed.set_thumbnail(url=project_data.poster.url)
             embed.add_field(
                 name="Role ID",
@@ -214,7 +214,7 @@ class ShowtimesAdmin(commands.Cog):
             )
             await base_message.edit(embed=embed)
 
-            awaited: discord.Message
+            awaited: disnake.Message
             while True:
                 awaited = await self.bot.wait_for("message", check=check_if_author)
                 mentions = awaited.role_mentions
@@ -228,15 +228,15 @@ class ShowtimesAdmin(commands.Cog):
                         try:
                             gen_role = await guild.create_role(
                                 name=project_data.title,
-                                colour=discord.Colour.random(),
+                                colour=disnake.Colour.random(),
                             )
                             project_data.role = gen_role
                             break
-                        except discord.Forbidden:
+                        except disnake.Forbidden:
                             await ctx.send_timed(
                                 "Tidak dapat membuat role karena bot tidak ada akses `Manage Roles`", 3
                             )
-                        except discord.HTTPException:
+                        except disnake.HTTPException:
                             await ctx.send_timed(
                                 "Terjadi kesalahan ketika menghubungi Discord, mohon coba lagi!", 3
                             )
@@ -256,7 +256,7 @@ class ShowtimesAdmin(commands.Cog):
 
         async def _process_staff(staff_role: str):
             pretty_name = self.base.normalize_role_name(staff_role, True)
-            embed = discord.Embed(title="Menambah Utang", color=0x96DF6A)
+            embed = disnake.Embed(title="Menambah Utang", color=0x96DF6A)
             embed.set_thumbnail(url=project_data.poster.url)
             embed.add_field(
                 name=f"{pretty_name} (ID)",
@@ -270,7 +270,7 @@ class ShowtimesAdmin(commands.Cog):
             await base_message.edit(embed=embed)
 
             while True:
-                await_msg: discord.Message = await self.bot.wait_for("message", check=check_if_author)
+                await_msg: disnake.Message = await self.bot.wait_for("message", check=check_if_author)
                 mentions = await_msg.mentions
                 await await_msg.delete(no_log=True)
                 if not mentions:
@@ -344,7 +344,7 @@ class ShowtimesAdmin(commands.Cog):
             TS_NAME = _get_user_from_id(project_data.assignment.tser.id)
             QC_NAME = _get_user_from_id(project_data.assignment.qcer.id)
 
-            embed = discord.Embed(
+            embed = disnake.Embed(
                 title="Menambah Utang",
                 description="Periksa data!\nReact jika ingin diubah.",
                 color=0xE7E363,
@@ -405,15 +405,15 @@ class ShowtimesAdmin(commands.Cog):
             for reaction in REACT_ANDYS:
                 await base_message.add_reaction(reaction)
 
-            def reaction_check(reaction: discord.Reaction, user: discord.Member):
+            def reaction_check(reaction: disnake.Reaction, user: disnake.Member):
                 return (
                     reaction.message.id == base_message.id
                     and user.id != self.bot.user.id
                     and reaction.emoji in REACT_ANDYS
                 )
 
-            res: discord.Reaction
-            user: discord.Member
+            res: disnake.Reaction
+            user: disnake.Member
             res, user = await self.bot.wait_for("reaction_add", check=reaction_check)
             if user != ctx.author:
                 continue
@@ -448,7 +448,7 @@ class ShowtimesAdmin(commands.Cog):
             return await ctx.send("Dibatalkan!")
 
         self.logger.info(f"{server_id}: commiting data to database...")
-        embed = discord.Embed(title="Menambah Utang", color=0x56ACF3)
+        embed = disnake.Embed(title="Menambah Utang", color=0x56ACF3)
         embed.add_field(name="Memproses!", value="Membuat data...", inline=True)
         embed.set_footer(
             text="Dibawakan oleh naoTimes™®",
@@ -457,7 +457,7 @@ class ShowtimesAdmin(commands.Cog):
         await base_message.edit(embed=embed)
 
         self.logger.info(f"{server_id}: Checking valid member...")
-        all_members: List[Tuple[str, discord.Member]] = []
+        all_members: List[Tuple[str, disnake.Member]] = []
         for role, role_staff in project_data.assignment:
             if not role_staff.id:
                 continue
@@ -488,14 +488,14 @@ class ShowtimesAdmin(commands.Cog):
                         self.logger.info(f"{server_id}: giving {member[1]} the {role_info} role!")
                         try:
                             await member[1].add_roles(role_info)
-                        except (discord.Forbidden, discord.HTTPException):
+                        except (disnake.Forbidden, disnake.HTTPException):
                             role_given_success = False
                             self.logger.error(f"Gagal menambah role ke user {member[1]}")
 
         mal_id = project_data.mal_id
         if srv_data.fsdb_id is not None and self.bot.fsdb is not None and mal_id is not None:
             self.logger.info(f"{server_id}: updating FansubDB data...")
-            embed = discord.Embed(title="Menambah Utang", color=0x56ACF3)
+            embed = disnake.Embed(title="Menambah Utang", color=0x56ACF3)
             embed.add_field(name="Memproses!", value="Membuat data fansubdb...", inline=True)
             embed.set_footer(
                 text="Dibawakan oleh naoTimes™®",
@@ -520,7 +520,7 @@ class ShowtimesAdmin(commands.Cog):
 
         self.logger.info(f"{server_id}: updating database...")
         srv_data += project_data
-        embed = discord.Embed(title="Menambah Utang", color=0x56ACF3)
+        embed = disnake.Embed(title="Menambah Utang", color=0x56ACF3)
         embed.add_field(name="Memproses!", value="Mengirim data...", inline=True)
         embed.set_footer(
             text="Dibawakan oleh naoTimes™®",
@@ -547,7 +547,7 @@ class ShowtimesAdmin(commands.Cog):
     @commands.command(name="ubahdata")
     @commands.guild_only()
     async def _showadmin_ubahdata(self, ctx: naoTimesContext, *, judul: str = None):
-        guild: discord.Guild = ctx.guild
+        guild: disnake.Guild = ctx.guild
         server_id = str(guild.id)
         self.logger.info(f"Requested !ubahdata at {server_id}")
 
@@ -582,7 +582,7 @@ class ShowtimesAdmin(commands.Cog):
             lambda x: x.role, filter(lambda x: x.id != matched_anime.id, srv_data.projects)
         )
         all_stupid_role_used = list(filter(lambda x: isinstance(x, int), all_stupid_role_used))
-        embed = discord.Embed(title="Mengubah data", color=0xEB79B9)
+        embed = disnake.Embed(title="Mengubah data", color=0xEB79B9)
         embed.description = "Mempersiapkan proses..."
         embed.set_footer(
             text="Dibawakan oleh naoTimes™®",
@@ -590,7 +590,7 @@ class ShowtimesAdmin(commands.Cog):
         )
         base_message = await ctx.send(embed=embed)
 
-        def _is_original_author(m: discord.Message):
+        def _is_original_author(m: disnake.Message):
             return m.author.id == ctx.author.id
 
         def _get_user_name(user: int, fallback: str = "[Tidak diketahui]"):
@@ -603,7 +603,7 @@ class ShowtimesAdmin(commands.Cog):
 
         async def _internal_change_staff(role: str):
             self.logger.info(f"{matched_anime.title}: changing staff {role}")
-            embed = discord.Embed(title="Mengubah Staff", color=0xEB79B9)
+            embed = disnake.Embed(title="Mengubah Staff", color=0xEB79B9)
             norm_role = self.base.normalize_role_name(role, True)
             embed.add_field(
                 name=f"{norm_role} (ID)",
@@ -615,7 +615,7 @@ class ShowtimesAdmin(commands.Cog):
             )
             await base_message.edit(embed=embed)
 
-            await_msg: discord.Message
+            await_msg: disnake.Message
             while True:
                 await_msg = await self.bot.wait_for("message", check=_is_original_author)
                 mentions = await_msg.mentions
@@ -659,7 +659,7 @@ class ShowtimesAdmin(commands.Cog):
                     user_name = _get_user_name(staffers.id)
                     STAFF_LIST[role] = user_name
 
-                embed = discord.Embed(
+                embed = disnake.Embed(
                     title="Mengubah Staff", description=f"Anime: {matched_anime.title}", color=0xEBA279
                 )
                 for n, (role, user_name) in enumerate(STAFF_LIST.items()):
@@ -681,15 +681,15 @@ class ShowtimesAdmin(commands.Cog):
                 for REACT in EXTENDED_ANDYS:
                     await base_message.add_reaction(REACT)
 
-                def _check_reaction(reaction: discord.Reaction, user: discord.Member):
+                def _check_reaction(reaction: disnake.Reaction, user: disnake.Member):
                     return (
                         reaction.message.id == base_message.id
                         and user.id == ctx.author.id
                         and str(reaction.emoji) in EXTENDED_ANDYS
                     )
 
-                res: discord.Reaction
-                user: discord.Member
+                res: disnake.Reaction
+                user: disnake.Member
                 res, user = await self.bot.wait_for("reaction_add", check=_check_reaction)
                 if user != ctx.author:
                     continue
@@ -702,7 +702,7 @@ class ShowtimesAdmin(commands.Cog):
 
         async def _change_role():
             self.logger.info(f"{matched_anime.title}: Processing role...")
-            embed = discord.Embed(title="Mengubah Role", color=0xEBA279)
+            embed = disnake.Embed(title="Mengubah Role", color=0xEBA279)
             embed.add_field(
                 name="Role ID",
                 value="Ketik ID Role atau mention rolenya\nAtau ketik `auto` untuk membuatnya otomatis",
@@ -713,7 +713,7 @@ class ShowtimesAdmin(commands.Cog):
             )
             await base_message.edit(embed=embed)
 
-            await_msg: discord.Message
+            await_msg: disnake.Message
             while True:
                 await_msg = await self.bot.wait_for("message", check=_is_original_author)
                 mentions = await_msg.role_mentions
@@ -725,11 +725,11 @@ class ShowtimesAdmin(commands.Cog):
                     elif await_msg.content.startswith("auto"):
                         try:
                             content_role = await guild.create_role(
-                                name=matched_anime.title, colour=discord.Colour.random(), mentionable=True
+                                name=matched_anime.title, colour=disnake.Colour.random(), mentionable=True
                             )
                             await await_msg.delete(no_log=True)
                             matched_anime.role = content_role
-                        except (discord.Forbidden, discord.HTTPException):
+                        except (disnake.Forbidden, disnake.HTTPException):
                             await ctx.send_timed("Gagal membuat role baru, mohon periksa permission!")
                             await await_msg.delete(no_log=True)
                 else:
@@ -744,7 +744,7 @@ class ShowtimesAdmin(commands.Cog):
             anilist_data = await self.base.fetch_anilist(matched_anime.id, 1, last_episode.episode)
             time_data = anilist_data["time_data"]
 
-            embed = discord.Embed(
+            embed = disnake.Embed(
                 title="Menambah Episode",
                 description=f"Jumlah Episode Sekarang: {last_episode.episode}",
                 color=0xEBA279,
@@ -760,7 +760,7 @@ class ShowtimesAdmin(commands.Cog):
             await base_message.edit(embed=embed)
 
             jumlah_tambahan = None
-            await_msg: discord.Message
+            await_msg: disnake.Message
             while True:
                 await_msg = await self.bot.wait_for("message", check=_is_original_author)
                 if await_msg.content.isdigit():
@@ -789,7 +789,7 @@ class ShowtimesAdmin(commands.Cog):
         async def _hapus_episode():
             self.logger.info(f"{matched_anime.title}: Processing to remove episode...")
             last_episode = matched_anime.status[-1].episode
-            embed = discord.Embed(
+            embed = disnake.Embed(
                 title="Menambah Episode",
                 description=f"Jumlah Episode Sekarang: {last_episode}",
                 color=0xEBA279,
@@ -805,7 +805,7 @@ class ShowtimesAdmin(commands.Cog):
             await base_message.edit(embed=embed)
 
             hapus_range = None
-            prompt_msg: discord.Message = None
+            prompt_msg: disnake.Message = None
             while True:
                 [hapus_range, prompt_msg, _] = await ctx.wait_content(
                     "Mohon masukan range episode!",
@@ -866,7 +866,7 @@ class ShowtimesAdmin(commands.Cog):
 
         async def _hapus_utang_confirmation():
             self.logger.info(f"{matched_anime.title}: preparing to nuke project...")
-            embed = discord.Embed(
+            embed = disnake.Embed(
                 title="Menghapus Utang",
                 description=f"Anime: {matched_anime.title}",
                 color=0xCC1C20,
@@ -893,7 +893,7 @@ class ShowtimesAdmin(commands.Cog):
                 role_check = guild.get_role(matched_anime.role)
                 if role_check is not None:
                     real_role = role_check.name
-            embed = discord.Embed(
+            embed = disnake.Embed(
                 title="Mengubah Data",
                 description=f"Anime: {matched_anime.title}",
                 color=0xE7E363,
@@ -943,15 +943,15 @@ class ShowtimesAdmin(commands.Cog):
             for REACT in REACT_ANDYS:
                 await base_message.add_reaction(REACT)
 
-            def _check_reaction(reaction: discord.Reaction, user: discord.Member):
+            def _check_reaction(reaction: disnake.Reaction, user: disnake.Member):
                 return (
                     reaction.message.id == base_message.id
                     and user.id == ctx.author.id
                     and reaction.emoji in REACT_ANDYS
                 )
 
-            res: discord.Reaction
-            user: discord.Member
+            res: disnake.Reaction
+            user: disnake.Member
             res, user = await self.bot.wait_for("reaction_add", check=_check_reaction)
             if user != ctx.author:
                 continue
@@ -1001,7 +1001,7 @@ class ShowtimesAdmin(commands.Cog):
                     try:
                         await role_real.delete()
                         self.logger.warning(f"{matched_anime.title}:{role_id}: role removed!")
-                    except (discord.Forbidden, discord.HTTPException):
+                    except (disnake.Forbidden, disnake.HTTPException):
                         self.logger.error(f"{matched_anime.title}:{role_id}: failed to remove role!")
 
             srv_data -= matched_anime
@@ -1034,7 +1034,7 @@ class ShowtimesAdmin(commands.Cog):
                     )
 
             if announce_it and srv_data.announcer is not None:
-                embed = discord.Embed(title=matched_anime.title, color=0xB51E1E)
+                embed = disnake.Embed(title=matched_anime.title, color=0xB51E1E)
                 embed.add_field(
                     name="Dropped...",
                     value=f"{matched_anime.title} telah di drop dari fansub ini :(",

@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional, Tuple
 
-from discord.ext.commands.errors import CommandError
+from disnake.ext.commands.errors import CommandError
 
 if TYPE_CHECKING:
     from naotimes.context import naoTimesContext
@@ -35,6 +35,7 @@ __all__ = (
     "naoTimesMusicException",
     "UnsupportedURLFormat",
     "SpotifyUnavailable",
+    "TidalUnavailable",
     "EnsureVoiceChannel",
     "EnsureBotVoiceChannel",
     "EnsureHaveRequirement",
@@ -58,6 +59,10 @@ class UnsupportedURLFormat(naoTimesMusicException):
 
 
 class SpotifyUnavailable(naoTimesMusicException):
+    pass
+
+
+class TidalUnavailable(SpotifyUnavailable):
     pass
 
 

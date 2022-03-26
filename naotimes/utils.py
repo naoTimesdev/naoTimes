@@ -37,10 +37,10 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Uni
 
 import aiofiles
 import arrow
-import discord
+import disnake
 import orjson
-from discord import __version__ as discord_ver
-from discord.ext import commands
+from disnake import __version__ as discord_ver
+from disnake.ext import commands
 
 if TYPE_CHECKING:
     from asyncio import AbstractEventLoop
@@ -276,7 +276,7 @@ def get_version() -> str:
 
 def prefixes_with_data(
     bot: naoTimesBot,
-    context: Union[discord.Message, discord.TextChannel, discord.Guild, commands.Context],
+    context: Union[disnake.Message, disnake.TextChannel, disnake.Guild, commands.Context],
     prefixes_data: dict,
     default: str,
 ) -> list:
@@ -286,14 +286,14 @@ def prefixes_with_data(
     pre_data = []
     pre_data.append(default)
 
-    guild: discord.Guild = None
-    if isinstance(context, (discord.Message, discord.TextChannel)):
+    guild: disnake.Guild = None
+    if isinstance(context, (disnake.Message, disnake.TextChannel)):
         if hasattr(context, "guild"):
             try:
                 guild = context.guild
             except AttributeError:
                 pass
-    elif isinstance(context, discord.Guild):
+    elif isinstance(context, disnake.Guild):
         guild = context
     elif isinstance(context, commands.Context):
         if hasattr(context, "guild"):
@@ -509,16 +509,36 @@ def time_struct_dt(time_struct: struct_time) -> Tuple[str, arrow.Arrow]:
     return strftime_str, dt_data
 
 
-def hex_to_color(hex_str: str) -> discord.Colour:
-    hex_str = hex_str.replace("#", "").upper()
+def hex_to_color(hex_str: str) -> disnake.Colour:
+    if hex_str.startswith("#"):
+        hex_str = hex_str[1:]
+    hex_str = hex_str.upper()
     r = int(hex_str[0:2], 16)
     g = int(hex_str[2:4], 16)
     b = int(hex_str[4:6], 16)
-    return discord.Colour.from_rgb(r, g, b)
+    return disnake.Colour.from_rgb(r, g, b)
 
 
-def rgb_to_color(r: int, g: int, b: int) -> discord.Colour:
-    return discord.Colour.from_rgb(r, g, b)
+def rgb_to_color(r: int, g: int, b: int) -> disnake.Colour:
+    return disnake.Colour.from_rgb(r, g, b)
+
+
+@functools.lru_cache
+def get_connections():
+    """
+    Return all connections from the database
+    """
+    import psutil
+
+    return psutil.net_connections()
+
+
+def verify_port_open(port: int) -> bool:
+    proc = get_connections()
+    for conn in proc:
+        if conn.laddr[1] == port:
+            return False
+    return True
 
 
 class AttributeDict(dict):

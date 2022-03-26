@@ -1,8 +1,8 @@
 import logging
 from typing import Any, List, Mapping, NamedTuple, Union
 
-import discord
-from discord.ext import commands, tasks
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesContext
@@ -134,10 +134,15 @@ class FunCustomReactions(commands.Cog):
         self.logger = logging.getLogger("Fun.CustomReaction")
         self._MANAGER = ReactionManager()
 
-        self._precheck_reactions.start()
+    async def cog_load(self) -> None:
+        self.logger.info("Checking Preexisting custom reaction...")
 
-    def cog_unload(self):
-        self._precheck_reactions.stop()
+        reaction_datas = await self.bot.redisdb.getall("ntreact_*")
+        for reaction in reaction_datas:
+            server_id = int(reaction["srv_id"])
+            react_andy = self._parse_react_json(reaction)
+            self._MANAGER.add_to_child(server_id, react_andy)
+        self.logger.info(f"Appended {len(self._MANAGER)} manager!")
 
     @staticmethod
     def snowflake_to_timestamp(snowflakes: int) -> int:
@@ -152,19 +157,8 @@ class FunCustomReactions(commands.Cog):
         react_andy = Reaction(react_id, server_id, action, response)
         return react_andy
 
-    @tasks.loop(seconds=1.0, count=1)
-    async def _precheck_reactions(self):
-        self.logger.info("Checking Preexisting custom reaction...")
-
-        reaction_datas = await self.bot.redisdb.getall("ntreact_*")
-        for reaction in reaction_datas:
-            server_id = int(reaction["srv_id"])
-            react_andy = self._parse_react_json(reaction)
-            self._MANAGER.add_to_child(server_id, react_andy)
-        self.logger.info(f"Appended {len(self._MANAGER)} manager!")
-
     @commands.Cog.listener("on_message")
-    async def _answer_custom_reaction(self, message: discord.Message):
+    async def _answer_custom_reaction(self, message: disnake.Message):
         # Check if the message from a bot
         if message.author.bot:
             return
@@ -172,7 +166,7 @@ class FunCustomReactions(commands.Cog):
         if message.guild is None:
             return
         channel = message.channel
-        if not isinstance(channel, discord.abc.Messageable):
+        if not isinstance(channel, disnake.abc.Messageable):
             return
 
         # Check if we have the reaction
@@ -191,7 +185,7 @@ class FunCustomReactions(commands.Cog):
         await self.bot.redisdb.set(f"ntreact_{guild_id}_{timestamp}", preact.to_dict())
         self._MANAGER.add_to_child(guild_id, preact)
 
-        embed = discord.Embed(title="Reaksi Kustom", color=discord.Colour.random())
+        embed = disnake.Embed(title="Reaksi Kustom", color=disnake.Colour.random())
         embed.description = f"#{preact.id}"
         embed.add_field(name="Aksi", value=preact.action, inline=False)
         embed.add_field(name="Reaksi", value=preact.response, inline=False)

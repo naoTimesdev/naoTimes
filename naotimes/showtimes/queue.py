@@ -79,9 +79,9 @@ class ShowtimesQueue:
                 self._logger.error(e)
 
     async def fetch_database(self, server_id: str):
-        self._logger.info(f"opening db {server_id}")
         async with self._get_lock(server_id) as locked_id:
             try:
+                self._logger.info(f"opening db {server_id}")
                 json_data = await self._db.get(f"{self._PREFIX}{locked_id}")
                 if json_data is None:
                     return None

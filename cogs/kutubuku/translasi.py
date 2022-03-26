@@ -7,9 +7,9 @@ from urllib.parse import urlencode
 from uuid import uuid4
 
 import aiohttp
-import discord
+import disnake
 import orjson
-from discord.ext import app, commands
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesAppContext, naoTimesContext
@@ -364,7 +364,7 @@ class KutubukuTranslator(commands.Cog):
             return data_lang[1]
         return lang.upper()
 
-    async def _actually_translate(self, request: TLRequest) -> Union[str, discord.Embed]:
+    async def _actually_translate(self, request: TLRequest) -> Union[str, disnake.Embed]:
         try:
             request, error_msg = await self.gtl.translate(request)
         except SameTranslatedMessage:
@@ -373,8 +373,8 @@ class KutubukuTranslator(commands.Cog):
             self.logger.error(f"Translasi<{request.id}>: Exception occured", exc_info=e)
             return self._BASE_ERROR
         if error_msg is None:
-            embed = discord.Embed(
-                title="Translasi", color=discord.Colour.random(), timestamp=self.bot.now().datetime
+            embed = disnake.Embed(
+                title="Translasi", color=disnake.Colour.random(), timestamp=self.bot.now().datetime
             )
             description_sec = f"**Masukan (`{self.pick_lang(request.source)}`)**\n{request.input}"
             description_sec += f"\n\n**Hasil (`{self.pick_lang(request.target)}`)**\n{request.output}"
@@ -412,13 +412,15 @@ class KutubukuTranslator(commands.Cog):
             return await ctx.send(embed_or_string)
         await ctx.send(embed=embed_or_string)
 
-    @app.slash_command(
-        name="translasi",
-        description="Translasi dari satu bahasa ke bahasa lainnya!",
-    )
-    @app.option("kalimat", str, description="Kalimat/kata yang ingin di alih bahasakan")
-    @app.option("target", str, description="Target bahasa translasi", default="id")
+    @commands.slash_command(name="translasi")
     async def _kutubuku_translasi_slash(self, ctx: naoTimesAppContext, kalimat: str, target: str = "id"):
+        """Translasi dari satu bahasa ke bahasa lainnya!
+
+        Parameters
+        ----------
+        kalimat: Kalimat/kata yang ingin di alih bahasakan
+        target: Target bahasa translasi
+        """
         if not target:
             target = "id"
         if target not in self.DICT_LANG:
@@ -429,7 +431,7 @@ class KutubukuTranslator(commands.Cog):
         self.logger.info(f"Trying to translate: {kalimat} (=> {target})")
 
         if len(kalimat) > 1000:
-            self.logger.warning(f"Translasi<{ctx.interaction.id}>: Text input is way too long")
+            self.logger.warning(f"Translasi<{ctx.id}>: Text input is way too long")
             return await ctx.send("Teks terlalu panjang, maksimal adalah 1000 karakter!")
 
         await ctx.defer()

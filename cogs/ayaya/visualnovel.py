@@ -5,9 +5,9 @@ import re
 from functools import partial
 from typing import List, Literal, Optional
 
-import discord
+import disnake
 import orjson
-from discord.ext import commands
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesContext
@@ -293,8 +293,8 @@ class AyayaVisualNovel(commands.Cog):
         return await self._fetch_database(str(random_get))
 
     @staticmethod
-    def _design_embed(data: VNDBModel) -> discord.Embed:
-        embed = discord.Embed(color=0x225588)
+    def _design_embed(data: VNDBModel) -> disnake.Embed:
+        embed = disnake.Embed(color=0x225588)
         embed.set_thumbnail(url=data.poster)
         embed.set_author(
             name=data.title,
@@ -317,7 +317,7 @@ class AyayaVisualNovel(commands.Cog):
     @staticmethod
     def _design_screenies(image: str, position: int, data: VNDBModel) -> List[str]:
         total_screenies = len(data.screenies)
-        embed = discord.Embed(color=0x225588)
+        embed = disnake.Embed(color=0x225588)
         embed.description = image
         embed.set_author(
             name=f"{data.title} ({position + 1}/{total_screenies})",
@@ -340,7 +340,7 @@ class AyayaVisualNovel(commands.Cog):
         if isinstance(vnqres, str):
             return await ctx.send(vnqres)
 
-        async def _screenies_handler(data: VNDBModel, _, message: discord.Message):
+        async def _screenies_handler(data: VNDBModel, _, message: disnake.Message):
             screen_gen = DiscordPaginator(self.bot, ctx, data.screenies)
             screen_gen.remove_at_trashed = False
             img_embed_gen = partial(self._design_screenies, data=data)
@@ -367,7 +367,7 @@ class AyayaVisualNovel(commands.Cog):
         if isinstance(vnqres, str):
             return await ctx.send(vnqres)
 
-        async def _screenies_handler(data: VNDBModel, _, message: discord.Message):
+        async def _screenies_handler(data: VNDBModel, _, message: disnake.Message):
             screen_gen = DiscordPaginator(self.bot, ctx, data.screenies)
             screen_gen.remove_at_trashed = False
             img_embed_gen = partial(self._design_screenies, data=data)

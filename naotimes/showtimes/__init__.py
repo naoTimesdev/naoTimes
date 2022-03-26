@@ -8,8 +8,6 @@ Contains mostly helper, models, etc.
 :license: MIT, see LICENSE for more details.
 """
 
-# flake8: noqa
-
 from .cogbase import *
 from .fsdb import *
 from .helper import *

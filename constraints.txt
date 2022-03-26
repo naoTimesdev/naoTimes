@@ -16,7 +16,7 @@ appdirs==1.4.4
 
 pyee==8.2.2
 tqdm==4.62.3
-websockets==9.1
+websockets==10.0
 
 jaconv==0.3
 mojimoji==0.0.12
