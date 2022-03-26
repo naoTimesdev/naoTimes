@@ -1,7 +1,7 @@
 import logging
 
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot, naoTimesContext
 from naotimes.converters import TimeConverter
@@ -14,7 +14,7 @@ class ModtoolsChannel(commands.Cog):
         self.logger = logging.getLogger("ModTools.ChannelControl")
 
     async def _internal_lockdown_channel(
-        self, channel: discord.TextChannel, lockdown: bool = True, ignore_missing: bool = False
+        self, channel: disnake.TextChannel, lockdown: bool = True, ignore_missing: bool = False
     ):
         all_overwrites = channel.overwrites
 
@@ -27,7 +27,7 @@ class ModtoolsChannel(commands.Cog):
                 continue
             if "muted" in role.name.lower():
                 continue
-            if not isinstance(overwrite, discord.PermissionOverwrite):
+            if not isinstance(overwrite, disnake.PermissionOverwrite):
                 continue
             overwrite.send_messages = not lockdown
             if lockdown:
@@ -37,10 +37,10 @@ class ModtoolsChannel(commands.Cog):
             try:
                 await channel.set_permissions(role, overwrite=overwrite)
                 already_overwritten.append(role.id)
-            except discord.Forbidden:
+            except disnake.Forbidden:
                 is_failure = True
                 self.logger.warning(f"Failed to lock down for role {role.name}, no sufficient permission!")
-            except discord.HTTPException:
+            except disnake.HTTPException:
                 is_failure = True
                 self.logger.warning(f"Failed to lock down for role {role.name}, HTTP exception occured!")
         if not ignore_missing:
@@ -60,12 +60,12 @@ class ModtoolsChannel(commands.Cog):
                     self.logger.info(f"Unlocking channel {str(channel)} for role {role.name}")
                 try:
                     await channel.set_permissions(role, send_messages=not lockdown)
-                except discord.Forbidden:
+                except disnake.Forbidden:
                     is_failure = True
                     self.logger.warning(
                         f"Failed to lock down for role {role.name}, no sufficient permission!"
                     )
-                except discord.HTTPException:
+                except disnake.HTTPException:
                     is_failure = True
                     self.logger.warning(f"Failed to lock down for role {role.name}, HTTP exception occured!")
         return is_failure
@@ -76,8 +76,8 @@ class ModtoolsChannel(commands.Cog):
     async def lockdown(self, ctx: naoTimesContext, channel: commands.TextChannelConverter = None):
         """Lock down a channel"""
         if channel is None:
-            channel: discord.TextChannel = ctx.channel
-        if not isinstance(channel, discord.TextChannel):
+            channel: disnake.TextChannel = ctx.channel
+        if not isinstance(channel, disnake.TextChannel):
             return await ctx.send("Ini bukanlah kanal teks!")
 
         is_failure = await self._internal_lockdown_channel(channel)
@@ -85,7 +85,7 @@ class ModtoolsChannel(commands.Cog):
         if not is_failure:
             try:
                 await channel.send("🔐 Kanal ini telah dikunci!")
-            except discord.Forbidden:
+            except disnake.Forbidden:
                 self.logger.warning("Failed to sent information about channel lockdown, ignoring...")
                 pass
             return
@@ -97,8 +97,8 @@ class ModtoolsChannel(commands.Cog):
     async def unlock(self, ctx: naoTimesContext, channel: commands.TextChannelConverter = None):
         """Unlock a channel"""
         if channel is None:
-            channel: discord.TextChannel = ctx.channel
-        if not isinstance(channel, discord.TextChannel):
+            channel: disnake.TextChannel = ctx.channel
+        if not isinstance(channel, disnake.TextChannel):
             return await ctx.send("Ini bukanlah kanal teks!")
 
         is_failure = await self._internal_lockdown_channel(channel, False)
@@ -106,7 +106,7 @@ class ModtoolsChannel(commands.Cog):
         if not is_failure:
             try:
                 await channel.send("🔓 Kanal ini telah dibuka kembali!")
-            except discord.Forbidden:
+            except disnake.Forbidden:
                 self.logger.warning("Failed to sent information about channel unlocking, ignoring...")
                 pass
             return
@@ -165,8 +165,8 @@ class ModtoolsChannel(commands.Cog):
     ):
         """Set slowmode on a channel"""
         if channel is None:
-            channel: discord.TextChannel = ctx.channel
-        if not isinstance(channel, discord.TextChannel):
+            channel: disnake.TextChannel = ctx.channel
+        if not isinstance(channel, disnake.TextChannel):
             return await ctx.send("Ini bukanlah kanal teks!")
 
         total_seconds = 0
@@ -194,7 +194,7 @@ class ModtoolsChannel(commands.Cog):
             if ctx.channel.id != channel.id:
                 return await ctx.send(f"⚙ Slowmode kanal <#{channel.mention}> {slowmode_text}")
             await ctx.send(f"⚙ Slowmode {slowmode_text}")
-        except discord.Forbidden:
+        except disnake.Forbidden:
             if ctx.channel.id != channel.id:
                 return await ctx.send(f"⚙⚠ Gagal mengubah slowmode di kanal <#{channel.mention}>")
             await ctx.send("⚙⚠ Gagal merubah slowmode!")

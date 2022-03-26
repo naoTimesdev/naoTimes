@@ -1,9 +1,10 @@
 import logging
+from collections import Counter
 from typing import Literal
 
 import arrow
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesContext
@@ -70,7 +71,7 @@ class FunServerInfo(commands.Cog):
     @commands.command(name="serverinfo", aliases=["si"])
     @commands.guild_only()
     async def _fun_server_info(self, ctx: naoTimesContext):
-        the_guild: discord.Guild = ctx.guild
+        the_guild: disnake.Guild = ctx.guild
 
         all_channels = the_guild.channels
         bot_member = the_guild.get_member(self.bot.user.id)
@@ -117,26 +118,30 @@ class FunServerInfo(commands.Cog):
             "vip_us_east": "🇺🇸 Amerika Timur (💳 VIP)",
             "vip_us_west": "🇺🇸 Amerika Barat (💳 VIP)",
         }
-        text_channels = voice_channels = news_channels = stage_channels = []
+        # text_channels = voice_channels = news_channels = stage_channels = []
+        channels_count = Counter({"text": 0, "vc": 0, "news": 0, "stage": 0})
         for channel in all_channels:
-            if channel.type == discord.ChannelType.text:
-                text_channels.append(channel)
-            elif channel.type == discord.ChannelType.voice:
-                voice_channels.append(channel)
-            elif channel.type == discord.ChannelType.news:
-                news_channels.append(channel)
-            elif channel.type == discord.ChannelType.stage_voice:
-                stage_channels.append(channel)
+            if channel.type == disnake.ChannelType.text:
+                channels_count["text"] += 1
+            elif channel.type == disnake.ChannelType.voice:
+                channels_count["vc"] += 1
+            elif channel.type == disnake.ChannelType.news:
+                channels_count["news"] += 1
+            elif channel.type == disnake.ChannelType.stage_voice:
+                channels_count["stage"] += 1
 
-        total_channels = len(text_channels) + len(voice_channels) + len(news_channels) + len(stage_channels)
+        # total_channels = len(text_channels) + len(voice_channels) + len(news_channels) + len(stage_channels)
+        total_channels = (
+            channels_count["text"] + channels_count["vc"] + channels_count["news"] + channels_count["stage"]
+        )
 
         channels_data = []
-        channels_data.append(f"⌨ **{len(text_channels)}** kanal teks")
-        channels_data.append(f"🔉 **{len(voice_channels)}** kanal suara")
-        if len(news_channels) > 0:
-            channels_data.append(f"📰 **{len(news_channels)}** kanal berita")
-        if len(stage_channels) > 0:
-            channels_data.append(f"📽 **{len(stage_channels)}** kanal panggung")
+        channels_data.append(f"⌨ **{channels_count['text']}** kanal teks")
+        channels_data.append(f"🔉 **{channels_count['vc']}** kanal suara")
+        if len(channels_count["news"]) > 0:
+            channels_data.append(f"📰 **{channels_count['news']}** kanal berita")
+        if len(channels_count["stage"]) > 0:
+            channels_data.append(f"📽 **{channels_count['stage']}** kanal panggung")
 
         verification_level = mfa_levels_map.get(str(the_guild.verification_level))
         mfa_status = "✔" if the_guild.mfa_level == 1 else "❌"
@@ -144,23 +149,22 @@ class FunServerInfo(commands.Cog):
         creation_date = arrow.get(the_guild.created_at).format("dddd[,] DD MMMM YYYY [@] HH[:]mm[:]ss")
 
         server_members = the_guild.members
-        bot_accounts = []
-        online_users = idle_users = dnd_users = offline_users = invisible_users = []
+        users_counter = Counter({"bot": 0, "online": 0, "idle": 0, "dnd": 0, "offline": 0, "invisible": 0})
 
         for member in server_members:
             if member.bot:
-                bot_accounts.append(member)
+                users_counter["bot"] += 1
                 continue
-            if member.status == discord.Status.online:
-                online_users.append(member)
-            elif member.status == discord.Status.idle:
-                idle_users.append(member)
-            elif member.status == discord.Status.dnd:
-                dnd_users.append(member)
-            elif member.status == discord.Status.offline:
-                offline_users.append(member)
-            elif member.status == discord.Status.invisible:
-                invisible_users.append(member)
+            if member.status == disnake.Status.online:
+                users_counter["online"] += 1
+            elif member.status == disnake.Status.idle:
+                users_counter["idle"] += 1
+            elif member.status == disnake.Status.dnd:
+                users_counter["dnd"] += 1
+            elif member.status == disnake.Status.offline:
+                users_counter["offline"] += 1
+            elif member.status == disnake.Status.invisible:
+                users_counter["invisible"] += 1
 
         server_features = the_guild.features
         server_type = "Peladen Pribadi"
@@ -202,10 +206,10 @@ class FunServerInfo(commands.Cog):
                 vanity_invite = await the_guild.vanity_invite()
                 if vanity_invite is not None:
                     all_invites.append(f"✨ Vanity Invite: {vanity_invite.url}")
-        except discord.Forbidden:
+        except disnake.Forbidden:
             pass
 
-        embed = discord.Embed(colour=0xF7E43)
+        embed = disnake.Embed(colour=0xF7E43)
         embed.set_author(name=the_guild.name, icon_url=the_guild.icon)
         description = []
         description.append(server_type)
@@ -214,16 +218,17 @@ class FunServerInfo(commands.Cog):
         description.append(vc_region)
         user_data = []
         user_data.append(
-            f"{fallback_custom_icons('s_ol', can_use_custom)} **{len(online_users)}** Daring | "
-            f"{fallback_custom_icons('s_off', can_use_custom)} **{len(offline_users)}** Luring"
+            f"{fallback_custom_icons('s_ol', can_use_custom)} **{users_counter['online']}** Daring | "
+            f"{fallback_custom_icons('s_off', can_use_custom)} **{users_counter['offline']}** Luring"
         )
         user_data.append(
-            f"{fallback_custom_icons('s_idle', can_use_custom)} **{len(idle_users)}** Idle | "
-            f"{fallback_custom_icons('s_dnd', can_use_custom)} **{len(dnd_users)}** DnD"
+            f"{fallback_custom_icons('s_idle', can_use_custom)} **{users_counter['idle']}** Idle | "
+            f"{fallback_custom_icons('s_dnd', can_use_custom)} **{users_counter['dnd']}** DnD"
         )
-        user_data.append(f"🤖 **{len(bot_accounts)}** Bot")
+        user_data.append(f"🤖 **{users_counter['bot']}** Bot")
         embed.description = "\n".join(description)
-        embed.set_thumbnail(url=the_guild.icon)
+        if the_guild.icon is not None:
+            embed.set_thumbnail(url=the_guild.icon)
         if "INVITE_SPLASH" in server_features and the_guild.splash:
             embed.set_image(url=the_guild.splash)
         embed.add_field(name=f"Member [{len(server_members)}]", value="\n".join(user_data), inline=False)

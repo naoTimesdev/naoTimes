@@ -186,7 +186,7 @@ class KalkulatorAjaib:
         """
         calc = cls()
         try:
-            calc.expr.parseString(kalkulasikan, parseAll=True)
+            calc.expr.parse_string(kalkulasikan, parseAll=True)
         except pp.ParseException as pe:
             raise SyntaxError("Gagal melakukan parsing, " + str(pe))
         try:

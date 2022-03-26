@@ -3,11 +3,11 @@ import typing as T
 from functools import partial as ftpartial
 from urllib.parse import quote
 
-import discord
-from discord.ext import app, commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
-from naotimes.context import naoTimesContext
+from naotimes.context import naoTimesAppContext, naoTimesContext
 from naotimes.http import ParserReplacer, WebsterDefinedWord, WebsterTokenParser, WebsterWordThesaurus
 from naotimes.http.webster import parse_link_default
 from naotimes.paginator import DiscordPaginatorUI
@@ -53,7 +53,7 @@ class KutubukuWebster(commands.Cog):
         self.bot = bot
         self._mw = bot.merriam
         self.logger = logging.getLogger("Kutubuku.Webster")
-        self._col = discord.Colour.from_rgb(48, 95, 122)
+        self._col = disnake.Colour.from_rgb(48, 95, 122)
         # This is token formatter for Discord embed
         self._token_formatter: ParserReplacer = {
             "fmt-bold": _TOKEN_BOLD,
@@ -72,7 +72,7 @@ class KutubukuWebster(commands.Cog):
 
     def _design_word_define_embed(self, data: WebsterDefinedWord, fallback_data: dict):
         fb_word, fb_pr, fb_et = fallback_data["w"], fallback_data["p"], fallback_data["e"]
-        embed = discord.Embed(color=self._col)
+        embed = disnake.Embed(color=self._col)
         embed.set_author(name=data.title, url=_DF_URL + quote(data.word), icon_url=_IKON)
         description = f"*({data.type})*\n"
         if data.pronounciation:
@@ -159,12 +159,14 @@ class KutubukuWebster(commands.Cog):
         self.logger.info("Sending results to user...")
         await main_gen.interact()
 
-    @app.slash_command(
-        name="define",
-        description="Cari definisi kata bahasa inggris di Merriam-Webster",
-    )
-    @app.option("word", str, description="Kata yang ingin dicari")
-    async def word_define_slash_cmd(self, ctx: app.ApplicationContext, word: str):
+    @commands.slash_command(name="define")
+    async def word_define_slash_cmd(self, ctx: naoTimesAppContext, word: str):
+        """Cari definisi kata bahasa inggris di Merriam-Webster
+
+        Parameters
+        ----------
+        word: Kata yang ingin dicari
+        """
         if not word:
             return await ctx.send(content="Mohon berikan kata yang ingin dicari!")
 
@@ -203,7 +205,7 @@ class KutubukuWebster(commands.Cog):
         self.logger.info(f"Got {len(main_results)} data for {word} thesaurus")
 
         def _generate_embed(data: WebsterWordThesaurus):
-            embed = discord.Embed(color=self._col)
+            embed = disnake.Embed(color=self._col)
             embed.set_author(name=data.word, url=_TS_URL + quote(data.word), icon_url=_IKON)
             deskripsi = f"*({data.type})*\n"
             formatted_strings = []

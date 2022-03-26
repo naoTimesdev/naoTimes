@@ -3,8 +3,8 @@ import logging
 import random
 from typing import Optional
 
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.socket import ntevent
@@ -37,17 +37,17 @@ class VoteEmbedUpdater(commands.Cog):
         await self._vote_over_queue.put(vote_data)
 
     async def _actually_update_embed(self, vote_data: VoteData):
-        channel: discord.TextChannel = self.bot.get_channel(vote_data.metadata.channel)
+        channel: disnake.TextChannel = self.bot.get_channel(vote_data.metadata.channel)
         if channel is None:
             self.logger.warning(f"{vote_data.id}: missing channel?")
             return
         try:
             message = await channel.fetch_message(vote_data.metadata.message)
-        except discord.NotFound:
+        except disnake.NotFound:
             self.logger.warning(f"{vote_data.id}: missing message?")
             await self._on_vote_finished(vote_data)
             return
-        embed: discord.Embed = discord.Embed.from_dict(message.embeds[0].to_dict())
+        embed: disnake.Embed = disnake.Embed.from_dict(message.embeds[0].to_dict())
         first_choice = vote_data.choices[0]
         if vote_data.type == VoteType.USER:
             embed.set_field_at(
@@ -73,7 +73,7 @@ class VoteEmbedUpdater(commands.Cog):
         await message.edit(embed=embed)
 
     async def _actually_handle_kickban(
-        self, guild: discord.Guild, member: discord.Member, is_ban: bool = False
+        self, guild: disnake.Guild, member: disnake.Member, is_ban: bool = False
     ):
         try:
             if is_ban:
@@ -84,22 +84,22 @@ class VoteEmbedUpdater(commands.Cog):
             else:
                 self.logger.info(f"{guild.name}: vote banning {member.display_name} from server")
                 await guild.kick(member, reason="Kicked from voting process by multiple people")
-        except discord.Forbidden:
+        except disnake.Forbidden:
             self.logger.error(f"{member}: cannot kick/ban because missing perms.")
-        except discord.HTTPException as dehttp:
+        except disnake.HTTPException as dehttp:
             self.logger.error(f"{member}: cannot kick/ban because http failures.")
             self.bot.echo_error(dehttp)
 
     async def _actually_handle_over(self, vote_data: VoteData):
         self.logger.info(f"Handling over, {vote_data.id}")
         final_answer = vote_data.get_winner()
-        channel: discord.TextChannel = self.bot.get_channel(vote_data.metadata.channel)
+        channel: disnake.TextChannel = self.bot.get_channel(vote_data.metadata.channel)
         if channel is None:
             self.logger.warning(f"{vote_data.id}: missing channel?")
             return
         try:
             message = await channel.fetch_message(vote_data.metadata.message)
-            embed: discord.Embed = discord.Embed.from_dict(message.embeds[0].to_dict())
+            embed: disnake.Embed = disnake.Embed.from_dict(message.embeds[0].to_dict())
             context_txt = None
             if vote_data.type == VoteType.GIVEAWAY:
                 embed.set_footer(text="🎉 Giveaway selesai!")
@@ -107,7 +107,7 @@ class VoteEmbedUpdater(commands.Cog):
             else:
                 embed.set_footer(text="Voting Selesai!")
             await message.edit(content=context_txt, embed=embed)
-        except discord.NotFound:
+        except disnake.NotFound:
             self.logger.warning(f"{vote_data.id}: missing message?")
 
         if vote_data.type == VoteType.USER:
@@ -137,7 +137,7 @@ class VoteEmbedUpdater(commands.Cog):
                 await channel.send(f"Giveaway **__{give_item}__** selesai! Tetapi tidak ada yang join..")
             else:
                 joined_member = final_answer.data.voter[:]
-                winner_member: Optional[discord.Member] = None
+                winner_member: Optional[disnake.Member] = None
                 while True:
                     if len(joined_member) < 1:
                         break

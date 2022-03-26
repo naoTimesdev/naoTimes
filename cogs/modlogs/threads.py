@@ -2,8 +2,8 @@ import logging
 from datetime import datetime
 
 import arrow
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.modlog import ModLog, ModLogAction, ModLogFeature
@@ -19,8 +19,8 @@ class ModLogThreads(commands.Cog):
         to_arrow = arrow.get(dt_time)
         return to_arrow.format("MMMM DD YYYY, HH:mm:ss UTC", "id")
 
-    def have_audit_perm(self, guild: discord.Guild):
-        bot_member: discord.Member = guild.get_member(self.bot.user.id)
+    def have_audit_perm(self, guild: disnake.Guild):
+        bot_member: disnake.Member = guild.get_member(self.bot.user.id)
         if bot_member.guild_permissions.view_audit_log:
             return True
         return False
@@ -31,7 +31,7 @@ class ModLogThreads(commands.Cog):
         guild_info = data.get("guild", None)
 
         if action == ModLogAction.THREAD_CREATE:
-            embed = discord.Embed(title="🗞 Thread dibuat", color=discord.Color.from_rgb(67, 154, 96))
+            embed = disnake.Embed(title="🗞 Thread dibuat", color=disnake.Color.from_rgb(67, 154, 96))
             description = []
             description.append(f"**• Nama**: #{data['name']}")
             description.append(f"**• ID thread**: {data['id']} (<#{data['id']}>)")
@@ -40,11 +40,12 @@ class ModLogThreads(commands.Cog):
             embed.description = "\n".join(description)
             embed.set_footer(text="#️⃣ Thread baru")
             if guild_info is not None:
-                embed.set_thumbnail(url=guild_info["icon"])
+                if guild_info["icon"] is not None:
+                    embed.set_thumbnail(url=guild_info["icon"])
                 embed.set_author(name=guild_info["name"], icon_url=guild_info["icon"])
             mod_log.embed = embed
         elif action == ModLogAction.THREAD_REMOVE:
-            embed = discord.Embed(title="🚮 Thread dihapus", color=discord.Color.from_rgb(176, 45, 45))
+            embed = disnake.Embed(title="🚮 Thread dihapus", color=disnake.Color.from_rgb(176, 45, 45))
             description = []
             description.append(f"**• Nama**: #{data['name']}")
             description.append(f"**• ID thread**: {data['id']} (<#{data['id']}>)")
@@ -53,11 +54,12 @@ class ModLogThreads(commands.Cog):
             embed.description = "\n".join(description)
             embed.set_footer(text="🚮 Thread dihapus")
             if guild_info is not None:
-                embed.set_thumbnail(url=guild_info["icon"])
+                if guild_info["icon"] is not None:
+                    embed.set_thumbnail(url=guild_info["icon"])
                 embed.set_author(name=guild_info["name"], icon_url=guild_info["icon"])
             mod_log.embed = embed
         elif action == ModLogAction.THREAD_UPDATE:
-            embed = discord.Embed(title="💎 Perubahan thread", color=discord.Color.random())
+            embed = disnake.Embed(title="💎 Perubahan thread", color=disnake.Color.random())
             if "name" in data:
                 name_detail = data["name"]
                 name_desc = []
@@ -77,7 +79,8 @@ class ModLogThreads(commands.Cog):
                 arch_desc.append(f"**• Pada**: {self.strftime(arch['timestamp'])}")
                 embed.add_field(name=f"{lock_k} {lock_ka}", value="\n".join(arch_desc), inline=False)
             if guild_info is not None:
-                embed.set_thumbnail(url=guild_info["icon"])
+                if guild_info["icon"] is not None:
+                    embed.set_thumbnail(url=guild_info["icon"])
                 embed.set_author(name=guild_info["name"], icon_url=guild_info["icon"])
             if data["channel"] is not None:
                 embed.description = f"**• Di kanal**: #{data['channel']}"
@@ -85,8 +88,8 @@ class ModLogThreads(commands.Cog):
 
         return mod_log
 
-    @commands.Cog.listener("on_thread_join")
-    async def _modlog_thread_join(self, thread: discord.Thread):
+    @commands.Cog.listener("on_thread_create")
+    async def _modlog_thread_join(self, thread: disnake.Thread):
         should_log, server_setting = self.bot.should_modlog(
             thread.guild, features=[ModLogFeature.THREAD_CREATE]
         )
@@ -98,14 +101,18 @@ class ModLogThreads(commands.Cog):
         parent_name = None
         if parent is not None:
             parent_name = parent.name
-        if thread.me is not None and thread.me.id == self.bot.user.id:
-            return
+        # if thread.me is not None and thread.me.id == self.bot.user.id:
+        #     return
+
+        ikon_guild = guild.icon
+        if ikon_guild is not None:
+            ikon_guild = str(ikon_guild)
 
         details = {
             "name": thread.name,
             "id": thread.id,
             "channel": parent_name,
-            "guild": {"name": guild.name, "icon": str(guild.icon)},
+            "guild": {"name": guild.name, "icon": ikon_guild},
         }
 
         self.logger.info(f"Thread joined/created, {details!r}")
@@ -113,7 +120,7 @@ class ModLogThreads(commands.Cog):
         await self.bot.add_modlog(modlog, server_setting)
 
     @commands.Cog.listener("on_thread_delete")
-    async def _modlog_thread_delete(self, thread: discord.Thread):
+    async def _modlog_thread_delete(self, thread: disnake.Thread):
         should_log, server_setting = self.bot.should_modlog(
             thread.guild, features=[ModLogFeature.THREAD_DELETE]
         )
@@ -126,11 +133,15 @@ class ModLogThreads(commands.Cog):
         if parent is not None:
             parent_name = parent.name
 
+        ikon_guild = guild.icon
+        if ikon_guild is not None:
+            ikon_guild = str(ikon_guild)
+
         details = {
             "name": thread.name,
             "id": thread.id,
             "channel": parent_name,
-            "guild": {"name": guild.name, "icon": str(guild.icon)},
+            "guild": {"name": guild.name, "icon": ikon_guild},
         }
 
         self.logger.info(f"Thread deleted, {details!r}")
@@ -138,14 +149,14 @@ class ModLogThreads(commands.Cog):
         await self.bot.add_modlog(modlog, server_setting)
 
     @commands.Cog.listener("on_thread_update")
-    async def _modlog_thread_update(self, before: discord.Thread, after: discord.Thread):
+    async def _modlog_thread_update(self, before: disnake.Thread, after: disnake.Thread):
         should_log, server_setting = self.bot.should_modlog(
             before.guild, features=[ModLogFeature.THREAD_UPDATE]
         )
         if not should_log:
             return
 
-        guild: discord.Guild = before.guild
+        guild: disnake.Guild = before.guild
         parent = before.parent
         parent_name = None
         if parent is not None:
@@ -183,13 +194,17 @@ class ModLogThreads(commands.Cog):
         if self.have_audit_perm(guild):
             current_time = self.bot.now().shift(seconds=-30)
             async for guild_log in guild.audit_logs(
-                action=discord.AuditLogAction.thread_update, after=current_time.datetime
+                action=disnake.AuditLogAction.thread_update, after=current_time.datetime
             ):
                 if guild_log.target.id == after.id:
                     archive_details["author"] = str(guild_log.user)
                     break
 
-        details["guild"] = {"name": guild.name, "icon": str(guild.icon)}
+        ikon_guild = guild.icon
+        if ikon_guild is not None:
+            ikon_guild = str(ikon_guild)
+
+        details["guild"] = {"name": guild.name, "icon": ikon_guild}
         details["channel"] = parent_name
 
         self.logger.info(f"Thread updated, {details!r}")

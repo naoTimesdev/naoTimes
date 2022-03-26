@@ -2,8 +2,8 @@ import asyncio
 import logging
 from typing import Any, Dict, List
 
-import discord
-from discord.ext import app, commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot, naoTimesContext
 from naotimes.context import naoTimesAppContext
@@ -44,7 +44,7 @@ class ShowtimesUser(commands.Cog):
             last_text = "Update Terakhir"
 
         self.logger.info(f"{log_pre}: sending current episode progress...")
-        embed = discord.Embed(title=f"{matched_anime.title} - #{active_episode.episode}", color=poster_color)
+        embed = disnake.Embed(title=f"{matched_anime.title} - #{active_episode.episode}", color=poster_color)
         embed.set_thumbnail(url=poster_image)
         embed.add_field(name="Status", value=self.base.parse_status(active_episode.progress), inline=False)
         embed.add_field(name=last_text, value=last_status, inline=False)
@@ -85,39 +85,12 @@ class ShowtimesUser(commands.Cog):
         matched_anime = all_matches[0]
         await self._showtimes_render_tagih(ctx, matched_anime)
 
-    @app.slash_command(name="tagih", description="Melihat status progres sebuah proyek garapan")
-    @app.option("judul", str, autocomplete=True, description="Judul anime yang ingin dilihat")
+    @commands.slash_command(name="tagih", description="Melihat status progres sebuah proyek garapan")
     async def _showuser_tagih_slash(self, ctx: naoTimesAppContext, judul: str):
+        # @app.option("judul", str, autocomplete=True, description="Judul anime yang ingin dilihat")
         server_id = str(ctx.guild.id)
         self.logger.info(f"Requested at: {server_id}")
         srv_data = await self.queue.fetch_database(server_id)
-
-        if ctx.autocompleting == "judul":
-            if srv_data is None:
-                self.logger.info("Autocompleting without showtimes being resgistered...")
-                return await ctx.autocomplete(["Peladen tidak terdaftar di Showtimes"])
-
-            parsed_objects = []
-            if not judul:
-                self.logger.info(f"{server_id}: autocompleting with all projects...")
-                match_unfinished_project: List[ShowtimesProject] = []
-                for project in srv_data:
-                    if project.get_current() is not None:
-                        match_unfinished_project.append(project)
-                match_unfinished_project.sort(key=lambda x: x.title)
-                parsed_objects = list(
-                    map(lambda x: app.OptionChoice(x.title, x.id), match_unfinished_project)
-                )
-            else:
-                self.logger.info(f"{server_id}: Trying to match: {ctx.autocompleting}")
-                all_matches = srv_data.find_projects(judul)
-                all_matches.sort(key=lambda x: x.title)
-                parsed_objects = list(map(lambda x: app.OptionChoice(x.title, x.id), all_matches))
-            self.logger.info(
-                f"{server_id}: Autocompletion matched {len(parsed_objects)} matches, "
-                "sending max of 20 results"
-            )
-            return await ctx.autocomplete(parsed_objects[:20])
 
         if srv_data is None:
             return await ctx.send("Peladen tidak terdaftar di Showtimes")
@@ -131,6 +104,38 @@ class ShowtimesUser(commands.Cog):
                 return await ctx.send("Tidak dapat menemukan judul tersebut di database")
 
         await self._showtimes_render_tagih(ctx, match_project)
+
+    @_showuser_tagih_slash.autocomplete("judul")
+    async def _showuser_tagih_slash_judul_auto(self, inter: disnake.CommandInteraction, judul: str):
+        server_id = str(inter.guild.id)
+        self.logger.info(f"Requested at: {server_id}")
+        srv_data = await self.queue.fetch_database(server_id)
+        if srv_data is None:
+            self.logger.info("Autocompleting without showtimes being resgistered...")
+            return ["Peladen tidak terdaftar di Showtimes"]
+
+        parsed_objects: Dict[str, str] = {}
+        if not judul:
+            self.logger.info(f"{server_id}: autocompleting with all projects...")
+            match_unfinished_project: List[ShowtimesProject] = []
+            for project in srv_data:
+                if project.get_current() is not None:
+                    match_unfinished_project.append(project)
+            match_unfinished_project.sort(key=lambda x: x.title)
+            parsed_objects = {project.title: str(project.id) for project in match_unfinished_project}
+        else:
+            self.logger.info(f"{server_id}: Trying to autocomplete with: {judul}")
+            all_matches = srv_data.find_projects(judul)
+            all_matches.sort(key=lambda x: x.title)
+            parsed_objects = {project.title: str(project.id) for project in all_matches}
+        if not parsed_objects:
+            return []
+
+        key_sort = sorted(parsed_objects)[:20]
+        final_objects: Dict[str, str] = {}
+        for key in key_sort:
+            final_objects[key] = parsed_objects[key]
+        return final_objects
 
     @commands.command(name="staff", aliases=["tukangdelay", "pendelay", "staf"])
     @commands.guild_only()
@@ -173,7 +178,7 @@ class ShowtimesUser(commands.Cog):
 
         rtext += ", ".join(map(get_user_info, srv_data.admins))
 
-        guild: discord.Guild = ctx.guild
+        guild: disnake.Guild = ctx.guild
         role_name = "Tidak diketahui"
         if matched_anime.role is not None:
             role_info = guild.get_role(matched_anime.role)
@@ -185,7 +190,7 @@ class ShowtimesUser(commands.Cog):
             only_non_server = list(filter(lambda x: x != guild.id, matched_anime.kolaborasi))
             koleb_list = []
             for koleb in only_non_server:
-                server_koleb: discord.Guild = self.bot.get_guild(koleb)
+                server_koleb: disnake.Guild = self.bot.get_guild(koleb)
                 if server_koleb is not None:
                     koleb_list.append(server_koleb.name)
             if len(koleb_list) > 0:

@@ -9,14 +9,14 @@ import io
 import logging
 import traceback
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional, Union
 
 import aiohttp
 import arrow
-import discord
-from discord.ext import app, commands
-from discord.ext.app import errors as app_errors
-from discord.ext.commands import errors
+import disnake
+from disnake import ApplicationCommandInteraction, MessageCommandInteraction, UserCommandInteraction
+from disnake.ext import commands
+from disnake.ext.commands import errors
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesContext
@@ -28,18 +28,9 @@ if TYPE_CHECKING:
 
 
 @dataclass
-class CommandHandle:
-    exception: Exception
-    name: str
-    message: str
-    author_id: int
-    author_name: str
-    channel_id: int
-    channel_name: str
-    is_dm: bool = False
-    guild_id: int = None
-    guild_name: str = None
-    cog_name: str = None
+class CommandErrorHandle:
+    exception: errors.CommandError
+    ctx: Union[naoTimesContext, ApplicationCommandInteraction]
     timestamp: arrow.Arrow = arrow.utcnow()
 
     @property
@@ -47,41 +38,96 @@ class CommandHandle:
         tb = traceback.format_exception(type(self.exception), self.exception, self.exception.__traceback__)
         return "".join(tb).replace("`", "")
 
+    @property
+    def cog_name(self) -> Optional[str]:
+        cog_name = None
+        ctx = self.ctx
+        if isinstance(ctx, naoTimesContext):
+            cog_name = ctx.cog.qualified_name
+        else:
+            cog_name = ctx.application_command.cog_name
+        return cog_name
+
+    @property
+    def name(self):
+        if isinstance(self.ctx, ApplicationCommandInteraction):
+            return self.ctx.application_command.name
+        return self.ctx.command.name
+
+    @property
+    def app_type(self) -> Optional[str]:
+        if not isinstance(self.ctx, ApplicationCommandInteraction):
+            return "Prefixed Message"
+        if isinstance(self.ctx, UserCommandInteraction):
+            return "User Command"
+        if isinstance(self.ctx, MessageCommandInteraction):
+            return "Message Command"
+        return "Slash Command"
+
+    @property
+    def app_options(self) -> Optional[str]:
+        if not isinstance(self.ctx, ApplicationCommandInteraction):
+            return None
+        options = self.ctx.filled_options
+        if not options:
+            return None
+        all_values: List[str] = []
+        for value in options.values():
+            all_values.append(f"{value!r}")
+        all_values_str = " ".join(all_values)
+        return all_values_str
+
+    @property
+    def cmd_full(self):
+        ctx = self.ctx
+        if isinstance(ctx, naoTimesContext):
+            return f"{self.name}\n`{ctx.message.clean_content}`"
+        raw_cmd_name = ctx.application_command.name
+        app_options = self.app_options
+        command_exec = f"{raw_cmd_name} ({self.app_type})"
+        if app_options:
+            command_exec += f"\n`{raw_cmd_name} {app_options}`"
+        return command_exec
+
     def create_embed(self):
-        embed = discord.Embed(
+        embed = disnake.Embed(
             title="Error Logger",
             colour=0xFF253E,
             description="Terjadi kesalahan atau Insiden baru-baru ini...",
             timestamp=self.timestamp.datetime,
         )
-        if self.cog_name:
-            embed.add_field(name="Cogs", value=f"[nT!] {self.cog_name}", inline=False)
-        embed.add_field(name="Perintah yang digunakan", value=f"{self.name}\n`{self.message}`", inline=False)
+        ctx = self.ctx
+        embed.add_field(name="Cog", value=f"[nT!] {self.cog_name}", inline=False)
+        embed.add_field(name="Perintah yang digunakan", value=self.cmd_full, inline=False)
+        guild = ctx.guild
+        channel = ctx.channel
         lokasi_insiden = "DM dengan Bot"
-        if self.guild_id:
-            lokasi_insiden = f"{self.guild_name} ({self.guild_id})"
-            lokasi_insiden += f"\n#{self.channel_name} ({self.channel_id})"
+        if guild is not None:
+            lokasi_insiden = f"{guild.name} (`{guild.id}`)"
+            lokasi_insiden += f"\n#{channel.name} (`{channel.id}`)"
+        author = ctx.author
 
         embed.add_field(name="Lokasi Insiden", value=lokasi_insiden, inline=False)
-        embed.add_field(name="Pengguna", value=f"{self.author_name} ({self.author_id})", inline=False)
+        embed.add_field(name="Pengguna", value=f"{author.name} (`{author.id}`)", inline=False)
         embed.add_field(name="Traceback", value=quote(self.traceback, True, "py"))
         embed.set_thumbnail(url="https://p.ihateani.me/mccvpqgd.png")
         return embed
 
     def create_text(self):
-        perintah_text = self.name
-        if self.cog_name:
-            perintah_text += f" (cog:{self.cog_name})"
+        perintah_name = self.name
+        cog_name = self.cog_name
+        if cog_name:
+            perintah_name += f" (cog:{cog_name})"
         server_info = "Peladen: DM"
-        if self.guild_id:
-            server_info = f"Peladen: {self.guild_name} ({self.guild_id})"
-        channel_info = f"Kanal: {self.channel_name} ({self.channel_id})"
+        if self.ctx.guild is not None:
+            server_info = f"Peladen: {self.ctx.guild.name} ({self.ctx.guild.id})"
+        channel_info = f"Kanal: {self.ctx.channel.name} ({self.ctx.channel.id})"
         error_info = [
-            f"Perintah: {perintah_text}",
-            f"Pesan: {self.message}",
+            f"Perintah: {perintah_name}",
+            f"Pesan: {self.cmd_full}",
             server_info,
             channel_info,
-            f"Perusak: {self.author_name} ({self.author_id})",
+            f"Perusak: {self.ctx.author.name} ({self.ctx.author.id})",
         ]
 
         full_pesan = "**Terjadi Kesalahan**\n\n"
@@ -178,7 +224,7 @@ class BotBrainErrorHandler(commands.Cog):
 
         if isinstance(exception, aiohttp.ClientError):
             return await self.handle_aiohttp_error(ctx, exception)
-        if isinstance(exception, discord.HTTPException):
+        if isinstance(exception, disnake.HTTPException):
             return await self.handle_discord_http_error(ctx, exception)
 
         await self._push_to_sentry(ctx, exception)
@@ -186,48 +232,48 @@ class BotBrainErrorHandler(commands.Cog):
         await self._push_to_user(ctx)
 
     @commands.Cog.listener()
-    async def on_application_error(self, ctx: app.ApplicationContext, exception: Exception):
+    async def on_application_error(self, ctx: ApplicationCommandInteraction, exception: Exception):
         """Logs any bot app command error, send to sentry, etc."""
 
         _ignore_completely = (
-            app_errors.ApplicationUserInputError,
-            app_errors.ApplicationNotOwner,
+            errors.UserInputError,
+            errors.NotOwner,
         )
         _MISSING_PERMS = (
-            app_errors.ApplicationMissingPermissions,
-            app_errors.ApplicationBotMissingPermissions,
+            errors.MissingPermissions,
+            errors.BotMissingPermissions,
         )
         _MISSING_ROLE = (
-            app_errors.ApplicationMissingAnyRole,
-            app_errors.ApplicationMissingRole,
-            app_errors.ApplicationBotMissingAnyRole,
-            app_errors.ApplicationBotMissingRole,
+            errors.MissingAnyRole,
+            errors.MissingRole,
+            errors.BotMissingAnyRole,
+            errors.BotMissingRole,
         )
         exception = getattr(exception, "original", exception)
-        command = ctx.command
+        command = ctx.application_command
 
         if isinstance(exception, _ignore_completely):
             self.bot.echo_error(exception)
             return
-        if isinstance(exception, app_errors.ApplicationNoPrivateMessage):
+        if isinstance(exception, errors.NoPrivateMessage):
             return await self._push_message_safely(
                 ctx, f"`{command.qualified_name}`` tidak bisa dipakai di Private Messages."
             )
-        if isinstance(exception, app_errors.ApplicationPrivateMessageOnly):
+        if isinstance(exception, errors.PrivateMessageOnly):
             return await self._push_message_safely(
-                ctx, f"`{command}`` hanya bisa dipakai di Private Messages."
+                ctx, f"`{command.qualified_name}`` hanya bisa dipakai di Private Messages."
             )
-        if isinstance(exception, app_errors.ApplicationNSFWChannelRequired):
+        if isinstance(exception, errors.NSFWChannelRequired):
             return await self._push_message_safely(ctx, f"`{command}` hanya bisa dipakai di kanal NSFW.")
         if isinstance(exception, _MISSING_PERMS):
             return await self.handle_permission_error(ctx, exception)
         if isinstance(exception, _MISSING_ROLE):
             return await self.handle_role_error(ctx, exception)
-        if isinstance(exception, app_errors.ApplicationCommandOnCooldown):
+        if isinstance(exception, errors.CommandOnCooldown):
             return await self._push_message_safely(
                 ctx, f"Kamu sedang dalam masa jeda. Coba lagi dalam waktu {exception.retry_after:.2f} detik."
             )
-        if isinstance(exception, app_errors.ApplicationMaxConcurrencyReached):
+        if isinstance(exception, errors.MaxConcurrencyReached):
             return await self.handle_concurrency_error(ctx, exception)
         if isinstance(exception, music_errors.EnsureVoiceChannel):
             is_main = exception.main_check
@@ -258,7 +304,7 @@ class BotBrainErrorHandler(commands.Cog):
 
         if isinstance(exception, aiohttp.ClientError):
             return await self.handle_aiohttp_error(ctx, exception)
-        if isinstance(exception, discord.HTTPException):
+        if isinstance(exception, disnake.HTTPException):
             return await self.handle_discord_http_error(ctx, exception)
 
         await self._push_to_sentry(ctx, exception)
@@ -279,7 +325,7 @@ class BotBrainErrorHandler(commands.Cog):
             ctx, "Terjadi kesalahan ketika berkomunikasi dengan API, mohon coba sesaat lagi!"
         )
 
-    async def handle_discord_http_error(self, ctx: naoTimesContext, exception: discord.HTTPException):
+    async def handle_discord_http_error(self, ctx: naoTimesContext, exception: disnake.HTTPException):
         await self._push_to_sentry(ctx, exception)
         return await self._push_message_safely(
             ctx, "Terjadi kesalahan ketika berkomunikasi dengan Discord, mohon coba sesaat lagi!"
@@ -333,61 +379,43 @@ class BotBrainErrorHandler(commands.Cog):
         )
         await self._push_message_safely(ctx, user_err_info)
 
-    async def _push_message_safely(self, ctx: naoTimesContext, content: str, do_ref: bool = False):
+    async def _push_message_safely(
+        self, ctx: Union[naoTimesContext, ApplicationCommandInteraction], content: str, do_ref: bool = False
+    ):
         try:
             reference = ctx.message if do_ref else None
-            await ctx.send(content, reference=reference)
-        except (discord.HTTPException, discord.Forbidden, discord.InteractionResponded) as e:
+            if isinstance(ctx, ApplicationCommandInteraction):
+                await ctx.send(content)
+            else:
+                await ctx.send(content, reference=reference)
+        except (disnake.HTTPException, disnake.Forbidden, disnake.InteractionResponded) as e:
             app_command = None
-            if isinstance(ctx, app.ApplicationContext):
+            if isinstance(ctx, ApplicationCommandInteraction):
                 app_command = "application_command"
             await self._push_to_sentry(ctx, e, app_command)
 
-    async def _push_bot_log_or_cdn(self, embed: discord.Embed, fallback_message: str):
+    async def _push_bot_log_or_cdn(self, embed: disnake.Embed, fallback_message: str):
         ctime = self.bot.now().int_timestamp
         try:
             await self.bot.send_error_log(embed=embed)
-        except discord.HTTPException:
+        except disnake.HTTPException:
             self.logger.error("Failed to send bot error log to provided channel!")
             if len(fallback_message) > 1950:
-                iha_link, err_msg = await self.bot.send_ihateanime(fallback_message, "naoTimesErrorLog_")
-                if iha_link is not None:
-                    finalized_text = "**Terjadi kesalahan**\n"
-                    finalized_text += "Dikarenakan traceback dan sebagainya mencapai limit discord, log dapat"
-                    finalized_text += f" diakses di sini: <{iha_link}>"
-                    finalized_text += "\n\nLog valid selama kurang lebih 2.5 bulan"
-                    await self.bot.send_error_log(finalized_text)
-                else:
-                    self.logger.error("Failed to upload log to ihateani.me CDN, using discord upload...")
-                    fallback_message += f"\n\nihateani.me Error log: {err_msg}"
-                    the_file = discord.File(
-                        io.BytesIO(fallback_message.encode("utf-8")),
-                        filename=f"naoTimesErrorLog_{ctime}.txt",
-                    )
-                    await self.bot.send_error_log(
-                        "Dikarenakan log terlalu panjang, ini adalah log errornya", file=the_file
-                    )
+                self.logger.error("Sending as file...")
+                the_file = disnake.File(
+                    io.BytesIO(fallback_message.encode("utf-8")),
+                    filename=f"naoTimesErrorLog_{ctime}.txt",
+                )
+                await self.bot.send_error_log(
+                    "Dikarenakan log terlalu panjang, ini adalah log errornya", file=the_file
+                )
             else:
                 await self.bot.send_error_log(fallback_message)
 
-    async def _actual_push_to_bot_log(self, ctx: naoTimesContext, e: Exception) -> None:
-        is_dm = ctx.guild is None
-        guild_id = ctx.guild.id if ctx.guild is not None else None
-        guild_name = ctx.guild.name if ctx.guild is not None else None
-        error_handle = CommandHandle(
-            e,
-            ctx.command.name,
-            ctx.message.clean_content,
-            ctx.author.id,
-            ctx.author.name,
-            ctx.channel.id,
-            ctx.channel.name,
-            is_dm,
-            guild_id,
-            guild_name,
-            ctx.cog.qualified_name if ctx.cog else None,
-        )
-
+    async def _actual_push_to_bot_log(
+        self, ctx: Union[naoTimesContext, ApplicationCommandInteraction], e: Exception
+    ) -> None:
+        error_handle = CommandErrorHandle(e, ctx)
         full_pesan = error_handle.create_text()
 
         await self._push_bot_log_or_cdn(error_handle.create_embed(), full_pesan)
@@ -397,7 +425,10 @@ class BotBrainErrorHandler(commands.Cog):
         # Create task to push to bot log
         self.bot.loop.create_task(self._actual_push_to_bot_log(ctx, e), name=f"naoTimes-BotLog-{ts}")
 
-    async def _push_to_sentry(self, ctx: naoTimesContext, e: Exception, app_type: str = None) -> None:
+    async def _push_to_sentry(
+        self, ctx: Union[naoTimesContext, ApplicationCommandInteraction], e: Exception
+    ) -> None:
+        cmd_err = CommandErrorHandle(e, ctx)
         if self.bot._use_sentry:
             with push_scope() as scope:
                 scope.user = {
@@ -405,23 +436,31 @@ class BotBrainErrorHandler(commands.Cog):
                     "username": str(ctx.author),
                 }
 
-                scope.set_tag("command", ctx.command.qualified_name)
-                if ctx.cog is not None:
-                    scope.set_tag("cog", ctx.cog.qualified_name)
+                scope.set_tag("command", cmd_err.name)
+                if cmd_err.cog_name is not None:
+                    scope.set_tag("cog", cmd_err.cog_name)
                 scope.set_tag("channel_id", ctx.channel.id)
-                scope.set_extra("message", ctx.message.content)
-
-                if app_type is not None:
-                    scope.set_tag("command_type", app_type)
+                if isinstance(ctx, ApplicationCommandInteraction):
+                    cmd_exec = f"[{cmd_err.app_type}] {ctx.application_command.qualified_name}"
+                    app_opts = cmd_err.app_options
+                    if app_opts:
+                        cmd_exec += f" {app_opts}"
+                    scope.set_extra("message", cmd_exec)
                 else:
-                    scope.set_tag("command_type", "normal")
+                    scope.set_extra("message", ctx.message.clean_content)
+
+                app_type = cmd_err.app_type.replace(" ", "_").lower()
+                if app_type == "prefixed_message":
+                    app_type = "normal"
+                scope.set_tag("command_type", app_type)
 
                 if ctx.guild is not None:
                     scope.set_tag("guild_id", ctx.guild.id)
-                    scope.set_extra(
-                        "jump_to",
-                        f"https://discordapp.com/channels/{ctx.guild.id}/{ctx.channel.id}/{ctx.message.id}",
-                    )
+                    if isinstance(ctx, naoTimesContext):
+                        scope.set_extra(
+                            "jump_to",
+                            f"https://discordapp.com/channels/{ctx.guild.id}/{ctx.channel.id}/{ctx.message.id}",
+                        )
 
                 self.logger.error(f"Ignoring exception in command {ctx.command}:", exc_info=e)
 

@@ -1,16 +1,44 @@
-import logging
-from functools import partial as ftpartial
-from typing import Dict, List
+from __future__ import annotations
 
-import discord
-from discord.ext import app, commands
+import logging
+from enum import Enum
+from functools import partial as ftpartial
+from typing import Dict, List, Type
+
+import disnake
+from disnake.ext import commands
 from tesaurus import Lema, LemaEntri, TerjadiKesalahan, TesaurusGalat, TidakDitemukan
 
 from naotimes.bot import naoTimesBot, naoTimesContext
+from naotimes.context import naoTimesAppContext
 from naotimes.paginator import DiscordPaginator, DiscordPaginatorUI
 
 _IKON = "https://raw.githubusercontent.com/noaione/tesaurus-python/master/assets/tesaurustematis_logo.png"
-_KELAS_KATA = ["adjektiva", "adverbia", "konjungsi", "nomina", "numeralia", "partikel", "verba"]
+
+
+class KelasKata(str, Enum):
+    Adjektiva = "adjektiva"
+    Adverbia = "adverbia"
+    Konjungsi = "konjungsi"
+    Nomina = "nomina"
+    Numeralia = "numeralia"
+    Partikel = "partikel"
+    Verba = "verba"
+
+    def __str__(self):
+        return self.value
+
+    @classmethod
+    def to_list(cls: Type[KelasKata]) -> List[str]:
+        return [
+            cls.Adjektiva.value,
+            cls.Adverbia.value,
+            cls.Konjungsi.value,
+            cls.Nomina.value,
+            cls.Numeralia.value,
+            cls.Partikel.value,
+            cls.Verba.value,
+        ]
 
 
 class KutubukuTesaurus(commands.Cog):
@@ -20,10 +48,10 @@ class KutubukuTesaurus(commands.Cog):
 
     def _generate_embed(
         self, dataset: Lema, position: int, total_data: int, kelas_kata: str, kata: str
-    ) -> discord.Embed:
+    ) -> disnake.Embed:
         gen_title = f"{dataset.label} ({position + 1}/{total_data}) [{kata}]"
         build_url = f"http://tesaurus.kemdikbud.go.id/tematis/lema/{kata}/{kelas_kata}"
-        embed = discord.Embed(title=gen_title, colour=0xAF2A2A)
+        embed = disnake.Embed(title=gen_title, colour=0xAF2A2A)
         embed.set_author(
             name="Tesaurus Tematis",
             icon_url=_IKON,
@@ -55,24 +83,22 @@ class KutubukuTesaurus(commands.Cog):
                 tokenize[n] = token.replace(hi, f"__**{hi}**__")
         return " ".join(tokenize)
 
-    @app.slash_command(
-        name="tesaurus",
-        description="Cari sinonim/antonim sebuah kata bahasa Indonesia",
-    )
-    @app.option("kata", str, description="Kata yang ingin dicari")
-    @app.option(
-        "kelas",
-        str,
-        description="Batasi hasil ke kelas kata tertentu",
-        choices=list(map(lambda x: app.OptionChoice(x, x.capitalize()), _KELAS_KATA)),
-        required=False,
-    )
-    async def _tesaurus_slash_cmd(self, ctx: app.ApplicationContext, kata: str, kelas: str):
+    @commands.slash_command(name="tesaurus")
+    async def _tesaurus_slash_cmd(self, ctx: naoTimesAppContext, kata: str, kelas: KelasKata = None):
+        """Cari sinonim/antonim sebuah kata bahasa Indonesia
+
+        Parameters
+        ----------
+        kata: Kata yang ingin dicari
+        kelas: Batasi hasil ke kelas kata tertentu
+        """
         if not kata:
             return await ctx.send("Mohon berikan kata yang ingin dicari!")
 
         self.logger.info(f"Mencari kata `{kata}` dengan kelas kata `{kelas}`")
         await ctx.defer()
+        if kelas is not None:
+            kelas = kelas.value
 
         try:
             await self.bot.tesaurus.cari(kata, kelas)
@@ -108,7 +134,7 @@ class KutubukuTesaurus(commands.Cog):
         tes_kelas = split_kata[0].lower()
         kelas_kata = None
         real_kata = kata
-        if tes_kelas in _KELAS_KATA:
+        if tes_kelas in KelasKata.to_list():
             kelas_kata = tes_kelas
             real_kata = " ".join(split_kata[1:])
         self.logger.info(f"Mencari kata `{real_kata}` dengan kelas kata `{kelas_kata}`")
@@ -158,7 +184,7 @@ class KutubukuTesaurus(commands.Cog):
 
         def _generate_main(_):
             build_url = f"http://tesaurus.kemdikbud.go.id/tematis/lema/{real_kata}"
-            embed = discord.Embed(title=real_kata, colour=0xAF2A2A)
+            embed = disnake.Embed(title=real_kata, colour=0xAF2A2A)
             embed.set_author(
                 name="Tesaurus Tematis",
                 icon_url=_IKON,
@@ -171,7 +197,7 @@ class KutubukuTesaurus(commands.Cog):
             embed.set_footer(text="Diprakasai oleh Tesaurus Tematis", icon_url=_IKON)
             return embed
 
-        async def generator_tesaurus(dataset, _, message: discord.Message, emote: str):
+        async def generator_tesaurus(dataset, _, message: disnake.Message, emote: str):
             try:
                 emote_pos = emote_list.index(emote)
             except ValueError:

@@ -29,12 +29,21 @@ import pathlib
 import sys
 
 from arrow._version import __version__ as arrow_version
+from disnake import __title__ as disnake_title
+from disnake import __version__ as disnake_version
 from packaging.version import parse as parse_version
 
 from naotimes.bot import StartupError, naoTimesBot
 from naotimes.config import naoTimesBotConfig, naoTimesNamespace
 from naotimes.log import setup_log
-from naotimes.monke import monkeypatch_arrow_id_locale, monkeypatch_message_delete
+from naotimes.monke import (
+    monkeypatch_arrow_id_locale,
+    monkeypatch_disnake_tasks_loop,
+    monkeypatch_interaction_create,
+    monkeypatch_message_delete,
+    monkeypatch_thread_create,
+)
+from naotimes.utils import verify_port_open
 from naotimes.version import version_info
 
 if sys.version_info < (3, 8):
@@ -42,7 +51,7 @@ if sys.version_info < (3, 8):
 
 if sys.version_info >= (3, 7) and os.name == "posix":
     try:
-        import uvloop
+        import uvloop  # type: ignore
 
         print(">> Using UVLoop")
         uvloop.install()
@@ -50,13 +59,19 @@ if sys.version_info >= (3, 7) and os.name == "posix":
         pass
 
 
+cwd = pathlib.Path(__file__).parent.absolute()
+log_file = cwd / "logs" / "naotimes.log"
+logger = setup_log(log_file)
 # If arrow version is less than equal to 1.2.1, monkeypatch it
 if parse_version(arrow_version) <= parse_version("1.2.1"):
     monkeypatch_arrow_id_locale()
 monkeypatch_message_delete()
-cwd = pathlib.Path(__file__).parent.absolute()
-log_file = cwd / "logs" / "naotimes.log"
-logger = setup_log(log_file)
+# If disnake version is less than equal to 2.4.0, monkeypatch it
+if parse_version(disnake_version) <= parse_version("2.4.0"):
+    monkeypatch_interaction_create()
+    monkeypatch_thread_create()
+    if disnake_title == "disnake":
+        monkeypatch_disnake_tasks_loop()
 
 parser = argparse.ArgumentParser("naotimesbot")
 parser.add_argument("-dcog", "--disable-cogs", default=[], action="append", dest="cogs_skip")
@@ -67,6 +82,9 @@ parser.add_argument("-dev", "--dev-mode", action="store_true", dest="dev_mode", 
 parser.add_argument(
     "--force-presence", action="store_true", dest="presence", help="Force enable presences intents"
 )
+parser.add_argument(
+    "--force-message", action="store_true", dest="message", help="Force enable message intents"
+)
 args_parsed = parser.parse_args(namespace=naoTimesNamespace())
 
 logger.info("Looking up config...")
@@ -76,6 +94,17 @@ try:
 except ValueError:
     logger.critical("Could not find config file, exiting...")
     exit(69)
+
+
+if bot_config.http_server is not None:
+    if not verify_port_open(bot_config.http_server.port):
+        logger.critical(f"Port {bot_config.http_server.port} (HTTP Server) is not open, exiting...")
+        exit(69)
+if bot_config.socket is not None:
+    if not verify_port_open(bot_config.socket.port):
+        logger.critical(f"Port {bot_config.socket.port} (Socket Server) is not open, exiting...")
+        exit(69)
+
 
 async_loop: asyncio.AbstractEventLoop = None
 if args_parsed.dev_mode:

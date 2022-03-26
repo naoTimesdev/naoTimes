@@ -1,9 +1,9 @@
 import logging
 from typing import Optional, Tuple
 
-import discord
+import disnake
 from bs4 import BeautifulSoup
-from discord.ext import commands
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesContext
@@ -69,7 +69,7 @@ class PeninjauAnibin(commands.Cog):
             )
 
         self.logger.info(f"{query}: sending results...")
-        embed = discord.Embed(title="Anibin Native Resolution", color=0xFFAE00)
+        embed = disnake.Embed(title="Anibin Native Resolution", color=0xFFAE00)
         embed.add_field(name=title, value=native_res)
         embed.set_footer(text=f"Studio Animasi: {studio}")
         await ctx.send(embed=embed)

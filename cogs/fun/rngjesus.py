@@ -1,8 +1,8 @@
 import logging
 import random
 
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesContext
@@ -34,7 +34,7 @@ class FunRNGJesus(commands.Cog):
         _mul = {1: "cm", 2: "m", 5: "km"}
         cocka = random.randint(2, 12)
         member = ctx.author
-        if isinstance(orang_lain, discord.Member):
+        if isinstance(orang_lain, disnake.Member):
             member = orang_lain
         omega = f"Panjang kntl **{member}** adalah:\n"
         mult = random.choice([1, 2, 5])

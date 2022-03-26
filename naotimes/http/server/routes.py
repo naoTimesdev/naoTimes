@@ -30,7 +30,7 @@ from typing import Awaitable, Callable, List, Optional, Protocol, Union
 
 from aiohttp.web import Request as WebRequest
 from aiohttp.web import StreamResponse
-from discord.ext.commands.cog import Cog
+from disnake.ext.commands.cog import Cog
 
 __all__ = ("Route", "RouteMethod", "get", "post", "put", "patch", "delete", "head", "route")
 
@@ -63,6 +63,34 @@ class Route:
     with_auth: bool = False
     has_injected: bool = False
     cog: Optional[Cog] = None
+
+    def __post_init__(self):
+        if not self.path.startswith("/"):
+            self.path = "/" + self.path
+
+    def bind_cog(self, cog: Cog):
+        self.cog = cog
+        # Get route prefix from class
+        suffix_attr = "http_route_prefix"
+        matching_attr = None
+        for attr in dir(cog):
+            if attr.casefold().endswith(suffix_attr):
+                fetch_attr = getattr(cog, attr, None)
+                if isinstance(fetch_attr, str):
+                    matching_attr = fetch_attr
+                    break
+
+        if matching_attr is not None:
+            if not matching_attr.startswith("/"):
+                matching_attr = "/" + matching_attr
+
+            # Join route path with prefix path
+            if matching_attr.endswith("/") and self.path.startswith("/"):
+                self.path = matching_attr + self.path[1:]
+            elif matching_attr.endswith("/") and not self.path.startswith("/"):
+                self.path = matching_attr + self.path
+            elif not matching_attr.endswith("/") and self.path.startswith("/"):
+                self.path = matching_attr + self.path
 
 
 def get(

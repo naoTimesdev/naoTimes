@@ -31,10 +31,10 @@ import logging
 from inspect import iscoroutinefunction, signature
 from typing import Generic, List, Optional, TypeVar
 
-import discord
-import discord.ui as DisUI
-from discord import Interaction
-from discord.ext.commands import Context
+import disnake
+import disnake.ui as DisUI
+from disnake import MessageInteraction
+from disnake.ext.commands import Context
 
 from .common import IT, GeneratedKwargs, GeneratorOutput, PaginationFailure, PaginatorGenerator
 
@@ -52,7 +52,7 @@ class DiscordPaginatorUI(DisUI.View, Generic[IT]):
     def __init__(self, ctx: Context, items: List[IT], timeout: Optional[Number] = None):
         super().__init__(timeout=timeout)
         self.logger = logging.getLogger("Paginator.UI")
-        self.message: Optional[discord.Message] = None
+        self.message: Optional[disnake.Message] = None
 
         self.ctx: Context = ctx
         self._author = ctx.author
@@ -151,14 +151,14 @@ class DiscordPaginatorUI(DisUI.View, Generic[IT]):
     @staticmethod
     def __generate_message(generated: GeneratorOutput) -> GeneratedKwargs:
         raw_msg: str = None
-        embed: discord.Embed = None
+        embed: disnake.Embed = None
         if isinstance(generated, (list, tuple)):
             for data in generated:
-                if isinstance(data, discord.Embed):
+                if isinstance(data, disnake.Embed):
                     embed = data
                 elif isinstance(data, str):
                     raw_msg = data
-        elif isinstance(generated, discord.Embed):
+        elif isinstance(generated, disnake.Embed):
             embed = generated
         elif isinstance(generated, (str, int)):
             if isinstance(generated, int):
@@ -169,12 +169,12 @@ class DiscordPaginatorUI(DisUI.View, Generic[IT]):
         final_kwargs = {}
         if isinstance(raw_msg, str):
             final_kwargs["content"] = raw_msg
-        if isinstance(embed, discord.Embed):
+        if isinstance(embed, disnake.Embed):
             final_kwargs["embed"] = embed
         return final_kwargs
 
     async def __generate_view(
-        self, message: discord.Message, user: Optional[discord.User]
+        self, message: disnake.Message, user: Optional[disnake.User]
     ) -> GeneratedKwargs:
         if user is not None:
             if user.id != self._author.id:
@@ -204,7 +204,7 @@ class DiscordPaginatorUI(DisUI.View, Generic[IT]):
         final_kwargs["view"] = self
         return final_kwargs
 
-    async def interaction_check(self, interaction: Interaction) -> bool:
+    async def interaction_check(self, interaction: MessageInteraction) -> bool:
         return self.ctx.author.id == interaction.user.id
 
     async def on_timeout(self) -> None:
@@ -215,15 +215,15 @@ class DiscordPaginatorUI(DisUI.View, Generic[IT]):
             self.logger.info("Message detected, editing...")
             await self.message.edit(view=self)
 
-    @DisUI.button(label="Awal", emoji="⏮")
-    async def first_page(self, button: DisUI.Button, interaction: Interaction):
+    @DisUI.button(emoji="⏮", row=0)
+    async def first_page(self, button: DisUI.Button, interaction: MessageInteraction):
         self._page = 0
         self.update_view()
         generated = await self.__generate_view(interaction.message, interaction.user)
         await interaction.response.edit_message(**generated)
 
-    @DisUI.button(label="Sebelumnya", emoji="◀")
-    async def prev_page(self, button: DisUI.Button, interaction: Interaction):
+    @DisUI.button(emoji="◀", row=0)
+    async def prev_page(self, button: DisUI.Button, interaction: MessageInteraction):
         self._page -= 1
         if self._page < 0:
             self._page = 0
@@ -231,14 +231,14 @@ class DiscordPaginatorUI(DisUI.View, Generic[IT]):
         generated = await self.__generate_view(interaction.message, interaction.user)
         await interaction.response.edit_message(**generated)
 
-    @DisUI.button(label="Halaman 1/1", style=discord.ButtonStyle.primary, disabled=True)
-    async def current_page(self, button: DisUI.Button, interaction: Interaction):
+    @DisUI.button(label="1/1", style=disnake.ButtonStyle.primary, disabled=True, row=0)
+    async def current_page(self, button: DisUI.Button, interaction: MessageInteraction):
         self.update_view()
         generated = await self.__generate_view(interaction.message, interaction.user)
         await interaction.response.edit_message(**generated)
 
-    @DisUI.button(label="Selanjutnya", emoji="▶")
-    async def next_page(self, button: DisUI.Button, interaction: Interaction):
+    @DisUI.button(emoji="▶", row=0)
+    async def next_page(self, button: DisUI.Button, interaction: MessageInteraction):
         self._page += 1
         if self._page > len(self._pages) - 1:
             self._page = len(self._pages) - 1
@@ -246,15 +246,15 @@ class DiscordPaginatorUI(DisUI.View, Generic[IT]):
         generated = await self.__generate_view(interaction.message, interaction.user)
         await interaction.response.edit_message(**generated)
 
-    @DisUI.button(label="Akhir", emoji="⏭")
-    async def last_page(self, button: DisUI.Button, interaction: Interaction):
+    @DisUI.button(emoji="⏭", row=0)
+    async def last_page(self, button: DisUI.Button, interaction: MessageInteraction):
         self._page = len(self._pages) - 1
         self.update_view()
         generated = await self.__generate_view(interaction.message, interaction.user)
         await interaction.response.edit_message(**generated)
 
-    @DisUI.button(label="Tutup", emoji="✅", style=discord.ButtonStyle.danger)
-    async def close_button(self, button: DisUI.Button, interaction: Interaction):
+    @DisUI.button(emoji="✅", style=disnake.ButtonStyle.danger, row=1)
+    async def close_button(self, button: DisUI.Button, interaction: MessageInteraction):
         self._is_stopped = True
         self.update_view()
         await interaction.response.edit_message(view=self)

@@ -1,7 +1,7 @@
 import logging
 
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesContext
@@ -36,7 +36,7 @@ class PeninjauGameHLTB(commands.Cog):
             return f"https://howlongtobeat.com/{image_url}"
 
         def _generate_embed(hltb_data: dict):
-            embed = discord.Embed(
+            embed = disnake.Embed(
                 title=hltb_data["title"], url=hltb_data["url"], color=hltb_data.get("color", 0x858585)
             )
             embed.set_thumbnail(url=_merge_image(hltb_data["image"]))

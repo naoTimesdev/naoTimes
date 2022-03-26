@@ -28,8 +28,8 @@ import logging
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import arrow
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from ..http import AnilistBucket
 from ..utils import complex_walk
@@ -422,19 +422,19 @@ class ShowtimesCogsBases:
             else:
                 await ctx.send(", ".join(data))
 
-    async def announce_embed(self, bot: naoTimesBot, channel: Optional[int], embed: discord.Embed):
+    async def announce_embed(self, bot: naoTimesBot, channel: Optional[int], embed: disnake.Embed):
         if not isinstance(channel, int):
             return
         kanal_target = bot.get_channel(channel)
-        if not isinstance(kanal_target, discord.TextChannel):
+        if not isinstance(kanal_target, disnake.TextChannel):
             self.logger.warning(f"{channel}: unknown channel.")
             return
         try:
             self.logger.info(f"Trying to sent announcement to {kanal_target}")
             await kanal_target.send(embed=embed)
-        except discord.Forbidden:
+        except disnake.Forbidden:
             self.logger.error(
                 f"Failed to sent announcement to channel {kanal_target} because missing permission",
             )
-        except discord.HTTPException as e:
+        except disnake.HTTPException as e:
             self.logger.error(f"Failed to sent announcement to channel {kanal_target}", exc_info=e)

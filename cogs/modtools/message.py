@@ -1,7 +1,7 @@
 import logging
 
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesContext
@@ -29,15 +29,15 @@ class ModtoolsMessage(commands.Cog):
         if count <= 0:
             return await ctx.send("Mohon berikan total pesan yang ingin dihapus!")
 
-        def not_self(m: discord.Message):
+        def not_self(m: disnake.Message):
             return m.id != ctx.message.id
 
-        kanal: discord.TextChannel = ctx.channel
+        kanal: disnake.TextChannel = ctx.channel
         deleted_messages = await kanal.purge(limit=count, bulk=True, check=not_self)
         await ctx.send_timed(f"Berhasil menghapus {len(deleted_messages)} pesan!")
         try:
             await ctx.message.delete(no_log=True)
-        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+        except (disnake.NotFound, disnake.Forbidden, disnake.HTTPException):
             pass
 
     @commands.command(name="nuke", aliases=["nuklir"])
@@ -48,7 +48,7 @@ class ModtoolsMessage(commands.Cog):
     ):
         if not channel:
             channel = ctx.channel
-        if not isinstance(channel, discord.TextChannel):
+        if not isinstance(channel, disnake.TextChannel):
             return await ctx.send("Kanal yang dipilih bukanlah kanal teks!")
 
         confirm = await ctx.confirm(
@@ -58,7 +58,7 @@ class ModtoolsMessage(commands.Cog):
             return await ctx.send("*Dibatalkan*")
         real_and_true = await ctx.send("Mencoba menghapus semua pesan...")
 
-        def _simple_check(message: discord.Message):
+        def _simple_check(message: disnake.Message):
             return message.id != real_and_true.id
 
         deleted = await channel.purge(limit=None, check=_simple_check)
@@ -70,14 +70,11 @@ class ModtoolsMessage(commands.Cog):
     @commands.guild_only()
     @commands.has_guild_permissions(administrator=True)
     async def _modtools_nuke_user(
-        self, ctx: naoTimesContext, user: commands.MemberConverter, time_limit: str = "24h"
+        self, ctx: naoTimesContext, user: commands.ObjectConverter, time_limit: str = "24h"
     ):
-        guild: discord.Guild = ctx.guild
-        if not isinstance(user, discord.Member):
+        guild: disnake.Guild = ctx.guild
+        if not isinstance(user, disnake.Object):
             return await ctx.send("Tidak dapat menemukan pengguna tersebut!")
-
-        if user.guild != ctx.guild:
-            return await ctx.send("User tersebut tidak ada di peladen ini!")
 
         maximum_deletion = TimeString.parse(time_limit)
         if maximum_deletion > self.MAX_TIME:
@@ -93,19 +90,19 @@ class ModtoolsMessage(commands.Cog):
 
         init_msg = await ctx.send("Mulai proses menghapus pesan...")
 
-        def _check_validate(m: discord.Message):
+        def _check_validate(m: disnake.Message):
             return m.author.id == user.id and init_msg.id != m.id
 
         all_channels = guild.text_channels
         all_deleted = 0
         for kanal in all_channels:
             self.logger.info(f"Trying to delete message by user `{user}` in `{kanal}`")
-            permission: discord.Permissions = kanal.permissions_for(bot_member)
+            permission: disnake.Permissions = kanal.permissions_for(bot_member)
             if not permission.manage_messages:
                 continue
             deleted = await kanal.purge(limit=None, check=_check_validate, after=max_backward_time.datetime)
             count = len(deleted)
-            await init_msg.edit(f"Berhasil menghapus {count:,} pesan dari kanal #{kanal.name}")
+            await init_msg.edit(f"Berhasil menghapus {count:,} pesan dari kanal #{kanal.mention}")
             all_deleted += count
 
         await init_msg.edit(f"Berhasil menghapus {all_deleted:,} pesan dari semua kanal!")

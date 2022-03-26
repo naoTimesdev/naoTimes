@@ -24,6 +24,7 @@ showtimes_folder
 ticketing
 vote_data
 vthell
+!naotimes/private/vthell
 .nox
 
 # Scripts
@@ -35,3 +36,5 @@ streaming_lists.json
 env
 
 authorize_prod
+
+target/pylist*

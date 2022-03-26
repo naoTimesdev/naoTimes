@@ -5,8 +5,8 @@ from functools import partial
 from typing import Callable, Dict, List, NamedTuple, Optional, Union
 
 import arrow
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesContext
@@ -262,11 +262,11 @@ class AyayaVTuber(commands.Cog):
         "5️⃣",
     ]
     NiceEmote = [
-        str(discord.PartialEmoji(name="vtBYT", id="843473930348920832")),
-        str(discord.PartialEmoji(name="vtBTTV", id="843474008984518687")),
-        str(discord.PartialEmoji(name="vtBTW", id="843473977484509184")),
-        str(discord.PartialEmoji(name="vtBMD", id="843474000159965226")),
-        str(discord.PartialEmoji(name="vtBB2", id="843474401310670848")),
+        str(disnake.PartialEmoji(name="vtBYT", id=843473930348920832)),
+        str(disnake.PartialEmoji(name="vtBTTV", id=843474008984518687)),
+        str(disnake.PartialEmoji(name="vtBTW", id=843473977484509184)),
+        str(disnake.PartialEmoji(name="vtBMD", id=843474000159965226)),
+        str(disnake.PartialEmoji(name="vtBB2", id=843474401310670848)),
     ]
 
     def __init__(self, bot: naoTimesBot):
@@ -333,9 +333,9 @@ class AyayaVTuber(commands.Cog):
         return full_data
 
     def _check_bot_perms(self, ctx: naoTimesContext):
-        the_guild: discord.Guild = ctx.guild
+        the_guild: disnake.Guild = ctx.guild
         is_guild = the_guild is not None
-        the_channel: discord.TextChannel = ctx.channel
+        the_channel: disnake.TextChannel = ctx.channel
         bot_member = the_guild.get_member(self.bot.user.id)
         bbperms = the_channel.permissions_for(bot_member)
 
@@ -401,7 +401,7 @@ class AyayaVTuber(commands.Cog):
         description_data.append(bold("Grup atau Organisasi") + f": {group_text}")
         description_data.append(bold("Mulai dari") + f": {start_time_fmt}\n")
         description_data.append(joined_string)
-        embed = discord.Embed(color=platform_info.color, timestamp=arrow.get(start_time).datetime)
+        embed = disnake.Embed(color=platform_info.color, timestamp=arrow.get(start_time).datetime)
         embed.set_author(name=title_fmt, url=url, icon_url=platform_info.logo)
         embed.set_thumbnail(url=dataset.channel.image)
         thumbnail = self._select_thumbnail(dataset)
@@ -463,7 +463,7 @@ class AyayaVTuber(commands.Cog):
         description.append(bold("Statistik") + f":\n{stats_text}")
         description.append(f"[**`Lihat Kanal`**]({ch_url})")
 
-        embed = discord.Embed(color=platform_info.color)
+        embed = disnake.Embed(color=platform_info.color)
         embed.set_author(
             name=title_fmt,
             url=ch_url,
@@ -481,11 +481,11 @@ class AyayaVTuber(commands.Cog):
         self,
         dataset: Dict[str, List[dict]],
         _,
-        message: discord.Message,
+        message: disnake.Message,
         emote: str,
         base_emotes: List[str],
         ctx: naoTimesContext,
-        predicate: Callable[[List[dict], int, int], discord.Embed],
+        predicate: Callable[[List[dict], int, int], disnake.Embed],
     ):
         try:
             emote_pos = base_emotes.index(emote)
@@ -597,7 +597,7 @@ class AyayaVTuber(commands.Cog):
         if total_platforms < 1:
             return await ctx.send("Tidak ada VTuber yang terdaftar di database sedang live.")
 
-        base_emotes: List[Union[str, discord.PartialEmoji]] = []
+        base_emotes: List[Union[str, disnake.PartialEmoji]] = []
         if not can_custom_emote:
             base_emotes = self.SubtituteEmote[:total_platforms]
         for platform in list(grouped_results.keys()):
@@ -613,7 +613,7 @@ class AyayaVTuber(commands.Cog):
                 base_emotes.append(self.NiceEmote[4])
 
         def _generate_base_embed(dataset: Dict[str, str]):
-            embed = discord.Embed(title="VTubers Lives", color=0x19212D)
+            embed = disnake.Embed(title="VTubers Lives", color=0x19212D)
             embed_value = []
             for pos, platform in enumerate(dataset.keys()):
                 embed_value.append(f"{base_emotes[pos]} **{platform.capitalize()}**")
@@ -671,7 +671,7 @@ class AyayaVTuber(commands.Cog):
         if total_platforms < 1:
             return await ctx.send("Tidak ada jadwal terbaru untuk VTuber yang terdaftar.")
 
-        base_emotes: List[Union[str, discord.PartialEmoji]] = []
+        base_emotes: List[Union[str, disnake.PartialEmoji]] = []
         if not can_custom_emote:
             base_emotes = self.SubtituteEmote[:total_platforms]
         for platform in list(grouped_results.keys()):
@@ -687,7 +687,7 @@ class AyayaVTuber(commands.Cog):
                 base_emotes.append(self.NiceEmote[4])
 
         def _generate_base_embed(dataset: dict):
-            embed = discord.Embed(title="Jadwal Streams", color=0x19212D)
+            embed = disnake.Embed(title="Jadwal Streams", color=0x19212D)
             embed_value = []
             for pos, platform in enumerate(dataset.keys()):
                 embed_value.append(f"{base_emotes[pos]} **{platform.capitalize()}**")
@@ -744,7 +744,7 @@ class AyayaVTuber(commands.Cog):
         if total_platforms < 1:
             return await ctx.send("Tidak ada VTuber yang terdaftar.")
 
-        base_emotes: List[Union[str, discord.PartialEmoji]] = []
+        base_emotes: List[Union[str, disnake.PartialEmoji]] = []
         if not can_custom_emote:
             base_emotes = self.SubtituteEmote[:total_platforms]
         for platform in list(grouped_results.keys()):
@@ -760,7 +760,7 @@ class AyayaVTuber(commands.Cog):
                 base_emotes.append(self.NiceEmote[4])
 
         def _generate_base_embed(dataset: dict):
-            embed = discord.Embed(title="Kanal VTuber", color=0x19212D)
+            embed = disnake.Embed(title="Kanal VTuber", color=0x19212D)
             embed_value = []
             for pos, platform in enumerate(dataset.keys()):
                 embed_value.append(f"{base_emotes[pos]} **{platform.capitalize()}**")
@@ -786,7 +786,7 @@ class AyayaVTuber(commands.Cog):
         if not real_result:
             return await ctx.send("Tidak ada VTuber yang terdaftar!")
 
-        embed = discord.Embed(title="VTuber Groups/Organizations", color=0x146B74)
+        embed = disnake.Embed(title="VTuber Groups/Organizations", color=0x146B74)
         properly_named = []
         for res in real_result:
             group_name = GROUPS_NAME_MAPPINGS.get(res)

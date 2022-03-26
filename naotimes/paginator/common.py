@@ -37,8 +37,8 @@ from typing import (
     overload,
 )
 
-from discord import Embed, Emoji, Message, PartialEmoji
-from discord.ui import View
+from disnake import Embed, Emoji, Message, PartialEmoji
+from disnake.ui import View
 
 if TYPE_CHECKING:
     from .react import DiscordPaginator

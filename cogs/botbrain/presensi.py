@@ -4,8 +4,8 @@ from itertools import cycle
 from random import choice, shuffle
 from typing import Literal, NamedTuple, Optional
 
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesContext
@@ -31,15 +31,15 @@ class PresensiData(NamedTuple):
     def presensi(self, prefix: str = "!"):
         kwargs = {"name": self.teks + f" | {prefix}help"}
         if self.emoji is not None:
-            kwargs["emoji"] = discord.PartialEmoji(name=self.emoji).to_dict()
+            kwargs["emoji"] = disnake.PartialEmoji(name=self.emoji).to_dict()
         remap_type = {
-            0: discord.ActivityType.playing,
-            1: discord.ActivityType.listening,
-            2: discord.ActivityType.watching,
+            0: disnake.ActivityType.playing,
+            1: disnake.ActivityType.listening,
+            2: disnake.ActivityType.watching,
         }
-        tipe = remap_type.get(self.tipe, discord.ActivityType.playing)
+        tipe = remap_type.get(self.tipe, disnake.ActivityType.playing)
         kwargs["type"] = tipe
-        return discord.Activity(**kwargs)
+        return disnake.Activity(**kwargs)
 
 
 PRESENSI_DATA = [
@@ -90,6 +90,10 @@ class BotBrainPresensi(commands.Cog):
             self.rotation_rate = 60
             setattr(self.bot, "presensi_rate", self.rotation_rate)
 
+        presensi_simple = PRESENSI_DATA.copy()
+        shuffle(presensi_simple)
+        self._presensi = cycle(presensi_simple)
+
         self.logger = logging.getLogger("BotBrain.Presensi")
         self._ROTATE_PRESENCE = asyncio.Task(self._loop_bb_ubah_presensi())
 
@@ -118,24 +122,25 @@ class BotBrainPresensi(commands.Cog):
     @commands.command(name="ubahpresensi")
     @commands.is_owner()
     async def _bb_manual_presensi_ubah_real(self, ctx, *, text: str):
-        await self.bot.change_presence(activity=discord.Game(name=text + " | !help"))
+        await self.bot.change_presence(activity=disnake.Game(name=text + " | !help"))
         await ctx.send(f"Mengubah presensi ke `{text}`")
 
     async def _loop_bb_ubah_presensi(self):
         self.logger.info("starting presence rotation handler, shuffling!")
-        shuffle(PRESENSI_DATA)
-        presences = cycle(PRESENSI_DATA)
         while True:
             try:
                 await asyncio.sleep(self.rotation_rate)
                 try:
-                    presensi = next(presences)
+                    presensi = next(self._presensi)
                 except StopIteration:
                     presensi = choice(PRESENSI_DATA)
                 self.logger.info(
                     f"changing to `{presensi.pretty()}`, next rotation in {self.rotation_rate} secs"
                 )
-                await self.bot.change_presence(activity=presensi.presensi(self.bot.prefix))
+                try:
+                    await self.bot.change_presence(activity=presensi.presensi(self.bot.prefix))
+                except Exception as e:
+                    self.logger.warning("failed to change presence, ignoring!", exc_info=e)
             except asyncio.CancelledError:
                 self.logger.warning("stopping presences rotator")
                 break

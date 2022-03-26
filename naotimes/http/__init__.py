@@ -7,8 +7,6 @@ A collection of HTTP related utilities.
 :license: MIT, see LICENSE for more details.
 """
 
-# flake8: noqa
-
 from .anibucket import *
 from .crowbar import *
 from .gql import *

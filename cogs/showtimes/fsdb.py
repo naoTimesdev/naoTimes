@@ -1,8 +1,8 @@
 import logging
 from typing import List
 
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesContext
@@ -70,7 +70,7 @@ class ShowtimesFansubDB(commands.Cog):
             return await ctx.send("Fansub sudah terintegrasi dengan FansubDB.")
 
         self.logger.info(f"{server_id}: not integrated, starting integration...")
-        embed = discord.Embed(title="Integrasi FansubDB", color=0x56ACF3)
+        embed = disnake.Embed(title="Integrasi FansubDB", color=0x56ACF3)
         embed.add_field(name="Memulai Proses", value="Mempersiapkan...")
         embed.set_footer(
             text="Dibawakan oleh naoTimes™",
@@ -81,7 +81,7 @@ class ShowtimesFansubDB(commands.Cog):
 
         async def _process_fsdb_internal():
             self.logger.info(f"{server_id}: processing fansubdb data...")
-            embed = discord.Embed(title="Integrasi FansubDB", color=0x56ACF3)
+            embed = disnake.Embed(title="Integrasi FansubDB", color=0x56ACF3)
             embed.add_field(
                 name="Fansub ID",
                 value="Ketik ID Fansub yang terdaftar di FansubDB.\n\n"
@@ -126,7 +126,7 @@ class ShowtimesFansubDB(commands.Cog):
             return await ctx.send("ID fansub tidak ditemukan di FansubDB, mohon ulangi dari awal!")
 
         fsd_name = fsd_data["name"]
-        embed = discord.Embed(
+        embed = disnake.Embed(
             title="Integrasi FansubDB",
             description="Periksa data!\nReact jika ingin diubah.",
             color=0xE7E363,
@@ -153,7 +153,7 @@ class ShowtimesFansubDB(commands.Cog):
             return await ctx.send("**Dibatalkan!**")
 
         self.logger.info(f"{server_id}: collecting registered anime data and such...")
-        embed = discord.Embed(title="Integrasi FansubDB", color=0x56ACF3)
+        embed = disnake.Embed(title="Integrasi FansubDB", color=0x56ACF3)
         embed.add_field(name="Memproses!", value="Memproses Koneksi Anime...", inline=True)
         embed.set_footer(
             text="Dibawakan oleh naoTimes™®",
@@ -216,7 +216,7 @@ class ShowtimesFansubDB(commands.Cog):
                         osrv_data.update_project(osrv_anime, False)
                         update_queue.append(osrv_data)
 
-        embed = discord.Embed(title="Integrasi FansubDB", color=0x56ACF3)
+        embed = disnake.Embed(title="Integrasi FansubDB", color=0x56ACF3)
         embed.add_field(name="Memproses!", value="Membuat data akhir...")
         embed.set_footer(
             text="Dibawakan oleh naoTimes™",
@@ -229,7 +229,7 @@ class ShowtimesFansubDB(commands.Cog):
         self.logger.info(f"{server_id}: updating database...")
         for data in update_queue:
             await self.queue.add_job(data)
-        embed = discord.Embed(title="Integrasi FansubDB", color=0x96DF6A)
+        embed = disnake.Embed(title="Integrasi FansubDB", color=0x96DF6A)
         embed.add_field(
             name="Sukses!",
             value="Server sukses terintegrasi dengan FansubDB",
@@ -373,7 +373,7 @@ class ShowtimesFansubDB(commands.Cog):
         results = await self.fsdb.fetch_fansubs(pencarian)
 
         def _create_fsdb_embed(data: dict):
-            embed = discord.Embed(color=0x19212D)
+            embed = disnake.Embed(color=0x19212D)
             embed.set_footer(text="(C) FansubDB Indonesia")
             embed.title = data["name"]
             desc = f"ID: {data['id']}"

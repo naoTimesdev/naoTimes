@@ -24,12 +24,12 @@ SOFTWARE.
 
 from typing import TypeVar, Union
 
-import discord
+import disnake
 
 __all__ = ("MemberContext", "ModLogContext", "T", "KT", "VT")
 
-MemberContext = Union[discord.Member, discord.User]
-ModLogContext = Union[discord.Message, discord.Member, discord.User]
+MemberContext = Union[disnake.Member, disnake.User]
+ModLogContext = Union[disnake.Message, disnake.Member, disnake.User]
 T = TypeVar("T")
 KT = TypeVar("KT")
 VT = TypeVar("VT")

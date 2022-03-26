@@ -2,9 +2,9 @@ import logging
 from enum import Enum
 from typing import List, Optional
 
-import discord
-from discord.embeds import EmptyEmbed
-from discord.ext import commands, tasks
+import disnake
+from disnake.embeds import EmptyEmbed
+from disnake.ext import commands, tasks
 
 from naotimes.bot import naoTimesBot, naoTimesContext
 from naotimes.showtimes import Showtimes, ShowtimesEpisodeStatus, ShowtimesProject
@@ -244,7 +244,7 @@ class ShowtimesStaff(commands.Cog):
                 self.logger.error(f"{all_srv.id}: failed to update, reason: {msg}")
 
         for update in save_queue:
-            embed = discord.Embed(title=matched_anime.title, color=0x1EB5A6)
+            embed = disnake.Embed(title=matched_anime.title, color=0x1EB5A6)
             nn_embed = "Rilis!"
             if progress == ProgressEnum.UNDONE:
                 nn_embed = "Batal rilis..."
@@ -258,7 +258,7 @@ class ShowtimesStaff(commands.Cog):
     async def _showstaff_rilis(self, ctx: naoTimesContext):
         """Showtimes staff release command"""
         if ctx.invoked_subcommand is None:
-            pesan: discord.Message = ctx.message
+            pesan: disnake.Message = ctx.message
             split_content = pesan.clean_content.split(" ")
             the_real_title = None
             for pos, konten in enumerate(split_content):
@@ -307,7 +307,7 @@ class ShowtimesStaff(commands.Cog):
     async def _showstaff_batalrilis(self, ctx: naoTimesContext):
         """Showtimes staff release command"""
         if ctx.invoked_subcommand is None:
-            pesan: discord.Message = ctx.message
+            pesan: disnake.Message = ctx.message
             split_content = pesan.clean_content.split(" ")
             the_real_title = None
             for pos, konten in enumerate(split_content):
@@ -362,7 +362,7 @@ class ShowtimesStaff(commands.Cog):
         statuses = " ".join(status_lists)
 
         poster_image, poster_color = project_info.poster.url, project_info.poster.color
-        embed = discord.Embed(title=f"{project_info.title} - #{episode_info.episode}", color=poster_color)
+        embed = disnake.Embed(title=f"{project_info.title} - #{episode_info.episode}", color=poster_color)
         embed.set_thumbnail(url=poster_image)
         embed.add_field(name="Status", value=statuses, inline=False)
         embed.add_field(name="Update Terakhir", value="Baru saja", inline=False)
@@ -468,13 +468,13 @@ class ShowtimesStaff(commands.Cog):
             # Dont sent announce message
             return
 
-        color_pog = discord.Color.from_rgb(120, 222, 118)
+        color_pog = disnake.Color.from_rgb(120, 222, 118)
         if mode == ProgressEnum.UNDONE:
-            color_pog = discord.Color.from_rgb(218, 97, 97)
+            color_pog = disnake.Color.from_rgb(218, 97, 97)
 
         self.logger.info(f"{log_pre}: Sending progress to all servers...")
         for update in update_queue:
-            embed = discord.Embed(title=f"{matched_anime.title} - #{active_episode.episode}", color=color_pog)
+            embed = disnake.Embed(title=f"{matched_anime.title} - #{active_episode.episode}", color=color_pog)
             embed.add_field(
                 name="Status", value=self.base.parse_status(active_episode.progress), inline=False
             )

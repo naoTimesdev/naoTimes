@@ -5,10 +5,10 @@ import traceback
 from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 import arrow
-import discord
+import disnake
 import wavelink
-from discord.backoff import ExponentialBackoff
-from discord.ext import commands
+from disnake.backoff import ExponentialBackoff
+from disnake.ext import commands
 
 try:
     from sentry_sdk import push_scope
@@ -22,7 +22,7 @@ from naotimes.utils import quote
 if TYPE_CHECKING:
     from cogs.botbrain.error import BotBrainErrorHandler
 
-VocalChannel = Union[discord.VoiceChannel, discord.StageChannel]
+VocalChannel = Union[disnake.VoiceChannel, disnake.StageChannel]
 
 
 class MusikPlayerListener(commands.Cog):
@@ -99,7 +99,7 @@ class MusikPlayerListener(commands.Cog):
                 await channel.send(
                     f"Terjadi kesalahan ketika menyetel lagu `{track.title}`, mohon kontak Owner Bot!"
                 )
-            except (discord.Forbidden, discord.HTTPException):
+            except (disnake.Forbidden, disnake.HTTPException):
                 pass
 
     @commands.Cog.listener("on_wavelink_track_start")
@@ -121,7 +121,7 @@ class MusikPlayerListener(commands.Cog):
         embed = self.bot.ntplayer.generate_track_embed(current)
         try:
             await current.channel.send(embed=embed)
-        except (discord.Forbidden, discord.HTTPException):
+        except (disnake.Forbidden, disnake.HTTPException):
             pass
 
     async def _dispatch_playback_next_later(
@@ -159,7 +159,7 @@ class MusikPlayerListener(commands.Cog):
                 )
             try:
                 await channel.send(error_msg_delay)
-            except (discord.Forbidden, discord.HTTPException, Exception):
+            except (disnake.Forbidden, disnake.HTTPException, Exception):
                 pass
 
         _do_not_log = (wavelink.errors.LoadTrackError, wavelink.errors.BuildTrackError)
@@ -168,7 +168,7 @@ class MusikPlayerListener(commands.Cog):
             return
 
         # Push to log channel
-        embed = discord.Embed(
+        embed = disnake.Embed(
             title="🎵 Music Error Log",
             colour=0xFF253E,
             description="Terjadi kesalahan ketika ingin memutar musik!",
@@ -234,8 +234,8 @@ class MusikPlayerListener(commands.Cog):
                 )
 
     def _select_members(
-        self, members: List[discord.Member], id_check: int = None
-    ) -> Optional[discord.Member]:
+        self, members: List[disnake.Member], id_check: int = None
+    ) -> Optional[disnake.Member]:
         # Select one member
         # Use priority, so if the member an admin, pick them
         # then check if they have specific permissions
@@ -266,7 +266,7 @@ class MusikPlayerListener(commands.Cog):
             return None
         return random.choice(normal_members)
 
-    async def _delegate_on_bot_new_channel(self, guild: discord.Guild, after_channel: Optional[VocalChannel]):
+    async def _delegate_on_bot_new_channel(self, guild: disnake.Guild, after_channel: Optional[VocalChannel]):
         if after_channel is None:
             self.logger.info(f"Player: Bot got kicked from <{guild.id}> VC, deleting queue...")
             self.bot.ntplayer.delete(guild)
@@ -282,10 +282,7 @@ class MusikPlayerListener(commands.Cog):
 
     @commands.Cog.listener("on_voice_state_update")
     async def _auto_voice_delegation(
-        self,
-        member: discord.Member,
-        before: discord.VoiceState,
-        after: discord.VoiceState,
+        self, member: disnake.Member, before: disnake.VoiceState, after: disnake.VoiceState
     ):
         """Automatically delegate the DJ of the current music player"""
         guild = member.guild

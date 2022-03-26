@@ -1,8 +1,8 @@
 import logging
 from typing import Literal
 
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesContext
@@ -81,7 +81,7 @@ class PeninjauGameSteam(commands.Cog):
             return await ctx.send("Tidak ada hasil.")
 
         def _stylize_embed(data: dict):
-            embed = discord.Embed(title=data["title"], url=self.APP_FORMAT.format(data["id"]))
+            embed = disnake.Embed(title=data["title"], url=self.APP_FORMAT.format(data["id"]))
             descriptions = []
             platforms_data = data["platforms"]
             platforms = []
@@ -130,7 +130,7 @@ class PeninjauGameSteam(commands.Cog):
         category_list = list(map(lambda x: x["description"], result.get("category", [])))
 
         self.logger.info(f"{app_id}: formatting results...")
-        embed = discord.Embed(title=result["title"], url=self.APP_FORMAT.format(result["id"]))
+        embed = disnake.Embed(title=result["title"], url=self.APP_FORMAT.format(result["id"]))
         embed_desc = []
         embed_desc.append(clean_description(result["description"]))
         if "is_free" in result and result["is_free"]:
@@ -214,7 +214,7 @@ class PeninjauGameSteam(commands.Cog):
         steam_status = await self.bot.crowbar.get_status()
         HL_LOGO = "https://static.wikia.nocookie.net/half-life/images/d/dc/Lambda_logo.svg/revision/latest/scale-to-width-down/365?cb=20100327174546&path-prefix=en"  # noqa: E501
 
-        embed = discord.Embed(
+        embed = disnake.Embed(
             title="Layanan Steam", color=0x19212D, timestamp=steam_status.timestamp.datetime
         )
         embed.set_author(

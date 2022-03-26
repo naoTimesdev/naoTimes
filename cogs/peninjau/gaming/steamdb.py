@@ -1,8 +1,8 @@
 import logging
 from typing import Any
 
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesContext
@@ -94,7 +94,7 @@ class PeninjauGamingSteamDB(commands.Cog):
             return await ctx.send("Tidak ada hasil yang cocok")
 
         def _generate_embed(sdb_data: dict):
-            embed = discord.Embed(title=sdb_data["title"], url=STORE_APP.format(sdb_data["id"]))
+            embed = disnake.Embed(title=sdb_data["title"], url=STORE_APP.format(sdb_data["id"]))
             description = []
             if "price" in sdb_data:
                 description.append("Harga: {}".format(sdb_data["price"]))

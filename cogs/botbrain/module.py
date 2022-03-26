@@ -1,8 +1,8 @@
 import fnmatch
 import logging
 
-from discord.ext import commands
-from discord.ext.commands import ExtensionAlreadyLoaded, ExtensionError, ExtensionNotFound, ExtensionNotLoaded
+from disnake.ext import commands
+from disnake.ext.commands import ExtensionAlreadyLoaded, ExtensionError, ExtensionNotFound, ExtensionNotLoaded
 
 from naotimes.bot import naoTimesBot, naoTimesContext
 

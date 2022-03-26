@@ -34,6 +34,7 @@ import asyncio
 import logging
 import socket
 import ssl
+from typing import Any, Dict, Optional, Union
 
 import orjson
 
@@ -51,38 +52,37 @@ class VNDBSockIOManager:
     The changes are now using asyncio Streams instead normal SSL Sock.
     """
 
-    def __init__(self, username, password, loop=None):
-        self.sslcontext = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
+    def __init__(self, username: str, password: str, loop: asyncio.AbstractEventLoop = None):
+        self.sslcontext: ssl.SSLContext = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
         self.sslcontext.verify_mode = ssl.CERT_REQUIRED
         self.sslcontext.check_hostname = True
         self.sslcontext.load_default_certs()
 
-        self.clientvars = {"protocol": 1, "clientver": 2.0, "client": "naoTimes"}
-        self._username = username
-        self._password = password
+        self.clientvars: Dict[str, Any] = {"protocol": 1, "clientver": 2.0, "client": "naoTimes"}
+        self._username: str = username
+        self._password: str = password
         self.logger = logging.getLogger("naoTimes.VNDBSocket")
 
-        self.loggedin = False
+        self.loggedin: bool = False
         self.data_buffer = bytes(1024)
 
-        if loop is None:
-            loop = asyncio.get_event_loop()
-        self.loop = loop
+        self.loop: asyncio.AbstractEventLoop = loop or asyncio.get_event_loop()
+        self._closing_lock: bool = False
 
-        self._sock_reader = None
-        self._sock_writer = None
+        self._sock_reader: asyncio.StreamReader = None
+        self._sock_writer: asyncio.StreamWriter = None
 
     async def initialize(self):
         self.logger.info("initiating new connection...")
         reader, writer = await asyncio.open_connection(
-            "api.vndb.org", 19535, family=socket.AF_INET, ssl=self.sslcontext, loop=self.loop
+            "api.vndb.org", 19535, family=socket.AF_INET, ssl=self.sslcontext
         )
-
         self._sock_reader: asyncio.StreamReader = reader
         self._sock_writer: asyncio.StreamWriter = writer
 
     async def close(self):
         self.logger.warning("emptying reader...")
+        self._closing_lock = True
         self._sock_writer.close()
 
     async def login(self):
@@ -90,15 +90,31 @@ class VNDBSockIOManager:
         if self._username and self._password:
             finvars["username"] = self._username
             finvars["password"] = self._password
-            self.logger.info(f"trying to login with username {self._username}")
+            self.logger.info(f"Trying to login with username {self._username}")
             ret = await self.send_command("login", orjson.dumps(finvars).decode("utf-8"))
             if not isinstance(ret, str) and self.loggedin:  # should just be 'Ok'
                 self.loggedin = False
             self.loggedin = True
 
+    async def reconnect(self):
+        """
+        Reconnects to the VNDB socket.
+        """
+        # If it's closing, wait until closed fully.
+        await self._sock_writer.wait_closed()
+        if self._closing_lock:
+            return
+        self.loggedin = False
+        await self.initialize()
+        try:
+            await asyncio.wait_for(self.login(), timeout=10.0)
+        except asyncio.TimeoutError:
+            self.logger.error("Failed to login, connection timeout after 10 seconds.")
+            self.loggedin = False
+
     async_login = login
 
-    async def send_command(self, command, args=None):
+    async def send_command(self, command: str, args: Optional[Union[str, dict]] = None) -> Dict[str, Any]:
         """
         Send a command to VNDB and then get the result.
         :param command: What command are we sending
@@ -117,14 +133,20 @@ class VNDBSockIOManager:
                 final_command = command + " " + orjson.dumps(args).decode("utf-8") + "\x04"
         else:
             final_command = command + "\x04"
-        self.logger.debug(f"sending: {command} command")
+        if self._sock_writer.is_closing():
+            if self._closing_lock:
+                self.logger.warning("Already closing, skipping command.")
+                return {}
+            self.logger.warning("Socket is closing, trying to reconnect...")
+            await self.reconnect()
+        self.logger.debug(f"Sending: {command} command")
         self._sock_writer.write(final_command.encode("utf-8"))
         await self._sock_writer.drain()
         return await self._read_data()
 
     send_command_async = send_command
 
-    async def _read_data(self):
+    async def _read_data(self) -> Dict[str, Any]:
         """
         Receieves data until we reach the \x04 and then returns it.
         :return: The data received

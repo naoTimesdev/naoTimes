@@ -3,12 +3,12 @@ from functools import partial
 from typing import List, Optional
 
 import arrow
-import discord
-from discord.ext import app, commands, tasks
+import disnake
+from disnake.ext import commands, tasks
 from kbbi.kbbi import BatasSehari, TerjadiKesalahan, TidakDitemukan
 
 from naotimes.bot import naoTimesBot
-from naotimes.context import naoTimesContext
+from naotimes.context import naoTimesAppContext, naoTimesContext
 from naotimes.http import GagalKoneksi
 from naotimes.paginator import DiscordPaginatorUI
 from naotimes.utils import cutoff_text
@@ -257,7 +257,7 @@ class KutubukuKBBIv2(commands.Cog):
         return KBBIHasil(kata_pencarian, pranala, semua_entri), None, saran_entri
 
     def _design_embed(self, entri: KBBIEntri, pranala: str, kueri: str):
-        embed = discord.Embed(color=0x110063)
+        embed = disnake.Embed(color=0x110063)
         embed.set_author(
             name=str(entri),
             url=pranala,
@@ -379,12 +379,14 @@ class KutubukuKBBIv2(commands.Cog):
         ui_paginate.attach(embed_gen)
         await ui_paginate.interact()
 
-    @app.slash_command(
-        name="kbbi",
-        description="Cari definisi kata di KBBI",
-    )
-    @app.option("kata", str, description="Kata yang ingin dicari")
-    async def _kutubuku_kbbi_slash(self, ctx: app.ApplicationContext, kata: str):
+    @commands.slash_command(name="kbbi")
+    async def _kutubuku_kbbi_slash(self, ctx: naoTimesAppContext, kata: str):
+        """Cari definisi sebuah kata di KBBI Daring
+
+        Parameters
+        ----------
+        kata: Kata yang ingin dicari
+        """
         kata_pencarian: str = kata.lower()
         self.logger.info(f"Querying for: {kata_pencarian}")
         await ctx.defer()

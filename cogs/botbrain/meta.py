@@ -3,9 +3,9 @@ import platform
 from os import getpid
 from typing import List
 
-import discord
+import disnake
 import psutil
-from discord.ext import commands
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot, naoTimesContext
 from naotimes.utils import quote
@@ -29,7 +29,7 @@ def get_usage():
     process = psutil.Process(getpid())
     mem_info = process.memory_info()
     cpu_percent = process.cpu_percent(None)
-    mb_used = round(mem_info.rss / 1024 ** 2, 2)
+    mb_used = round(mem_info.rss / 1024**2, 2)
     return mb_used, cpu_percent
 
 
@@ -92,18 +92,9 @@ class BotbrainMeta(commands.Cog):
             await ctx.send(content=text_res)
 
     async def _quick_bot_statistics(self):
-        server_lists: List[discord.Guild] = self.bot.guilds
-
-        users_lists = []
-        total_channels = 0
-        for srv in server_lists:
-            total_channels += len(srv.channels)
-            for user in srv.members:
-                if not user.bot and user.id not in users_lists:
-                    users_lists.append(user.id)
-
+        server_lists: List[disnake.Guild] = self.bot.guilds
         showtimes_servers = await self.bot.redisdb.keys("showtimes_*")
-        return len(server_lists), len(users_lists), len(showtimes_servers)
+        return len(server_lists), len(showtimes_servers)
 
     def _get_bot_creator(self, ctx: naoTimesContext):
         if not self.bot._is_team_bot:
@@ -123,7 +114,7 @@ class BotbrainMeta(commands.Cog):
     @commands.command("info")
     async def _bbmeta_info(self, ctx: naoTimesContext):
         """Get info about the bot!"""
-        infog = discord.Embed(
+        infog = disnake.Embed(
             description="Sebuah bot multifungsi untuk membantu tracking garapan Fansub!",
             color=0xDE8730,
         )
@@ -132,10 +123,9 @@ class BotbrainMeta(commands.Cog):
         )
         semver = self.bot.semver
         infog.set_thumbnail(url=self.bot.user.avatar)
-        server_count, unique_user_count, showtimes_count = await self._quick_bot_statistics()
+        server_count, showtimes_count = await self._quick_bot_statistics()
         stats_text = f"🏬 **{server_count}** Peladen\n"
         stats_text += f"📺 **{showtimes_count}** Peladen dengan Showtimes\n"
-        stats_text += f"👫 **{unique_user_count}** Pengguna"
         infog.add_field(name="📈 Statistik", value=stats_text)
         memory, cpu = get_usage()
         peladen_info = f"📊 **{memory}** MiB\n"
@@ -144,9 +134,9 @@ class BotbrainMeta(commands.Cog):
         infog.add_field(name="💪 Host", value=peladen_info)
         py_ver = platform.python_version()
         bahasa_info = f"🐍 Python {py_ver}\n"
-        bahasa_info += f"📚 Kerangka: ndiscord.py {discord.__version__}"
-        infog.add_field(name="🧾 Bahasa", value=bahasa_info)
-        infog.add_field(name="Pembuat", value=f"🤖 naoTimes v{semver}\n👼 {self._get_bot_creator(ctx)}")
+        bahasa_info += f"📚 disnake {disnake.__version__}"
+        infog.add_field(name="🧾 Kerangka", value=bahasa_info)
+        infog.add_field(name="🧠 Pembuat", value=f"🤖 naoTimes v{semver}\n👼 {self._get_bot_creator(ctx)}")
         uptime = self.bot.get_uptime()
         simple_ping = self.bot.latency
         if simple_ping != float("nan"):
@@ -204,7 +194,7 @@ class BotbrainMeta(commands.Cog):
         # Get location etc.
 
         self.logger.info("Generating status...")
-        embed = discord.Embed(title="Bot statuses", description=f"Global Prefix: {self.bot.prefix}")
+        embed = disnake.Embed(title="Bot statuses", description=f"Global Prefix: {self.bot.prefix}")
         if len(loaded_extensions) > 0:
             embed.add_field(name="Loaded Cogs", value=quote("\n".join(loaded_extensions)), inline=False)
         if len(unloaded_extensions) > 0:
@@ -224,7 +214,7 @@ class BotbrainMeta(commands.Cog):
 
     @commands.command(name="undang", aliases=["invite"])
     async def _bb_meta_invite(self, ctx: naoTimesContext):
-        embed = discord.Embed(
+        embed = disnake.Embed(
             title="Ingin invite Bot ini? Klik link di bawah ini!",
             description="[Invite](https://ihateani.me/andfansub)"
             "\n[Support Server](https://discord.gg/7KyYecn) atau ketik "
@@ -238,7 +228,7 @@ class BotbrainMeta(commands.Cog):
 
     @commands.command(name="donasi", aliases=["donate"])
     async def _bb_meta_donasi(self, ctx: naoTimesContext):
-        embed = discord.Embed(
+        embed = disnake.Embed(
             title="Donasi ke developer Bot!",
             description="Bantu biar developer botnya masih mau tetap"
             " maintenance bot naoTimes!"
@@ -251,7 +241,7 @@ class BotbrainMeta(commands.Cog):
 
     @commands.command(name="support")
     async def _bb_meta_support(self, ctx: naoTimesContext):
-        embed = discord.Embed(
+        embed = disnake.Embed(
             title="Support!",
             description="Silakan Join [Support Server](https://discord.gg/7KyYecn)"
             "\ndan kunjungi #bantuan."

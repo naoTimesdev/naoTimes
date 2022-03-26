@@ -38,9 +38,8 @@ from pathlib import Path
 
 import aiohttp
 import arrow
-import discord
-from discord import Interaction
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 from tesaurus import TesaurusAsync
 
 from naotimes.log import RollingFileHandler
@@ -59,7 +58,7 @@ from .config import (
     naoTimesMerriamWebsterConfig,
     naoTimesUserPassConfig,
 )
-from .context import naoTimesAppContext, naoTimesContext
+from .context import naoTimesContext
 from .helpgenerator import HelpGenerator
 from .http import (
     KBBI,
@@ -85,9 +84,8 @@ from .t import MemberContext
 from .timeparse import TimeString
 from .utils import explode_filepath_into_pieces, prefixes_with_data, read_files
 from .version import version_info
-from .watch import CogWatcher
 
-ContextModlog = T.Union[discord.Message, discord.Member, discord.Guild]
+ContextModlog = T.Union[disnake.Message, disnake.Member, disnake.Guild]
 ALL_MODLOG_FEATURES = ModLogFeature.all()
 
 __all__ = ("StartupError", "naoTimesBot")
@@ -124,8 +122,21 @@ class BotMaintenance:
 
 class naoTimesBot(commands.Bot):
     """
-    naoTimesBot class, the main powerhouse of the bot.
+    naoTimes is Indonesian based bot to help track foreign media
+    translation group project.
+
+    This class is the main bot class that should be invoked to run.
+
+    Example usage: ::
+
+        from naotimes.bot import naoTimesBot
+
+        bot = naoTimesBot.create(...)
+        bot.run()
+
     """
+
+    presensi_rate: T.Optional[int]
 
     def __init__(self, base_path: Path, bot_config: naoTimesBotConfig, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -172,18 +183,18 @@ class naoTimesBot(commands.Bot):
         self._start_time: arrow.Arrow = None
         # When the class got created, it will be the boot time of the bot.
         self._boot_time: arrow.Arrow = arrow.utcnow()
-        self._log_channel: discord.TextChannel = None
-        self._owner: T.Union[discord.User, discord.TeamMember] = None
+        self._log_channel: disnake.TextChannel = None
+        self._owner: T.Union[disnake.User, disnake.TeamMember] = None
         self._is_team_bot: bool = False
         self._team_name: str = None
-        self._team_members: T.List[discord.TeamMember] = []
+        self._team_members: T.List[disnake.TeamMember] = []
         self.maintenance: BotMaintenance = None
 
         self._ip_hostname = ""
         self._host_country = ""
         self._host_name = ""
         self._host_os = ""
-        self._host_dpyver = discord.__version__
+        self._host_dpyver = disnake.__version__
         self._host_pyver = ""
         self._host_pid = os.getpid()
         self._host_proc_threads = -1
@@ -243,23 +254,39 @@ class naoTimesBot(commands.Bot):
         """Override the method with custom context"""
         return await super().get_context(message, cls=cls)
 
-    async def get_application_context(self, interaction: Interaction, cls=naoTimesAppContext):
-        """Override the method with custom context"""
-        return await super().get_application_context(interaction, cls=cls)
-
     @classmethod
     def create(cls: T.Type[naoTimesBot], base_path: Path, bot_config: naoTimesBotConfig) -> naoTimesBot:
-        """Create a new instance of the bot and returns it."""
+        """
+        Create a new instance of the bot and returns it.
+
+        You can set the bot on dev mode by setting the ``NAOTIMES_ENV`` environment
+        into ``development``.
+
+        Parameters
+        ----------
+        base_path: :class:`Path`
+            The base path of the bot.
+        bot_config: :class:`naoTimesBotConfig`
+            The bot configuration.
+
+        Returns
+        -------
+        :class:`naoTimesBot`
+            The bot instance.
+        """
         loop = asyncio.get_event_loop()
 
         bot_description = "Bot multifungsi tukang suruh Fansub\n"
         bot_description += f"Versi {version_info.text} | Master @N4O#8868"
+        IS_DEV = os.getenv("NAOTIMES_ENV", "production") == "development"
+        should_sync_command = not bot_config.init_config.slash_check
 
-        intents = discord.Intents.all()
+        intents = disnake.Intents.all()
         # Disable some intents, presences might need to be enabled later.
         intents.presences = False
         if bot_config.init_config.parsed_ns.presence:
             intents.presences = True
+        # if bot_config.init_config.parsed_ns.message:
         intents.invites = False
         intents.dm_typing = False
         intents.typing = False
@@ -272,9 +299,10 @@ class naoTimesBot(commands.Bot):
             description=bot_description,
             case_insensitive=True,
             max_messages=10_000,
-            activity=discord.Game(name=f"Halo Dunia! | {bot_config.default_prefix}help", type=3),
             loop=loop,
             intents=intents,
+            sync_commands=should_sync_command,
+            reload=IS_DEV,
         )
         bot.logger.info(f"Instanting naoTimes with Intents: {intents!r}")
 
@@ -284,24 +312,21 @@ class naoTimesBot(commands.Bot):
         sentry_config = SentryConfig(
             dsn=bot_config.statistics.sentry_dsn,
             git_commit=commit,
-            is_dev=os.getenv("NAOTIMES_ENV", "production") == "development",
+            is_dev=IS_DEV,
         )
         bot.logger.info(f"Trying to setup sentry with: {sentry_config}")
         sentry_success = setup_sentry(sentry_config)
         bot._use_sentry = sentry_success
-        bot.dev_mode = sentry_config.is_dev
+        bot.dev_mode = IS_DEV
 
         return bot
-
-    @property
-    def owner(self):
-        return self._owner
 
     @property
     def http_server(self) -> naoTimesHTTPServer:
         return self.__http_server
 
     def now(self) -> arrow.Arrow:
+        """:class:`arrow.Arrow`: Get current UTC time"""
         return arrow.utcnow()
 
     def create_help(self, ctx: naoTimesContext, *args, **kwargs):
@@ -309,6 +334,14 @@ class naoTimesBot(commands.Bot):
         return HelpGenerator(self, ctx, *args, **kwargs)
 
     def get_uptime(self, detailed: bool = False):
+        """Get bot uptime in relative format.
+
+        Parameters
+        ----------
+        detailed: :class:`bool`
+            If ``True``, return a detailed uptime.
+            Example: ``2 menit 30 detik``.
+        """
         if self._start_time is None:
             return "baru saja"
         time_ago = self._start_time.humanize(self.now(), "id")
@@ -324,7 +357,8 @@ class naoTimesBot(commands.Bot):
     def set_maintenance(self, start: arrow.Arrow, end: arrow.Arrow):
         self.maintenance = BotMaintenance(start, end)
 
-    async def change_prefixes(self):
+    async def force_update_prefixes(self):
+        """Force update the prefix for every guild."""
         srv_prefixes = await self.redisdb.getalldict("ntprefix_*")
         fmt_prefixes = {}
         for srv, prefix in srv_prefixes.items():
@@ -333,9 +367,17 @@ class naoTimesBot(commands.Bot):
         self.command_prefix = partial(prefixes_with_data, prefixes_data=fmt_prefixes, default=self.prefix)
 
     async def change_global_prefix(self, new_prefix: str):
+        """
+        Change the global prefix of the bot.
+
+        Parameters
+        ----------
+        new_prefix: :class:`str`
+            The new prefix.
+        """
         self.prefix = new_prefix
         self.config = self.config.update_prefix(new_prefix)
-        await self.change_prefixes()
+        await self.force_update_prefixes()
         await self.config.save(self.fcwd / "config.json")
 
     async def _init_kbbi(self, config: naoTimesKBBIConfig):
@@ -465,7 +507,7 @@ class naoTimesBot(commands.Bot):
         py_impl = platform.python_implementation()
         py_compiler = platform.python_compiler()
         self._host_pyver = f"{py_ver} ({py_impl}) [{py_compiler}]"
-        self._host_dpyver = discord.__version__
+        self._host_dpyver = disnake.__version__
 
         self.logger.info("getting bot connection info...")
         async with self.aiosession.get("https://ipinfo.io/json") as resp:
@@ -568,7 +610,12 @@ class naoTimesBot(commands.Bot):
         self.cardgen = card_generator
         self.logger.info("Binding all card generator...")
         for card in AvailableCardGen:
-            await self.cardgen.bind(card)
+            try:
+                await asyncio.wait_for(self.cardgen.bind(card), timeout=10.0)
+            except asyncio.TimeoutError:
+                self.logger.warning(f"Failed to bind <{card.name}>, timeout after 10 secs")
+            except Exception as e:
+                self.logger.error(f"Failed to bind <{card.name}> card generator", exc_info=e)
 
         self.logger.info("Initializing KBBI...")
         if self.config.init_config.kbbi_check:
@@ -677,7 +724,7 @@ class naoTimesBot(commands.Bot):
             self.crowbar = CrowbarClient(self.config.crowbar_api, self.aiosession)
 
         self.logger.info("Preparing hot-module reloader")
-        self._hot_reloader = CogWatcher(self, self.loop)
+        # self._hot_reloader = CogWatcher(self, self.loop)
 
     async def login(self, *args, **kwargs):
         """Logs in the bot to Discord."""
@@ -685,7 +732,9 @@ class naoTimesBot(commands.Bot):
         # self._connector = aiohttp.TCPConnector(resolver=self._resolver, family=AF_INET)
         # self.http.connector = self._connector
         self.aiosession = aiohttp.ClientSession(
-            headers={"User-Agent": f"naoTimes/v{self.semver} (https://github.com/naoTimesdev/naoTimes)"},
+            headers={
+                "User-Agent": f"naoTimes/v{version_info.shorthand} (https://github.com/naoTimesdev/naoTimes)"
+            },
             loop=self.loop,
             # connector=self._connector,
         )
@@ -696,8 +745,8 @@ class naoTimesBot(commands.Bot):
 
     async def close(self):
         """Close discord connection and all other stuff that I opened!"""
-        if hasattr(self, "_hot_reloader"):
-            self._hot_reloader.close()
+        # if hasattr(self, "_hot_reloader"):
+        #     self._hot_reloader.close()
 
         for ext in list(self.extensions):
             with suppress(Exception):
@@ -771,37 +820,20 @@ class naoTimesBot(commands.Bot):
             self.logger.info("Shutting down redis connection...")
             await self.redisdb.close()
 
-    async def on_connect(self):
-        """Override the on_connect event for application registering"""
-        if self.__first_time_ready:
-            return
-        total_apps = len(self._pending_registration)
-        if self.config.init_config.slash_check:
-            self.logger.info("Connected to the Gateway, registering application")
-            if self.config.slash_test_guild:
-                self.logger.info(f"Setting global guild for {total_apps} app commands")
-                valid_guilds = []
-                if isinstance(self.config.slash_test_guild, list):
-                    for guild in self.config.slash_test_guild:
-                        if isinstance(guild, int):
-                            valid_guilds.append(guild)
-                elif isinstance(self.config.slash_test_guild, int):
-                    valid_guilds.append(self.config.slash_test_guild)
-            self.logger.info(f"Registering {total_apps} applications to Discord...")
-            await self.register_application_commands()
-            all_app_cmds = self.all_applications.all_commands()
-            self.logger.info(
-                f"All application are now registered! ({len(all_app_cmds)}/{total_apps} commands registered)"
-            )
+    async def on_resumed(self):
+        """|coro|
+
+        Happens when the client is resumed, usually happen if disconnection happened.
+        """
+        delta_time = None
+        if self.__last_disconnection is not None:
+            delta_time_real = arrow.utcnow() - self.__last_disconnection
+            delta_time = delta_time_real.total_seconds()
+        self.__last_disconnection = None
+        if delta_time is not None:
+            self.logger.info(f"Discord connection resumed after {delta_time} seconds.")
         else:
-            self.logger.info("Connected to the Gateway, skipping application registration to discord.")
-            for app_cmd in self._pending_registration:
-                self.register_application(app_cmd, force=True)
-            all_app_cmds = self.all_applications.all_commands()
-            self.logger.info(
-                "Application got registered to factories without registration with Discord! "
-                f"({len(all_app_cmds)}/{total_apps} commands registered)"
-            )
+            self.logger.info("Discord connection was resumed, connection died for unknown reason.")
 
     async def on_ready(self):
         """|coro|
@@ -816,8 +848,12 @@ class naoTimesBot(commands.Bot):
             self.logger.info("Bot gateway connection lost for a moment, now we're ready again")
             if delta_time is not None:
                 self.logger.info(f"It took {delta_time} seconds to reconnect")
+            self.__last_disconnection = None
             return
         self.logger.info("Connected to Discord!")
+        await self.change_presence(
+            activity=disnake.Game(name=f"Halo Dunia! | {self.config.default_prefix}help", type=3)
+        )
         self.logger.info("Dispatching start event for HTTP server...")
         self.__http_server.start()
         self.logger.info("Checking bot team status...")
@@ -825,7 +861,7 @@ class naoTimesBot(commands.Bot):
         self._start_time = self.now()
         if isinstance(self.config.log_channel, int):
             channel_data = self.get_channel(self.config.log_channel)
-            if isinstance(channel_data, discord.TextChannel):
+            if isinstance(channel_data, disnake.TextChannel):
                 self._log_channel = channel_data
 
         music_conf = self.config.music
@@ -836,7 +872,7 @@ class naoTimesBot(commands.Bot):
         self.logger.info("---------------------------------------------------------------")
         self.logger.info("Bot Ready!")
         self.logger.info(f"Using Python {sys.version}")
-        self.logger.info(f"Using Discord.py v{discord.__version__}")
+        self.logger.info(f"Using Disnake v{disnake.__version__}")
         self.logger.info("---------------------------------------------------------------")
         self.logger.info("Bot Info:")
         self.logger.info(f"Username: {self.user.name}")
@@ -861,10 +897,10 @@ class naoTimesBot(commands.Bot):
         self.logger.info("---------------------------------------------------------------")
         self.__first_time_ready = True
         owner_user = self.teams_to_user(self._owner)
-        if isinstance(owner_user, discord.User):
+        if isinstance(owner_user, disnake.User):
             dm_channel = owner_user.dm_channel
             if dm_channel is None:
-                dm_channel = await self.owner.create_dm()
+                dm_channel = await self._owner.create_dm()
             boot_message = "🟥🟨🟩🟦 naoTimes 🟦🟩🟨🟥"
             boot_message += f"\nVersi: **{self.semver}**"
             boot_message += f"\nDurasi boot up: {boot_delta} detik"
@@ -926,7 +962,7 @@ class naoTimesBot(commands.Bot):
                     self.logger.debug(f"Registering {event_cmd['name']} into EventManager")
                     self.ntevent.on(event_cmd["name"], func)
             if web_server_route is not None:
-                web_server_route.cog = cog
+                web_server_route.bind_cog(cog)
                 self.__http_server.add_route(web_server_route)
 
     def _uninject_ntsocketevent(self, cog: commands.Cog):
@@ -1020,7 +1056,7 @@ class naoTimesBot(commands.Bot):
         else:
             self.logger.exception(f"Unhandled event exception in {event}.")
 
-    def prefixes(self, ctx: T.Union[commands.Context, discord.TextChannel, discord.Guild]) -> str:
+    def prefixes(self, ctx: T.Union[commands.Context, disnake.TextChannel, disnake.Guild]) -> str:
         """Get server-based bot prefixes
         If none, returns the default prefix
 
@@ -1052,14 +1088,14 @@ class naoTimesBot(commands.Bot):
             return str(user)
         return user.mention
 
-    def teams_to_user(self, user_data: discord.TeamMember) -> MemberContext:
+    def teams_to_user(self, user_data: disnake.TeamMember) -> MemberContext:
         member_data = self.get_user(user_data.id)
         if member_data is None:
             return user_data
         return member_data
 
     async def send_error_log(
-        self, message: str = None, embed: discord.Embed = None, file: discord.File = None
+        self, message: str = None, embed: disnake.Embed = None, file: disnake.File = None
     ):
         """|coro|
 
@@ -1075,9 +1111,9 @@ class naoTimesBot(commands.Bot):
         content_to_send = {}
         if isinstance(message, str) and len(message.strip()) > 0:
             content_to_send["content"] = message
-        if isinstance(embed, discord.Embed):
+        if isinstance(embed, disnake.Embed):
             content_to_send["embed"] = embed
-        if isinstance(file, discord.File):
+        if isinstance(file, disnake.File):
             content_to_send["file"] = file
         if self._log_channel is None:
             return await self._owner.send(**content_to_send)
@@ -1088,13 +1124,13 @@ class naoTimesBot(commands.Bot):
 
         Detect if the bot is a team bot and get the team name and members
         """
-        app_info: discord.AppInfo = await self.application_info()
-        team_data: discord.Team = app_info.team
+        app_info: disnake.AppInfo = await self.application_info()
+        team_data: disnake.Team = app_info.team
         if team_data is None:
             self._owner = app_info.owner
         else:
-            main_owner = discord.TeamMember = team_data.owner
-            members_list: T.List[discord.TeamMember] = team_data.members
+            main_owner = disnake.TeamMember = team_data.owner
+            members_list: T.List[disnake.TeamMember] = team_data.members
 
             self._owner = self.teams_to_user(main_owner)
             self._team_name = team_data.name
@@ -1129,7 +1165,9 @@ class naoTimesBot(commands.Bot):
         except asyncio.TimeoutError:
             return False, 99999.0
 
-    async def send_ihateanime(self, text_data: str, filename_prefix: str = None):
+    async def send_ihateanime(
+        self, text_data: str, filename_prefix: str = None, retention_date: T.Optional[str] = None
+    ):
         """|coro|
 
         Upload a text data to ihaCDN
@@ -1144,7 +1182,12 @@ class naoTimesBot(commands.Bot):
         form_data.add_field(
             name="file", value=text_data.encode("utf-8"), content_type="text/x-python", filename=real_filename
         )
-        async with self.aiosession.post("https://p.ihateani.me/upload", data=form_data) as resp:
+        params = {}
+        if retention_date is not None:
+            params["retention"] = retention_date
+        async with self.aiosession.post(
+            "https://p.ihateani.me/upload", data=form_data, params=params
+        ) as resp:
             res = await resp.text()
             if resp.status == 200:
                 return res, None
@@ -1171,16 +1214,16 @@ class naoTimesBot(commands.Bot):
             self.logger.warning(f"Task {modlog} got cancelled")
 
     # Modlog stuff
-    async def send_modlog(self, modlog: ModLog, channel: discord.TextChannel = None):
+    async def send_modlog(self, modlog: ModLog, channel: disnake.TextChannel = None):
         if channel is None:
             return
         if modlog.embed is not None:
             embed = modlog.embed
             if modlog.timestamp is None:
                 modlog.timestamp = None
-            if embed.colour == discord.Embed.Empty:
-                embed.colour = discord.Color.random()
-            if embed.timestamp == discord.Embed.Empty:
+            if embed.colour == disnake.Embed.Empty:
+                embed.colour = disnake.Color.random()
+            if embed.timestamp == disnake.Embed.Empty:
                 datedata: arrow.Arrow = arrow.get(modlog.timestamp)
                 embed.timestamp = datedata.datetime
             modlog.embed = embed
@@ -1219,7 +1262,7 @@ class naoTimesBot(commands.Bot):
         if context is None:
             return False, None
         server_data = context
-        if not isinstance(context, discord.Guild):
+        if not isinstance(context, disnake.Guild):
             server_data = context.guild
         # Check if bot can be included
         if user_data is not None and user_data.bot and not include_bot:

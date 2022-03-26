@@ -1,7 +1,7 @@
 import logging
 
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from naotimes.bot import naoTimesBot, naoTimesContext
 
@@ -19,7 +19,7 @@ class BotbrainPrefixes(commands.Cog):
         self.logger.info(f"Requested prefix change at {server_message}")
         server_prefix = await self.bot.redisdb.get(f"ntprefix_{server_message}")
         if not message:
-            embed = discord.Embed(color=0x00AAAA)
+            embed = disnake.Embed(color=0x00AAAA)
             embed.add_field(
                 name="Prefix Peladen",
                 value="Tidak ada" if server_prefix is None else server_prefix,
@@ -47,7 +47,7 @@ class BotbrainPrefixes(commands.Cog):
         if not deletion:
             await self.bot.redisdb.set(f"ntprefix_{server_message}", message)
 
-        await self.bot.change_prefixes()
+        await self.bot.force_update_prefixes()
         await ctx.send(send_txt.format(pfx=message))
 
     @_change_prefix.error

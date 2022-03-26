@@ -28,8 +28,8 @@ from enum import Enum
 from typing import List, NamedTuple, Union
 
 import arrow
-import discord
-from discord.ext import commands, tasks
+import disnake
+from disnake.ext import commands, tasks
 
 from naotimes.bot import naoTimesBot
 from naotimes.socket import ntevent
@@ -403,13 +403,13 @@ class VoteListener(commands.Cog):
         metadata = vote_meta.metadata
         message_id = metadata.message
         channel_id = metadata.channel
-        channel_data: discord.TextChannel = self.bot.get_channel(channel_id)
+        channel_data: disnake.TextChannel = self.bot.get_channel(channel_id)
         if channel_data is None:
             return None
         self.logger.info(f"Fetching message: {message_id} at #{channel_data}")
         try:
             message = await channel_data.fetch_message(message_id)
-        except discord.NotFound:
+        except disnake.NotFound:
             return None
 
         the_reactions = message.reactions
@@ -471,7 +471,7 @@ class VoteListener(commands.Cog):
             new_votes.append(choice_popper)
         else:
             self.logger.info("Detected multi type, ignoring")
-            reparsed_reaction: List[discord.Reaction] = []
+            reparsed_reaction: List[disnake.Reaction] = []
             ALL_VALID_REACTION = [vote.emote for vote in vote_meta.choices]
             for react in the_reactions:
                 if react.emoji in ALL_VALID_REACTION:
@@ -574,7 +574,7 @@ class VoteListener(commands.Cog):
         await self.bot.wait_until_ready()
 
     @commands.Cog.listener("on_reaction_add")
-    async def _listen_new_vote(self, reaction: discord.Reaction, member: discord.Member):
+    async def _listen_new_vote(self, reaction: disnake.Reaction, member: disnake.Member):
         if member.bot:
             return
         if reaction.message.id not in self._cached_vote_message:
@@ -597,7 +597,7 @@ class VoteListener(commands.Cog):
             await self._vote_queue.put(user_vote)
 
     @commands.Cog.listener("on_reaction_remove")
-    async def _listen_remove_vote(self, reaction: discord.Reaction, member: discord.Member):
+    async def _listen_remove_vote(self, reaction: disnake.Reaction, member: disnake.Member):
         if member.bot:
             return
         if reaction.message.id not in self._cached_vote_message:

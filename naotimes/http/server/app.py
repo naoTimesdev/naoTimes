@@ -29,7 +29,7 @@ import logging
 from base64 import b64encode
 from functools import partial as ftpartial
 from functools import update_wrapper
-from typing import Dict, List, Optional, Type
+from typing import Dict, List, Optional
 
 import aiohttp
 import arrow
@@ -115,8 +115,12 @@ class naoTimesHTTPServer:
     def app(self):
         return self.__internal_app
 
+    async def _health_ping(self, _: web.Request):
+        return web.json_response({"status": "ok"})
+
     async def internal_start(self):
         self.logger.info("Preparing app runner...")
+        self.__internal_app.add_routes([web.get("/_/health", self._health_ping)])
         runner = web.AppRunner(
             self.__internal_app,
             access_log=self._access_logger,
@@ -175,8 +179,10 @@ class naoTimesHTTPServer:
         match_info = await app._router.resolve(request)
         if debug:  # pragma: no cover
             if not isinstance(match_info, AbstractMatchInfo):
-                raise Type("match_info should be AbstractMatchInfo " "instance, not {!r}".format(match_info))
-        match_info.add_app(app)
+                raise TypeError(
+                    "match_info should be AbstractMatchInfo instance, not {!r}".format(match_info)
+                )
+        match_info.add_app(self)
         match_info.freeze()
 
         resp = None
@@ -191,18 +197,20 @@ class naoTimesHTTPServer:
 
             if app._run_middlewares:
                 for app in match_info.apps[::-1]:
-                    for m, new_styles in app._middlewares_handlers:
-                        if new_styles:
+                    for m, new_style in app._middlewares_handlers:  # type: ignore[union-attr] # noqa
+                        if new_style:
                             handler = update_wrapper(ftpartial(m, handler=handler), handler)
                         else:
-                            handler = await m(app, handler)
-            canon_route = match_info._route._resource.canonical
+                            handler = await m(app, handler)  # type: ignore[arg-type]
+
+            canon_route = match_info.route.resource
+            if canon_route is not None:
+                canon_route = canon_route.canonical
             method_path = self._request_path.get(canon_route)
 
-            request_data = []
+            request_data = [request]
             if method_path and method_path.cog:
-                request_data.append(method_path.cog)
-            request_data.append(request)
+                request_data.insert(0, method_path.cog)
 
             resp = await handler(*request_data)
 
@@ -250,8 +258,7 @@ class naoTimesHTTPServer:
         _old_data = self._request_path.get(route.path)
         if _old_data is not None:
             if idx_resource != -1 and _old_data.has_injected:
-                # If something matched the route
-                # Replace the handler.
+                # If something matched the route, replace the handler.
                 # This is very useful if cog are reloaded.
                 resource_route: web.Resource = self.__internal_app.router._resources[idx_resource]
                 untouched_method: List[RouteMethod] = []

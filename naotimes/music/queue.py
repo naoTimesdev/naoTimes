@@ -30,11 +30,11 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Deque, List, MutableSet, Optional, Type, TypeVar, Union
 
-from discord.channel import StageChannel, TextChannel, VoiceChannel
-from discord.member import Member
+from disnake.channel import StageChannel, TextChannel, VoiceChannel
+from disnake.member import Member
 from wavelink.tracks import Track
 
-from .track import SpotifyDirectTrack
+from .tracks import TrackResults
 
 __all__ = (
     "TrackRepeat",
@@ -62,7 +62,7 @@ class TrackRepeat(Enum):
 
 @dataclass
 class TrackEntry:
-    track: Union[Track, SpotifyDirectTrack]
+    track: Union[Track, TrackResults]
     requester: Member
     channel: TextChannel
 
