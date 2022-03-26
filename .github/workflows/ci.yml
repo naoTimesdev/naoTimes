@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3.0.0
+
+      - name: Setup python
+        uses: actions/setup-python@v3
+        with:
+          python-version: 3.8
+
+      - name: Setup virtualenv
+        uses: syphar/restore-virtualenv@v1
+        id: naotimes-lint-venv-cache
+
+      - name: Restore pip cache download 
+        uses: syphar/restore-pip-download-cache@v1
+        if: steps.naotimes-lint-venv-cache.outputs.cache-hit != 'true'
+
+      - name: Install requirements
+        if: steps.naotimes-lint-venv-cache.outputs.cache-hit != 'true'
+        run: |
+          pip install -r requirements-dev.txt -c constraints.txt
+
+      - name: Execute multilint scripts
+        run: |
+          python3 pipelines/multilint.py --skip-install --skip-venv-enter
