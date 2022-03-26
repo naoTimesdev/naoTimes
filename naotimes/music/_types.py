@@ -32,3 +32,13 @@ class SpotifyTrackPayload(TypedDict):
     duration: int
     image: Optional[str]
     artists: List[str]
+
+
+class SpotifyEpisodePayload(TypedDict):
+    id: str
+    title: str
+    description: str
+    show: str
+    image: Optional[str]
+    publisher: Optional[str]
+    duration: int

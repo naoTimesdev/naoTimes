@@ -254,6 +254,8 @@ class naoTimesPlayer:
         description.append(f"[{track.title}]({track_url})")
         if track.author:
             description.append(f"**Artis**: {track.author}")
+        if hasattr(track, "description") and track.description:
+            description.append(f"\n{track.description}")
         embed.description = "\n".join(description)
 
         embed.add_field(name="Diputar oleh", value=f"{entry.requester.mention}", inline=True)
@@ -279,18 +281,6 @@ class naoTimesPlayer:
         except asyncio.CancelledError:
             return None
 
-    @staticmethod
-    def _find_node_with_spotify(fallback: wavelink.Node):
-        found_client = None
-        for node in wavelink.NodePool._nodes.values():
-            spoti_client = node._spotify
-            if not spoti_client:
-                continue
-            found_client = spoti_client
-            if hasattr(spoti_client, "_url_host"):
-                break
-        return found_client or fallback._spotify or MISSING
-
     async def search_track(self, query: str, node: wavelink.Node):
         if query.startswith("http"):
             if "spotify.com" in query:
@@ -299,9 +289,8 @@ class naoTimesPlayer:
                     track_mode = spotify.SpotifySearchType.album
                 elif "/playlist" in query:
                     track_mode = spotify.SpotifySearchType.playlist
-                spotify_client = self._find_node_with_spotify(node)
                 spoti_results = await SpotifyDirectTrack.search(
-                    query, type=track_mode, node=node, spotify=spotify_client, return_first=False
+                    query, type=track_mode, node=node, spotify=self._spotify, return_first=False
                 )
                 return spoti_results
             elif "soundcloud.com" in query:
@@ -334,7 +323,6 @@ class naoTimesPlayer:
         self._set_current(player, None)
 
         # Try to get new track.
-
         try:
             self.logger.info(f"Player: <{player.guild}> trying to enqueue new track... (5 minutes timeout)")
             new_track = await asyncio.wait_for(self._fetch_track_queue(player), timeout=300)

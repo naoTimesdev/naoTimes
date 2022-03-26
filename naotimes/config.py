@@ -211,6 +211,29 @@ class naoTimesSocketConfig:
 
 
 @dataclass
+class naoTimesHTTPServerConfig:
+    host: str
+    port: int
+    password: Optional[str] = None
+
+    @classmethod
+    def parse_config(
+        cls: Type[naoTimesHTTPServerConfig], config: BotConfig
+    ) -> Type[naoTimesHTTPServerConfig]:
+        host = config.get("host", "localhost")
+        port = config.get("port", 25671)
+        password = config.get("password", None)
+        return cls(host, port, password)
+
+    def serialize(self):
+        return {
+            "host": self.host,
+            "port": self.port,
+            "password": str_or_none(self.password),
+        }
+
+
+@dataclass
 class naoTimesWeatherConfig:
     openweather: Optional[str] = None
     opencage: Optional[str] = None
@@ -450,6 +473,7 @@ class naoTimesBotConfig:
     mongodb: Optional[naoTimesMongoConfig]
     redisdb: naoTimesRedisConfig
     socket: Optional[naoTimesSocketConfig]
+    http_server: Optional[naoTimesHTTPServerConfig]
     kbbi: Optional[naoTimesKBBIConfig]
     fansubdb: Optional[naoTimesUserPassConfig]
     weather: Optional[naoTimesWeatherConfig]
@@ -499,6 +523,7 @@ class naoTimesBotConfig:
                 slash_test_guild = int(slash_test_guild)
             except ValueError:
                 slash_test_guild = None
+        http_server = naoTimesHTTPServerConfig.parse_config(config.get("http_server", {}))
 
         music_config = config.get("music", None)
         if music_config:
@@ -513,6 +538,7 @@ class naoTimesBotConfig:
             mongodb=parsed_mongodb,
             redisdb=parsed_redis,
             socket=sserver_config,
+            http_server=http_server,
             kbbi=kbbi_config,
             fansubdb=fansubdb_config,
             weather=weather_config,
@@ -543,6 +569,8 @@ class naoTimesBotConfig:
             base_serialize["redisdb"] = self.redisdb.serialize()
         if self.socket:
             base_serialize["socketserver"] = self.socket.serialize()
+        if self.http_server:
+            base_serialize["http_server"] = self.http_server.serialize()
         if self.kbbi:
             base_serialize["kbbi"] = self.kbbi.serialize()
         if self.fansubdb:

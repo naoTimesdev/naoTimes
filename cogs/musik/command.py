@@ -120,6 +120,17 @@ def node_available():
     return commands.check(predicate)
 
 
+def clean_escapes(argument: str) -> str:
+    if "http://" in argument or "https://" in argument:
+        if argument.startswith("<") and argument.endswith(">"):
+            return argument[1:-1]
+        elif argument.startswith("<"):
+            return argument[1:]
+        elif argument.endswith(">"):
+            return argument[:-1]
+    return argument
+
+
 class MusikPlayerCommand(commands.Cog):
     def __init__(self, bot: naoTimesBot):
         self.bot = bot
@@ -342,6 +353,8 @@ class MusikPlayerCommand(commands.Cog):
     async def musik_player_play(self, ctx: naoTimesContext, *, query: str = None):
         if not query:
             return await ctx.send("Mohon masukkan query musik yang ingin anda putar!")
+        # Clean URL if possible
+        query = clean_escapes(query)
         author = ctx.author
         vc: wavelink.Player = ctx.voice_client
 

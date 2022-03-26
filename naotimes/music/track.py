@@ -39,7 +39,7 @@ from wavelink.utils import MISSING
 
 from naotimes.utils import complex_walk
 
-from ._types import SpotifyTrackPayload
+from ._types import SpotifyEpisodePayload, SpotifyTrackPayload
 from .errors import SpotifyUnavailable, UnsupportedURLFormat
 
 __all__ = (
@@ -238,6 +238,7 @@ class SpotifyPartialTrackFilled(wavelink.Track):
     def __init__(self, id: str, info: dict):
         super().__init__(id, info)
         self.direct_spotify: bool = True
+        self.is_podcast: bool = False
         self.source = "spotify"
 
     def inject_data(self, payload: SpotifyTrackPayload):
@@ -245,10 +246,22 @@ class SpotifyPartialTrackFilled(wavelink.Track):
         self.internal_id = payload["id"]
         self._int_thumbnail = payload["image"]
         self.duration = payload["duration"]
+        if self.is_podcast:
+            self.author = payload.get("publisher") or "Unknown"
+            self.description = payload.get("description") or "No description"
+        else:
+            self.author = ", ".join(payload.get("artists", [])) or "Unknown Artist"
+            self.description = None
 
     @property
     def thumbnail(self):
         return self._int_thumbnail
+
+
+class SpotifyPartialEpisodeFilled(SpotifyPartialTrackFilled):
+    def __init__(self, id: str, info: dict):
+        super().__init__(id, info)
+        self.is_podcast: bool = True
 
 
 class SpotifyPartialTrack(wavelink.PartialTrack):
@@ -269,7 +282,13 @@ class SpotifyPartialTrack(wavelink.PartialTrack):
 
         self.extra_data = extra_info
         self.title = extra_info["title"]
-        self.author = ", ".join(extra_info.get("artists", [])) or "Unknown Artist"
+        self.is_podcast = "show" in extra_info
+        if self.is_podcast:
+            self.author = extra_info.get("publisher") or "Unknown"
+            self.description = extra_info.get("description") or "No description"
+        else:
+            self.author = ", ".join(extra_info.get("artists", [])) or "Unknown Artist"
+            self.description = None
         self.duration = extra_info["duration"]
         self.uri = f"https://open.spotify.com/track/{extra_info['id']}"
         self.source = "spotify"
@@ -282,7 +301,11 @@ class SpotifyPartialTrack(wavelink.PartialTrack):
         if node is MISSING:
             node = wavelink.NodePool.get_node()
 
-        tracks = await node.get_tracks(SpotifyPartialTrackFilled, query=self.query)
+        cls = SpotifyPartialTrackFilled
+        if self.is_podcast:
+            cls = SpotifyPartialEpisodeFilled
+
+        tracks = await node.get_tracks(cls, query=self.query)
         first_track = tracks[0]
         first_track.inject_data(self.extra_data)
         return first_track
@@ -337,8 +360,33 @@ class SpotifyDirectTrack(SpotifyTrack, SpotifyPartialTrackFilled):
                 data = await resp.json()
         return complex_walk(data, "data.tracks") or []
 
+    async def _spotify_get_episode_api(
+        self, episode_id: str, base_url: str
+    ) -> Optional[SpotifyEpisodePayload]:
+        fetch_url = self._clean_url(base_url, f"episode/{episode_id}")
+        async with aiohttp.ClientSession() as session:
+            async with session.get(fetch_url) as resp:
+                if resp.status != 200:
+                    return None
+                data = await resp.json()
+        return complex_walk(data, "data")
+
+    async def _spotify_get_show_api(
+        self, show_id: str, base_url: str
+    ) -> Optional[List[SpotifyEpisodePayload]]:
+        fetch_url = self._clean_url(base_url, f"show/{show_id}")
+        async with aiohttp.ClientSession() as session:
+            async with session.get(fetch_url) as resp:
+                if resp.status != 200:
+                    return None
+                data = await resp.json()
+        return complex_walk(data, "data.episodes") or []
+
     def _build_track_url(self, track_id: str, spoti_url: str):
         return self._clean_url(spoti_url, f"{track_id}/listen")
+
+    def _build_episode_url(self, episode_id: str, spoti_url: str):
+        return self._clean_url(spoti_url, f"episode/{episode_id}/listen")
 
     def _match_spotify_url(url: str) -> Tuple[Optional[Match[str]], str]:
         if "open.spotify.com" not in url:
@@ -393,6 +441,7 @@ class SpotifyDirectTrack(SpotifyTrack, SpotifyPartialTrackFilled):
         if not spoti._bearer_token or time.time() > spoti._expiry:
             await spoti._get_bearer_token()
 
+        is_podcast = False
         if entity == "track":
             results = await cls._spotify_get_track_api(cls, identifier, spotify_url)
             if results is None:
@@ -403,16 +452,32 @@ class SpotifyDirectTrack(SpotifyTrack, SpotifyPartialTrackFilled):
             first_track = tracks[0]
             first_track.inject_data(results)
             return first_track
+        elif entity == "episode":
+            results = await cls._spotify_get_episode_api(cls, identifier, spotify_url)
+            if results is None:
+                return []
+            episode_url = cls._build_episode_url(cls, results["id"], spotify_url)
+            tracks = await node.get_tracks(cls, episode_url)
+            first_track = tracks[0]
+            first_track.is_podcast = True
+            first_track.inject_data(results)
+            return first_track
         elif entity == "album":
             results = await cls._spotify_get_album_api(cls, identifier, spotify_url)
         elif entity == "playlist":
             results = await cls._spotify_get_playlist_api(cls, identifier, spotify_url)
+        elif entity == "show":
+            results = await cls._spotify_get_show_api(cls, identifier, spotify_url)
+            is_podcast = True
         else:
             raise UnsupportedURLFormat(query, "Tipe URL Spotify tersebut tidak dapat disupport!")
 
         merged_tracks: List[SpotifyPartialTrack] = []
         for track in results:
-            query_new = cls._build_track_url(cls, track["id"], spotify_url)
+            if is_podcast:
+                query_new = cls._build_episode_url(cls, track["id"], spotify_url)
+            else:
+                query_new = cls._build_track_url(cls, track["id"], spotify_url)
             partial_track_search = SpotifyPartialTrack(
                 query=query_new,
                 node=node,

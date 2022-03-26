@@ -44,6 +44,8 @@ query BooruRandom($tags:[String],$page:Int! = 1,$engine:[BoardEngine!]! = [danbo
 
 
 def snake_caseify(tags: List[str]):
+    if not tags:
+        return []
     return [t.replace(" ", "_") for t in tags]
 
 
