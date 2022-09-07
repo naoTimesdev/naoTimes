@@ -1,0 +1,40 @@
+# Config
+config.json
+kbbi_auth.json
+nao_showtimes.json
+fsdb_login.json
+server_prefixes.json
+
+.vscode
+
+# Caches
+__pycache__
+.mypy_cache
+.pytest_cache
+
+# Logs
+*.log
+*.log.*
+
+# Generated
+automod
+fansubrss_data
+premium_code
+showtimes_folder
+ticketing
+vote_data
+vthell
+!naotimes/private/vthell
+.nox
+
+# Scripts
+*.bat
+
+# Dataset
+_dataset
+streaming_lists.json
+env
+
+authorize_prod
+
+target/pylist*

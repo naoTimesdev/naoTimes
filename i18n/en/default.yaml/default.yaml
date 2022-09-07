@@ -1,0 +1,5 @@
+en:
+  error_user_info: |
+    **Error**: This incident has been reported! If you want to resolve it faster you can report it at GitHub: <https://github.com/naoTimesdev/naoTimes/issues/new/choose>
+  version: |
+    Version {0}

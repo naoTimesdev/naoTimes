@@ -1,0 +1,60 @@
+{
+    "bot_id": "",
+    "bot_token": "",
+    "default_prefix": "!",
+    "slash_test_guild": null,
+    "vndb": {
+        "username": "",
+        "password": ""
+    },
+    "nyaasi": {
+        "username": "",
+        "password": ""
+    },
+    "mongodb": {
+        "ip_hostname": "localhost",
+        "port": 27017,
+        "dbname": "naotimesdb",
+        "tls": false,
+        "auth": ""
+    },
+    "redisdb": {
+        "ip_hostname": "127.0.0.1",
+        "port": 6379,
+        "password": null
+    },
+    "socketserver": {
+        "port": 25670,
+        "password": null
+    },
+    "http_server": {
+        "host": "localhost",
+        "port": 25671,
+        "password": null
+    },
+    "kbbi": {
+        "email": "",
+        "password": ""
+    },
+    "fansubdb": {
+        "username": "",
+        "password": ""
+    },
+    "weather_data": {
+        "openweatherapi": "",
+        "opencageapi": ""
+    },
+    "wolfram": {
+        "app_id": ""
+    },
+    "merriam_webster": {
+        "dictionary": "",
+        "thesaurus": ""
+    },
+    "steam_api_key": "",
+    "music": {
+        "lavalink_nodes": [],
+        "spotify": null,
+        "genius": null
+    }
+}

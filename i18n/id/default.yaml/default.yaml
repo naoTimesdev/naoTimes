@@ -1,0 +1,5 @@
+id:
+  error_user_info: |
+    **Error*: Insiden ini telah dilaporkan! Jika ingin dipercepat penyelesainnya, mohon buka Issue baru di GitHub: <https://github.com/naoTimesdev/naoTimes/issues/new/choose>
+  version: |
+    Versi {0}

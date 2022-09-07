@@ -1,0 +1,7 @@
+-r requirements.txt
+black==22.1.0
+isort==5.10.1
+flake8==4.0.1
+safety==1.10.3
+watchgod==0.7
+types-beautifulsoup4==4.10.14
