@@ -1,0 +1,71 @@
+from dataclasses import dataclass
+
+import aiohttp
+from bs4 import BeautifulSoup, Tag
+from discord.ext import commands
+
+from naotimes.bot import naoTimesBot
+from naotimes.utils import FIREFOX_USER_AGENT
+
+__UA__ = FIREFOX_USER_AGENT
+
+
+@dataclass
+class NovelResult:
+    title: str
+    thumbnail: str
+    url: str
+
+    def __post_init__(self):
+        self.title = self.title.capitalize()
+        if self.thumbnail.startswith("//"):
+            self.thumbnail = f"https:{self.thumbnail}"
+
+
+class AyayaNovel(commands.Cog):
+    AJAXAPI = "https://www.novelupdates.com/wp-admin/admin-ajax.php"
+
+    def __init__(self, bot: naoTimesBot) -> None:
+        self.bot = bot
+
+    async def _search_novel(self, query: str):
+        if self.bot.aiosession is None:
+            return []
+        aio_form = aiohttp.FormData()
+        aio_form.add_field("action", "nd_ajaxsearchmain")
+        aio_form.add_field("strOne", query)
+        aio_form.add_field("strType", "desktop")
+        aio_form.add_field("strSearchType", "series")
+
+        headers = {
+            "Referer": "https://www.novelupdates.com/",
+            "Origin": "https://www.novelupdates.com",
+            "User-Agent": __UA__,
+            "x-requested-with": "XMLHttpRequest",
+        }
+        async with self.bot.aiosession.post(self.AJAXAPI, data=aio_form, headers=headers) as resp:
+            html_res = await resp.text()
+
+        soup = BeautifulSoup(html_res, "html.parser")
+        all_results = soup.find_all("li", attrs={"class": "search_li_results"})
+
+        data_results: list[NovelResult] = []
+        for result in all_results:
+            a_link = result.find("a")
+            img_profile = result.find("img", attrs={"class": "search_profile_image"})
+            if not isinstance(a_link, Tag) or not isinstance(img_profile, Tag):
+                continue
+            link_href = a_link.get("href")
+            if not isinstance(link_href, str):
+                continue
+            text_data = a_link.get_text().strip()
+            img_src = img_profile.get("src")
+            if not isinstance(img_src, str):
+                continue
+            img_src = img_src.replace("/img/", "/imgmid/")
+            data_results.append(NovelResult(text_data, img_src, link_href))
+        return data_results
+
+
+async def setup(bot: naoTimesBot) -> None:
+    await bot.add_cog(AyayaNovel(bot))

@@ -1,0 +1,141 @@
+# Kutubuku: kamus dan pencarian referensi.
+# Nama bagian harus unik per perintah/berkas.
+
+jisho:
+  description: "Melihat informasi atau arti sebuah kata/kanji di Jisho"
+  option_kata: "kata yang ingin dicari"
+  service_unavailable: "Layanan Jisho sedang tidak tersedia."
+  reading: "**Pelafalan**: {kana} [Romaji: {romaji}]"
+  other_forms: "**Bentuk lain**: {forms}"
+  meanings_title: "**Makna/Arti**"
+  no_meanings: "*Tidak ada makna/arti*"
+  no_definition: "Tidak ada definisi"
+  see_also: "  Lihat juga: {suggestion}"
+  appears_in: "**Terdapat di**:"
+  footer: "Menggunakan Jisho + Romkan dan data JMDict"
+
+kanji:
+  description: "Melihat informasi sebuah kanji"
+  option_kanji: "Kanji yang ingin dicari"
+  http_unavailable: "Sesi HTTP sedang tidak tersedia."
+  api_error: "Tidak bisa menghubungi API..."
+  not_found: "Kanji tidak dapat ditemukan!"
+  header: "**Arti**: {meanings}\n**Radikal**: {radicals}"
+  details: "**Bagian**: {parts}\n**Goresan**: {strokes}"
+  kunyomi: "Kunyomi"
+  onyomi: "Onyomi"
+  examples: "**Contoh**"
+  grade: "kelas"
+  junior_high: "kelas SMP"
+  taught_in: "Diajarkan pada {taught}"
+  footer: "Diprakasai oleh Jisho"
+
+kalkulator:
+  description: "Kalkulator ajaib"
+  option_teks: "Ekspresi matematika yang ingin dihitung"
+  failed: "Gagal melakukan kalkulasi untuk input:\n`{teks}`"
+  syntax_error: "Format penulisan tidak bisa dimengerti:\n`{teks}`"
+  zero_division: "Tidak dapat melakukan pembagian dengan dividen 0"
+  embed_title: "⚙ Kalkulator"
+  embed_description: "▶ `{teks}`\n{hasil}"
+  experimental_footer: "Ini merupakan command experimental, mohon lapor kepada {owner} jika ada masalah."
+
+sinonim:
+  description: "Cari sinonim sebuah kata"
+  option_kata: "Kata yang ingin dicari"
+  not_found: "Tidak ada sinonim yang ditemukan untuk kata `{kata}`"
+  embed_title: "Sinonim: {kata}"
+
+antonim:
+  description: "Cari antonim sebuah kata"
+  option_kata: "Kata yang ingin dicari"
+  not_found: "Tidak ada antonim yang ditemukan untuk kata `{kata}`"
+  embed_title: "Antonim: {kata}"
+
+kateglo:
+  footer: "Diprakasai oleh Kateglo.com"
+  no_result: "Tidak ada hasil"
+
+kbbi:
+  description: "Cari definisi sebuah kata di KBBI Daring"
+  option_kata: "Kata yang ingin dicari"
+  not_found: "Tidak dapat menemukan kata tersebut di KBBI."
+  not_found_suggestions: "Tidak dapat menemukan kata tersebut.\n**Mungkin maksud anda**: {suggestions}"
+  not_found_plain: "Tidak dapat menemukan kata tersebut di KBBI"
+  communication_error: "Terjadi kesalahan komunikasi dengan server KBBI."
+  daily_limit: "Bot telah mencapai batas pencarian harian, mohon coba esok hari lagi."
+  connection_error: "Tidak dapat terhubung dengan KBBI, kemungkinan KBBI daring sedang down."
+  parse_error: "Terjadi kesalahan ketika memparsing hasil dari KBBI, mohon kontak N4O."
+  embed:
+    pronunciation: "**Pelafalan**: {value}"
+    etymology: "**Etimologi**: {value}"
+    base_word: "**Kata dasar**: {value}"
+    nonstandard_form: "**Bentuk tak baku**: {value}"
+    variant: "**Varian**: {value}"
+    derived_words: "**Kata Turunan**: {value}"
+    compound_words: "**Gabungan Kata**: {value}"
+    proverb: "**Peribahasa**: {value}"
+    idiom: "**Idiom**: {value}"
+    meanings: "Makna"
+    examples: "Contoh"
+    related_entries: "Entri Terkait"
+    nonstandard_variant: "Bentuk tak baku/Varian"
+    no_example: "*Tidak ada*"
+    footer: "Diprakasai oleh KBBI Daring versi 6.1.0.0"
+
+tesaurus:
+  description: "Cari sinonim/antonim sebuah kata bahasa Indonesia"
+  option_kata: "Kata yang ingin dicari"
+  option_kelas: "Batasi hasil ke kelas kata tertentu"
+  unavailable: "Tesaurus Tematis tidak tersedia saat ini."
+  not_found: "Tidak dapat menemukan kata `{kata}`"
+  not_found_kelas: "Tidak dapat menemukan kata `{kata}` pada kelas kata `{kelas}`"
+  connection_failed: "Gagal menhubungi Tesaurus Tematis, mohon coba sesaat lagi."
+  internal_error: "Terjadi kesalahan internal :(\nGalat: `{error}`"
+  no_results: "Tidak dapat hasil untuk pencarian anda!"
+  embed_title: "{label} ({position}/{total}) [{kata}]"
+  kelas_kata: "**Kelas Kata:** {kelas}"
+  sublabel: "**Sublabel**: {sublabel}"
+  select_kelas: "Pilih Kelas Kata"
+  kelas_not_found: "Kelas kata tidak ditemukan."
+  author: "Tesaurus Tematis"
+  footer: "Diprakasai oleh Tesaurus Tematis"
+
+define:
+  description: "Cari definisi kata bahasa inggris di Merriam-Webster"
+  option_word: "Kata yang ingin dicari"
+  not_found: "Tidak dapat menemukan kata yang cocok!"
+
+thesaurus:
+  description: "Cari sinonim/antonim kata bahasa inggris di Merriam-Webster"
+  option_word: "Kata yang ingin dicari"
+  not_found: "Tidak dapat menemukan kata yang cocok!"
+
+webster:
+  service_unavailable: "Layanan Merriam-Webster sedang tidak tersedia."
+  embed:
+    pronunciation: "**Pelafalan**: {value}"
+    etymology: "**Etimologi**: {value}"
+    meanings: "**Makna**:"
+    examples: "Contoh"
+    similar_words: "Kata yang mirip"
+    synonyms: "**Sinonim**: {value}"
+    antonyms: "**Antonim**: {value}"
+    footer: "Diprakasai dengan Merriam-Webster API"
+
+padanan:
+  description: "Mencari padanan bahasa Indonesia untuk bahasa asing."
+  option_kata: "Padanan kata yang ingin dicari"
+  not_found: "Tidak dapat menemukan hasil yang cocok untuk kata `{kata}` di SPAI!"
+  foreign_term: "**Istilah Asing**: {value}"
+  indonesian_term: "**Istilah Indonesia**: {value}"
+  domain: "**Ranah kata**: {value}"
+  footer: "Diprakasai dengan SPAI + Kateglo"
+
+wolfram:
+  description: "Tanya WolframAlpha"
+  option_query: "Pertanyaan atau ekspresi untuk WolframAlpha"
+  disabled: "WolframAlpha tidak diaktifkan."
+  query: "**Kueri**: `{query}`"
+  see_image: "Lihat gambar"
+  footer: "Diprakasai dengan WolframAlpha™"

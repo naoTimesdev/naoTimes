@@ -1,10 +1,10 @@
 import logging
 
-import disnake
-from disnake.ext import commands
+import discord
+from discord import app_commands
+from discord.ext import commands
 
 from naotimes.bot import naoTimesBot
-from naotimes.context import naoTimesContext
 from naotimes.kalkuajaib import GagalKalkulasi, KalkulatorAjaib
 
 
@@ -13,26 +13,34 @@ class KutubukuKalkulator(commands.Cog):
         self.bot = bot
         self.logger = logging.getLogger("Kutubuku.Kalkulator")
 
-    @commands.command(
-        name="kalkulator", aliases=["kalku", "calc", "calculate", "calculator", "kalkulasi", "kalkulasikan"]
+    @app_commands.command(
+        name="kalkulator",
+        description=app_commands.locale_str("Kalkulator ajaib", key="kutubuku.kalkulator.description"),
     )
-    async def _kutubuku_kalkulator(self, ctx: naoTimesContext, *, teks: str):
+    @app_commands.describe(
+        teks=app_commands.locale_str(
+            "Ekspresi matematika yang ingin dihitung",
+            key="kutubuku.kalkulator.option_teks",
+        ),
+    )
+    async def _kutubuku_kalkulator(self, inter: discord.Interaction, teks: str):
+        """Kalkulator ajaib"""
+        ctx = await self.bot.get_context(inter)
+        await ctx.defer()
         try:
             hasil = KalkulatorAjaib.kalkulasi(teks)
         except GagalKalkulasi:
-            return await ctx.send(f"Gagal melakukan kalkulasi untuk input:\n`{teks}`")
+            return await ctx.send(ctx.t("kalkulator.failed", teks=teks))
         except SyntaxError:
-            return await ctx.send(f"Format penulisan tidak bisa dimengerti:\n`{teks}`")
+            return await ctx.send(ctx.t("kalkulator.syntax_error", teks=teks))
         except ZeroDivisionError:
-            return await ctx.send("Tidak dapat melakukan pembagian dengan dividen 0")
+            return await ctx.send(ctx.t("kalkulator.zero_division"))
 
-        embed = disnake.Embed(title="⚙ Kalkulator", color=0x22A273)
-        embed.description = f"▶ `{teks}`\n{hasil}"
-        embed.set_footer(
-            text=f"Ini merupakan command experimental, mohon lapor kepada {str(self.bot._owner)} jika ada masalah."
-        )
+        embed = discord.Embed(title=ctx.t("kalkulator.embed_title"), color=0x22A273)
+        embed.description = ctx.t("kalkulator.embed_description", teks=teks, hasil=hasil)
+        embed.set_footer(text=ctx.t("kalkulator.experimental_footer", owner=str(self.bot._owner)))
         await ctx.send(embed=embed)
 
 
-def setup(bot: naoTimesBot):
-    bot.add_cog(KutubukuKalkulator(bot))
+async def setup(bot: naoTimesBot):
+    await bot.add_cog(KutubukuKalkulator(bot))

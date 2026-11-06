@@ -1,0 +1,184 @@
+# Musik (music player) command strings.
+# Translation of i18n/id/musik.yaml. Keep keys/placeholders in sync.
+
+group:
+  musik: "naoTimes music features"
+  queue: "Playlist system"
+
+player:
+  author: "🎶 Music Player"
+
+error:
+  node_timeout: "The music node took too long to respond. Please try again."
+  action_failed: "Failed to run the music action. Please try again."
+  connect_failed: "The bot failed to connect to {channel}. Make sure the voice channel is accessible, then try again."
+  no_track_playing: "There is no track playing right now!"
+  track_exception: "An error occurred while playing `{title}`, please contact the Bot Owner!"
+
+requirement:
+  god: "You do not have sufficient permissions in your role"
+  host: "You are not the host or main DJ"
+
+admin:
+  description: "List servers with an active music player (owner)"
+  owner_only: "Only the bot owner can use this."
+  header: "**Active guild players**\n"
+  entry: "**{n}.** {name} (`{id}`)"
+  entry_unknown: "**{n}.** *Unknown* (`{id}`)"
+
+select:
+  prompt: "**Please pick the number you want to add to the Bot!**"
+  entry: "**{n}**. `{title}` [{duration}]"
+
+join:
+  description: "Make the bot join a VC"
+  option: "Target voice channel (default: your VC)"
+  already_connected: "The bot has joined another VC ({channel}), please disconnect it first!"
+  no_voice: "Please join a VC or pick the VC you want!"
+  success: "🎵 Joined {channel}"
+
+play:
+  description: "Play music from a URL or search query"
+  option: "URL or search query (YouTube, SoundCloud, Spotify, etc)"
+  join_first: "Please join voice chat {channel} to play a track!"
+  search_timeout: "The track search took too long. Please try again."
+  unsupported_url: "Unsupported URL: <{url}>\n{reason}"
+  spotify_disabled: "You tried to play Spotify but the bot owner has not enabled the Spotify feature!"
+  spotify_no_track: "The Spotify track could not be loaded (not available in the region, private, or similar)!"
+  search_error: "An error occurred while searching for the track, please try again!"
+  not_found: "Could not find the track you wanted!"
+  none_selected: "No track was selected!"
+  cancelled: "Cancelled"
+  text_channel_only: "This command must be used from a text channel!"
+  added_one: "Added `{title}` to the music player! (Position {position})"
+  added_many: "Added the playlist to the music player! Total: {count}"
+
+nowplaying:
+  description: "Show the currently playing track"
+
+stop:
+  description: "Stop the track and clear the playlist"
+  success: "👍 Stopped"
+
+leave:
+  description: "Leave the VC and clear the playlist"
+  success: "👍 Left the VC"
+
+skip:
+  description: "Skip the currently playing track"
+  no_next: "There is no next track to play!"
+  dj: "DJ skipped this track!"
+  admin: "Admin or moderator skipped this track!"
+  requester: "The requester skipped this track!"
+  join_first: "Please join voice chat {channel} to skip the track!"
+  already_voted: "You have already voted to skip the track!"
+  voted: "Track skipped because {current} of {required} people voted to skip"
+  vote_needed: "{required} votes are needed to skip the track ({current}/{required} people)"
+
+volume:
+  description: "View or set the volume"
+  option: "A number from 1-100, leave empty to see the current volume"
+  current: "{emote} The current volume is {volume}%"
+  set: "{emote} Volume set to {volume}%"
+
+repeat:
+  description: "Set the repeat mode"
+  option: "Repeat mode, leave empty to see the current mode"
+  choice_off: "Off"
+  choice_single: "Single track"
+  choice_all: "All tracks"
+  mode_disable: "Off"
+  mode_single: "Single track"
+  mode_all: "All tracks"
+  already: "Already in the repeat mode you provided!"
+
+info:
+  description: "Information about this server's music player"
+  no_host: "*No host, please join the VC*"
+  guild: "🪧 **Server**: {guild}"
+  host: "🧑‍🦱 **Host**: {host}"
+  active: "🎵 **Active**? `{active}`"
+  active_yes: "Yes"
+  active_no: "No"
+  volume: "{emote} {volume}%"
+  repeat: "🔁 {repeat}"
+  queue_count: "🔢 {count} tracks remaining"
+  node: "📍 **Node**: `{node}`"
+
+delegasi:
+  description: "Change the host/main DJ to another member"
+  option: "Member who becomes the new DJ"
+  is_bot: "The member is a bot, cannot change the DJ/host to a bot."
+  success: "{member} is now the main DJ!"
+
+jeda:
+  description: "Pause the track"
+  already_paused: "Playback is already paused!"
+  no_track: "There is no track playing!"
+  success: "Track paused!\nResume with: `/musik lanjut`"
+
+lanjut:
+  description: "Resume the paused track"
+  not_paused: "Playback is not paused at all?"
+  success: "Track resumed!"
+
+lirik:
+  description: "Search lyrics for the currently playing track"
+  option: "Lyrics search query (default: track title)"
+  no_track: "There is no track playing to look up lyrics for!"
+  disabled: "The lyrics feature is not enabled!"
+  searching: "Searching lyrics for `{title}`..."
+  search_timeout: "The lyrics search took too long. Please try again."
+  search_error: "An error occurred while searching for lyrics."
+  author: "🎶 Song Lyrics"
+  select_prompt: "Pick the lyrics you want"
+  cancelled: "Cancelled!"
+  fetching: "Fetching lyrics: {title}"
+  fetch_timeout: "Fetching lyrics took too long. Please try again."
+  fetch_error: "An error occurred while fetching lyrics."
+  footer: "Lyrics taken from {source}"
+
+queue:
+  position_too_high: "The position cannot be greater than the number of tracks in the playlist!"
+  list:
+    description: "View the playlist"
+    entry: "**{n}**. `{title}` [{duration}] (Played by: `{requester}`)"
+    footer: "{total} tracks remaining ({current}/{maximum}) | {duration}"
+    empty: "There are no tracks in the playlist!"
+  remove:
+    description: "Remove a track from the playlist"
+    option: "Track position (see /musik queue list)"
+    no_permission: "You do not have permission to remove `{title}` from the playlist!"
+    success: "Track `{title}` was removed from the playlist!"
+    failed: "Could not remove the track from the playlist!"
+  clear:
+    description: "Clear the playlist"
+    repeat_single: "Cannot clear the playlist while the repeat mode is single!"
+    success: "Playlist cleared!"
+  move:
+    description: "Move a track's position in the playlist"
+    option_from: "Starting position"
+    option_to: "Destination position"
+    repeat_active: "Cannot move a track while the repeat mode is not disabled!"
+    error: "An error occurred while moving the track!"
+    success: "Track moved successfully!"
+
+playback:
+  failed: "Track `{title}` failed to play, the bot will skip it!"
+  spotify_failed: "The Spotify track could not be played (not available in the region, or similar), the bot will skip it!"
+  retry_suffix: "\nThe bot will try to play the next track in {delay} seconds"
+
+log:
+  title: "🎵 Music Error Log"
+  description: "An error occurred while trying to play music!"
+  track_info: "**Title**: `{title}`\n**Artist**: `{author}`"
+  track_extra: "**Link**: [Link]({uri})\n**Source**: `{source}`"
+  field_track: "Track"
+  field_player: "Player"
+  player_info: "**Server**: {guild}\n**Player**: {requester}"
+  error_line_track: "Track: {author} - {title}"
+  error_line_url: "URL: {uri} ({source})"
+  error_line_guild: "Server: {guild}"
+  error_line_requester: "Player: {requester}"
+  heading: "**An error occurred in the music player**"
+  field_traceback: "Traceback"

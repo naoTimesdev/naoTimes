@@ -1,9 +1,11 @@
 import logging
 import random
-from typing import List, Union
+from functools import partial
+from typing import ClassVar
 
-import disnake
-from disnake.ext import commands
+import discord
+from discord import app_commands
+from discord.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesContext
@@ -43,14 +45,14 @@ query BooruRandom($tags:[String],$page:Int! = 1,$engine:[BoardEngine!]! = [danbo
 """
 
 
-def snake_caseify(tags: List[str]):
+def snake_caseify(tags: list[str]):
     if not tags:
         return []
     return [t.replace(" ", "_") for t in tags]
 
 
 class NSFWImageBooru(commands.Cog):
-    POST_BASE_URL = {
+    POST_BASE_URL: ClassVar[dict[str, str]] = {
         "danbooru": "https://danbooru.donmai.us/posts/",
         "gelbooru": "https://gelbooru.com/index.php?page=post&s=view&id=",
         "e621": "https://e621.net/posts/",
@@ -70,9 +72,7 @@ class NSFWImageBooru(commands.Cog):
             cleaned.append(" ".join(tx))
         return ", ".join(cleaned)
 
-    async def _request_booru(
-        self, board: str, tags: List[str], sfw=False, is_random=False
-    ) -> Union[str, List[dict]]:
+    async def _request_booru(self, i18n, board: str, tags: list[str], sfw=False, is_random=False) -> str | list[dict]:
         self.logger.info(f"Querying {tags} on board {board}")
         variables = {
             "tags": snake_caseify(tags),
@@ -84,123 +84,110 @@ class NSFWImageBooru(commands.Cog):
             see_page = random.randint(1, 10)
             variables["page"] = see_page
 
+        if self.bot.ihaapi is None:
+            return i18n.t("booru.api_unavailable")
         gql_result = await self.bot.ihaapi.query(IMAGEBOORU_SCHEMAS, variables, op_name)
         if gql_result.errors:
             error_msg = gql_result.errors[0].message
             if error_msg is None:
-                return "Terjadi kesalahan ketika ingin menghubungi API"
-            return f"Terjadi kesalahan ketika memproses data dari API\n`{error_msg}`"
+                return i18n.t("booru.api_contact_error")
+            return i18n.t("booru.api_process_error", error=error_msg)
 
         traverse_text = "imagebooru.search.results"
         if is_random:
             traverse_text = "imagebooru.random.results"
 
+        if gql_result.data is None:
+            return i18n.t("booru.empty_result")
         traversed = complex_walk(gql_result.data, traverse_text)
-        if not traversed:
-            return "Tidak ada hasil"
-        return traversed
+        if not isinstance(traversed, list):
+            return i18n.t("booru.empty_result")
+        return [item for item in traversed if isinstance(item, dict)]
 
-    def _generate_ib_embed(self, dataset: dict) -> disnake.Embed:
+    def _generate_ib_embed(self, dataset: dict, i18n) -> discord.Embed:
         engine = dataset["engine"].capitalize()
-        paralink = self.POST_BASE_URL.get(engine.lower()) + str(dataset["id"])
-        embed = disnake.Embed(title=cutoff_text(self.clean_title(dataset["title"]), 256), color=0x19212D)
+        base_url = self.POST_BASE_URL.get(engine.lower())
+        if base_url is None:
+            base_url = ""
+        paralink = base_url + str(dataset["id"])
+        embed = discord.Embed(title=cutoff_text(self.clean_title(dataset["title"]), 256), color=0x19212D)
         embed.set_author(name=engine, url=paralink, icon_url="https://api.ihateani.me/assets/favicon.png")
-        description = [f"**Laman**: {paralink}"]
+        description = [i18n.t("booru.embed_page", link=paralink)]
         sources = dataset.get("source")
         if sources:
-            description.append(f"**Sumber**: [Klik]({sources})")
+            description.append(i18n.t("booru.embed_source", source=sources))
         embed.description = "\n".join(description)
         embed.set_image(url=dataset["image_url"])
         embed.set_footer(
-            text=f"Engine: {engine} | Diprakasi ole ihaAPI",
+            text=i18n.t("booru.embed_footer", engine=engine),
             icon_url="https://api.ihateani.me/assets/favicon.png",
         )
         return embed
 
     async def _internal_booru_helper(
-        self, ctx: naoTimesContext, engine: str, tags_query: str = None, sfw=False
+        self, ctx: naoTimesContext, engine: str, tags_query: str | None = None, sfw=False, random_order=False
     ):
-        is_random = False
-        if tags_query:
-            split_query = tags_query.split(" ")
-            real_query = split_query
-            randomize = False
-            if len(split_query) > 1:
-                if split_query[0].lower() in ["r", "rng", "random", "order:random", "order:r", "rand"]:
-                    real_query = split_query[1:]
-                    randomize = True
-            elif len(split_query) == 1:
-                if split_query[0].lower() in ["r", "rng", "random", "order:random", "order:r", "rand"]:
-                    real_query = split_query
-                    randomize = True
-                    is_random = True
-            self.logger.info(f"Searching {engine} with tags: {real_query} (safe: {sfw})")
-            results = await self._request_booru(engine, real_query, sfw, randomize)
-        else:
-            self.logger.info(f"Searching {engine} with randomized data! (safe: {sfw})")
-            # Request GQL
-            results = await self._request_booru(engine, None, sfw, True)
-            is_random = True
+        i18n = self.bot.i18n_for(ctx.guild, "bahaya")
+        tags = tags_query.split() if tags_query else []
+        is_random = random_order or not tags
+        self.logger.info(f"Searching {engine} with tags: {tags} (safe: {sfw}, random: {is_random})")
+        results = await self._request_booru(i18n, engine, tags, sfw, is_random)
 
         if isinstance(results, str):
             return await ctx.send(results)
 
         if len(results) < 1:
-            return await ctx.send("Tidak dapat hasil!")
+            return await ctx.send(i18n.t("booru.no_results"))
 
         if is_random:
             picked = random.choice(results)
-            picked_first = self._generate_ib_embed(picked)
-            return await ctx.send(embed=picked_first)
+            return await ctx.send(embed=self._generate_ib_embed(picked, i18n))
 
         main_gen = DiscordPaginatorUI(ctx, results, 30.0)
-        main_gen.attach(self._generate_ib_embed)
+        main_gen.attach(partial(self._generate_ib_embed, i18n=i18n))
         await main_gen.interact()
 
-    @commands.command(name="danbooru")
-    @commands.guild_only()
-    @commands.is_nsfw()
-    async def _nsfw_ib_danbooru(self, ctx: naoTimesContext, *, tags_query: str = None):
-        await self._internal_booru_helper(ctx, "danbooru", tags_query)
-
-    @commands.command(name="safebooru", aliases=["safedanbooru"])
-    @commands.guild_only()
-    async def _nsfw_ib_danbooru_sfw(self, ctx: naoTimesContext, *, tags_query: str = None):
-        await self._internal_booru_helper(ctx, "danbooru", tags_query, True)
-
-    @commands.command(name="konachan")
-    @commands.guild_only()
-    @commands.is_nsfw()
-    async def _nsfw_ib_konachan(self, ctx: naoTimesContext, *, tags_query: str = None):
-        await self._internal_booru_helper(ctx, "konachan", tags_query)
-
-    @commands.command(name="safekonachan")
-    @commands.guild_only()
-    async def _nsfw_ib_konachan_sfw(self, ctx: naoTimesContext, *, tags_query: str = None):
-        await self._internal_booru_helper(ctx, "konachan", tags_query, True)
-
-    @commands.command(name="e621")
-    @commands.guild_only()
-    @commands.is_nsfw()
-    async def _nsfw_ib_e621(self, ctx: naoTimesContext, *, tags_query: str = None):
-        await self._internal_booru_helper(ctx, "e621", tags_query)
-
-    @commands.command(name="safee621")
-    @commands.guild_only()
-    async def _nsfw_ib_e621_sfw(self, ctx: naoTimesContext, *, tags_query: str = None):
-        await self._internal_booru_helper(ctx, "e621", tags_query, True)
-
-    @commands.command(name="gelbooru")
-    @commands.guild_only()
-    @commands.is_nsfw()
-    async def _nsfw_ib_gelbooru(self, ctx: naoTimesContext, *, tags_query: str = None):
-        await self._internal_booru_helper(ctx, "gelbooru", tags_query)
-
-    @commands.command(name="safegelbooru")
-    @commands.guild_only()
-    async def _nsfw_ib_gelbooru_sfw(self, ctx: naoTimesContext, *, tags_query: str = None):
-        await self._internal_booru_helper(ctx, "gelbooru", tags_query, True)
+    @app_commands.command(
+        name="booru",
+        description=app_commands.locale_str("Cari gambar di situs imageboard (booru)", key="bahaya.booru.description"),
+    )
+    @app_commands.guild_only()
+    @app_commands.describe(
+        engine=app_commands.locale_str("Situs booru yang ingin dicari", key="bahaya.booru.option_engine"),
+        tags=app_commands.locale_str(
+            "Tag pencarian, pisahkan dengan spasi (kosongkan untuk gambar acak)", key="bahaya.booru.option_tags"
+        ),
+        acak=app_commands.locale_str("Ambil satu gambar acak", key="bahaya.booru.option_acak"),
+        aman=app_commands.locale_str(
+            "Hanya hasil aman (SFW). Hasil non-aman hanya bisa di kanal NSFW.", key="bahaya.booru.option_aman"
+        ),
+    )
+    @app_commands.choices(
+        engine=[
+            app_commands.Choice(name="Danbooru", value="danbooru"),
+            app_commands.Choice(name="Konachan", value="konachan"),
+            app_commands.Choice(name="e621", value="e621"),
+            app_commands.Choice(name="Gelbooru", value="gelbooru"),
+        ]
+    )
+    async def _nsfw_ib_booru(
+        self,
+        inter: discord.Interaction,
+        engine: app_commands.Choice[str],
+        tags: str | None = None,
+        acak: bool = False,
+        aman: bool = True,
+    ):
+        """Cari gambar di situs imageboard (booru)"""
+        i18n = self.bot.i18n_for(inter.guild, "bahaya")
+        if not aman:
+            channel = inter.channel
+            if not (isinstance(channel, (discord.TextChannel, discord.Thread)) and channel.is_nsfw()):
+                return await inter.response.send_message(i18n.t("booru.nsfw_only"), ephemeral=True)
+        ctx = await self.bot.get_context(inter)
+        await ctx.defer()
+        await self._internal_booru_helper(ctx, engine.value, tags, aman, acak)
 
 
-def setup(bot: naoTimesBot):
-    bot.add_cog(NSFWImageBooru(bot))
+async def setup(bot: naoTimesBot):
+    await bot.add_cog(NSFWImageBooru(bot))

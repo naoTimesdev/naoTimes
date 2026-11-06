@@ -5,7 +5,7 @@ A wrapper of Kateglo, an ID thesaurus dictionary.
 
 MIT License
 
-Copyright (c) 2019-2021 naoTimesdev
+Copyright (c) 2019-2022 naoTimesdev
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -27,15 +27,17 @@ SOFTWARE.
 """
 
 import logging
+from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, NamedTuple, Union
+from typing import Any
+from urllib.parse import quote as urlquote
 
 import aiohttp
 
 from ..utils import traverse
 from ..version import __version__
 
-__all__ = ("KategloError", "KategloTipe", "KategloTidakDitemukan", "KategloTidakAdaRelasi", "kateglo_relasi")
+__all__ = ("KategloError", "KategloTidakAdaRelasi", "KategloTidakDitemukan", "KategloTipe", "kateglo_relasi")
 logger = logging.getLogger("naoTimes.Kateglo")
 
 
@@ -54,8 +56,8 @@ class KategloTidakAdaRelasi(KategloError):
 
 
 class KategloTipe(Enum):
-    Sinonim = "s"
-    Antonim = "a"
+    Sinonim = "sinonim"
+    Antonim = "antonim"
     Turunan = "d"
     Gabungan = "c"
     Peribahasa = "pb"
@@ -63,8 +65,9 @@ class KategloTipe(Enum):
     TidakDiketahui = "td"
 
 
-class KategloRelasi(NamedTuple):
-    id: Union[str, None]
+@dataclass
+class KategloRelasi:
+    id: str | None
     tipe: KategloTipe
     kata: str
 
@@ -72,7 +75,7 @@ class KategloRelasi(NamedTuple):
         return {"id": self.id, "tipe": self.tipe, "kata": self.kata}
 
 
-def cherry_pick_safe(dataset: dict, note: str) -> Union[Any, None]:
+def cherry_pick_safe(dataset: dict[str, Any] | list[Any] | None, note: str) -> Any | None:
     """A safe traversal that basically return None if not found.
 
     :param dataset: dataset to be propagated
@@ -82,13 +85,15 @@ def cherry_pick_safe(dataset: dict, note: str) -> Union[Any, None]:
     :return: content of provided `note` if found.
     :rtype: Union[Any, None]
     """
+    if dataset is None:
+        return None
     try:
         return traverse(dataset, note)
-    except (ValueError, KeyError, AttributeError):
+    except (ValueError, KeyError, AttributeError, TypeError):
         return None
 
 
-def collect_relations(dataset: Any, tipe: KategloTipe) -> List[KategloRelasi]:
+def collect_relations(dataset: Any, tipe: KategloTipe) -> list[KategloRelasi]:
     """Collect type of relations from a dataset.
 
     :param dataset: data from Kateglo
@@ -98,24 +103,47 @@ def collect_relations(dataset: Any, tipe: KategloTipe) -> List[KategloRelasi]:
     :return: A collected relation of the provided type
     :rtype: List[KategloRelasi]
     """
-    relasidata: Union[Dict[str, dict], None] = cherry_pick_safe(dataset, tipe.value)
+    collected: list[KategloRelasi] = []
+
+    # The current API returns relation phrases as lists. Subentries are objects
+    # with an ``id`` and ``entri``; thesaurus links are plain strings.
+    relasidata = dataset if isinstance(dataset, list) else cherry_pick_safe(dataset, tipe.value)
+    if isinstance(relasidata, list):
+        for index, relasi in enumerate(relasidata):
+            if isinstance(relasi, str):
+                collected.append(KategloRelasi(None, tipe, relasi))
+                continue
+            if not isinstance(relasi, dict):
+                continue
+            phrase = cherry_pick_safe(relasi, "entri")
+            if phrase is None:
+                phrase = cherry_pick_safe(relasi, "related_phrase")
+            if not isinstance(phrase, str):
+                continue
+            uuid = cherry_pick_safe(relasi, "id")
+            if uuid is None:
+                uuid = cherry_pick_safe(relasi, "rel_uid")
+            collected.append(KategloRelasi(str(uuid) if uuid is not None else str(index), tipe, phrase))
+        return collected
+
+    # Keep support for the previous API shape, where each relation type was a
+    # map of numeric keys to ``related_phrase`` records.
     if not isinstance(relasidata, dict):
-        return []
-    collected: List[KategloRelasi] = []
+        return collected
     for key, relasi in relasidata.items():
         if not key.isdigit():
             continue
         phrase = cherry_pick_safe(relasi, "related_phrase")
-        if phrase is None:
+        if not isinstance(phrase, str):
             continue
         uuid = cherry_pick_safe(relasi, "rel_uid")
         if uuid is None:
             uuid = key
-        collected.append(KategloRelasi(uuid, tipe, phrase))
+        collected.append(KategloRelasi(str(uuid), tipe, phrase))
     return collected
 
 
-async def kateglo_relasi(kata: str) -> List[KategloRelasi]:
+async def kateglo_relasi(kata: str) -> list[KategloRelasi]:
     """Mencari relasi kata di Kateglo.com
 
     :param kata: kata yang ingin dicari relasinya
@@ -126,20 +154,20 @@ async def kateglo_relasi(kata: str) -> List[KategloRelasi]:
     :return: Relasi untuk kata yang dicari
     :rtype: List[KategloRelasi]
     """
-    query_params = {"format": "json", "phrase": kata}
     logger.info(f"searching for {kata}")
+    kata_encoded = urlquote(kata)
     async with aiohttp.ClientSession(
         headers={"User-Agent": f"naoTimes/v{__version__} (https://github.com/naoTimesdev)"}
     ) as sesi:
         try:
-            async with sesi.get("https://kateglo.com/api.php", params=query_params) as resp:
+            async with sesi.get(
+                f"https://kateglo.org/api/publik/kamus/detail/{kata_encoded}", params={"limit": "20"}
+            ) as resp:
                 if resp.status != 200:
                     logger.error(f"{kata}: Got non-200 code: {resp.status}")
                     raise KategloError(f"Error, Mendapatkan kode status {resp.status} dari API")
                 if "application/json" not in resp.headers["content-type"]:
-                    logger.warning(
-                        f"{kata}: expected JSON data, but got {resp.headers['content-type']} instead"
-                    )
+                    logger.warning(f"{kata}: expected JSON data, but got {resp.headers['content-type']} instead")
                     raise KategloTidakDitemukan(kata)
                 res = await resp.json()
         except aiohttp.ClientError:
@@ -147,9 +175,13 @@ async def kateglo_relasi(kata: str) -> List[KategloRelasi]:
             raise KategloError("Tidak dapat menghubungi API Kateglo untuk mendapatkan hasil.")
 
     logger.info(f"{kata}: traversing to kateglo relation")
-    relasi_kata = cherry_pick_safe(res, "kateglo.relation")
+    entri = cherry_pick_safe(res, "entri")
+    if isinstance(entri, list) and not entri:
+        logger.warning(f"{kata}: word was not found")
+        raise KategloTidakDitemukan(kata)
 
-    if relasi_kata is None:
+    relasi_kata = cherry_pick_safe(res, "tesaurus")
+    if relasi_kata is None and not isinstance(entri, list):
         logger.warning(f"{kata}: failed to fetch relation data")
         raise KategloTidakAdaRelasi(kata)
 
@@ -160,7 +192,16 @@ async def kateglo_relasi(kata: str) -> List[KategloRelasi]:
     peribahasa = collect_relations(relasi_kata, KategloTipe.Peribahasa)
     berkaitan = collect_relations(relasi_kata, KategloTipe.Berkaitan)
 
-    bulk_results: List[KategloRelasi] = []
+    # In the current response schema, derived forms, compounds, and proverbs
+    # are attached to each entry instead of the top-level thesaurus object.
+    if isinstance(entri, list):
+        for data_entri in entri:
+            subentri = cherry_pick_safe(data_entri, "subentri")
+            gabungan_kata.extend(collect_relations(cherry_pick_safe(subentri, "gabungan"), KategloTipe.Gabungan))
+            turunan.extend(collect_relations(cherry_pick_safe(subentri, "turunan"), KategloTipe.Turunan))
+            peribahasa.extend(collect_relations(cherry_pick_safe(subentri, "peribahasa"), KategloTipe.Peribahasa))
+
+    bulk_results: list[KategloRelasi] = []
     bulk_results.extend(antonim)
     bulk_results.extend(gabungan_kata)
     bulk_results.extend(sinonim)
@@ -168,5 +209,5 @@ async def kateglo_relasi(kata: str) -> List[KategloRelasi]:
     bulk_results.extend(peribahasa)
     bulk_results.extend(berkaitan)
     logger.info(f"{kata}: got {len(bulk_results)} results")
-    bulk_results.sort(key=lambda x: x.id)
+    bulk_results.sort(key=lambda x: x.id or "")
     return bulk_results

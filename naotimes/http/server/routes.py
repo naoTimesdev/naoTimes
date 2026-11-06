@@ -1,7 +1,7 @@
 """
 MIT License
 
-Copyright (c) 2019-2021 naoTimesdev
+Copyright (c) 2019-2022 naoTimesdev
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -24,15 +24,16 @@ SOFTWARE.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Awaitable, Callable, List, Optional, Protocol, Union
+from typing import TypeVar, cast
 
 from aiohttp.web import Request as WebRequest
 from aiohttp.web import StreamResponse
-from disnake.ext.commands.cog import Cog
+from discord.ext.commands.cog import Cog
 
-__all__ = ("Route", "RouteMethod", "get", "post", "put", "patch", "delete", "head", "route")
+__all__ = ("Route", "RouteMethod", "delete", "get", "head", "patch", "post", "put", "route")
 
 
 class RouteMethod(Enum):
@@ -44,13 +45,7 @@ class RouteMethod(Enum):
     PATCH = "PATCH"
 
 
-class WrappedHandlerWithRoute(Protocol):
-    __nt_webserver_route__: Route
-    __func__: WrappedHandlerWithRoute
-    func: WrappedHandlerWithRoute
-
-    def __call__(self, request: WebRequest) -> Awaitable[StreamResponse]:
-        ...
+WrappedHandler = TypeVar("WrappedHandler", bound=Callable[..., Awaitable[StreamResponse]])
 
 
 @dataclass
@@ -58,11 +53,11 @@ class Route:
     """Represent a single route"""
 
     path: str
-    method: List[RouteMethod]
+    method: list[RouteMethod]
     handler: Callable[[WebRequest], Awaitable[StreamResponse]]
     with_auth: bool = False
     has_injected: bool = False
-    cog: Optional[Cog] = None
+    cog: Cog | None = None
 
     def __post_init__(self):
         if not self.path.startswith("/"):
@@ -87,90 +82,79 @@ class Route:
             # Join route path with prefix path
             if matching_attr.endswith("/") and self.path.startswith("/"):
                 self.path = matching_attr + self.path[1:]
-            elif matching_attr.endswith("/") and not self.path.startswith("/"):
-                self.path = matching_attr + self.path
-            elif not matching_attr.endswith("/") and self.path.startswith("/"):
+            elif (matching_attr.endswith("/") and not self.path.startswith("/")) or (
+                not matching_attr.endswith("/") and self.path.startswith("/")
+            ):
                 self.path = matching_attr + self.path
 
 
-def get(
-    path: str, *, with_auth: bool = False
-) -> Callable[[WrappedHandlerWithRoute], WrappedHandlerWithRoute]:
+def get(path: str, *, with_auth: bool = False) -> Callable[[WrappedHandler], WrappedHandler]:
     """Decorator for GET routes"""
 
-    def decorator(handler: WrappedHandlerWithRoute):
-        handler.__nt_webserver_route__ = Route(path, [RouteMethod.GET], handler, with_auth)
+    def decorator(handler: WrappedHandler) -> WrappedHandler:
+        setattr(handler, "__nt_webserver_route__", Route(path, [RouteMethod.GET], cast(Callable, handler), with_auth))
         return handler
 
     return decorator
 
 
-def post(
-    path: str, *, with_auth: bool = False
-) -> Callable[[WrappedHandlerWithRoute], WrappedHandlerWithRoute]:
+def post(path: str, *, with_auth: bool = False) -> Callable[[WrappedHandler], WrappedHandler]:
     """Decorator for POST routes"""
 
-    def decorator(handler: WrappedHandlerWithRoute):
-        handler.__nt_webserver_route__ = Route(path, [RouteMethod.POST], handler, with_auth)
+    def decorator(handler: WrappedHandler) -> WrappedHandler:
+        setattr(handler, "__nt_webserver_route__", Route(path, [RouteMethod.POST], cast(Callable, handler), with_auth))
         return handler
 
     return decorator
 
 
-def put(
-    path: str, *, with_auth: bool = False
-) -> Callable[[WrappedHandlerWithRoute], WrappedHandlerWithRoute]:
+def put(path: str, *, with_auth: bool = False) -> Callable[[WrappedHandler], WrappedHandler]:
     """Decorator for PUT routes"""
 
-    def decorator(handler: WrappedHandlerWithRoute):
-        handler.__nt_webserver_route__ = Route(path, [RouteMethod.PUT], handler, with_auth)
+    def decorator(handler: WrappedHandler) -> WrappedHandler:
+        setattr(handler, "__nt_webserver_route__", Route(path, [RouteMethod.PUT], cast(Callable, handler), with_auth))
         return handler
 
     return decorator
 
 
-def patch(
-    path: str, *, with_auth: bool = False
-) -> Callable[[WrappedHandlerWithRoute], WrappedHandlerWithRoute]:
+def patch(path: str, *, with_auth: bool = False) -> Callable[[WrappedHandler], WrappedHandler]:
     """Decorator for PATCH routes"""
 
-    def decorator(handler: WrappedHandlerWithRoute):
-        handler.__nt_webserver_route__ = Route(path, [RouteMethod.PATCH], handler, with_auth)
+    def decorator(handler: WrappedHandler) -> WrappedHandler:
+        setattr(handler, "__nt_webserver_route__", Route(path, [RouteMethod.PATCH], cast(Callable, handler), with_auth))
         return handler
 
     return decorator
 
 
-def delete(
-    path: str, *, with_auth: bool = False
-) -> Callable[[WrappedHandlerWithRoute], WrappedHandlerWithRoute]:
+def delete(path: str, *, with_auth: bool = False) -> Callable[[WrappedHandler], WrappedHandler]:
     """Decorator for DELETE routes"""
 
-    def decorator(handler: WrappedHandlerWithRoute):
-        handler.__nt_webserver_route__ = Route(path, [RouteMethod.DELETE], handler, with_auth)
+    def decorator(handler: WrappedHandler) -> WrappedHandler:
+        route_data = Route(path, [RouteMethod.DELETE], cast(Callable, handler), with_auth)
+        setattr(handler, "__nt_webserver_route__", route_data)
         return handler
 
     return decorator
 
 
-def head(
-    path: str, *, with_auth: bool = False
-) -> Callable[[WrappedHandlerWithRoute], WrappedHandlerWithRoute]:
+def head(path: str, *, with_auth: bool = False) -> Callable[[WrappedHandler], WrappedHandler]:
     """Decorator for HEAD routes"""
 
-    def decorator(handler: WrappedHandlerWithRoute):
-        handler.__nt_webserver_route__ = Route(path, [RouteMethod.HEAD], handler, with_auth)
+    def decorator(handler: WrappedHandler) -> WrappedHandler:
+        setattr(handler, "__nt_webserver_route__", Route(path, [RouteMethod.HEAD], cast(Callable, handler), with_auth))
         return handler
 
     return decorator
 
 
 def route(
-    path: str, *, method: Union[RouteMethod, List[RouteMethod], str, List[str]] = [], with_auth: bool = False
-) -> Callable[[WrappedHandlerWithRoute], WrappedHandlerWithRoute]:
+    path: str, *, method: RouteMethod | list[RouteMethod] | str | list[str] = [], with_auth: bool = False
+) -> Callable[[WrappedHandler], WrappedHandler]:
     """Decorator for any routes"""
 
-    def decorator(handler: WrappedHandlerWithRoute):
+    def decorator(handler: WrappedHandler) -> WrappedHandler:
         pp_method = []
         if not isinstance(method, list):
             pp_method.append(method)
@@ -191,7 +175,7 @@ def route(
                 RouteMethod.DELETE,
                 RouteMethod.PATCH,
             ]
-        handler.__nt_webserver_route__ = Route(path, actual_method, handler, with_auth)
+        setattr(handler, "__nt_webserver_route__", Route(path, actual_method, cast(Callable, handler), with_auth))
         return handler
 
     return decorator

@@ -1,68 +1,94 @@
 import fnmatch
 import logging
 
-from disnake.ext import commands
-from disnake.ext.commands import ExtensionAlreadyLoaded, ExtensionError, ExtensionNotFound, ExtensionNotLoaded
+import discord
+from discord import app_commands
+from discord.ext import commands
+from discord.ext.commands import (
+    ExtensionAlreadyLoaded,
+    ExtensionError,
+    ExtensionNotFound,
+    ExtensionNotLoaded,
+)
 
-from naotimes.bot import naoTimesBot, naoTimesContext
+from naotimes.bot import naoTimesBot
+from naotimes.context import OwnerGroup
 
 
 class BotBrainModuleFunction(commands.Cog):
+    modul = OwnerGroup(
+        name="modul",
+        description=app_commands.locale_str("Kelola modul/cogs bot (owner)", key="botbrain.module.group_description"),
+        default_permissions=discord.Permissions(administrator=True),
+    )
+
     def __init__(self, bot: naoTimesBot):
         self.bot = bot
         self.logger = logging.getLogger("BotBrain.Module")
 
-    def match_pattern(self, pattern: str):
-        if pattern.startswith("cogs."):
-            return pattern.replace("cogs.", "")
+    @staticmethod
+    def _full_name(name: str) -> str:
+        return name if name.startswith("cogs.") else "cogs." + name
+
+    def match_pattern(self, pattern: str, available_modules: list[str]) -> list[str]:
         if not pattern:
             return []
-        all_cogs = self.bot.available_extensions()
-        all_cogs = list(map(lambda x: x.replace("cogs.", ""), all_cogs))
-        return list(filter(lambda x: fnmatch.fnmatch(x, pattern), all_cogs))
+        available_modules = [m.replace("cogs.", "", 1) for m in available_modules]
+        return [m for m in available_modules if fnmatch.fnmatch(m, pattern.replace("cogs.", "", 1))]
 
-    @commands.command(name="cogmatch")
-    @commands.is_owner()
-    async def _bbmod_cogmatch(self, ctx: naoTimesContext, *, cogs: str):
-        matched = self.match_pattern(cogs)
-        text = "Matching cogs:\n"
-        if matched:
-            text += "\n".join(matched)
-        else:
-            text += "No match!"
-        await ctx.send(text)
+    async def _module_autocomplete(self, inter: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+        all_cogs = [m.replace("cogs.", "", 1) for m in await self.bot.available_extensions()]
+        matches = [c for c in all_cogs if current.lower() in c.lower()]
+        return [app_commands.Choice(name=m, value=m) for m in matches[:25]]
 
-    @commands.command(name="reload")
-    @commands.is_owner()
-    async def _bbmod_reload(self, ctx: naoTimesContext, *, cog_match: str = None):
-        if not cog_match:
-            ALL_COGS = self.bot.available_extensions()
-            helpcmd = self.bot.create_help(ctx, "Reload", desc="Reload a bot module")
-            helpcmd.embed.add_field(
-                name="Module/Cogs list", value="\n".join(["- " + cl for cl in ALL_COGS]), inline=False
-            )
-            return await ctx.send(embed=helpcmd.get())
+    @modul.command(
+        name="cogmatch",
+        description=app_commands.locale_str(
+            "Lihat modul yang cocok dengan pola", key="botbrain.module.cogmatch_description"
+        ),
+    )
+    @app_commands.describe(
+        pola=app_commands.locale_str(
+            "Pola modul, mendukung wildcard (contoh: kutubuku.*)", key="botbrain.module.cogmatch_option"
+        )
+    )
+    async def _bbmod_cogmatch(self, inter: discord.Interaction, pola: str):
+        ctx = await self.bot.get_context(inter)
+        matched = self.match_pattern(pola, await self.bot.available_extensions())
+        text = ctx.t("module.matching") + "\n" + ("\n".join(matched) if matched else ctx.t("module.no_match"))
+        await inter.response.send_message(text, ephemeral=True)
 
-        matched_cogs = self.match_pattern(cog_match)
+    @modul.command(
+        name="reload",
+        description=app_commands.locale_str(
+            "Reload satu atau beberapa modul", key="botbrain.module.reload_description"
+        ),
+    )
+    @app_commands.describe(
+        pola=app_commands.locale_str("Nama/pola modul (contoh: kutubuku.*)", key="botbrain.module.reload_option")
+    )
+    @app_commands.autocomplete(pola=_module_autocomplete)
+    async def _bbmod_reload(self, inter: discord.Interaction, pola: str):
+        ctx = await self.bot.get_context(inter)
+        matched_cogs = self.match_pattern(pola, await self.bot.available_extensions())
         if not matched_cogs:
-            return await ctx.send("No match found!")
+            return await inter.response.send_message(ctx.t("module.reload_no_match"), ephemeral=True)
 
+        await inter.response.defer(ephemeral=True)
         reloaded_module = []
-        msg = await ctx.send(f"Please wait, reloading {len(matched_cogs)} module...")
         for cogs in matched_cogs:
-            if not cogs.startswith("cogs."):
-                cogs = "cogs." + cogs
+            cogs = self._full_name(cogs)
             self.logger.info(f"Trying to reload {cogs}")
-
             try:
-                self.bot.reload_extension(cogs)
+                await self.bot.reload_extension(cogs)
                 reloaded_module.append(cogs)
             except (ExtensionNotFound, ModuleNotFoundError):
                 self.logger.warning(f"{cogs} doesn't exist")
             except ExtensionNotLoaded:
                 self.logger.warning(f"{cogs} is not loaded yet, trying to load it...")
                 try:
-                    self.bot.load_extension(cogs)
+                    await self.bot.load_extension(cogs)
+                    reloaded_module.append(cogs)
                 except (ExtensionNotFound, ModuleNotFoundError):
                     pass
                 except ExtensionError as cer:
@@ -73,97 +99,87 @@ class BotBrainModuleFunction(commands.Cog):
                 self.bot.echo_error(cef)
 
         if not reloaded_module:
-            await msg.edit(content="No module reloaded, what the hell?")
-        else:
-            reloaded_module = list(map(lambda x: f"`{x}`", reloaded_module))
-            await msg.edit(content=f"Successfully (re)loaded {', '.join(reloaded_module)} modules.")
-            if len(reloaded_module) != len(matched_cogs):
-                await msg.edit(content="But some modules failed to reload, check the logs.")
+            return await inter.followup.send(ctx.t("module.reload_none"))
+        names = ", ".join(f"`{x}`" for x in reloaded_module)
+        msg = ctx.t("module.reload_success", names=names)
+        if len(reloaded_module) != len(matched_cogs):
+            msg += ctx.t("module.reload_partial")
+        await inter.followup.send(msg + ctx.t("module.reload_sync_hint"))
 
-    @commands.command(name="load")
-    @commands.is_owner()
-    async def _bbmod_load(self, ctx: naoTimesContext, *, cogs: str = None):
-        if not cogs:
-            ALL_COGS = self.bot.available_extensions()
-            helpcmd = self.bot.create_help(ctx, "Load", desc="Load a bot module")
-            helpcmd.embed.add_field(
-                name="Module/Cogs list", value="\n".join(["- " + cl for cl in ALL_COGS]), inline=False
-            )
-            return await ctx.send(embed=helpcmd.get())
-
-        if not cogs.startswith("cogs."):
-            cogs = "cogs." + cogs
+    @modul.command(
+        name="load",
+        description=app_commands.locale_str("Load sebuah modul", key="botbrain.module.load_description"),
+    )
+    @app_commands.describe(nama=app_commands.locale_str("Nama modul", key="botbrain.module.load_option"))
+    @app_commands.autocomplete(nama=_module_autocomplete)
+    async def _bbmod_load(self, inter: discord.Interaction, nama: str):
+        ctx = await self.bot.get_context(inter)
+        cogs = self._full_name(nama)
         self.logger.info(f"Trying to load {cogs}")
-        msg = await ctx.send("Please wait, loading module...")
-
         try:
-            self.bot.load_extension(cogs)
+            await self.bot.load_extension(cogs)
         except ExtensionAlreadyLoaded:
-            self.logger.warning(f"{cogs} already loaded")
-            return await msg.edit(content="The module is already loaded!")
+            return await inter.response.send_message(ctx.t("module.load_already"), ephemeral=True)
         except (ExtensionNotFound, ModuleNotFoundError):
-            self.logger.warning(f"{cogs} doesn't exist")
-            return await msg.edit(content="Unable to find that module!")
+            return await inter.response.send_message(ctx.t("module.not_found"), ephemeral=True)
         except ExtensionError as cef:
             self.logger.error(f"Failed to load {cogs}")
             self.bot.echo_error(cef)
-            return await msg.edit(content="Failed to load module, please check bot log!")
+            return await inter.response.send_message(ctx.t("module.load_failed"), ephemeral=True)
+        await inter.response.send_message(ctx.t("module.load_success", name=cogs), ephemeral=True)
 
-        await msg.edit(content=f"Successfully loaded `{cogs}` module.")
-
-    @commands.command(name="unload")
-    async def _bbmod_unload(self, ctx: naoTimesContext, *, cogs: str = None):
-        if not cogs:
-            ALL_COGS = self.bot.available_extensions()
-            helpcmd = self.bot.create_help(ctx, "Unload", desc="Unload a bot module")
-            helpcmd.embed.add_field(
-                name="Module/Cogs list", value="\n".join(["- " + cl for cl in ALL_COGS]), inline=False
-            )
-            return await ctx.send(embed=helpcmd.get())
-
-        if not cogs.startswith("cogs."):
-            cogs = "cogs." + cogs
-        self.logger.info(f"Trying to load {cogs}")
-        msg = await ctx.send("Please wait, unloading module...")
-
+    @modul.command(
+        name="unload",
+        description=app_commands.locale_str("Unload sebuah modul", key="botbrain.module.unload_description"),
+    )
+    @app_commands.describe(nama=app_commands.locale_str("Nama modul", key="botbrain.module.unload_option"))
+    @app_commands.autocomplete(nama=_module_autocomplete)
+    async def _bbmod_unload(self, inter: discord.Interaction, nama: str):
+        ctx = await self.bot.get_context(inter)
+        cogs = self._full_name(nama)
+        if cogs == "cogs.botbrain.module":
+            return await inter.response.send_message(ctx.t("module.unload_required"), ephemeral=True)
+        self.logger.info(f"Trying to unload {cogs}")
         try:
-            self.bot.unload_extension(cogs)
+            await self.bot.unload_extension(cogs)
         except ExtensionNotLoaded:
-            self.logger.warning(f"{cogs} already unloaded")
-            return await msg.edit(content="The module is not yet loaded! (already unloaded)")
+            return await inter.response.send_message(ctx.t("module.unload_not_loaded"), ephemeral=True)
         except (ExtensionNotFound, ModuleNotFoundError):
-            self.logger.warning(f"{cogs} doesn't exist")
-            return await msg.edit(content="Unable to find that module!")
+            return await inter.response.send_message(ctx.t("module.not_found"), ephemeral=True)
         except ExtensionError as cef:
-            self.logger.error(f"Failed to reload {cogs}")
+            self.logger.error(f"Failed to unload {cogs}")
             self.bot.echo_error(cef)
-            return await msg.edit(content="Failed to unload module, please check bot log!")
+            return await inter.response.send_message(ctx.t("module.unload_failed"), ephemeral=True)
+        await inter.response.send_message(ctx.t("module.unload_success", name=cogs), ephemeral=True)
 
-        await msg.edit(content=f"Successfully unloaded `{cogs}` module.")
+    @modul.command(
+        name="togglecmd",
+        description=app_commands.locale_str(
+            "Aktifkan/nonaktifkan sebuah slash command", key="botbrain.module.togglecmd_description"
+        ),
+    )
+    @app_commands.describe(
+        perintah=app_commands.locale_str(
+            "Nama command (contoh: kbbi atau musik)", key="botbrain.module.togglecmd_option_command"
+        ),
+        alasan=app_commands.locale_str("Alasan penonaktifan", key="botbrain.module.togglecmd_option_reason"),
+    )
+    async def _bbmod_toggle_command(self, inter: discord.Interaction, perintah: str, alasan: str | None = None):
+        _, message = self.bot.toggle_command(perintah, alasan)
+        await inter.response.send_message(message, ephemeral=True)
 
-    @commands.command(name="togglecmd")
-    @commands.is_owner()
-    async def _bbmod_toggle_command(self, ctx: naoTimesContext, *, command_name: str):
-        """Toggle a command status (disable/enable)"""
-        try:
-            split_data = command_name.split("-", 1)
-            command_name = split_data[0]
-            reasoning = split_data[1]
-        except ValueError:
-            reasoning = None
-
-        result, error_msg = self.bot.toggle_command(command_name, reasoning)
-        if not result:
-            error_msg = "Error: " + error_msg
-        await ctx.send(error_msg)
-
-    @commands.command(name="slashreload")
-    @commands.is_owner()
-    async def _bbmod_slashreload(self, ctx: naoTimesContext):
-        msg = await ctx.send("Please wait, resyncing all /slash commands...")
-        await self.bot.slash.sync_all_commands()
-        await msg.edit(content="All /slash command has been synchronized again!")
+    @modul.command(
+        name="sync",
+        description=app_commands.locale_str(
+            "Sinkronisasi slash command ke Discord", key="botbrain.module.sync_description"
+        ),
+    )
+    async def _bbmod_slashreload(self, inter: discord.Interaction):
+        ctx = await self.bot.get_context(inter)
+        await inter.response.defer(ephemeral=True)
+        synced = await self.bot.tree.sync()
+        await inter.followup.send(ctx.t("module.sync_success", count=len(synced)))
 
 
-def setup(bot: naoTimesBot):
-    bot.add_cog(BotBrainModuleFunction(bot))
+async def setup(bot: naoTimesBot):
+    await bot.add_cog(BotBrainModuleFunction(bot))

@@ -1,0 +1,76 @@
+preview = true
+line-length = 120
+
+extend-exclude = [
+    "env",
+    "venv",
+    ".pytest_cache",
+    ".venv",
+    "__pycache__",
+    ".git",
+    ".mypy_cache",
+    ".vscode",
+    ".ruff_cache",
+    "**/Lib/**",
+    "dist",
+    "build",
+    "docs",
+    "automod",
+    "fansubrss_data",
+    "showtimes_folder",
+    "vote_data",
+    "ticketing",
+    "premium_code",
+    "_dataset",
+    "vthell",
+]
+
+target-version = "py313"
+
+[lint]
+ignore = [
+    "whitespace-before-punctuation",
+    "undefined-local-with-import-star-usage",
+    "undefined-local-with-import-star",
+    "forward-annotation-syntax-error",
+    "non-lowercase-variable-in-function",
+    "missing-trailing-comma",
+    "missing-trailing-period",  # first line should be period, most of my docstring will be LICENSE header so no thanks
+    "blank-line-after-function",
+    "non-imperative-mood",
+    "error-suffix-on-exception-name",  # error
+    "unused-async"
+]
+select = [
+    "E",
+    "F",
+    "W",
+    "I",
+    "Q",
+    "RUF",
+    "COM",
+    # "CPY",
+    "PTH",
+    "ASYNC",
+]
+
+[lint.isort]
+combine-as-imports = false
+split-on-trailing-comma = true
+section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
+
+[lint.pydocstyle]
+convention = "numpy"
+ignore-decorators = ["typing.overload"]
+
+[lint.per-file-ignores]
+"__init__.py" = ["unused-import", "undefined-local-with-import-star", "missing-required-import", "missing-blank-line-after-summary"]
+"tests/*.py" = ["assert", "missing-required-import", "D"]  # assert statement used in pytest
+"pipelines/*" = ["T", "I", "subprocess-without-shell-equals-true", "D"]
+"*.pyi" = ["blank-lines-top-level", "blank-line-between-methods", "multiple-statements-on-one-line-colon", "blank-lines-after-function-or-class", "unused-import"]
+# ODMantic uses mutable `model_config` dictionaries as model metadata.
+"naotimes/models/showtimes.py" = ["mutable-class-default"]
+# These strings intentionally preserve localized punctuation and phonetic glyphs.
+"cogs/showtimes/fansubrss.py" = ["ambiguous-unicode-character-string"]
+"naotimes/http/webster.py" = ["ambiguous-unicode-character-string"]
+"naotimes/music/lyrics/netease.py" = ["ambiguous-unicode-character-string"]

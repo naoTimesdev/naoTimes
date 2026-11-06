@@ -1,0 +1,16 @@
+# Strings for cogs/bahaya (imageboard/booru search).
+booru:
+  description: "Cari gambar di situs imageboard (booru)"
+  option_engine: "Situs booru yang ingin dicari"
+  option_tags: "Tag pencarian, pisahkan dengan spasi (kosongkan untuk gambar acak)"
+  option_acak: "Ambil satu gambar acak"
+  option_aman: "Hanya hasil aman (SFW). Hasil non-aman hanya bisa di kanal NSFW."
+  nsfw_only: "Hasil non-aman hanya bisa dicari di kanal NSFW."
+  no_results: "Tidak dapat hasil!"
+  api_unavailable: "API service is unavailable"
+  api_contact_error: "Terjadi kesalahan ketika ingin menghubungi API"
+  api_process_error: "Terjadi kesalahan ketika memproses data dari API\n`{error}`"
+  empty_result: "Tidak ada hasil"
+  embed_page: "**Laman**: {link}"
+  embed_source: "**Sumber**: [Klik]({source})"
+  embed_footer: "Engine: {engine} | Diprakasi ole ihaAPI"

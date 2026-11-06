@@ -8,7 +8,7 @@ This module will convert a string of text into `:cls:`arrow.Arrow format
 
 MIT License
 
-Copyright (c) 2019-2021 naoTimesdev
+Copyright (c) 2019-2022 naoTimesdev
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -31,8 +31,9 @@ SOFTWARE.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import timedelta
-from typing import Dict, List, NamedTuple, Union
+from typing import overload
 
 import arrow
 
@@ -52,12 +53,13 @@ _NAME_MAPS = {
 }
 
 
-class TimeTuple(NamedTuple):
-    t: Union[int, float]
+@dataclass
+class TimeTuple:
+    t: int | float
     s: str
 
 
-TimeSets = List[TimeTuple]
+TimeSets = list[TimeTuple]
 
 
 class TimeStringError(Exception):
@@ -78,7 +80,7 @@ class TimeStringValidationError(TimeStringError):
         super().__init__(main_text)
 
 
-def normalize_suffix(suffix: str) -> Union[str, None]:
+def normalize_suffix(suffix: str) -> str | None:
     if suffix in ["", " "]:
         # Default to seconds
         return "s"
@@ -140,9 +142,12 @@ class TimeString:
     def __str__(self):
         return self.to_string()
 
-    def __internal_addition(self, other: Union[TimeTuple, TimeSets]) -> TimeSets:
+    def __int__(self):
+        return round(self.timestamp())
+
+    def __internal_addition(self, other: TimeTuple | TimeSets) -> TimeSets:
         if not isinstance(other, list) and not isinstance(other, TimeString):
-            return TypeError("Not a correct type, must be either TimeTuple or List[TimeTuple].")
+            raise TypeError("Not a correct type, must be either TimeTuple or List[TimeTuple].")
         current_data = self._data[:]
         if isinstance(other, TimeTuple):
             other = [other]
@@ -151,22 +156,22 @@ class TimeString:
             if isinstance(da, TimeTuple):
                 valid_list.append(da)
         if len(valid_list) < 1:
-            return ValueError("The list given doesn't contains any TimeTuple.")
+            raise ValueError("The list given doesn't contains any TimeTuple.")
         current_data.extend(valid_list)
         return self.__concat_dupes(current_data)
 
-    def __add__(self, other: Union[TimeTuple, TimeSets]) -> TimeString:
+    def __add__(self, other: TimeTuple | TimeSets) -> TimeString:
         return TimeString(self.__internal_addition(other))
 
-    def __iadd__(self, other: Union[TimeTuple, TimeSets]) -> TimeString:
+    def __iadd__(self, other: TimeTuple | TimeSets) -> TimeString:
         self._data = self.__internal_addition(other)
         return self
 
-    def __internal_subtract(self, other: Union[TimeTuple, TimeSets]) -> TimeSets:
+    def __internal_subtract(self, other: TimeTuple | TimeSets) -> TimeSets:
         if not isinstance(other, list) and not isinstance(other, TimeString):
-            return TypeError("Not a correct type, must be either TimeTuple or List[TimeTuple].")
+            raise TypeError("Not a correct type, must be either TimeTuple or List[TimeTuple].")
         current_data = self._data[:]
-        occured: Dict[str, Union[int, float]] = {}
+        occured: dict[str, int | float] = {}
         for time in current_data:
             if time.s not in occured:
                 occured[time.s] = time.t
@@ -176,71 +181,69 @@ class TimeString:
         if isinstance(other, TimeTuple):
             if other.s in occured:
                 occured[other.s] -= other.t
-                if occured[other.s] < 0:
-                    occured[other.s] = 0
+                occured[other.s] = max(occured[other.s], 0)
         elif isinstance(other, list):
             valid_list: TimeSets = []
             for da in other:
                 if isinstance(da, TimeTuple):
                     valid_list.append(da)
             if len(valid_list) < 1:
-                return ValueError("The list given doesn't contains any TimeTuple.")
+                raise ValueError("The list given doesn't contains any TimeTuple.")
             for da in valid_list:
                 if da.s in occured:
                     occured[da.s] -= da.t
-                    if occured[da.s] < 0:
-                        occured[da.s] = 0
+                    occured[da.s] = max(occured[da.s], 0)
         concatted = []
         for suf, am in occured.items():
             concatted.append(TimeTuple(am, suf))
         return concatted
 
-    def __sub__(self, other: Union[TimeTuple, TimeSets]) -> "TimeString":
+    def __sub__(self, other: TimeTuple | TimeSets) -> TimeString:
         return TimeString(self.__internal_subtract(other))
 
-    def __isub__(self, other: Union[TimeTuple, TimeSets]) -> "TimeString":
+    def __isub__(self, other: TimeTuple | TimeSets) -> TimeString:
         self._data = self.__internal_subtract(other)
         return self
 
-    def __eq__(self, other: "TimeString") -> bool:
+    def __eq__(self, other: object) -> bool:
         if not isinstance(other, TimeString):
             return False
         return self.timestamp() == other.timestamp()
 
-    def __ne__(self, other: "TimeString") -> bool:
+    def __ne__(self, other: object) -> bool:
         if not isinstance(other, TimeString):
             return True
         return self.timestamp() != other.timestamp()
 
-    def __lt__(self, other: "TimeString") -> bool:
+    def __lt__(self, other: TimeString) -> bool:
         if not isinstance(other, TimeString):
             return False
         return self.timestamp() < other.timestamp()
 
-    def __le__(self, other: "TimeString") -> bool:
+    def __le__(self, other: TimeString) -> bool:
         if not isinstance(other, TimeString):
             return False
         return self.timestamp() <= other.timestamp()
 
-    def __gt__(self, other: "TimeString") -> bool:
+    def __gt__(self, other: TimeString) -> bool:
         if not isinstance(other, TimeString):
             return False
         return self.timestamp() > other.timestamp()
 
-    def __ge__(self, other: "TimeString") -> bool:
+    def __ge__(self, other: TimeString) -> bool:
         if not isinstance(other, TimeString):
             return False
         return self.timestamp() >= other.timestamp()
 
     @staticmethod
-    def __tokenize(text: str) -> List[TimeTuple]:
+    def __tokenize(text: str) -> list[TimeTuple]:
         def _parse_num(data: str):
             if "." in data:
                 return float(data)
             return int(data, 10)
 
         time_sets = []
-        texts: List[str] = list(text)  # Convert to list of string
+        texts: list[str] = list(text)  # Convert to list of string
         current_num = ""
         build_suffix = ""
         current = ""
@@ -277,7 +280,7 @@ class TimeString:
 
     @staticmethod
     def __concat_dupes(time_sets: TimeSets) -> TimeSets:
-        occured: Dict[str, Union[int, float]] = {}
+        occured: dict[str, int | float] = {}
         for time in time_sets:
             if time.s not in occured:
                 occured[time.s] = time.t
@@ -289,9 +292,7 @@ class TimeString:
         return concatted
 
     @staticmethod
-    def __multiplier(t: Union[int, float], s: str):
-        if s == "s":
-            return t
+    def __multiplier(t: int | float, s: str) -> int | float:
         if s == "ms":
             return t / 1000
         if s == "m":
@@ -306,20 +307,35 @@ class TimeString:
             return t * 3600 * 24 * 30
         if s == "y":
             return t * 3600 * 24 * 365
+        return t
+
+    @overload
+    @classmethod
+    def parse(cls, timestring: int) -> "TimeString": ...
+
+    @overload
+    @classmethod
+    def parse(cls, timestring: float) -> "TimeString": ...
+
+    @overload
+    @classmethod
+    def parse(cls, timestring: str) -> "TimeString": ...
 
     @classmethod
-    def parse(cls, timestring: str):
+    def parse(cls, timestring: str | float) -> "TimeString":
+        if isinstance(timestring, (int, float)):
+            return cls([TimeTuple(timestring, "s")])
         time_data = cls.__tokenize(timestring)
         if len(time_data) < 1:
             raise TimeStringParseError("hasil akhir parsing kosong, walaupun input diberikan.")
         return cls(time_data)
 
     @classmethod
-    def from_seconds(cls, seconds: Union[int, float]):
+    def from_seconds(cls, seconds: float):
         return cls([TimeTuple(seconds, "s")])
 
-    def timestamp(self) -> int:
-        real_seconds = 0
+    def timestamp(self) -> int | float:
+        real_seconds: int | float = 0
         for data in self._data:
             real_seconds += self.__multiplier(data.t, data.s)
         return real_seconds
@@ -335,11 +351,11 @@ class TimeString:
         """Parse back into the parseable format by TimeString"""
         ALL_KEYS = list(_NAME_MAPS.keys())
         ALL_KEYS.reverse()
-        _PRIORITY_DICT = {k: i for i, k in enumerate(ALL_KEYS)}
-        sorted_list = sorted(self._data, key=lambda x: _PRIORITY_DICT.get(x.s))
+        PRIORITY_DICT = {k: i for i, k in enumerate(ALL_KEYS)}
+        sorted_list = sorted(self._data, key=lambda x: PRIORITY_DICT.get(x.s, len(PRIORITY_DICT)))
         return "".join([str(x.t) + x.s for x in sorted_list])
 
-    def to_string(self):
+    def to_string(self, locale: str = "id"):
         """Convert to a nice string format!"""
         timestamp = self.timestamp()
 
@@ -359,25 +375,51 @@ class TimeString:
         milisecond = 0
         if len(second_str) > 1:
             mili_part = float(f".{second_str[1]}")
-            milisecond = int(round(mili_part * 1000))
+            milisecond = round(mili_part * 1000)
+
+        names = {
+            "year": "tahun",
+            "month": "bulan",
+            "day": "hari",
+            "hour": "jam",
+            "minute": "menit",
+            "second": "detik",
+            "millisecond": "milidetik",
+        }
+        if locale == "en":
+            names = {
+                "year": "year",
+                "month": "month",
+                "day": "day",
+                "hour": "hour",
+                "minute": "minute",
+                "second": "second",
+                "millisecond": "millisecond",
+            }
+
+        def label(value: int, key: str) -> str:
+            name = names[key]
+            if locale == "en" and value != 1:
+                return f"{name}s"
+            return name
 
         joined_text = []
         if year > 0:
-            joined_text.append(f"{int(year)} tahun")
+            joined_text.append(f"{int(year)} {label(int(year), 'year')}")
         if month > 0:
-            joined_text.append(f"{int(month)} bulan")
+            joined_text.append(f"{int(month)} {label(int(month), 'month')}")
         if day > 0:
-            joined_text.append(f"{int(day)} hari")
+            joined_text.append(f"{int(day)} {label(int(day), 'day')}")
         if hour > 0:
-            joined_text.append(f"{int(hour)} jam")
+            joined_text.append(f"{int(hour)} {label(int(hour), 'hour')}")
         if minute > 0:
-            joined_text.append(f"{int(minute)} menit")
+            joined_text.append(f"{int(minute)} {label(int(minute), 'minute')}")
         if second > 0:
-            joined_text.append(f"{int(second)} detik")
+            joined_text.append(f"{int(second)} {label(int(second), 'second')}")
         if milisecond > 0:
-            joined_text.append(f"{int(milisecond)} milidetik")
+            joined_text.append(f"{int(milisecond)} {label(int(milisecond), 'millisecond')}")
 
         if len(joined_text) < 1:
-            return "0 detik"
+            return f"0 {label(0, 'second')}"
 
         return " ".join(joined_text)

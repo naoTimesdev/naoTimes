@@ -1,7 +1,7 @@
 """
 MIT License
 
-Copyright (c) 2019-2021 naoTimesdev
+Copyright (c) 2019-2022 naoTimesdev
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -25,56 +25,63 @@ SOFTWARE.
 from __future__ import annotations
 
 import asyncio
+import datetime
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence, Type, TypeVar, Union
+from collections.abc import Callable, Sequence
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    cast,
+)
 
-import disnake.ext.tasks
-import disnake.message
-import disnake.state
+import discord.app_commands.commands
+import discord.ext.tasks
+import discord.message
 from arrow.locales import Locale, _locale_map
-from disnake import ComponentType, MessageInteraction, ModalInteraction, Thread
-from disnake.enums import MessageType
-from disnake.utils import MISSING
-
-from .context import naoTimesAppContext
+from discord.enums import AppCommandType, MessageType
+from discord.utils import MISSING
 
 if TYPE_CHECKING:
-    from datetime import datetime, time
-
-    from disnake.guild import Guild
-    from disnake.types.interactions import (
-        ApplicationCommandInteraction as ApplicationCommandInteractionPayload,
-    )
+    from discord.app_commands.commands import ContextMenuCallback
+    from discord.ext.commands.cog import Cog
 
 __all__ = (
-    "monkeypatch_message_delete",
     "monkeypatch_arrow_id_locale",
-    "monkeypatch_interaction_create",
-    "monkeypatch_thread_create",
-    "monkeypatch_disnake_tasks_loop",
+    "monkeypatch_discord_context_menu",
+    "monkeypatch_discord_tasks_loop",
+    "monkeypatch_message_delete",
 )
 
 _log = logging.getLogger("naoTimes.Monke")
-T = TypeVar("T")
-
-
-class MessageTypeNew(MessageType):
-    deleted_message_no_log = 9999
+DELETED_MESSAGE_NO_LOG = cast(MessageType, 9999)
 
 
 def monkeypatch_message_delete():
-    ORIGINAL_DELETE = disnake.message.Message.delete
+    ORIGINAL_DELETE = discord.message.PartialMessage.delete
 
-    async def delete_strategy(
-        self: disnake.message.Message, *, delay: Optional[float] = None, no_log: bool = False
-    ):
+    async def delete_strategy(self: discord.message.Message, *, delay: float | None = None, no_log: bool = False):
         if no_log:
-            self.type = MessageTypeNew.deleted_message_no_log
+            self.type = DELETED_MESSAGE_NO_LOG
 
         await ORIGINAL_DELETE(self, delay=delay)
 
-    _log.info("Monkeypatching discord.message.Message.delete with new function")
-    disnake.message.Message.delete = delete_strategy
+    _log.info("Monkeypatching discord.message.PartialMessage.delete with new function")
+    setattr(discord.message.PartialMessage, "delete", delete_strategy)
+
+    # Messages sent as a reply to an interaction (slash commands) are InteractionMessage /
+    # WebhookMessage objects, their `delete` has its own signature without `no_log`.
+    # Accept (and ignore) it so shared helpers can use `delete(no_log=True)` everywhere.
+    def _wrap_webhook_delete(original: Any) -> Any:
+        async def delete_webhook(self: Any, *, delay: float | None = None, no_log: bool = False) -> Any:
+            return await original(self, delay=delay)
+
+        return delete_webhook
+
+    for cls in (discord.WebhookMessage, discord.InteractionMessage):
+        if "no_log" not in cls.delete.__code__.co_varnames:
+            _log.info(f"Monkeypatching discord.{cls.__name__}.delete to accept no_log")
+            setattr(cls, "delete", _wrap_webhook_delete(cls.delete))
 
 
 def monkeypatch_arrow_id_locale():
@@ -87,14 +94,65 @@ def monkeypatch_arrow_id_locale():
         return
 
     class IndonesianExtendedLocale(Locale):
-
-        names = ["id", "id-id"]
+        names: ClassVar[list[str]] = ["id", "id-id"]
 
         past = "{0} yang lalu"
         future = "dalam {0}"
         and_word = "dan"
 
-        timeframes = {
+        meridians: ClassVar[dict[str, str]] = {"am": "", "pm": "", "AM": "", "PM": ""}
+
+        month_names: ClassVar[list[str]] = [
+            "",
+            "Januari",
+            "Februari",
+            "Maret",
+            "April",
+            "Mei",
+            "Juni",
+            "Juli",
+            "Agustus",
+            "September",
+            "Oktober",
+            "November",
+            "Desember",
+        ]
+
+        month_abbreviations: ClassVar[list[str]] = [
+            "",
+            "Jan",
+            "Feb",
+            "Mar",
+            "Apr",
+            "Mei",
+            "Jun",
+            "Jul",
+            "Ags",
+            "Sept",
+            "Okt",
+            "Nov",
+            "Des",
+        ]
+
+        day_names: ClassVar[list[str]] = ["", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
+
+        day_abbreviations: ClassVar[list[str]] = [
+            "",
+            "Senin",
+            "Selasa",
+            "Rabu",
+            "Kamis",
+            "Jumat",
+            "Sabtu",
+            "Minggu",
+        ]
+
+    # Arrow's Locale annotation has stricter key types than this custom mapping.
+    # Keep the runtime override while avoiding an incompatible subclass field.
+    setattr(
+        IndonesianExtendedLocale,
+        "timeframes",
+        {
             "now": "baru saja",
             "second": "sedetik",
             "seconds": "{0} detik",
@@ -112,145 +170,37 @@ def monkeypatch_arrow_id_locale():
             "quarters": "{0} kuartal",
             "year": "1 tahun",
             "years": "{0} tahun",
-        }
-
-        meridians = {"am": "", "pm": "", "AM": "", "PM": ""}
-
-        month_names = [
-            "",
-            "Januari",
-            "Februari",
-            "Maret",
-            "April",
-            "Mei",
-            "Juni",
-            "Juli",
-            "Agustus",
-            "September",
-            "Oktober",
-            "November",
-            "Desember",
-        ]
-
-        month_abbreviations = [
-            "",
-            "Jan",
-            "Feb",
-            "Mar",
-            "Apr",
-            "Mei",
-            "Jun",
-            "Jul",
-            "Ags",
-            "Sept",
-            "Okt",
-            "Nov",
-            "Des",
-        ]
-
-        day_names = ["", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
-
-        day_abbreviations = [
-            "",
-            "Senin",
-            "Selasa",
-            "Rabu",
-            "Kamis",
-            "Jumat",
-            "Sabtu",
-            "Minggu",
-        ]
+        },
+    )
 
     _log.info(f"Monkeypatched ID locale with {IndonesianExtendedLocale.__name__}")
 
 
-def monkeypatch_interaction_create():
-    def _parse_interaction_create(
-        self: disnake.state.ConnectionState, data: ApplicationCommandInteractionPayload
-    ) -> None:
-        # A modified version of interaction create to use
-        # naoTimesAppContext to dispatch the slash_command!
-        interaction_type = data["type"]
-        if interaction_type == 1:
-            # PING interaction should never be received
-            return
-        elif interaction_type == 2:
-            interaction = naoTimesAppContext(data=data, state=self)
-            self.dispatch("application_command", interaction)
-        elif interaction_type == 3:
-            interaction = MessageInteraction(data=data, state=self)
-            self._view_store.dispatch(interaction)
-            self.dispatch("message_interaction", interaction)
-            if interaction.data.component_type is ComponentType.button:
-                self.dispatch("button_click", interaction)
-            elif interaction.data.component_type is ComponentType.select:
-                self.dispatch("dropdown", interaction)
-        elif interaction_type == 4:
-            interaction = naoTimesAppContext(data=data, state=self)
-            self.dispatch("application_command_autocomplete", interaction)
+def monkeypatch_discord_tasks_loop():
+    LoopTask: Any = discord.ext.tasks.Loop
 
-        elif interaction_type == 5:
-            interaction = ModalInteraction(data=data, state=self)
-            self._modal_store.dispatch(interaction)
-            self.dispatch("modal_submit", interaction)
-        else:
-            return
-
-        self.dispatch("interaction", interaction)
-
-    _log.info("Monkeypatching discord.state.ConnectionState.parse_integration_create with new function")
-    disnake.state.ConnectionState.parse_interaction_create = _parse_interaction_create
-
-
-def monkeypatch_thread_create():
-    def _parse_thread_create(self: disnake.state.ConnectionState, data):
-        guild_id = int(data["guild_id"])
-        guild: Optional[Guild] = self._get_guild(guild_id)
-        if guild is None:
-            _log.debug("THREAD_CREATE referencing an unknown guild ID: %s. Discarding", guild_id)
-            return
-        new_thread = data.get("newly_created", False)
-
-        thread = Thread(guild=guild, state=guild._state, data=data)
-        has_thread = guild.get_thread(thread.id)
-        guild._add_thread(thread)
-        if new_thread:
-            self.dispatch("thread_create", thread)
-            return
-        if not has_thread:
-            self.dispatch("thread_join", thread)
-
-    _log.info("Monkeypatching discord.state.ConnectionState.parse_thread_create with new function")
-    disnake.state.ConnectionState.parse_thread_create = _parse_thread_create
-
-
-def monkeypatch_disnake_tasks_loop():
-    LF = disnake.ext.tasks.LF
-    LoopTask = disnake.ext.tasks.Loop
-
-    class BetterTasks(LoopTask[LF]):
+    class BetterTasks(LoopTask):
         def __init__(
             self,
-            coro: LF,
+            coro: Any,
             seconds: float,
             hours: float,
             minutes: float,
-            time: Union[datetime.time, Sequence[datetime.time]],
-            count: Optional[int],
+            time: datetime.time | Sequence[datetime.time],
+            count: int | None,
             reconnect: bool,
-            name: str,
-            loop: asyncio.AbstractEventLoop,
+            name: Any,
         ) -> None:
-            super().__init__(coro, seconds, hours, minutes, time, count, reconnect, loop)
+            super().__init__(coro, seconds, hours, minutes, time, count, reconnect)
             if name is MISSING:
                 name = self.coro.__name__
-            self._task_name: str = name
+            setattr(self, "_task_name", name)
 
-        def __get__(self, obj: T, objtype: Type[T]) -> LoopTask[LF]:
+        def __get__(self, obj: Any, objtype: Any) -> Any:
             if obj is None:
                 return self
 
-            copy: BetterTasks[LF] = BetterTasks(
+            copy = BetterTasks(
                 self.coro,
                 seconds=self._seconds,
                 hours=self._hours,
@@ -258,8 +208,7 @@ def monkeypatch_disnake_tasks_loop():
                 time=self._time,
                 count=self.count,
                 reconnect=self.reconnect,
-                name=self._task_name,
-                loop=self.loop,
+                name=getattr(self, "_task_name"),
             )
             copy._injected = obj
             copy._before_loop = self._before_loop
@@ -270,20 +219,17 @@ def monkeypatch_disnake_tasks_loop():
 
         @property
         def name(self) -> str:
-            return self._task_name
+            return getattr(self, "_task_name")
 
         def start(self, *args: Any, **kwargs: Any) -> asyncio.Task[None]:
-            if self._task is not MISSING and not self._task.done():
+            if self._task and not self._task.done():
                 raise RuntimeError("Task is already launched and is not completed.")
 
             if self._injected is not None:
                 args = (self._injected, *args)
 
-            if self.loop is MISSING:
-                self.loop = asyncio.get_event_loop()
-
-            task_name = f"disnake.tasks-{self._task_name}-loop_n-{self._current_loop}"
-            self._task = self.loop.create_task(self._loop(*args, **kwargs), name=task_name)
+            task_name = f"discord.tasks-{self._task_name}-loop_n-{self._current_loop}"
+            self._task = asyncio.create_task(self._loop(*args, **kwargs), name=task_name)
             return self._task
 
     def _patched_loop(
@@ -291,26 +237,51 @@ def monkeypatch_disnake_tasks_loop():
         seconds: float = MISSING,
         minutes: float = MISSING,
         hours: float = MISSING,
-        time: Union[time, Sequence[time]] = MISSING,
-        count: Optional[int] = None,
+        time: datetime.time | Sequence[datetime.time] = MISSING,
+        count: int | None = None,
         reconnect: bool = True,
-        name: str = MISSING,
-        loop: asyncio.AbstractEventLoop = MISSING,
-    ) -> Callable[[LF], BetterTasks[LF]]:
-        def decorator(func: LF) -> BetterTasks[LF]:
-            return BetterTasks[LF](
-                coro=func,
+        name: Any = MISSING,
+    ) -> Callable[[Any], Any]:
+        def decorator(func: Any) -> Any:
+            return BetterTasks(
+                func,
                 seconds=seconds,
                 minutes=minutes,
                 hours=hours,
-                time=time,
                 count=count,
+                time=time,
                 reconnect=reconnect,
                 name=name,
-                loop=loop,
             )
 
         return decorator
 
     _log.info("Monkeypatching discord.ext.tasks.loop with new function")
-    disnake.ext.tasks.loop = _patched_loop
+    setattr(discord.ext.tasks, "loop", _patched_loop)
+
+
+def monkeypatch_discord_context_menu():
+    class BetterContextMenu(discord.app_commands.commands.ContextMenu):
+        def __init__(
+            self,
+            *,
+            name: str,
+            callback: ContextMenuCallback,
+            type: AppCommandType = MISSING,
+            nsfw: bool = False,
+            guild_ids: list[int] | None = None,
+            extras: dict[Any, Any] = MISSING,
+        ):
+            super().__init__(name=name, callback=callback, type=type, nsfw=nsfw, guild_ids=guild_ids, extras=extras)
+            self.__cog: Cog | None = None
+
+        @property
+        def cog(self) -> Cog | None:
+            return self.__cog
+
+        @cog.setter
+        def cog(self, cog: Cog) -> None:
+            self.__cog = cog
+
+    _log.info("Monkeypatching discord.app_commands.commands.ContextMenu with new class")
+    setattr(discord.app_commands.commands, "ContextMenu", BetterContextMenu)

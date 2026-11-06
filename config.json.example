@@ -2,14 +2,11 @@
     "bot_id": "",
     "bot_token": "",
     "default_prefix": "!",
+    "dev_mode": false,
     "slash_test_guild": null,
+    "owner_exclude": [],
     "vndb": {
-        "username": "",
-        "password": ""
-    },
-    "nyaasi": {
-        "username": "",
-        "password": ""
+        "token": ""
     },
     "mongodb": {
         "ip_hostname": "localhost",
@@ -21,9 +18,11 @@
     "redisdb": {
         "ip_hostname": "127.0.0.1",
         "port": 6379,
-        "password": null
+        "password": null,
+        "db": 0
     },
     "socketserver": {
+        "enabled": true,
         "port": 25670,
         "password": null
     },
@@ -51,7 +50,10 @@
         "dictionary": "",
         "thesaurus": ""
     },
-    "steam_api_key": "",
+    "i18n": {
+        "default_language": "id",
+        "available_languages": ["id", "en"]
+    },
     "music": {
         "lavalink_nodes": [],
         "spotify": null,

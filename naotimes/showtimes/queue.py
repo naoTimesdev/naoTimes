@@ -1,7 +1,7 @@
 """
 MIT License
 
-Copyright (c) 2019-2021 naoTimesdev
+Copyright (c) 2019-2022 naoTimesdev
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -24,9 +24,8 @@ SOFTWARE.
 
 import asyncio
 import logging
-from typing import Dict
 
-import aioredis
+from redis import asyncio as aioredis
 
 from ..redis import RedisBridge
 from .models import Showtimes, ShowtimesLock
@@ -51,7 +50,7 @@ class ShowtimesQueue:
         self._showqueue = asyncio.Queue[Showtimes]()
         self._showtasks: asyncio.Task = asyncio.Task(self.background_jobs(), loop=self._loop)
 
-        self._lock_collection: Dict[str, ShowtimesLock] = {}
+        self._lock_collection: dict[str, ShowtimesLock] = {}
 
     async def shutdown(self):
         """
@@ -71,7 +70,7 @@ class ShowtimesQueue:
 
     async def _dumps_data(self, data: Showtimes):
         self._logger.info(f"dumping db {data.id}")
-        async with self._get_lock(data.id) as locked_id:
+        async with self._get_lock(str(data.id)) as locked_id:
             try:
                 await self._db.set(f"{self._PREFIX}{locked_id}", data.serialize())
             except aioredis.RedisError as e:

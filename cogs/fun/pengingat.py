@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 from dataclasses import dataclass
-from typing import Dict, List, Type
 
 import arrow
-import disnake
-from disnake.ext import commands
+import discord
+from discord import app_commands
+from discord.ext import commands
 
 from naotimes.bot import naoTimesBot
-from naotimes.context import naoTimesAppContext, naoTimesContext
 from naotimes.timeparse import TimeString, TimeStringParseError
 
 
@@ -25,7 +25,7 @@ class SimpleReminder:
     from_slash: bool = False
 
     @classmethod
-    def from_dict(cls: Type[SimpleReminder], data: dict):
+    def from_dict(cls: type[SimpleReminder], data: dict):
         metadata = data["meta"]
         from_slash = metadata.get("slash", False)
         return cls(
@@ -55,16 +55,22 @@ class FunReminder(commands.Cog):
         self.bot = bot
         self.logger = logging.getLogger("Fun.Reminder")
 
-        self._reminder_tasks: Dict[str, asyncio.Task] = {}
+        self._reminder_tasks: dict[str, asyncio.Task] = {}
 
-    def cog_unload(self) -> None:
+    @property
+    def redisdb(self):
+        if self.bot.redisdb is None:
+            raise RuntimeError("Reminder storage is unavailable")
+        return self.bot.redisdb
+
+    async def cog_unload(self) -> None:
         for task in self._reminder_tasks.values():
             task.cancel()
 
     async def cog_load(self) -> None:
-        all_reminder = await self.bot.redisdb.getalldict("ntreminderv2_*")
-        invalid_reminder: List[str] = []
-        valid_reminder: List[SimpleReminder] = []
+        all_reminder = await self.redisdb.getalldict("ntreminderv2_*")
+        invalid_reminder: list[str] = []
+        valid_reminder: list[SimpleReminder] = []
         for keyname, reminder in all_reminder.items():
             try:
                 reminder_sim = SimpleReminder.from_dict(reminder)
@@ -76,37 +82,56 @@ class FunReminder(commands.Cog):
 
         for keyname in invalid_reminder:
             self.logger.warning("Reminder %s is invalid, removing", keyname)
-            await self.bot.redisdb.rm(keyname)
+            await self.redisdb.rm(keyname)
 
         current = self.bot.now().int_timestamp
         for reminder in valid_reminder:
             self._schedule_reminder(reminder, current)
 
     async def _remove_reminder(self, reminder: SimpleReminder):
-        await self.bot.redisdb.rm("ntreminderv2_" + reminder.message)
+        await self.redisdb.rm("ntreminderv2_" + reminder.message)
+
+    def _deregister_reminder(self, task: asyncio.Task, reminder: SimpleReminder):
+        task_name = task.get_name()
+        try:
+            self.logger.info(f"Reminder task {task_name} has finished running")
+            self._reminder_tasks.pop(task_name, None)
+        except (ValueError, KeyError, IndexError, AttributeError):
+            self.logger.error(f"Failed to deregister task {task_name}, probably missing!")
+        removal_task_name = f"removalsoon-{task_name}"
+        removal_task = asyncio.create_task(self._remove_reminder(reminder), name=removal_task_name)
+        self._reminder_tasks[removal_task_name] = removal_task
+        removal_task.add_done_callback(self._on_reminder_finished)
 
     def _schedule_reminder(self, reminder: SimpleReminder, time: int):
-        _task_name = f"reminder-bot-{reminder.message}_{time}"
+        task_name = f"reminder-bot-{reminder.message}_{time}"
         try:
             task: asyncio.Task = self.bot.loop.create_task(self._delayed_reminder(reminder))
-            self._reminder_tasks[_task_name] = task
-            task.add_done_callback(self._remove_reminder)
-            self.logger.info("Scheduled reminder %s", _task_name)
+            self._reminder_tasks[task_name] = task
+            after_reminder_done = functools.partial(self._deregister_reminder, reminder=reminder)
+            task.add_done_callback(after_reminder_done)
+            self.logger.info("Scheduled reminder %s", task_name)
         except Exception as e:
-            self.logger.error("Failed to schedule reminder %s: %s", _task_name, e, exc_info=e)
+            self.logger.error("Failed to schedule reminder %s: %s", task_name, e, exc_info=e)
 
     async def _create_reminder(self, reminder: SimpleReminder):
         current = self.bot.now().int_timestamp
-        await self.bot.redisdb.set("ntreminderv2_" + reminder.message, reminder.to_dict())
+        await self.redisdb.set("ntreminderv2_" + reminder.message, reminder.to_dict())
         self._schedule_reminder(reminder, current)
 
     async def _safely_send_message(
-        self, message: str, target: disnake.abc.Messageable, reference: disnake.Message = None
+        self,
+        message: str,
+        target: discord.abc.Messageable,
+        reference: discord.Message | discord.MessageReference | discord.PartialMessage | None = None,
     ):
         chunks = [message[i : i + 2000] for i in range(0, len(message), 2000)]
         for chunk in chunks:
             try:
-                reference = await target.send(chunk, reference=reference)
+                if reference is None:
+                    reference = await target.send(chunk)
+                else:
+                    reference = await target.send(chunk, reference=reference)
             except Exception as e:
                 self.logger.error("Failed to send message %s: %s", chunk, e, exc_info=e)
 
@@ -117,10 +142,15 @@ class FunReminder(commands.Cog):
             await self._remove_reminder(reminder)
             return
 
-        partial_msg = None
-        if not reminder.from_slash:
-            partial_msg = channel.get_partial_message(int(reminder.message))
-        await self._safely_send_message(f"<@{reminder.user}> {reminder.message}", channel, partial_msg)
+        if not isinstance(channel, discord.abc.Messageable):
+            self.logger.error("Channel %s cannot receive messages, removing reminder!", reminder.channel)
+            await self._remove_reminder(reminder)
+            return
+
+        reference = None
+        if not reminder.from_slash and isinstance(channel, (discord.TextChannel, discord.Thread)):
+            reference = channel.get_partial_message(int(reminder.message))
+        await self._safely_send_message(f"<@{reminder.user}> {reminder.reminder}", channel, reference)
         await self._remove_reminder(reminder)
 
     async def _delayed_reminder(self, reminder: SimpleReminder):
@@ -135,7 +165,7 @@ class FunReminder(commands.Cog):
         self.logger.info(f"[{reminder.message}] Sleeping for %s seconds before reminding", difference_seconds)
         try:
             await asyncio.sleep(difference_seconds)
-        except (asyncio.TimeoutError, asyncio.CancelledError):
+        except (TimeoutError, asyncio.CancelledError):
             self.logger.warning("Reminder %s was cancelled because cogs got unloaded", reminder.message)
             return
 
@@ -149,60 +179,47 @@ class FunReminder(commands.Cog):
         except KeyError:
             self.logger.warning("Reminder %s was not found", task_name)
 
-    @commands.slash_command(name="ingatkan")
-    async def _reminder_cmd_slash(self, ctx: naoTimesAppContext, reminder: str, timeout: str = "5m"):
-        """Ingatkan anda sesuatu dalam waktu yang ditentukan.
-
-        Parameters
-        ----------
-        reminder: Apa yang ingin bot ingatkan?
-        timeout: Durasi waktu, format time string (ex: 5m, 1h, 1d, 1w). Default 5 menit
-        """
+    @app_commands.command(
+        name="ingatkan",
+        description=app_commands.locale_str(
+            "Ingatkan anda sesuatu dalam waktu yang ditentukan.", key="fun.ingatkan.description"
+        ),
+    )
+    @app_commands.describe(
+        reminder=app_commands.locale_str("Apa yang ingin bot ingatkan?", key="fun.ingatkan.option_reminder"),
+        timeout=app_commands.locale_str(
+            "Durasi waktu, format time string (ex: 5m, 1h, 1d, 1w) [Default: 5 menit]",
+            key="fun.ingatkan.option_timeout",
+        ),
+    )
+    async def _reminder_cmd_slash(
+        self,
+        interaction: discord.Interaction,
+        reminder: str,
+        timeout: str = "5m",  # ruff: ignore[async-function-with-timeout]
+    ):
+        """Ingatkan anda sesuatu dalam waktu yang ditentukan."""
+        ctx = await self.bot.get_context(interaction)
+        i18n = self.bot.i18n_for(interaction.guild, "fun")
         try:
             timeout_real = TimeString.parse(timeout)
         except TimeStringParseError:
             self.logger.error("Failed to parse time string %s", timeout)
-            return await ctx.send("Waktu yang kamu tulis tidak valid!")
+            return await ctx.send(i18n.t("ingatkan.invalid_time"))
 
         current = self.bot.now().int_timestamp
-        target = current + timeout_real.timestamp()
+        target = int(current + timeout_real.timestamp())
 
         reminder_sim = SimpleReminder(
-            target, reminder, str(ctx.id), str(ctx.channel.id), str(ctx.author.id), True
+            target, reminder, str(ctx.message.id), str(ctx.channel.id), str(ctx.author.id), True
         )
 
         await self._create_reminder(reminder_sim)
-        await ctx.send(f"Akan diingatkan dalam {timeout.to_string()}!")
-
-    @commands.command(name="ingatkan", aliases=["ingat", "remind", "remindme", "reminder"])
-    async def _reminder_cmd(self, ctx: naoTimesContext, *, sacred_text: str = ""):
-        sacred_text = sacred_text.strip()
-
-        if not sacred_text:
-            return await ctx.send("Tolong tulis apa yang ingin kamu ingatkan! (Dan waktunya!)")
-
-        split_text = sacred_text.split(" ", 1)
-        if len(split_text) < 2:
-            return await ctx.send("Tolong tulis apa yang ingin kamu ingatkan! (Dan waktunya!)")
-
-        try:
-            timeout = TimeString.parse(split_text[0])
-        except TimeStringParseError:
-            self.logger.error("Failed to parse time string %s", split_text[0])
-            return await ctx.send("Waktu yang kamu tulis tidak valid!")
-
-        reminder = split_text[1]
-
-        current = self.bot.now().int_timestamp
-        target = current + timeout.timestamp()
-
-        reminder_sim = SimpleReminder(
-            target, reminder, str(ctx.message.id), str(ctx.channel.id), str(ctx.author.id)
-        )
-
-        await self._create_reminder(reminder_sim)
-        await ctx.send(f"Akan diingatkan dalam {timeout.to_string()}!", reference=ctx.message)
+        await ctx.send(i18n.t("ingatkan.success", duration=timeout_real.to_string()))
 
 
-def setup(bot: naoTimesBot):
-    bot.add_cog(FunReminder(bot))
+async def setup(bot: naoTimesBot):
+    if bot.redisdb is None:
+        bot.logger.warning("Redis is unavailable; skipping reminder cog")
+        return
+    await bot.add_cog(FunReminder(bot))

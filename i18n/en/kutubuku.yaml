@@ -1,0 +1,141 @@
+# Kutubuku: dictionaries and reference lookups.
+# Section names must be unique per command/file.
+
+jisho:
+  description: "Look up information or the meaning of a word/kanji on Jisho"
+  option_kata: "The word to search for"
+  service_unavailable: "The Jisho service is currently unavailable."
+  reading: "**Pronunciation**: {kana} [Romaji: {romaji}]"
+  other_forms: "**Other forms**: {forms}"
+  meanings_title: "**Meanings**"
+  no_meanings: "*No meanings available*"
+  no_definition: "No definition available"
+  see_also: "  See also: {suggestion}"
+  appears_in: "**Appears in**:"
+  footer: "Powered by Jisho + Romkan and JMDict data"
+
+kanji:
+  description: "Look up information about a kanji"
+  option_kanji: "The kanji to search for"
+  http_unavailable: "The HTTP session is currently unavailable."
+  api_error: "Unable to reach the API..."
+  not_found: "The kanji could not be found!"
+  header: "**Meaning**: {meanings}\n**Radical**: {radicals}"
+  details: "**Parts**: {parts}\n**Strokes**: {strokes}"
+  kunyomi: "Kunyomi"
+  onyomi: "Onyomi"
+  examples: "**Examples**"
+  grade: "grade"
+  junior_high: "junior high"
+  taught_in: "Taught in {taught}"
+  footer: "Powered by Jisho"
+
+kalkulator:
+  description: "A magic calculator"
+  option_teks: "The mathematical expression to evaluate"
+  failed: "Failed to evaluate the input:\n`{teks}`"
+  syntax_error: "The expression could not be understood:\n`{teks}`"
+  zero_division: "Cannot divide by a dividend of 0"
+  embed_title: "⚙ Calculator"
+  embed_description: "▶ `{teks}`\n{hasil}"
+  experimental_footer: "This is an experimental command, please report any issue to {owner}."
+
+sinonim:
+  description: "Find synonyms of a word"
+  option_kata: "The word to search for"
+  not_found: "No synonyms were found for the word `{kata}`"
+  embed_title: "Synonyms: {kata}"
+
+antonim:
+  description: "Find antonyms of a word"
+  option_kata: "The word to search for"
+  not_found: "No antonyms were found for the word `{kata}`"
+  embed_title: "Antonyms: {kata}"
+
+kateglo:
+  footer: "Powered by Kateglo.com"
+  no_result: "No results"
+
+kbbi:
+  description: "Look up a word definition in KBBI Daring"
+  option_kata: "The word to search for"
+  not_found: "The word could not be found in KBBI."
+  not_found_suggestions: "The word could not be found.\n**Did you mean**: {suggestions}"
+  not_found_plain: "The word could not be found in KBBI"
+  communication_error: "A communication error occurred with the KBBI server."
+  daily_limit: "The bot has reached its daily search limit, please try again tomorrow."
+  connection_error: "Unable to connect to KBBI; KBBI Daring may be down."
+  parse_error: "An error occurred while parsing the KBBI result, please contact N4O."
+  embed:
+    pronunciation: "**Pronunciation**: {value}"
+    etymology: "**Etymology**: {value}"
+    base_word: "**Base word**: {value}"
+    nonstandard_form: "**Nonstandard form**: {value}"
+    variant: "**Variant**: {value}"
+    derived_words: "**Derived words**: {value}"
+    compound_words: "**Compound words**: {value}"
+    proverb: "**Proverb**: {value}"
+    idiom: "**Idiom**: {value}"
+    meanings: "Meaning"
+    examples: "Examples"
+    related_entries: "Related Entries"
+    nonstandard_variant: "Nonstandard form/Variant"
+    no_example: "*None*"
+    footer: "Powered by KBBI Daring version 6.1.0.0"
+
+tesaurus:
+  description: "Find synonyms/antonyms of an Indonesian word"
+  option_kata: "The word to search for"
+  option_kelas: "Limit the results to a specific word class"
+  unavailable: "Tesaurus Tematis is currently unavailable."
+  not_found: "Could not find the word `{kata}`"
+  not_found_kelas: "Could not find the word `{kata}` in the word class `{kelas}`"
+  connection_failed: "Failed to reach Tesaurus Tematis, please try again shortly."
+  internal_error: "An internal error occurred :(\nError: `{error}`"
+  no_results: "No results could be found for your search!"
+  embed_title: "{label} ({position}/{total}) [{kata}]"
+  kelas_kata: "**Word Class:** {kelas}"
+  sublabel: "**Sublabel**: {sublabel}"
+  select_kelas: "Select a Word Class"
+  kelas_not_found: "The word class could not be found."
+  author: "Tesaurus Tematis"
+  footer: "Powered by Tesaurus Tematis"
+
+define:
+  description: "Look up an English word definition on Merriam-Webster"
+  option_word: "The word to search for"
+  not_found: "Could not find a matching word!"
+
+thesaurus:
+  description: "Look up synonyms/antonyms of an English word on Merriam-Webster"
+  option_word: "The word to search for"
+  not_found: "Could not find a matching word!"
+
+webster:
+  service_unavailable: "The Merriam-Webster service is currently unavailable."
+  embed:
+    pronunciation: "**Pronunciation**: {value}"
+    etymology: "**Etymology**: {value}"
+    meanings: "**Meaning**:"
+    examples: "Examples"
+    similar_words: "Similar words"
+    synonyms: "**Synonyms**: {value}"
+    antonyms: "**Antonyms**: {value}"
+    footer: "Powered by the Merriam-Webster API"
+
+padanan:
+  description: "Find Indonesian equivalents for foreign terms."
+  option_kata: "The equivalent word to search for"
+  not_found: "Could not find a matching result for the word `{kata}` in SPAI!"
+  foreign_term: "**Foreign term**: {value}"
+  indonesian_term: "**Indonesian term**: {value}"
+  domain: "**Word domain**: {value}"
+  footer: "Powered by SPAI + Kateglo"
+
+wolfram:
+  description: "Ask WolframAlpha"
+  option_query: "The question or expression for WolframAlpha"
+  disabled: "WolframAlpha is not enabled."
+  query: "**Query**: `{query}`"
+  see_image: "See image"
+  footer: "Powered by WolframAlpha™"

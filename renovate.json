@@ -1,0 +1,78 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits"
+  ],
+  "timezone": "Asia/Jakarta",
+  "labels": [
+    "dependencies"
+  ],
+  "rangeStrategy": "bump",
+  "minimumReleaseAge": "3 days",
+  "constraints": {
+    "python": "3.13"
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": [
+      "before 6am on the first day of the month"
+    ]
+  },
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": [
+      "dependencies"
+    ]
+  },
+  "packageRules": [
+    {
+      "description": "Python runtime is pinned to 3.13 and bumped manually",
+      "matchDepNames": [
+        "python"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Never raise requires-python or the python tool constraint automatically",
+      "matchDepTypes": [
+        "requires-python",
+        "tool-constraint"
+      ],
+      "enabled": false
+    },
+    {
+      "matchManagers": [
+        "github-actions"
+      ],
+      "groupName": "GitHub Actions"
+    },
+    {
+      "matchManagers": [
+        "pep621",
+        "uv"
+      ],
+      "matchDepTypes": [
+        "dependencies"
+      ],
+      "groupName": "Python runtime dependencies"
+    },
+    {
+      "matchManagers": [
+        "pep621",
+        "uv"
+      ],
+      "matchDepTypes": [
+        "dependency-groups"
+      ],
+      "groupName": "Python development dependencies"
+    },
+    {
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "dependencyDashboardApproval": true
+    }
+  ]
+}

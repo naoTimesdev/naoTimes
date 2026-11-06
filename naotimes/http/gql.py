@@ -5,7 +5,7 @@ A helper for GraphQL connection
 
 MIT License
 
-Copyright (c) 2019-2021 naoTimesdev
+Copyright (c) 2019-2022 naoTimesdev
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -28,67 +28,73 @@ SOFTWARE.
 
 from __future__ import annotations
 
-import asyncio
+import inspect
 import logging
 import traceback
-from dataclasses import dataclass
-from typing import Any, AsyncGenerator, Callable, Generic, List, NamedTuple, Optional, Tuple, TypeVar
+from collections.abc import AsyncGenerator, Awaitable, Callable
+from dataclasses import dataclass, field
+from typing import Any, Generic, TypeVar, cast
 
 import aiohttp
 
 from ..utils import AttributeDict, complex_walk
 from ..version import __version__
 
-__all__ = ("GraphQLResult", "GraphQLPaginationInfo", "GraphQLClient")
+__all__ = ("GraphQLClient", "GraphQLPaginationInfo", "GraphQLResult")
 ResultT = TypeVar("ResultT", bound="AttributeDict")
-PredicateFunc = Callable[[Optional[ResultT]], Tuple[bool, Optional[str], Optional[str]]]
+PredicateReturn = tuple[bool, Any | None, str | None]
+PredicateFunc = Callable[[ResultT | None], PredicateReturn | Awaitable[PredicateReturn]]
 
 
-class GraphQLErrorLocation(NamedTuple):
+@dataclass
+class GraphQLErrorLocation:
     line: int
     column: int
 
 
-class GraphQLError(NamedTuple):
+@dataclass
+class GraphQLError:
     message: str
-    location: GraphQLErrorLocation = None
-    code: Optional[str] = None
+    location: GraphQLErrorLocation | None = None
+    code: str | None = None
 
 
 @dataclass
 class GraphQLResult(Generic[ResultT]):
     query: str
-    operationName: str
-    data: Optional[ResultT] = None
-    errors: Optional[List[GraphQLError]] = None
-    httpcode: int = None
+    operationName: str | None
+    data: ResultT | None = None
+    errors: list[GraphQLError] = field(default_factory=list)
+    httpcode: int | None = None
 
 
-class GraphQLPaginationInfo(NamedTuple):
+@dataclass
+class GraphQLPaginationInfo:
     hasMore: bool = False
-    nextCursor: Any = None
+    nextCursor: Any | None = None
 
 
 class GraphQLClient(Generic[ResultT]):
-    def __init__(self, endpoint: str, session: aiohttp.ClientSession = None):
+    def __init__(self, endpoint: str, session: aiohttp.ClientSession | None = None):
         self.endpoint = endpoint
         self.logger = logging.getLogger("http.GraphQLClient")
 
         self._outside_session = True
-        self._sesi = session
         if session is None:
             self._outside_session = False
             self._sesi = aiohttp.ClientSession(
                 headers={"User-Agent": f"naoTimes/v{__version__} (https://github.com/naoTimesdev/naoTimes)"}
             )
+        else:
+            self._sesi = session
 
-    def _convert_data(self, data: Optional[ResultT]):
-        if data is None:
+    def _convert_data(self, data: Any) -> ResultT | None:
+        if not isinstance(data, dict):
             return None
-        return AttributeDict(data)
+        return cast(ResultT, AttributeDict(data))
 
     async def query(
-        self, query: str, variables: dict = {}, operation_name: str = None
+        self, query: str, variables: dict = {}, operation_name: str | None = None
     ) -> GraphQLResult[ResultT]:
         """Send query to the GraphQL API and get the result
 
@@ -101,7 +107,7 @@ class GraphQLClient(Generic[ResultT]):
         :return: The request result
         :rtype: GraphQLResult
         """
-        query_send = {"query": query}
+        query_send: dict[str, Any] = {"query": query}
         if len(variables.keys()) > 0:
             query_send["variables"] = variables
         if isinstance(operation_name, str) and len(operation_name.strip()) > 0:
@@ -115,39 +121,42 @@ class GraphQLClient(Generic[ResultT]):
                     errors = []
                 all_errors = []
                 for error in errors:
-                    msg = error.get("message", "")
+                    if not isinstance(error, dict):
+                        continue
+                    raw_message = error.get("message", "")
+                    msg = raw_message if isinstance(raw_message, str) else ""
                     error_loc = complex_walk(error, "locations.0")
                     if error_loc is not None:
-                        error_loc = GraphQLErrorLocation(
-                            error_loc.get("line", -1), error_loc.get("column", -1)
-                        )
+                        location_data = error_loc if isinstance(error_loc, dict) else {}
+                        raw_line = location_data.get("line", -1)
+                        raw_column = location_data.get("column", -1)
+                        line = raw_line if isinstance(raw_line, int) else -1
+                        column = raw_column if isinstance(raw_column, int) else -1
+                        error_loc = GraphQLErrorLocation(line, column)
                     stack_code = complex_walk(error, "extensions.code")
-                    all_errors.append(GraphQLError(msg, error_loc, stack_code))
-                return GraphQLResult(
-                    query, operation_name, self._convert_data(get_data), all_errors, resp.status
-                )
+                    code = stack_code if isinstance(stack_code, str) else None
+                    all_errors.append(GraphQLError(msg, error_loc, code))
+                return GraphQLResult(query, operation_name, self._convert_data(get_data), all_errors, resp.status)
             except Exception:
                 self.logger.error("An exception occured!\n%s", traceback.format_exc())
                 return GraphQLResult(
                     query, operation_name, None, [GraphQLError("Failed to parse JSON file", code="50000")]
                 )
 
-    async def _execute_predicate(
-        self, predicate: PredicateFunc, content: ResultT = None
-    ) -> Tuple[bool, Optional[str], str]:
+    async def _execute_predicate(self, predicate: PredicateFunc, content: ResultT | None = None) -> PredicateReturn:
         """Execute the predicate function and return the result"""
-        real_func = getattr(predicate, "func", predicate)
-        if asyncio.iscoroutinefunction(real_func):
-            return await predicate(content)
-        return predicate(content)
+        result = predicate(content)
+        if inspect.isawaitable(result):
+            return await cast(Awaitable[PredicateReturn], result)
+        return result
 
     async def paginate(
-        self, query: str, predicate: PredicateFunc, variables: dict = {}, operation_name: str = None
-    ) -> AsyncGenerator[Tuple[GraphQLResult[ResultT], GraphQLPaginationInfo], None]:
+        self, query: str, predicate: PredicateFunc, variables: dict = {}, operation_name: str | None = None
+    ) -> AsyncGenerator[tuple[GraphQLResult[ResultT], GraphQLPaginationInfo]]:
         has_more, next_cursor, cursor_var = await self._execute_predicate(predicate, None)
         has_more = True
         while has_more:
-            if next_cursor is not None:
+            if next_cursor is not None and cursor_var is not None:
                 variables[cursor_var] = next_cursor
             query_request = await self.query(query, variables, operation_name)
             if query_request.data is None:

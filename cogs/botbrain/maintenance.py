@@ -1,166 +1,82 @@
-"""Globally set maintenance mode for naoTimes."""
+"""Globally set maintenance mode for naoTimes.
 
-import asyncio
-from typing import Callable, Optional
+While maintenance is active, `naoTimesAppTree.interaction_check` blocks every
+command for non-owners. There is nothing to patch on the command tree.
+"""
+
+import logging
 
 import arrow
-from disnake.ext import commands
+import discord
+from discord import app_commands
+from discord.ext import commands
 
 from naotimes.bot import naoTimesBot
-from naotimes.context import naoTimesContext
-from naotimes.placeholder import PlaceHolderCommand
+from naotimes.context import OwnerGroup
 
 
 class BotBrainMaintenance(commands.Cog):
+    maintenance = OwnerGroup(
+        name="maintenance",
+        description=app_commands.locale_str(
+            "Atur mode maintenance bot (owner)", key="botbrain.maintenance.group_description"
+        ),
+        default_permissions=discord.Permissions(administrator=True),
+    )
+
     def __init__(self, bot: naoTimesBot):
         self.bot = bot
-
-        self._task1: asyncio.Task = self.bot.loop.create_task(
-            self._propagate_maintenance(), name="ntbotbrain-propagate-maintenance"
-        )
-        self._task2: asyncio.Task = self.bot.loop.create_task(
-            self._propagate_unmaintenance(), name="ntbotbrain-propagate-unmaintenance"
-        )
-
-    def cog_unload(self) -> None:
-        self._task1.cancel()
-        self._task2.cancel()
-
-    async def maybe_async(self, predicate: Callable[..., None], *args, **kwargs):
-        real_func = getattr(predicate, "func", predicate)
-        if asyncio.iscoroutinefunction(real_func):
-            return await predicate(*args, **kwargs)
-        return predicate(*args, **kwargs)
-
-    @commands.command(name="startmaintenance")
-    @commands.is_owner()
-    async def _bb_maintenance_start(self, ctx: naoTimesContext):
-        """Start maintenance mode."""
-        expected_start_time: Optional[arrow.Arrow] = None
-        while True:
-            question = await ctx.wait_content("Mohon ketik waktu mulai:", timeout=None)
-            if question is False:
-                break
-            try:
-                expected_start_time = arrow.get(question)
-            except arrow.ParserError:
-                await ctx.send_timed("Mohon ketik format waktu yang benar!", 2)
-        if expected_start_time is None:
-            return await ctx.send("Dibatalkan!")
-        expected_end_time: Optional[arrow.Arrow] = None
-        while True:
-            question = await ctx.wait_content("Mohon ketik waktu akhir:", timeout=None)
-            if question is False:
-                break
-            try:
-                expected_end_time = arrow.get(question)
-            except arrow.ParserError:
-                await ctx.send_timed("Mohon ketik format waktu yang benar!", 2)
-        if expected_end_time is None:
-            return await ctx.send("Dibatalkan!")
-
-        if expected_start_time > expected_end_time:
-            return await ctx.send("Waktu mulai harus lebih awal dari waktu akhir!")
-
-        st_timestamped = expected_start_time.int_timestamp
-        et_timestamped = expected_end_time.int_timestamp
-
-        visualize = f"Waktu maintenance akan mulai dari <t:{st_timestamped}:F> "
-        visualize += f"ke <t:{et_timestamped}:F>, apakah anda yakin?"
-        confirm = await ctx.confirm(visualize)
-
-        if not confirm:
-            return await ctx.send("Dibatalkan!")
-
-        self.bot.set_maintenance(expected_start_time, expected_end_time)
+        self.logger = logging.getLogger("BotBrain.Maintenance")
 
     @staticmethod
-    def _owner_only_command(command: commands.Command):
-        if command.checks:
-            for check in command.checks:
-                fn_primitive_name = check.__str__()
-                if "is_owner" in fn_primitive_name:
-                    return True
-        return False
-
-    async def _propagate_command_maintenance(self):
-        """Propagate maintenance mode to all servers."""
-        command_mappings = self.bot.all_commands.copy()
-        for name, command in self.bot.all_commands.items():
-            if command.cog is not None:
-                before_invoke = getattr(command.cog, "cog_maintenance", None)
-                if before_invoke is not None:
-                    await self.maybe_async(before_invoke, command.cog)
-
-            is_placeholder = getattr(command.callback, "__nt_placeholder__", None)
-            if is_placeholder is not None:
-                continue
-
-            if self._owner_only_command(command):
-                continue
-
-            original_command = command.copy()
-            placeholder_command = PlaceHolderCommand(command.name, None)
-            placeholder_command.bind(command)
-            # TODO: Prepare custom text
-            placeholder_command.set_custom()
-            original_command.callback = placeholder_command.send_placeholder
-            command_mappings[name] = original_command
-
-        self.bot.all_commands = command_mappings
-
-    async def _propagate_command_unmaintenance(self):
-        """Propagate maintenance mode to all servers."""
-        command_mappings = self.bot.all_commands.copy()
-        for name, command in self.bot.all_commands.items():
-            if command.cog is not None:
-                before_invoke = getattr(command.cog, "cog_unmaintenance", None)
-                if before_invoke is not None:
-                    await self.maybe_async(before_invoke, command.cog)
-
-            is_placeholder = getattr(command.callback, "__nt_placeholder__", None)
-            if is_placeholder is None:
-                continue
-
-            original_command = command.copy()
-            original_command.callback = is_placeholder
-            command_mappings[name] = original_command
-
-        self.bot.all_commands = command_mappings
-
-    async def _propagate_maintenance(self):
-        """Propagate maintenance mode to all servers."""
+    def _parse_time(raw: str) -> arrow.Arrow | None:
         try:
-            await self.bot.wait_until_ready()
+            return arrow.get(raw)
+        except (arrow.ParserError, ValueError):
+            return None
 
-            while True:
-                if (
-                    self.bot.maintenance is not None
-                    and not self.bot.maintenance.ready
-                    and self.bot.maintenance.maintenance
-                ):
-                    await self._propagate_command_maintenance()
-                    self.bot.maintenance.set()
-                await asyncio.sleep(60)
-        except asyncio.CancelledError:
-            pass
+    @maintenance.command(
+        name="mulai",
+        description=app_commands.locale_str("Jadwalkan mode maintenance", key="botbrain.maintenance.mulai_description"),
+    )
+    @app_commands.describe(
+        mulai=app_commands.locale_str(
+            "Waktu mulai, contoh: 2026-11-07T01:00:00+07:00", key="botbrain.maintenance.option_start"
+        ),
+        selesai=app_commands.locale_str(
+            "Waktu selesai, contoh: 2026-11-07T03:00:00+07:00", key="botbrain.maintenance.option_end"
+        ),
+    )
+    async def _bb_maintenance_start(self, inter: discord.Interaction, mulai: str, selesai: str):
+        ctx = await self.bot.get_context(inter)
+        start = self._parse_time(mulai)
+        end = self._parse_time(selesai)
+        if start is None or end is None:
+            return await inter.response.send_message(
+                ctx.t("maintenance.invalid_time"),
+                ephemeral=True,
+            )
+        if start >= end:
+            return await inter.response.send_message(ctx.t("maintenance.start_after_end"), ephemeral=True)
 
-    async def _propagate_unmaintenance(self):
-        try:
-            await self.bot.wait_until_ready()
+        text = ctx.t("maintenance.confirm", start=start.int_timestamp, end=end.int_timestamp)
+        if not await ctx.confirm(text):
+            return await ctx.send(ctx.t("maintenance.cancelled"))
 
-            while True:
-                if (
-                    self.bot.maintenance is not None
-                    and self.bot.maintenance.ready
-                    and not self.bot.maintenance.maintenance
-                ):
-                    await self._propagate_command_unmaintenance()
-                    self.bot.maintenance = None
-                await asyncio.sleep(60)
-        except asyncio.CancelledError:
-            pass
+        self.bot.set_maintenance(start, end)
+        await ctx.send(ctx.t("maintenance.scheduled"))
+
+    @maintenance.command(
+        name="batal",
+        description=app_commands.locale_str("Batalkan mode maintenance", key="botbrain.maintenance.batal_description"),
+    )
+    async def _bb_maintenance_cancel(self, inter: discord.Interaction):
+        ctx = await self.bot.get_context(inter)
+        if self.bot.maintenance is None:
+            return await inter.response.send_message(ctx.t("maintenance.none_scheduled"), ephemeral=True)
+        self.bot.maintenance = None
+        await inter.response.send_message(ctx.t("maintenance.cancelled_mode"), ephemeral=True)
 
 
-def setup(bot: naoTimesBot):
-    bot.add_cog(BotBrainMaintenance(bot))
+async def setup(bot: naoTimesBot):
+    await bot.add_cog(BotBrainMaintenance(bot))

@@ -1,16 +1,12 @@
 import logging
-from copy import deepcopy
-from typing import List
 
 import arrow
-import disnake
-from disnake.ext import commands
+import discord
+from discord import app_commands
+from discord.ext import commands
 
 from naotimes.bot import naoTimesBot
-from naotimes.context import naoTimesContext
-from naotimes.converters import Arguments, CommandArgParse
 from naotimes.timeparse import TimeString, TimeStringParseError
-from naotimes.utils import quoteblock
 
 from .listener import VoteData, VoteManager, VoteMetadata, VoteType
 
@@ -18,76 +14,9 @@ reactions_num = ["1⃣", "2⃣", "3⃣", "4⃣", "5⃣", "6⃣", "7⃣", "8⃣",
 res2num = dict(zip(reactions_num, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]))
 num2res = dict(zip([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], reactions_num))
 
-kickban_limit_args = ["--limit", "-l"]
-kickban_limit_kwargs = {
-    "required": False,
-    "default": 5,
-    "dest": "batas",
-    "action": "store",
-    "help": "Limit user untuk melaksanakan kick/ban (minimal 5 orang)",
-}
-kickban_timer_args = ["--timer", "-t"]
-kickban_timer_kwargs = {
-    "required": False,
-    "default": "1m",
-    "dest": "waktu",
-    "action": "store",
-    "help": "Waktu sebelum voting ditutup (Format time string seperti: "
-    "'30m 30s' untuk 30 menit 30 detik, minimal 30 detik, default 1 menit)\n"
-    "Referensi time string: https://naoti.me/docs/perintah/vote#time-string-format",
-}
-vote_opsi_args = ["--opsi", "-O"]
-vote_opsi_kwargs = {
-    "dest": "opsi",
-    "action": "append",
-    "help": "Opsi voting (minimal 2, batas 10)",
-}
-vote_tipe_yn_args = ["--satu-pilihan", "-S"]
-vote_tipe_yn_kwargs = {
-    "dest": "use_yn",
-    "action": "store_true",
-    "help": "Gunakan tipe satu pilihan (ya/tidak) untuk reactions.",
-}
-vote_timer_kwargs = deepcopy(kickban_timer_kwargs)
-vote_timer_kwargs["default"] = "5m"
-vote_timer_kwargs["help"] = (
-    "Waktu sebelum voting ditutup (Format time string seperti: "
-    "'30m 30s' untuk 30 menit 30 detik, minimal 3 menit, default 5 menit)\n"
-    "Referensi time string: https://naoti.me/docs/perintah/vote#time-string-format"
-)
 
-giveaway_timer_kwargs = deepcopy(kickban_timer_kwargs)
-giveaway_timer_kwargs["default"] = "1hr"
-giveaway_timer_kwargs["help"] = (
-    "Waktu sebelum voting ditutup (Format time string seperti: "
-    "'30m 30s' untuk 30 menit 30 detik, minimal 5 menit, default 1 jam)\n"
-    "Referensi time string: https://naoti.me/docs/perintah/vote#time-string-format"
-)
-
-ban_args = Arguments("voteban")
-ban_args.add_args("user", help="User yang ingin di ban/kick.")
-ban_args.add_args(*kickban_limit_args, **kickban_limit_kwargs)
-ban_args.add_args(*kickban_timer_args, **kickban_timer_kwargs)
-kick_args = Arguments("votekick")
-kick_args.add_args("user", help="User yang ingin di ban/kick.")
-kick_args.add_args(*kickban_limit_args, **kickban_limit_kwargs)
-kick_args.add_args(*kickban_timer_args, **kickban_timer_kwargs)
-vote_args = Arguments("vote")
-vote_args.add_args("topik", help="Hal yang ingin divote.")
-vote_args.add_args(*vote_opsi_args, **vote_opsi_kwargs)
-vote_args.add_args(*kickban_timer_args, **vote_timer_kwargs)
-vote_args.add_args(*vote_tipe_yn_args, **vote_tipe_yn_kwargs)
-giveaway_args = Arguments("giveaway")
-giveaway_args.add_args("barang", help="Hal yang ingin diberikan")
-giveaway_args.add_args(*kickban_timer_args, **giveaway_timer_kwargs)
-ban_converter = CommandArgParse(ban_args)
-kick_converter = CommandArgParse(kick_args)
-vote_converter = CommandArgParse(vote_args)
-giveaway_converter = CommandArgParse(giveaway_args)
-
-
-def _humanize_timeout(timeout: arrow.Arrow):
-    return timeout.humanize(locale="id", only_distance=True)
+def _humanize_timeout(timeout: arrow.Arrow, locale: str):
+    return timeout.humanize(locale=locale, only_distance=True)
 
 
 class VoteAppCommand(commands.Cog):
@@ -100,282 +29,251 @@ class VoteAppCommand(commands.Cog):
     async def _save_vote_data(self, vote_data: VoteData):
         """Save the vote data to redis"""
         mid = vote_data.metadata.message
+        if self.bot.redisdb is None:
+            raise RuntimeError("Vote storage is unavailable")
         await self.bot.redisdb.set(f"{self.PRE_KEY}{mid}", vote_data.serialize())
+        if self.bot.ntevent is None:
+            self.logger.error("Cannot announce vote creation because the event manager is unavailable")
+            return
         self.bot.ntevent.dispatch("vote_creation", vote_data)
 
-    @commands.command(name="vote")
-    @commands.guild_only()
-    async def _vote_main(self, ctx: naoTimesContext, *, args: vote_converter = vote_converter.show_help()):
-        if isinstance(args, str):
-            return await ctx.send(quoteblock(args, code="py"))
+    async def _post_vote(self, inter: discord.Interaction, embed: discord.Embed, reactions: list[str]):
+        """Send the vote embed as the interaction response and attach the reactions."""
+        await inter.response.send_message(embed=embed)
+        sent = await inter.original_response()
+        for reaction in reactions:
+            await sent.add_reaction(reaction)
+        return sent
 
-        use_yn: bool = args.use_yn
-        options: List[str] = args.opsi
-        topik: str = args.topik
-        if not options and not use_yn:
-            return await ctx.send("Masukan opsi atau pilih mode `ya atau tidak` (`-S`)")
-
-        if not use_yn:
-            if len(options) < 2:
-                return await ctx.send("Masukan opsi lebih dari 1")
-            if len(options) > 10:
-                return await ctx.send("Maksimal 10 opsi")
-
+    def _parse_duration(self, i18n, raw: str, minimum: int) -> tuple[int | None, str | None]:
         try:
-            parsed_time = TimeString.parse(args.waktu)
-            time_limit = parsed_time.timestamp()
+            seconds = TimeString.parse(raw).timestamp()
         except TimeStringParseError as errparse:
-            return await ctx.send(f"Gagal parsing batas waktu, {errparse.reason}")
+            return None, i18n.t("voting.duration_parse_error", reason=errparse.reason)
+        if seconds < minimum:
+            return None, i18n.t("voting.duration_min", minimum=TimeString.from_seconds(minimum).to_string())
+        return int(seconds), None
 
-        if time_limit < 180:
-            return await ctx.send("Minimal batas waktu adalah 3 menit.")
+    @app_commands.command(
+        name="vote",
+        description=app_commands.locale_str("Buat voting baru", key="vote.voting.description"),
+    )
+    @app_commands.guild_only()
+    @app_commands.describe(
+        topik=app_commands.locale_str("Hal yang ingin divote", key="vote.voting.option_topik"),
+        opsi=app_commands.locale_str(
+            "Opsi voting dipisah dengan titik koma (;), minimal 2 dan maksimal 10", key="vote.voting.option_opsi"
+        ),
+        ya_tidak=app_commands.locale_str(
+            "Gunakan mode satu pilihan (ya/tidak) dan abaikan opsi", key="vote.voting.option_ya_tidak"
+        ),
+        waktu=app_commands.locale_str(
+            "Waktu sebelum voting ditutup, contoh: 30m, 1h 30m (minimal 3 menit, default 5 menit)",
+            key="vote.voting.option_waktu",
+        ),
+    )
+    async def _vote_main(
+        self,
+        inter: discord.Interaction,
+        topik: str,
+        opsi: str | None = None,
+        ya_tidak: bool = False,
+        waktu: str = "5m",
+    ):
+        """Buat voting baru"""
+        i18n = self.bot.i18n_for(inter.guild, "vote")
+        options = [o.strip() for o in (opsi or "").split(";") if o.strip()]
+        if not options and not ya_tidak:
+            return await inter.response.send_message(i18n.t("voting.need_options"), ephemeral=True)
+        if not ya_tidak:
+            if len(options) < 2:
+                return await inter.response.send_message(i18n.t("voting.min_options"), ephemeral=True)
+            if len(options) > 10:
+                return await inter.response.send_message(i18n.t("voting.max_options"), ephemeral=True)
 
-        current = self.bot.now()
-        timeout_time = current.shift(seconds=time_limit)
-        ts_max = timeout_time.int_timestamp
-        description = f"**Pertanyaan**: {topik}\n\nMasukan pilihanmu dengan klik reaction di bawah ini!"
-        description += f"\nSelesai: <t:{ts_max}> (<t:{ts_max}:R>)"
+        time_limit, error = self._parse_duration(i18n, waktu, 180)
+        if error:
+            return await inter.response.send_message(error, ephemeral=True)
 
-        embed = disnake.Embed(title="Vote!", color=0x2A6968)
+        ts_max = self.bot.now().shift(seconds=time_limit).int_timestamp
+        description = i18n.t("voting.embed_description", topic=topik)
+        description += i18n.t("voting.embed_deadline", timestamp=ts_max)
+
+        embed = discord.Embed(title=i18n.t("voting.embed_title"), color=0x2A6968)
         embed.description = description
-        if not use_yn:
-            for nopsi, opsi in enumerate(options):
-                nres = num2res[nopsi]
-                embed.add_field(name=f"{nres} {opsi}", value="**Total**: 0", inline=False)
+        all_choices: list[VoteManager] = []
+        reactions: list[str] = []
+        if ya_tidak:
+            embed.add_field(name=i18n.t("shared.field_yes"), value=i18n.t("shared.total", count=0), inline=False)
+            embed.add_field(name=i18n.t("shared.field_no"), value=i18n.t("shared.total", count=0), inline=False)
+            reactions = ["✅", "❌"]
+            all_choices = [
+                VoteManager("y", i18n.t("shared.yes_label"), "✅"),
+                VoteManager("n", i18n.t("shared.no_label"), "❌"),
+            ]
         else:
-            embed.add_field(name="✅ Ya", value="**Total**: 0", inline=False)
-            embed.add_field(name="❌ Tidak", value="**Total**: 0", inline=False)
-        embed.set_footer(text="Voting sedang berlangsung")
-
-        real_msg = await ctx.send(embed=embed)
-
-        all_choices = []
-        mode_type = VoteType.YESNO if use_yn else VoteType.MULTIPLE
-        if use_yn:
-            await real_msg.add_reaction("✅")
-            await real_msg.add_reaction("❌")
-            all_choices.append(VoteManager("y", "Ya", "✅"))
-            all_choices.append(VoteManager("n", "Tidak", "❌"))
-        else:
-            for nopsi, opsi in enumerate(options):
+            for nopsi, opsi_text in enumerate(options):
                 nres = num2res[nopsi]
-                await real_msg.add_reaction(nres)
-                all_choices.append(VoteManager(f"mul_{nopsi}", opsi, nres))
+                embed.add_field(name=f"{nres} {opsi_text}", value=i18n.t("shared.total", count=0), inline=False)
+                reactions.append(nres)
+                all_choices.append(VoteManager(f"mul_{nopsi}", opsi_text, nres))
+        embed.set_footer(text=i18n.t("shared.footer_ongoing"))
 
-        vote_meta = VoteMetadata(real_msg.id, real_msg.channel.id, ctx.author.id, topik)
-        vote_data = VoteData(vote_meta, all_choices, ts_max, mode_type)
-        await self._save_vote_data(vote_data)
+        sent = await self._post_vote(inter, embed, reactions)
+        mode_type = VoteType.YESNO if ya_tidak else VoteType.MULTIPLE
+        vote_meta = VoteMetadata(sent.id, sent.channel.id, inter.user.id, topik)
+        await self._save_vote_data(VoteData(vote_meta, all_choices, ts_max, mode_type))
 
     def _create_hierarcy_error(
-        self, user_data: disnake.Member, author: disnake.Member, guild: disnake.Guild, is_ban: bool = False
-    ):
-        tendang = ("menendang", "ditendang")
-        ban = ("ngeban", "diban")
-        pick = ban if is_ban else tendang
+        self, i18n, user_data: discord.Member, author: discord.Member, guild: discord.Guild, is_ban: bool = False
+    ) -> str | None:
+        if is_ban:
+            verb_active = i18n.t("user_action.ban_active")
+            verb_passive = i18n.t("user_action.ban_passive")
+        else:
+            verb_active = i18n.t("user_action.kick_active")
+            verb_passive = i18n.t("user_action.kick_passive")
         if user_data.id == author.id:
-            return f"Anda tidak bisa {pick[0]} diri sendiri!"
-        if user_data.id == self.bot.user.id:
-            return "No."
-        if user_data.id == guild.owner.id:
-            return f"Bot tidak dapat {pick[0]} owner peladen!"
+            return i18n.t("user_action.self", verb=verb_active)
+        bot_user = self.bot.user
+        if bot_user is None:
+            return i18n.t("user_action.bot_user_unavailable")
+        if user_data.id == bot_user.id:
+            return i18n.t("user_action.self_bot")
+        if user_data.id == guild.owner_id:
+            return i18n.t("user_action.owner", verb=verb_active)
         if user_data.guild_permissions.administrator:
-            return f"Bot tidak dapat {pick[0]} admin!"
+            return i18n.t("user_action.admin", verb=verb_active)
 
-        hirarki_bot = guild.get_member(self.bot.user.id).top_role.position
+        bot_member = guild.me
+        if bot_member is None:
+            return i18n.t("user_action.bot_member_unavailable")
+        hirarki_bot = bot_member.top_role.position
         if user_data.top_role.position >= hirarki_bot:
-            return f"User tersebut tidak dapat {pick[1]} karena hirarki yang lebih tinggi dari bot!"
+            return i18n.t("user_action.higher_than_bot", verb_passive=verb_passive)
         if author.guild_permissions.administrator or author.id == guild.owner_id:
             return None
         if user_data.top_role.position >= author.top_role.position:
-            return f"User tersebut tidak dapat {pick[1]} karena hirarki yang lebih tinggi dari anda!"
+            return i18n.t("user_action.higher_than_author", verb_passive=verb_passive)
         return None
 
-    @commands.command(name="votekick")
-    @commands.guild_only()
-    @commands.has_permissions(kick_members=True)
-    async def _vote_kick(self, ctx: naoTimesContext, *, args: kick_converter = kick_converter.show_help()):
-        if isinstance(args, str):
-            return await ctx.send(quoteblock(args, code="py"))
-
-        guild: disnake.Guild = ctx.guild
-        author: disnake.Member = ctx.author
-
-        vote_limit = args.batas
-        if isinstance(vote_limit, (str, float)):
-            try:
-                vote_limit = int(vote_limit)
-            except ValueError:
-                return await ctx.send("Minimal vote bukanlah angka.")
-
-        if vote_limit < 5:
-            return await ctx.send("Minimal vote adalah 5 orang.")
-
-        user_input = args.user
-        user_mentions = ctx.message.mentions
-
-        user_data: disnake.Member
-        if not user_mentions:
-            if user_input.isdigit():
-                user_data = guild.get_member(int(user_input))
-                if user_data is None:
-                    return await ctx.send("Mention orang/ketik ID yang valid")
-            else:
-                return await ctx.send("Mention orang/ketik ID yang ingin di kick")
-        else:
-            user_data = user_mentions[0]
-
-        error_hierarcy = self._create_hierarcy_error(user_data, author, guild)
-        if error_hierarcy is not None:
-            return await ctx.send(error_hierarcy)
-
-        try:
-            parsed_time = TimeString.parse(args.waktu)
-            time_limit = parsed_time.timestamp()
-        except TimeStringParseError as errparse:
-            return await ctx.send(f"Gagal parsing batas waktu, {errparse.reason}")
-        if time_limit < 30:
-            return await ctx.send("Minimal batas waktu adalah 30 detik.")
-
-        current = self.bot.now()
-        timeout_time = current.shift(seconds=time_limit)
-        ts_max = timeout_time.int_timestamp
-        real_desc = f"[🦶] React ✅ jika user ingin anda tendang!\nSelesai: <t:{ts_max}> (<t:{ts_max}:R>)"
-
-        embed = disnake.Embed(
-            title=f"Vote Kick - {user_data}",
-            description=real_desc,
-            color=0x3F0A16,
-        )
-        embed.add_field(
-            name=f"Jumlah vote (Dibutuhkan: {vote_limit})",
-            value="0 votes",
-            inline=False,
-        )
-        embed.set_footer(text="Voting sedang berlangsung")
-
-        real_msg = await ctx.send(embed=embed)
-        await real_msg.add_reaction("✅")
-        await real_msg.add_reaction("❌")
-
-        all_choices = [
-            VoteManager(user_data.id, "Kick", "✅", vote_limit),
-            VoteManager(user_data.id, "Jangan kick", "❌", vote_limit),
-        ]
-        vote_meta = VoteMetadata(real_msg.id, real_msg.channel.id, author.id, f"Tendang {user_data.id}")
-        vote_data = VoteData(vote_meta, all_choices, ts_max, VoteType.USER)
-        await self._save_vote_data(vote_data)
-
-    @commands.command(name="voteban")
-    @commands.guild_only()
-    @commands.has_permissions(ban_members=True)
-    async def _vote_ban(self, ctx: naoTimesContext, *, args: ban_converter = ban_converter.show_help()):
-        if isinstance(args, str):
-            return await ctx.send(quoteblock(args, code="py"))
-
-        guild: disnake.Guild = ctx.guild
-        author: disnake.Member = ctx.author
-
-        vote_limit = args.batas
-        if isinstance(vote_limit, (str, float)):
-            try:
-                vote_limit = int(vote_limit)
-            except ValueError:
-                return await ctx.send("Minimal vote bukanlah angka.")
-
-        if vote_limit < 5:
-            return await ctx.send("Minimal vote adalah 5 orang.")
-
-        user_input = args.user
-        user_mentions = ctx.message.mentions
-
-        user_data: disnake.Member
-        if not user_mentions:
-            if user_input.isdigit():
-                user_data = guild.get_member(int(user_input))
-                if user_data is None:
-                    return await ctx.send("Mention orang/ketik ID yang valid")
-            else:
-                return await ctx.send("Mention orang/ketik ID yang ingin di kick")
-        else:
-            user_data = user_mentions[0]
-
-        error_hierarcy = self._create_hierarcy_error(user_data, author, guild)
-        if error_hierarcy is not None:
-            return await ctx.send(error_hierarcy)
-
-        try:
-            parsed_time = TimeString.parse(args.waktu)
-            time_limit = parsed_time.timestamp()
-        except TimeStringParseError as errparse:
-            return await ctx.send(f"Gagal parsing batas waktu, {errparse.reason}")
-        if time_limit < 30:
-            return await ctx.send("Minimal batas waktu adalah 30 detik.")
-
-        current = self.bot.now()
-        timeout_time = current.shift(seconds=time_limit)
-        ts_max = timeout_time.int_timestamp
-        real_desc = f"[🔨] React ✅ jika user ingin anda ban!\nSelesai: <t:{ts_max}> (<t:{ts_max}:R>)"
-
-        embed = disnake.Embed(
-            title=f"Vote Ban - {user_data}",
-            description=real_desc,
-            color=0x3F0A16,
-        )
-        embed.add_field(
-            name=f"Jumlah vote (Dibutuhkan: {vote_limit})",
-            value="0 votes",
-            inline=False,
-        )
-        embed.set_footer(text="Voting sedang berlangsung")
-
-        real_msg = await ctx.send(embed=embed)
-        await real_msg.add_reaction("✅")
-        await real_msg.add_reaction("❌")
-
-        all_choices = [
-            VoteManager(user_data.id, "Ban", "✅", vote_limit),
-            VoteManager(user_data.id, "Jangan ban", "❌", vote_limit),
-        ]
-        vote_meta = VoteMetadata(real_msg.id, real_msg.channel.id, author.id, f"Ban {user_data.id}")
-        vote_data = VoteData(vote_meta, all_choices, ts_max, VoteType.USER)
-        await self._save_vote_data(vote_data)
-
-    @commands.command(name="giveaway")
-    @commands.guild_only()
-    async def _vote_giveaway(
-        self, ctx: naoTimesContext, *, args: giveaway_converter = giveaway_converter.show_help()
+    async def _vote_user_action(
+        self, inter: discord.Interaction, user: discord.Member, batas: int, waktu: str, is_ban: bool
     ):
-        if isinstance(args, str):
-            return await ctx.send(quoteblock(args, code="py"))
+        i18n = self.bot.i18n_for(inter.guild, "vote")
+        if batas < 5:
+            return await inter.response.send_message(i18n.t("user_action.min_votes", count=5), ephemeral=True)
+        if inter.guild is None or not isinstance(inter.user, discord.Member):
+            return await inter.response.send_message(i18n.t("user_action.guild_only"), ephemeral=True)
+        error_hierarcy = self._create_hierarcy_error(i18n, user, inter.user, inter.guild, is_ban)
+        if error_hierarcy is not None:
+            return await inter.response.send_message(error_hierarcy, ephemeral=True)
+        time_limit, error = self._parse_duration(i18n, waktu, 30)
+        if error:
+            return await inter.response.send_message(error, ephemeral=True)
 
-        barang: str = args.barang
+        ts_max = self.bot.now().shift(seconds=time_limit).int_timestamp
+        if is_ban:
+            emoji, verb, title = "🔨", i18n.t("user_action.ban_verb"), i18n.t("user_action.ban_title")
+            no_verb = i18n.t("user_action.ban_no")
+        else:
+            emoji, verb, title = "🦶", i18n.t("user_action.kick_verb"), i18n.t("user_action.kick_title")
+            no_verb = i18n.t("user_action.kick_no")
+        real_desc = i18n.t("user_action.embed_description", emoji=emoji, verb=verb, timestamp=ts_max)
+        embed = discord.Embed(
+            title=i18n.t("user_action.embed_title", title=title, user=user), description=real_desc, color=0x3F0A16
+        )
+        embed.add_field(
+            name=i18n.t("user_action.embed_field", limit=batas), value=i18n.t("shared.votes", count=0), inline=False
+        )
+        embed.set_footer(text=i18n.t("shared.footer_ongoing"))
+
+        sent = await self._post_vote(inter, embed, ["✅", "❌"])
+        all_choices = [
+            VoteManager(user.id, title, "✅", batas),
+            VoteManager(user.id, no_verb, "❌", batas),
+        ]
+        vote_meta = VoteMetadata(sent.id, sent.channel.id, inter.user.id, f"{title} {user.id}")
+        await self._save_vote_data(VoteData(vote_meta, all_choices, ts_max, VoteType.USER))
+
+    @app_commands.command(
+        name="votekick",
+        description=app_commands.locale_str(
+            "Mulai voting untuk menendang seorang member", key="vote.votekick.description"
+        ),
+    )
+    @app_commands.guild_only()
+    @app_commands.default_permissions(kick_members=True)
+    @app_commands.checks.has_permissions(kick_members=True)
+    @app_commands.describe(
+        user=app_commands.locale_str("User yang ingin ditendang", key="vote.votekick.option_user"),
+        batas=app_commands.locale_str(
+            "Jumlah vote untuk melaksanakan kick (minimal 5)", key="vote.votekick.option_batas"
+        ),
+        waktu=app_commands.locale_str(
+            "Waktu sebelum voting ditutup (minimal 30 detik, default 1 menit)", key="vote.votekick.option_waktu"
+        ),
+    )
+    async def _vote_kick(self, inter: discord.Interaction, user: discord.Member, batas: int = 5, waktu: str = "1m"):
+        """Mulai voting untuk menendang seorang member"""
+        await self._vote_user_action(inter, user, batas, waktu, False)
+
+    @app_commands.command(
+        name="voteban",
+        description=app_commands.locale_str(
+            "Mulai voting untuk mem-ban seorang member", key="vote.voteban.description"
+        ),
+    )
+    @app_commands.guild_only()
+    @app_commands.default_permissions(ban_members=True)
+    @app_commands.checks.has_permissions(ban_members=True)
+    @app_commands.describe(
+        user=app_commands.locale_str("User yang ingin diban", key="vote.voteban.option_user"),
+        batas=app_commands.locale_str(
+            "Jumlah vote untuk melaksanakan ban (minimal 5)", key="vote.voteban.option_batas"
+        ),
+        waktu=app_commands.locale_str(
+            "Waktu sebelum voting ditutup (minimal 30 detik, default 1 menit)", key="vote.voteban.option_waktu"
+        ),
+    )
+    async def _vote_ban(self, inter: discord.Interaction, user: discord.Member, batas: int = 5, waktu: str = "1m"):
+        """Mulai voting untuk mem-ban seorang member"""
+        await self._vote_user_action(inter, user, batas, waktu, True)
+
+    @app_commands.command(
+        name="giveaway",
+        description=app_commands.locale_str("Buat giveaway baru", key="vote.giveaway.description"),
+    )
+    @app_commands.guild_only()
+    @app_commands.describe(
+        barang=app_commands.locale_str("Hal yang ingin diberikan", key="vote.giveaway.option_barang"),
+        waktu=app_commands.locale_str(
+            "Waktu sebelum giveaway ditutup (minimal 5 menit, default 1 jam)", key="vote.giveaway.option_waktu"
+        ),
+    )
+    async def _vote_giveaway(self, inter: discord.Interaction, barang: str, waktu: str = "1h"):
+        """Buat giveaway baru"""
+        i18n = self.bot.i18n_for(inter.guild, "vote")
         if len("Giveaway: " + barang) >= 256:
-            return await ctx.send("Nama barang/item terlalu panjang!")
+            return await inter.response.send_message(i18n.t("giveaway.title_too_long"), ephemeral=True)
+        time_limit, error = self._parse_duration(i18n, waktu, 300)
+        if error:
+            return await inter.response.send_message(error, ephemeral=True)
 
-        try:
-            parsed_time = TimeString.parse(args.waktu)
-            time_limit = parsed_time.timestamp()
-        except TimeStringParseError as errparse:
-            return await ctx.send(f"Gagal parsing batas waktu, {errparse.reason}")
-        if time_limit < 300:
-            return await ctx.send("Minimal batas waktu adalah 5 menit.")
-        current = self.bot.now()
-        timeout_time = current.shift(seconds=time_limit)
-        ts_max = timeout_time.int_timestamp
-        real_desc = f"React 🎉 untuk join giveaway!\nSelesai: <t:{ts_max}> (<t:{ts_max}:R>)"
+        ts_max = self.bot.now().shift(seconds=time_limit).int_timestamp
+        real_desc = i18n.t("giveaway.embed_description", timestamp=ts_max)
+        embed = discord.Embed(title=i18n.t("giveaway.embed_title", item=barang), description=real_desc, color=0x3D72A8)
+        embed.add_field(
+            name=i18n.t("giveaway.field_participation"),
+            value=i18n.t("giveaway.field_participation_value", count=0),
+        )
+        embed.set_footer(text=i18n.t("giveaway.footer_ongoing"))
 
-        embed = disnake.Embed(title=f"Giveaway: {barang}", description=real_desc, color=0x3D72A8)
-        embed.add_field(name="Partisipasi", value="0 partisipan")
-        embed.set_footer(text="Giveaway sedang berlangsung")
-
-        real_msg: disnake.Message = await ctx.send(embed=embed)
-        await real_msg.add_reaction("🎉")
-
+        sent = await self._post_vote(inter, embed, ["🎉"])
         choices = [VoteManager("giveaway", barang, "🎉")]
-        vote_meta = VoteMetadata(real_msg.id, real_msg.channel.id, ctx.author.id, barang)
-        vote_data = VoteData(vote_meta, choices, ts_max, VoteType.GIVEAWAY)
-        await self._save_vote_data(vote_data)
+        vote_meta = VoteMetadata(sent.id, sent.channel.id, inter.user.id, barang)
+        await self._save_vote_data(VoteData(vote_meta, choices, ts_max, VoteType.GIVEAWAY))
 
 
-def setup(bot: naoTimesBot):
-    bot.add_cog(VoteAppCommand(bot))
+async def setup(bot: naoTimesBot):
+    await bot.add_cog(VoteAppCommand(bot))

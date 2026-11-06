@@ -1,7 +1,7 @@
 """
 MIT License
 
-Copyright (c) 2019-2021 naoTimesdev
+Copyright (c) 2019-2022 naoTimesdev
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -29,19 +29,15 @@ import pathlib
 import sys
 
 from arrow._version import __version__ as arrow_version
-from disnake import __title__ as disnake_title
-from disnake import __version__ as disnake_version
 from packaging.version import parse as parse_version
 
-from naotimes.bot import StartupError, naoTimesBot
+from naotimes.bot import naoTimesBot
 from naotimes.config import naoTimesBotConfig, naoTimesNamespace
 from naotimes.log import setup_log
 from naotimes.monke import (
     monkeypatch_arrow_id_locale,
-    monkeypatch_disnake_tasks_loop,
-    monkeypatch_interaction_create,
+    monkeypatch_discord_context_menu,
     monkeypatch_message_delete,
-    monkeypatch_thread_create,
 )
 from naotimes.utils import verify_port_open
 from naotimes.version import version_info
@@ -66,12 +62,9 @@ logger = setup_log(log_file)
 if parse_version(arrow_version) <= parse_version("1.2.1"):
     monkeypatch_arrow_id_locale()
 monkeypatch_message_delete()
-# If disnake version is less than equal to 2.4.0, monkeypatch it
-if parse_version(disnake_version) <= parse_version("2.4.0"):
-    monkeypatch_interaction_create()
-    monkeypatch_thread_create()
-    if disnake_title == "disnake":
-        monkeypatch_disnake_tasks_loop()
+# monkeypatch_discord_tasks_loop()
+monkeypatch_discord_context_menu()
+
 
 parser = argparse.ArgumentParser("naotimesbot")
 parser.add_argument("-dcog", "--disable-cogs", default=[], action="append", dest="cogs_skip")
@@ -80,10 +73,22 @@ parser.add_argument("-sslash", "--skip-slash-check", action="store_true", dest="
 parser.add_argument("-sshow", "--skip-showtimes-fetch", action="store_true", dest="showtimes_fetch")
 parser.add_argument("-dev", "--dev-mode", action="store_true", dest="dev_mode", help="Enable dev mode")
 parser.add_argument(
-    "--force-presence", action="store_true", dest="presence", help="Force enable presences intents"
+    "--force-presence",
+    action="store_true",
+    dest="presence",
+    help="Force enable presences intents",
 )
 parser.add_argument(
-    "--force-message", action="store_true", dest="message", help="Force enable message intents"
+    "--force-message",
+    action="store_true",
+    dest="message",
+    help="Force enable message intents",
+)
+parser.add_argument(
+    "--dry-run",
+    action="store_true",
+    dest="dry_run",
+    help="Dry run, just execute all the imports",
 )
 args_parsed = parser.parse_args(namespace=naoTimesNamespace())
 
@@ -93,39 +98,56 @@ try:
     bot_config = naoTimesBotConfig.from_file(cwd / "config.json", parsed_ns=args_parsed)
 except ValueError:
     logger.critical("Could not find config file, exiting...")
-    exit(69)
+    sys.exit(69)
 
 
 if bot_config.http_server is not None:
     if not verify_port_open(bot_config.http_server.port):
         logger.critical(f"Port {bot_config.http_server.port} (HTTP Server) is not open, exiting...")
-        exit(69)
-if bot_config.socket is not None:
+        sys.exit(69)
+if bot_config.socket is not None and bot_config.socket.enabled:
     if not verify_port_open(bot_config.socket.port):
         logger.critical(f"Port {bot_config.socket.port} (Socket Server) is not open, exiting...")
-        exit(69)
+        sys.exit(69)
 
 
-async_loop: asyncio.AbstractEventLoop = None
-if args_parsed.dev_mode:
-    os.environ["NAOTIMES_ENV"] = "development"
-
-try:
+async def runner(cwd: pathlib.Path, bot_config: naoTimesBotConfig) -> int:
+    """
+    The actual bot runner, return the exit code
+    """
     logger.info(f"Initiating naoTimes v{version_info.text}")
-    bot = naoTimesBot.create(cwd, bot_config)
-    if not bot.dev_mode and not os.path.isfile(cwd / "authorize_prod"):
-        logger.critical("Bot is in Production mode and we cannot find the `authorize_prod` file.")
-        bot.loop.run_until_complete(bot.close())
-        bot.loop.close()
-        exit(69)
-    async_loop = bot.loop
-    bot.remove_command("help")
-    logger.info("Bot loaded, starting bot...")
-    bot.run(bot_config.bot_token)
+    prod_ready = cwd / "authorize_prod"
+
+    try:
+        bot_context = await naoTimesBot.async_create(cwd, bot_config)
+    except Exception as e:
+        logger.critical(f"Could not initiate bot, exiting... {e}", exc_info=e)
+        return 69
+
+    if args_parsed.dry_run:
+        logger.info("Dry run, exiting...")
+        return 0
+
+    async with bot_context as bot:
+        if not bot.dev_mode and not prod_ready.exists():
+            logger.critical("Bot is in Production mode and we cannot find the `authorize_prod` file.")
+            return 69
+
+        bot.remove_command("help")
+        logger.info("Booting up bot...")
+        await bot.start(bot_config.bot_token, reconnect=True)
+
     logger.info("Bot shutting down...")
-    async_loop.close()
-except StartupError as e:
-    logger.critical(f"Fatal error while starting bot: {str(e)}", exc_info=e)
-    if async_loop is not None:
-        async_loop.close()
-    exit(69)
+    return 0
+
+
+exit_code = 0
+try:
+    exit_code = asyncio.run(runner(cwd, bot_config))
+except KeyboardInterrupt:
+    logger.warning("Keyboard interrupt detected, shutting down...")
+    exit_code = 420
+except Exception as exc:
+    logger.critical("An error occurred when running the bot", exc_info=exc)
+finally:
+    sys.exit(exit_code)

@@ -6,7 +6,7 @@ Scuffed edition!
 
 MIT License
 
-Copyright (c) 2019-2021 naoTimesdev
+Copyright (c) 2019-2022 naoTimesdev
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -31,15 +31,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable, Coroutine
+from functools import partial
 from inspect import signature
-from typing import TYPE_CHECKING, Dict, Generic, List, Optional, Union
+from typing import TYPE_CHECKING, Generic, Protocol, TypedDict, TypeVar, cast
 
-import disnake
+import discord
 
 from .common import (
     IT,
-    GeneratedKwargs,
-    GeneratorOutput,
     PaginationFailure,
     PaginatorGenerator,
     PaginatorValidator,
@@ -57,15 +57,28 @@ NEXT_EMOTE = "▶"
 LAST_EMOTE = "⏭"
 DELETE_EMOTE = "✅"
 PAGINATION_EMOTE = (FIRST_EMOTE, PREV_EMOTE, NEXT_EMOTE, LAST_EMOTE)
+ResultT = TypeVar("ResultT")
+
+
+class _MessageKwargs(TypedDict, total=False):
+    content: str
+    embed: discord.Embed
+
+
+class _MessageWithNoLogDelete(Protocol):
+    async def delete(self, *, delay: float | None = None, no_log: bool = False) -> None: ...
 
 
 class PaginationHandler(Generic[IT]):
-    validator: PaginatorValidator[IT]
-    generator: PaginatorGenerator[IT]
+    validator: PaginatorValidator[IT] | None
+    generator: PaginatorGenerator | None
     is_paginator: bool = False
 
     def __init__(
-        self, validator: PaginatorValidator[IT], generator: PaginatorGenerator[IT], is_paginator: bool = False
+        self,
+        validator: PaginatorValidator[IT] | None,
+        generator: PaginatorGenerator | None,
+        is_paginator: bool = False,
     ):
         self.validator = validator
         self.generator = generator
@@ -80,18 +93,18 @@ class DiscordPaginator(Generic[IT]):
     This is a bad idea.
     """
 
-    def __init__(self, bot: naoTimesBot, ctx: naoTimesContext, datasets: List[IT]):
+    def __init__(self, bot: naoTimesBot, ctx: naoTimesContext, datasets: list[IT]):
         self.bot: naoTimesBot = bot
         self.ctx: naoTimesContext = ctx
-        self.datasets: List[IT] = datasets
+        self.datasets: list[IT] = datasets
 
-        self._handler: Dict[str, PaginationHandler] = {
+        self._handler: dict[str, PaginationHandler[IT] | None] = {
             FIRST_EMOTE: None,
             PREV_EMOTE: None,
             NEXT_EMOTE: None,
             LAST_EMOTE: None,
         }
-        self._default_gen = None
+        self._default_gen: PaginatorGenerator | None = None
 
         self._stop_on_no_result = False
         self._remove_at_trashed = True
@@ -122,18 +135,15 @@ class DiscordPaginator(Generic[IT]):
     def paginateable(self, data: bool):
         self._paginate = data
 
-    async def _maybe_asyncute(self, cb: callable, *args, **kwargs):
-        real_func = cb
-        if hasattr(real_func, "func"):
-            # Partial function
-            real_func = cb.func
+    async def _maybe_asyncute(
+        self, cb: Callable[..., ResultT | Coroutine[object, object, ResultT]], *args: object, **kwargs: object
+    ) -> ResultT:
+        real_func = cb.func if isinstance(cb, partial) else cb
         if asyncio.iscoroutinefunction(real_func):
-            return await cb(*args, **kwargs)
-        return cb(*args, **kwargs)
+            return await cast(Coroutine[object, object, ResultT], cb(*args, **kwargs))
+        return cast(ResultT, cb(*args, **kwargs))
 
-    def add_handler(
-        self, emote: str, validate: PaginatorValidator[IT], generator: Optional[PaginatorGenerator[IT]] = None
-    ):
+    def add_handler(self, emote: str, validate: PaginatorValidator[IT], generator: PaginatorGenerator | None = None):
         if emote in self._handler:
             raise ValueError("Emote already exist")
 
@@ -141,7 +151,7 @@ class DiscordPaginator(Generic[IT]):
             raise ValueError("callback is not a function")
 
         if generator is not None and not callable(generator):
-            raise ValueError("Generator is not none")
+            raise ValueError("Generator is not a function")
 
         self._handler[emote] = PaginationHandler(validate, generator)
 
@@ -150,14 +160,14 @@ class DiscordPaginator(Generic[IT]):
             raise ValueError("Emote not found")
         del self._handler[emote]
 
-    def set_generator(self, generator: PaginatorGenerator[IT]):
+    def set_generator(self, generator: PaginatorGenerator):
         if not callable(generator):
             raise ValueError("Generator is not a function")
         for emote in PAGINATION_EMOTE:
             self._handler[emote] = PaginationHandler(None, generator, True)
         self._default_gen = generator
 
-    def _check_function(self, func: PaginatorGenerator[IT]):
+    def _check_function(self, func: PaginatorGenerator):
         available_args = []
         sigmaballs = signature(func)
         for param in sigmaballs.parameters.values():
@@ -177,11 +187,15 @@ class DiscordPaginator(Generic[IT]):
         return pass_data, pass_position, pass_msg, pass_emote
 
     async def __try_to_generate(
-        self, data: IT, position: int, message: disnake.Message = None, emote: str = None
+        self, data: IT, position: int, message: discord.Message | None = None, emote: str | None = None
     ):
         callback = self._default_gen
         if emote is not None:
-            callback = self._handler[emote].generator
+            handler = self._handler.get(emote)
+            if handler is not None and handler.generator is not None:
+                callback = handler.generator
+        if callback is None:
+            return data
         can_data, can_pos, can_msg, can_emote = self._check_function(callback)
         full_argument = []
         if can_data:
@@ -196,16 +210,16 @@ class DiscordPaginator(Generic[IT]):
         return generator
 
     @staticmethod
-    def __generate_message(generated: GeneratorOutput) -> GeneratedKwargs:
-        raw_msg: str = None
-        embed: disnake.Embed = None
+    def __generate_message(generated: object) -> _MessageKwargs | None:
+        raw_msg: str | None = None
+        embed: discord.Embed | None = None
         if isinstance(generated, (list, tuple)):
             for data in generated:
-                if isinstance(data, disnake.Embed):
+                if isinstance(data, discord.Embed):
                     embed = data
                 elif isinstance(data, str):
                     raw_msg = data
-        elif isinstance(generated, disnake.Embed):
+        elif isinstance(generated, discord.Embed):
             embed = generated
         elif isinstance(generated, (str, int)):
             if isinstance(generated, int):
@@ -213,16 +227,16 @@ class DiscordPaginator(Generic[IT]):
             raw_msg = generated
         if not raw_msg and not embed:
             return None
-        final_kwargs = {}
+        final_kwargs: _MessageKwargs = {}
         if isinstance(raw_msg, str):
             final_kwargs["content"] = raw_msg
-        if isinstance(embed, disnake.Embed):
+        if isinstance(embed, discord.Embed):
             final_kwargs["embed"] = embed
         return final_kwargs
 
     async def __wrap_generator_stuff(
-        self, content: IT, position: int, message: disnake.Message, emote: str
-    ) -> GeneratedKwargs:
+        self, content: IT, position: int, message: discord.Message | None, emote: str | None
+    ) -> _MessageKwargs | None:
         if not callable(self._default_gen):
             return self.__generate_message(content)
         generated = await self.__try_to_generate(content, position, message, emote)
@@ -234,8 +248,8 @@ class DiscordPaginator(Generic[IT]):
 
     async def paginate(
         self,
-        timeout: Optional[Union[int, float]] = None,
-        message: disnake.Message = None,
+        timeout: float | None = None,  # ruff: ignore[async-function-with-timeout]
+        message: discord.Message | None = None,
     ):
         contents = self.datasets
 
@@ -254,6 +268,8 @@ class DiscordPaginator(Generic[IT]):
                 raise PaginationFailure(content, position - 1, self)
             if message is None:
                 message = await self.ctx.send(**final_kwargs)
+                if message is None:
+                    raise RuntimeError("Pagination message was not created")
             else:
                 if not dont_reset:
                     await message.edit(**final_kwargs)
@@ -273,6 +289,8 @@ class DiscordPaginator(Generic[IT]):
                 for emote, handler in self._handler.items():
                     if emote in PAGINATION_EMOTE:
                         continue
+                    if handler is None or handler.validator is None:
+                        continue
                     is_success = await self._maybe_asyncute(handler.validator, content)
                     if is_success:
                         react_andy.append(emote)
@@ -284,8 +302,12 @@ class DiscordPaginator(Generic[IT]):
             else:
                 dont_reset = False
 
-            def check_reaction(reaction: disnake.Reaction, user: disnake.User):
-                if reaction.message.id != message.id:
+            if message is None:
+                raise RuntimeError("Pagination message is unavailable")
+            current_message = message
+
+            def check_reaction(reaction: discord.Reaction, user: discord.User):
+                if reaction.message.id != current_message.id:
                     return False
                 if user.id != self.ctx.author.id:
                     return False
@@ -293,11 +315,11 @@ class DiscordPaginator(Generic[IT]):
                     return False
                 return True
 
-            res: disnake.Reaction
-            user: disnake.User
+            res: discord.Reaction
+            user: discord.User
             try:
                 res, user = await self.bot.wait_for("reaction_add", timeout=timeout, check=check_reaction)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 is_timeout = True
                 self.logger.warning("Timeout, removing reaction...")
                 await message.clear_reactions()
@@ -320,27 +342,40 @@ class DiscordPaginator(Generic[IT]):
                 current_emote = PREV_EMOTE
             elif res.emoji == DELETE_EMOTE:
                 if self._remove_at_trashed:
-                    await message.delete()
+                    await cast(_MessageWithNoLogDelete, message).delete(no_log=True)
                 break
             else:
                 current_emote = None
-                generator = self._handler[str(res.emoji)].generator
+                handler = self._handler.get(str(res.emoji))
+                generator = handler.generator if handler is not None else None
+                if generator is None:
+                    generator = self._default_gen
+                if generator is None:
+                    continue
                 can_data, can_pos, can_msg, can_emote = self._check_function(generator)
-                generator_to_send = [generator]
+                generator_args: list[object] = []
                 if can_data:
-                    generator_to_send.append(content)
+                    generator_args.append(content)
                 if can_pos:
-                    generator_to_send.append(position)
+                    generator_args.append(position)
                 if can_msg:
-                    generator_to_send.append(message)
+                    generator_args.append(message)
                 if can_emote:
-                    generator_to_send.append(str(res.emoji))
-                executed_child = await self._maybe_asyncute(*generator_to_send)
-                try:
-                    generated, message, timeout_error = executed_child
-                except ValueError:
-                    generated, message = executed_child
-                    timeout_error = False
+                    generator_args.append(str(res.emoji))
+                executed_child = await self._maybe_asyncute(generator, *generator_args)
+                generated: object = executed_child
+                timeout_error = False
+                if isinstance(executed_child, tuple) and len(executed_child) == 3:
+                    result, result_message, result_timeout = executed_child
+                    if isinstance(result_message, discord.Message) and isinstance(result_timeout, bool):
+                        generated = result
+                        message = result_message
+                        timeout_error = result_timeout
+                elif isinstance(executed_child, tuple) and len(executed_child) == 2:
+                    result, result_message = executed_child
+                    if isinstance(result_message, discord.Message):
+                        generated = result
+                        message = result_message
                 if timeout_error:
                     is_timeout = True
                     break
@@ -348,7 +383,8 @@ class DiscordPaginator(Generic[IT]):
                     generated = await self.__try_to_generate(content, position - 1, message, current_emote)
                 if generated:
                     final_kwargs = self.__generate_message(generated)
-                    await message.edit(**final_kwargs)
+                    if final_kwargs is not None:
+                        await message.edit(**final_kwargs)
         return is_timeout
 
     start = paginate

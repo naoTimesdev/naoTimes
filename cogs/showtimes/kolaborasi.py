@@ -1,252 +1,198 @@
 import logging
-from typing import List
 
-import disnake
-from disnake.ext import commands
+import discord
+from discord import app_commands
+from discord.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesContext
-from naotimes.helpgenerator import HelpField, HelpOption
 from naotimes.showtimes import Showtimes, ShowtimesKonfirmasi
+from naotimes.showtimes.slash import load_server, project_autocomplete, resolve_project
 from naotimes.utils import generate_custom_code
+
+FOOTER_ICON = "https://p.n4o.xyz/i/nao250px.png"
 
 
 class ShowtimesKolaborasi(commands.Cog):
+    kolaborasi = app_commands.Group(
+        name="kolaborasi",
+        description=app_commands.locale_str(
+            "Kolaborasi garapan dengan fansub lain", key="showtimes.kolaborasi.description"
+        ),
+        guild_only=True,
+    )
+
     def __init__(self, bot: naoTimesBot):
         self.bot = bot
         self.logger = logging.getLogger("Showtimes.Kolaborasi")
-        self.ntdb = bot.ntdb
-        self.base = bot.showcogs
-        self.queue = bot.showqueue
+        ntdb = bot.ntdb
+        queue = bot.showqueue
+        if ntdb is None or queue is None:
+            raise RuntimeError("Showtimes services must be initialized before loading this cog")
+        self.ntdb = ntdb
+        self.queue = queue
 
-    @commands.group(name="kolaborasi", aliases=["joint", "koleb"])
-    @commands.guild_only()
-    async def _showkoleb_main(self, ctx: naoTimesContext):
-        if not ctx.invoked_subcommand:
-            helpcmd = ctx.create_help("kolaborasi", f"Versi {self.bot.semver}")
-            helpcmd.add_fields(
-                [
-                    HelpField(
-                        "kolaborasi",
-                        "Memunculkan bantuan perintah",
-                        use_fullquote=True,
-                    ),
-                    HelpField(
-                        "kolaborasi dengan",
-                        "Memulai proses kolaborasi garapan dengan Fansub lain.",
-                        [
-                            HelpOption(
-                                "server id kolaborasi",
-                                required=True,
-                            ),
-                            HelpOption(
-                                "judul",
-                                required=True,
-                            ),
-                        ],
-                        use_fullquote=True,
-                    ),
-                    HelpField(
-                        "kolaborasi konfirmasi",
-                        "Konfirmasi proses kolaborasi garapan.",
-                        HelpOption("kode unik", required=True),
-                        use_fullquote=True,
-                    ),
-                    HelpField(
-                        "kolaborasi putus",
-                        "Memunculkan hubungan kolaborasi suatu garapan.",
-                        HelpOption(
-                            "judul",
-                            required=True,
-                        ),
-                        use_fullquote=True,
-                    ),
-                    HelpField(
-                        "kolaborasi batalkan",
-                        "Membatalkan proses kolaborasi",
-                        [
-                            HelpOption(
-                                "server id kolaborasi",
-                                required=True,
-                            ),
-                            HelpOption("kode unik", required=True),
-                        ],
-                        use_fullquote=True,
-                    ),
-                ]
-            )
-            helpcmd.add_aliases(["joint", "koleb"])
-            await ctx.send(embed=helpcmd.get())
+    # ------------------------------------------------------------------ helpers
+    async def _project_auto(self, inter: discord.Interaction, current: str):
+        return await project_autocomplete(self.bot, inter, current)
 
-    @_showkoleb_main.command(name="dengan", aliases=["with"])
-    async def _showkoleb_dengan(
-        self, ctx: naoTimesContext, guild: commands.GuildConverter, *, judul: str = None
-    ):
-        if not isinstance(guild, disnake.Guild):
-            self.logger.error(f"{ctx.guild.id}: Bot tidak dapat menemukan peladen tersebut")
-            return await ctx.send("Bot tidak dapat menemukan peladen tersebut?")
-        server_id = ctx.guild.id
-        target_guild: disnake.Guild = guild
-        srv_data = await self.queue.fetch_database(server_id)
+    async def _server_auto(self, inter: discord.Interaction, current: str):
+        """Servers the bot shares with the user (excluding the current one)."""
+        current = current.lower()
+        choices: list[app_commands.Choice[str]] = []
+        for guild in self.bot.guilds:
+            if inter.guild is not None and guild.id == inter.guild.id:
+                continue
+            if guild.get_member(inter.user.id) is None:
+                continue
+            if current and current not in guild.name.lower() and current not in str(guild.id):
+                continue
+            choices.append(app_commands.Choice(name=f"{guild.name}"[:100], value=str(guild.id)))
+            if len(choices) >= 25:
+                break
+        return choices
+
+    async def _commit(self, servers: list[Showtimes]):
+        for server in servers:
+            await self.queue.add_job(server)
+        for server in servers:
+            success, msg = await self.ntdb.update_server(server)
+            if not success:
+                self.logger.warning(f"{server.id}: failed to update, reason: {msg}")
+                if server.id not in self.bot.showtimes_resync:
+                    self.bot.showtimes_resync.append(str(server.id))
+
+    @staticmethod
+    def _embed(ctx: naoTimesContext, title: str, color: int) -> discord.Embed:
+        embed = discord.Embed(title=title, color=color)
+        embed.set_footer(text=ctx.t("footer.credit"), icon_url=FOOTER_ICON)
+        return embed
+
+    async def _require_admin(self, inter: discord.Interaction, key: str) -> Showtimes | None:
+        ctx = await self.bot.get_context(inter)
+        srv_data = await load_server(self.bot, inter)
         if srv_data is None:
-            self.logger.error(f"{server_id}: server not registered in Showtimes")
+            return None
+        if not srv_data.is_admin(inter.user.id):
+            await inter.response.send_message(ctx.t(key), ephemeral=True)
+            return None
+        return srv_data
+
+    # ------------------------------------------------------------------ dengan
+    @kolaborasi.command(
+        name="dengan",
+        description=app_commands.locale_str(
+            "Ajak fansub lain berkolaborasi pada sebuah garapan", key="showtimes.kolaborasi.dengan"
+        ),
+    )
+    @app_commands.describe(
+        server=app_commands.locale_str(
+            "Peladen fansub yang diajak (pilih dari daftar atau ketik ID)",
+            key="showtimes.kolaborasi.option_server",
+        ),
+        judul=app_commands.locale_str("Judul proyek", key="showtimes.options.judul"),
+    )
+    async def _showkoleb_dengan(self, inter: discord.Interaction, server: str, judul: str):
+        ctx = await self.bot.get_context(inter)
+        srv_data = await self._require_admin(inter, "kolaborasi.admin_start")
+        if srv_data is None:
             return
+        guild = inter.guild
+        if guild is None:
+            return await inter.response.send_message(ctx.t("errors.guild_only_bang"), ephemeral=True)
+        server_id = guild.id
 
-        if not srv_data.is_admin(ctx.author.id):
-            self.logger.warning(f"{server_id}: {ctx.author.id} attempted to use kolaborasi command")
-            return await ctx.send("Hanya admin yang bisa memulai kolaborasi")
-
-        target_data = await self.queue.fetch_database(target_guild.id)
+        target_guild = self.bot.get_guild(int(server)) if server.isdigit() else None
+        if target_guild is None:
+            return await inter.response.send_message(ctx.t("kolaborasi.server_not_found"), ephemeral=True)
+        if target_guild.id == server_id:
+            return await inter.response.send_message(ctx.t("kolaborasi.same_server"), ephemeral=True)
+        target_data = await self.queue.fetch_database(str(target_guild.id))
         if target_data is None:
-            self.logger.error(f"{target_guild.id}: server not registered in Showtimes")
-            return await ctx.send(f"Tidak dapat menemukan peladen **{target_guild}** tersebut di database")
+            return await inter.response.send_message(
+                ctx.t("kolaborasi.server_not_in_db", server=target_guild), ephemeral=True
+            )
 
-        if server_id == target_guild.id:
-            return await ctx.send("Tidak bisa mengajak kolaborasi dengan peladen sendiri!")
+        project, error = await resolve_project(self.bot, srv_data, judul)
+        if project is None:
+            return await inter.response.send_message(error, ephemeral=True)
+        if target_guild.id in project.kolaborasi or str(target_guild.id) in [str(k) for k in project.kolaborasi]:
+            return await inter.response.send_message(ctx.t("kolaborasi.already_collab"), ephemeral=True)
 
-        if not judul:
-            return await self.base.send_all_projects(ctx, srv_data)
+        embed = self._embed(ctx, ctx.t("kolaborasi.embed_title"), 0xE7E363)
+        embed.description = ctx.t("kolaborasi.check_invite")
+        embed.add_field(name=ctx.t("kolaborasi.field_anime"), value=project.title, inline=False)
+        embed.add_field(name=ctx.t("kolaborasi.field_server"), value=target_guild.name, inline=False)
 
-        self.logger.info(f"{server_id}: getting close matches...")
-        all_matches = srv_data.find_projects(judul)
-        if len(all_matches) < 1:
-            self.logger.warning(f"{server_id}: no close matches found for {judul}")
-            return await ctx.send("Tidak dapat menemukan judul tersebut di database")
-        if len(all_matches) > 1:
-            self.logger.warning(f"{server_id}: found {len(all_matches)} close matches for {judul}")
-            select_match = await ctx.select_simple(all_matches, lambda x: x.title)
-            if select_match is None:
-                return await ctx.send("**Dibatalkan!**")
-            all_matches = [select_match]
-
-        project = all_matches[0]
-        self.logger.info(f"{server_id}: found {project.title}")
-        if target_guild.id in project.kolaborasi:
-            self.logger.warning(f"{server_id}: {project.title} already in kolaborasi")
-            return await ctx.send("Peladen tersebut sudah diajak kolaborasi.")
+        await inter.response.defer()
+        ctx = await self.bot.get_context(inter)
+        if not await ctx.confirm(ctx.t("kolaborasi.confirm_invite"), embed=embed):
+            return await ctx.send(ctx.t("errors.cancelled"))
 
         random_confirm = generate_custom_code(16)
-        self.logger.info(f"{server_id}:{target_guild.id}: confirming collaboration...")
-        embed = disnake.Embed(
-            title="Kolaborasi",
-            description="Periksa data!\nReact jika ingin diubah.",
-            color=0xE7E363,
-        )
-        embed.add_field(name="Anime/Garapan", value=project.title, inline=False)
-        embed.add_field(name="Server", value=target_guild.name, inline=False)
-        embed.add_field(
-            name="Lain-Lain",
-            value="✅ Tambahkan!\n❌ Batalkan!",
-            inline=False,
-        )
-        embed.set_footer(
-            text="Dibawakan oleh naoTimes™",
-            icon_url="https://p.n4o.xyz/i/nao250px.png",
-        )
-        base_message = await ctx.send(embed=embed)
-        is_confirmed = await ctx.confirm(base_message, True)
-        if not is_confirmed:
-            self.logger.warning(f"{server_id}-{project.title}: cancelling...")
-            return await ctx.send("**Dibatalkan!**")
-
-        koleb_data = ShowtimesKonfirmasi(random_confirm, server_id, project.id)
-        target_data.add_konfirm(koleb_data)
-
-        embed = disnake.Embed(title="Kolaborasi", color=0x56ACF3)
-        embed.add_field(name="Memproses!", value="Mengirim data...", inline=True)
-        embed.set_footer(
-            text="Dibawakan oleh naoTimes™",
-            icon_url="https://p.n4o.xyz/i/nao250px.png",
-        )
-        await base_message.edit(embed=embed)
-
+        target_data.add_konfirm(ShowtimesKonfirmasi(random_confirm, server_id, project.id))
         self.logger.info(f"{server_id}-{project.id}: storing data...")
         await self.queue.add_job(target_data)
 
-        embed = disnake.Embed(title="Kolaborasi", color=0x96DF6A)
+        embed = self._embed(ctx, ctx.t("kolaborasi.embed_title"), 0x96DF6A)
         embed.add_field(
-            name="Sukses!",
-            value=f"Berikan kode berikut `{random_confirm}` kepada fansub/server lain.\n"
-            "Database utama akan diupdate sebentar lagi",
+            name=ctx.t("kolaborasi.success_title"),
+            value=ctx.t("kolaborasi.invite_success_value", code=random_confirm),
             inline=True,
         )
-        embed.set_footer(
-            text="Dibawakan oleh naoTimes",
-            icon_url="https://p.n4o.xyz/i/nao250px.png",
-        )
-        await base_message.delete()
         await ctx.send(embed=embed)
+        await ctx.send(ctx.t("kolaborasi.invite_message", code=random_confirm))
+        await self._commit([target_data])
 
-        self.logger.info(f"{server_id}: updating database...")
-        success, msg = await self.ntdb.update_server(target_data)
-        if not success:
-            self.logger.error(f"{target_data.id}: failed to update, reason: {msg}")
-            if target_data.id not in self.bot.showtimes_resync:
-                self.bot.showtimes_resync.append(target_data.id)
-
-        await ctx.send(
-            f"Berikan kode berikut `{random_confirm}` kepada fansub/peladen yang ditentukan tadi.\n"
-            f"Konfirmasi di peladen tersebut dengan `{self.bot.prefixes(target_guild)}kolaborasi "
-            f"konfirmasi {random_confirm}`"
+    # ------------------------------------------------------------------ konfirmasi
+    @kolaborasi.command(
+        name="konfirmasi",
+        description=app_commands.locale_str(
+            "Konfirmasi ajakan kolaborasi dari fansub lain", key="showtimes.kolaborasi.konfirmasi"
+        ),
+    )
+    @app_commands.describe(
+        kode=app_commands.locale_str(
+            "Kode konfirmasi dari fansub yang mengajak", key="showtimes.kolaborasi.option_kode"
         )
-
-    @_showkoleb_main.command(name="konfirmasi", aliases=["confirm"])
-    async def _showkoleb_konfirmasi(self, ctx: naoTimesContext, kode_konfirmasi: str):
-        server_id = ctx.guild.id
-        srv_data = await self.queue.fetch_database(server_id)
+    )
+    async def _showkoleb_konfirmasi(self, inter: discord.Interaction, kode: str):
+        ctx = await self.bot.get_context(inter)
+        srv_data = await self._require_admin(inter, "kolaborasi.admin_confirm")
         if srv_data is None:
             return
-        self.logger.info(f"{server_id}: data found.")
-
-        if not srv_data.is_admin(ctx.author.id):
-            self.logger.warning(f"{server_id}: not the server admin")
-            return await ctx.send("Hanya admin yang bisa konfirmasi kolaborasi.")
-
+        guild = inter.guild
+        if guild is None:
+            return await inter.response.send_message(ctx.t("errors.guild_only_bang"), ephemeral=True)
+        server_id = guild.id
         if len(srv_data.konfirmasi) < 1:
-            self.logger.warning(f"{server_id}: nothing to confirm.")
-            return await ctx.send("Tidak ada kolaborasi yang harus dikonfirmasi.")
-
-        get_confirm = srv_data.get_konfirm(kode_konfirmasi)
+            return await inter.response.send_message(ctx.t("kolaborasi.nothing_to_confirm"), ephemeral=True)
+        get_confirm = srv_data.get_konfirm(kode)
         if get_confirm is None:
-            self.logger.warning(f"{server_id}: code not found")
-            return await ctx.send("Tidak dapat menemukan kode kolaborasi yang diberikan.")
+            return await inter.response.send_message(ctx.t("kolaborasi.code_not_found"), ephemeral=True)
 
-        server_ident = self.bot.get_guild(get_confirm.server)
+        server_ident = self.bot.get_guild(int(get_confirm.server))
         source_name = server_ident.name if server_ident is not None else get_confirm.server
-
-        source_srv = await self.queue.fetch_database(get_confirm.server)
+        source_srv = await self.queue.fetch_database(str(get_confirm.server))
         if source_srv is None:
-            self.logger.warning(f"{get_confirm.server}: apparently the server gone now?")
-            return await ctx.send("Peladen yang mengajak hilang dari database?")
-
+            return await inter.response.send_message(ctx.t("kolaborasi.source_missing"), ephemeral=True)
         project_info = source_srv.get_project(get_confirm.anime)
         if project_info is None:
-            self.logger.warning(f"{get_confirm.anime}: anime not found")
-            return await ctx.send("Tidak dapat menemukan anime yang akan diajak kolaborasi.")
+            return await inter.response.send_message(ctx.t("kolaborasi.anime_missing"), ephemeral=True)
 
-        embed = disnake.Embed(title="Konfirmasi Kolaborasi", color=0xE7E363)
-        embed.add_field(name="Anime/Garapan", value=project_info.title, inline=False)
-        embed.add_field(name="Server", value=source_name, inline=False)
-        embed.add_field(name="Lain-Lain", value="✅ Konfirmasi!\n❌ Tolak!", inline=False)
-        embed.set_footer(
-            text="Dibawakan oleh naoTimes™",
-            icon_url="https://p.n4o.xyz/i/nao250px.png",
-        )
-        base_message = await ctx.send(embed=embed)
+        embed = self._embed(ctx, ctx.t("kolaborasi.confirm_embed_title"), 0xE7E363)
+        embed.add_field(name=ctx.t("kolaborasi.field_anime"), value=project_info.title, inline=False)
+        embed.add_field(name=ctx.t("kolaborasi.field_server"), value=str(source_name), inline=False)
 
-        is_confirm = await ctx.confirm(base_message, True)
-        if not is_confirm:
+        await inter.response.defer()
+        ctx = await self.bot.get_context(inter)
+        if not await ctx.confirm(ctx.t("kolaborasi.confirm_accept"), embed=embed):
             srv_data.remove_konfirm(get_confirm)
             await self.queue.add_job(srv_data)
-            success, msg = await self.ntdb.update_server(srv_data)
-            if not success:
-                self.logger.warning(f"{srv_data.id}: failed to update, reason: {msg}")
-                if srv_data.id not in self.bot.showtimes_resync:
-                    self.bot.showtimes_resync.append(srv_data.id)
-            return await ctx.send("Ajakan kolaborasi telah ditolak!")
+            await ctx.send(ctx.t("kolaborasi.invite_rejected"))
+            return await self._commit([srv_data])
 
         previous_info = srv_data.get_project(project_info)
-
         other_collab_data = []
         old_role = None
         old_fsdb_info = None
@@ -257,9 +203,12 @@ class ShowtimesKolaborasi(commands.Cog):
 
         if not old_role:
             self.logger.info(f"{server_id}: creating roles...")
-            c_role = await ctx.guild.create_role(
-                name=project_info.title, colour=disnake.Colour.random(), mentionable=True
-            )
+            try:
+                c_role = await guild.create_role(
+                    name=project_info.title, colour=discord.Colour.random(), mentionable=True
+                )
+            except (discord.Forbidden, discord.HTTPException):
+                return await ctx.send(ctx.t("kolaborasi.role_create_failed"))
             old_role = c_role.id
 
         clone_data = project_info.copy()
@@ -270,7 +219,6 @@ class ShowtimesKolaborasi(commands.Cog):
         joint_koleb = [get_confirm.server, server_id]
         joint_koleb.extend(other_collab_data)
         joint_koleb.extend(project_info.kolaborasi)
-        # Dedup
         joint_koleb = list(dict.fromkeys(joint_koleb))
 
         project_info.kolaborasi = joint_koleb
@@ -283,7 +231,7 @@ class ShowtimesKolaborasi(commands.Cog):
         for joint in joint_koleb:
             if joint in [get_confirm.server, server_id]:
                 continue
-            joint_srv = await self.queue.fetch_database(joint)
+            joint_srv = await self.queue.fetch_database(str(joint))
             if joint_srv is None:
                 continue
             joint_project = joint_srv.get_project(project_info)
@@ -293,207 +241,136 @@ class ShowtimesKolaborasi(commands.Cog):
             joint_srv.update_project(joint_project)
             update_queue.append(joint_srv)
 
-        self.logger.info(f"{project_info.id}-{server_id}: now updating database...")
-        embed = disnake.Embed(title="Kolaborasi", color=0x56ACF3)
-        embed.add_field(name="Memproses!", value="Mengirim data...", inline=True)
-        embed.set_footer(
-            text="Dibawakan oleh naoTimes™",
-            icon_url="https://p.n4o.xyz/i/nao250px.png",
-        )
-        await base_message.edit(embed=embed)
-
         for srv in update_queue:
             await self.queue.add_job(srv)
 
-        embed = disnake.Embed(title="Kolaborasi", color=0x96DF6A)
+        embed = self._embed(ctx, ctx.t("kolaborasi.embed_title"), 0x96DF6A)
         embed.add_field(
-            name="Sukses!",
-            value=f"Berhasil konfirmasi dengan server **{source_name}**.\n"
-            "Database utama akan diupdate sebentar lagi",
+            name=ctx.t("kolaborasi.success_title"),
+            value=ctx.t("kolaborasi.confirm_success_value", server=source_name),
             inline=True,
         )
-        embed.set_footer(
-            text="Dibawakan oleh naoTimes™",
-            icon_url="https://p.n4o.xyz/i/nao250px.png",
-        )
-        await base_message.delete()
         await ctx.send(embed=embed)
-
-        for srv in update_queue:
-            self.logger.info(f"{srv.id}: updating database...")
-            success, msg = await self.ntdb.update_server(srv)
-            if not success:
-                self.logger.warning(f"{srv.id}: failed to update, reason: {msg}")
-                if srv.id not in self.bot.showtimes_resync:
-                    self.bot.showtimes_resync.append(srv.id)
+        await self._commit(update_queue)
         await ctx.send(
-            f"Berhasil menambahkan kolaborasi dengan **{get_confirm.server}** ke dalam database utama"
-            f" naoTimes\nBerikan role berikut agar bisa menggunakan perintah staff <@&{old_role}>"
+            ctx.t("kolaborasi.confirm_success_message", server=source_name, role=old_role),
+            allowed_mentions=discord.AllowedMentions.none(),
         )
 
-    @_showkoleb_main.command(name="batalkan")
-    async def _showkoleb_batalkan(
-        self, ctx: naoTimesContext, guild: commands.GuildConverter, kode_konfirmasi: str
-    ):
-        if not guild:
-            self.logger.warning("guild doesn't exist in discord")
-            return await ctx.send("Peladen tidak dapat ditemukan!")
-        target_id = guild.id
-        server_id = ctx.guild.id
-        self.logger.info(f"Requested batalkan at {server_id}")
-        srv_data = await self.queue.fetch_database(server_id)
+    # ------------------------------------------------------------------ batalkan
+    @kolaborasi.command(
+        name="batalkan",
+        description=app_commands.locale_str(
+            "Batalkan ajakan kolaborasi yang sudah dikirim", key="showtimes.kolaborasi.batalkan"
+        ),
+    )
+    @app_commands.describe(
+        server=app_commands.locale_str("Peladen yang diajak", key="showtimes.kolaborasi.option_server_batal"),
+        kode=app_commands.locale_str("Kode konfirmasi yang dibatalkan", key="showtimes.kolaborasi.option_kode_batal"),
+    )
+    async def _showkoleb_batalkan(self, inter: discord.Interaction, server: str, kode: str):
+        ctx = await self.bot.get_context(inter)
+        srv_data = await self._require_admin(inter, "kolaborasi.admin_cancel")
         if srv_data is None:
-            self.logger.warning(f"{server_id}: database not found")
             return
-        self.logger.info(f"{server_id}: checking ownership...")
-        if not srv_data.is_admin(ctx.author.id):
-            self.logger.info(f"{server_id}: not the correct admin")
-            return
-
-        target_srv = await self.queue.fetch_database(target_id)
+        guild = inter.guild
+        if guild is None:
+            return await inter.response.send_message(ctx.t("errors.guild_only_bang"), ephemeral=True)
+        server_id = guild.id
+        if not server.isdigit():
+            return await inter.response.send_message(ctx.t("kolaborasi.server_invalid"), ephemeral=True)
+        target_srv = await self.queue.fetch_database(server)
         if target_srv is None:
-            self.logger.warning(f"{target_id}: cannot be found at database")
-            return await ctx.send("Peladen target tidak dapat ditemukan!")
-
-        self.logger.info(f"{server_id}: checking {kode_konfirmasi} code...")
-        get_confirm = target_srv.get_konfirm(kode_konfirmasi)
+            return await inter.response.send_message(ctx.t("kolaborasi.target_server_missing"), ephemeral=True)
+        get_confirm = target_srv.get_konfirm(kode)
         if get_confirm is None:
-            self.logger.warning(f"{server_id}: {kode_konfirmasi} cannot be found...")
-            return await ctx.send("Tidak dapat menemukan kode kolaborasi yang diberikan.")
-        if get_confirm.server != server_id:
-            self.logger.warning(f"{server_id}: can only be deleted by {get_confirm.server}")
-            return await ctx.send("Anda tidak berhak untuk menghapus kode ini!")
+            return await inter.response.send_message(ctx.t("kolaborasi.code_not_found"), ephemeral=True)
+        if str(get_confirm.server) != str(server_id):
+            return await inter.response.send_message(ctx.t("kolaborasi.not_authorized"), ephemeral=True)
 
-        self.logger.info(f"{server_id}: deleting {kode_konfirmasi} code...")
-        target_srv.remove_konfirm(kode_konfirmasi)
-        self.logger.info(f"{server_id}: now updating database...")
+        target_srv.remove_konfirm(kode)
         await self.queue.add_job(target_srv)
-        embed = disnake.Embed(title="Kolaborasi", color=0x96DF6A)
+        embed = self._embed(ctx, ctx.t("kolaborasi.embed_title"), 0x96DF6A)
         embed.add_field(
-            name="Sukses!",
-            value=f"Berhasil membatalkan kode konfirmasi **{kode_konfirmasi}**.\n"
-            "Database utama akan diupdate sebentar lagi",
+            name=ctx.t("kolaborasi.success_title"),
+            value=ctx.t("kolaborasi.cancel_success_value", code=kode),
         )
-        embed.set_footer(
-            text="Dibawakan oleh naoTimes™",
-            icon_url="https://p.n4o.xyz/i/nao250px.png",
-        )
-        await ctx.send(embed=embed)
+        await inter.response.send_message(embed=embed)
+        await self._commit([target_srv])
 
-        self.logger.info(f"{server_id}: updating main database...")
-        success, msg = await self.ntdb.update_server(srv_data)
-        if not success:
-            self.logger.warning(f"{server_id}: failed to update, reason: {msg}")
-            if server_id not in self.bot.showtimes_resync:
-                self.bot.showtimes_resync.append(server_id)
-
-        await ctx.send(f"Berhasil membatalkan kode konfirmasi **{kode_konfirmasi}**!")
-
-    @_showkoleb_main.command(name="putus")
-    async def _showkoleb_putus(self, ctx: naoTimesContext, *, judul: str):
-        server_id = ctx.guild.id
-        self.logger.info(f"{server_id}: checking database...")
-        srv_data = await self.queue.fetch_database(server_id)
-
-        if not srv_data:
-            self.logger.warning(f"{server_id}: database not found")
+    # ------------------------------------------------------------------ putus
+    @kolaborasi.command(
+        name="putus",
+        description=app_commands.locale_str("Putuskan kolaborasi sebuah garapan", key="showtimes.kolaborasi.putus"),
+    )
+    @app_commands.describe(judul=app_commands.locale_str("Judul proyek", key="showtimes.options.judul"))
+    async def _showkoleb_putus(self, inter: discord.Interaction, judul: str):
+        ctx = await self.bot.get_context(inter)
+        srv_data = await self._require_admin(inter, "kolaborasi.admin_disconnect")
+        if srv_data is None:
             return
-        self.logger.info(f"{server_id}: checking ownership...")
-        if not srv_data.is_admin(ctx.author.id):
-            self.logger.info(f"{server_id}: not the correct admin")
-            return await ctx.send("Hanya admin yang bisa memputuskan kolaborasi")
-
-        self.logger.info(f"{server_id}: finding {judul}...")
-        all_matches = srv_data.find_projects(judul)
-        if len(all_matches) < 1:
-            self.logger.warning(f"{server_id}: cannot find any match")
-            return await ctx.send("Tidak dapat menemukan judul tersebut di database")
-        if len(all_matches) > 1:
-            self.logger.warning(f"{server_id}: found more than one match")
-            select_single = await ctx.select_simple(all_matches, lambda x: x.title)
-            if select_single is None:
-                return await ctx.send("**Dibatalkan!**")
-            all_matches = [select_single]
-
-        project = all_matches[0]
-        self.logger.info(f"{server_id}: found {project.title}")
+        guild = inter.guild
+        if guild is None:
+            return await inter.response.send_message(ctx.t("errors.guild_only_bang"), ephemeral=True)
+        server_id = guild.id
+        project, error = await resolve_project(self.bot, srv_data, judul)
+        if project is None:
+            return await inter.response.send_message(error, ephemeral=True)
         if len(project.kolaborasi) < 1:
-            self.logger.warning(f"{server_id}: no kolaborators found")
-            return await ctx.send("Tidak ada kolaborasi yang berlangsung untuk judul tersebut!")
+            return await inter.response.send_message(ctx.t("kolaborasi.no_active_collab"), ephemeral=True)
 
-        self.logger.info(f"{server_id}: checking konfirmations...")
-        is_confirm = await ctx.confirm(f"Apakah anda yakin ingin memputuskan kolaborasi `{project.title}`")
-        if not is_confirm:
-            return await ctx.send("Dibatalkan!")
+        await inter.response.defer()
+        ctx = await self.bot.get_context(inter)
+        if not await ctx.confirm(ctx.t("kolaborasi.disconnect_confirm", title=project.title)):
+            return await ctx.send(ctx.t("errors.cancelled_plain"))
 
-        self.logger.info(f"{server_id}: removing kolaborators...")
-        update_queue: List[Showtimes] = []
+        update_queue: list[Showtimes] = []
         for osrv in project.kolaborasi:
-            if osrv == server_id:
+            if str(osrv) == str(server_id):
                 continue
-            osrv_data = await self.queue.fetch_database(osrv)
+            osrv_data = await self.queue.fetch_database(str(osrv))
             if osrv_data is None:
-                self.logger.warning(f"{server_id}: cannot be found at database")
                 continue
             osrv_anime = osrv_data.get_project(project)
             if osrv_anime is None:
-                self.logger.warning(f"{server_id}: cannot be found at database")
                 continue
             osrv_anime.remove_kolaborator(server_id)
             if len(osrv_anime.kolaborasi) < 2:
-                first_person = osrv_anime.kolaborasi[0]
-                if first_person == osrv:
-                    # Clean the kolaborasi data
+                first_person = osrv_anime.kolaborasi[0] if osrv_anime.kolaborasi else None
+                if first_person is None or str(first_person) == str(osrv):
                     osrv_anime.kolaborasi = []
-
             osrv_data.update_project(osrv_anime)
             update_queue.append(osrv_data)
 
-        # Remove FSDB binding
-        is_fsdb_binded = False
-        if project.fsdb is not None:
-            is_fsdb_binded = True
-            project.fsdb = None
-
+        is_fsdb_binded = project.fsdb is not None
+        project.fsdb = None
         project.kolaborasi = []
         srv_data.update_project(project)
         update_queue.append(srv_data)
 
-        self.logger.info(f"{server_id}: updating database...")
         for server in update_queue:
             await self.queue.add_job(server)
 
-        embed = disnake.Embed(title="Kolaborasi", color=0x96DF6A)
+        embed = self._embed(ctx, ctx.t("kolaborasi.embed_title"), 0x96DF6A)
         embed.add_field(
-            name="Sukses!",
-            value=f"Berhasil memputuskan kolaborasi **{project.title}**.\n"
-            "Database utama akan diupdate sebentar lagi",
+            name=ctx.t("kolaborasi.success_title"),
+            value=ctx.t("kolaborasi.disconnect_success_value", title=project.title),
             inline=True,
         )
-        embed.set_footer(
-            text="Dibawakan oleh naoTimes™",
-            icon_url="https://p.n4o.xyz/i/nao250px.png",
-        )
         await ctx.send(embed=embed)
-
-        self.logger.info(f"{server_id}: updating main database...")
-        for update in update_queue:
-            success, msg = await self.ntdb.update_server(update)
-            if not success:
-                self.logger.warning(f"{server_id}: failed to update, reason: {msg}")
-                if update.id not in self.bot.showtimes_resync:
-                    self.bot.showtimes_resync.append(update.id)
-
-        await ctx.send(f"Berhasil memputuskan kolaborasi **{project.title}** dari database utama naoTimes")
+        await self._commit(update_queue)
+        await ctx.send(ctx.t("kolaborasi.disconnect_success_message", title=project.title))
         if is_fsdb_binded:
-            await ctx.send(
-                "Binding FansubDB untuk anime terputus, "
-                f"silakan hubungkan ulang dengan: `{self.bot.prefixes(ctx)}fsdb bind {project.title}`"
-            )
+            await ctx.send(ctx.t("kolaborasi.fsdb_unbound", title=project.title))
+
+    _showkoleb_dengan.autocomplete("server")(_server_auto)
+    _showkoleb_batalkan.autocomplete("server")(_server_auto)
+    _showkoleb_dengan.autocomplete("judul")(_project_auto)
+    _showkoleb_putus.autocomplete("judul")(_project_auto)
 
 
-def setup(bot: naoTimesBot):
-    if bot.ntdb is None:
-        bot.logger.warning("Owner hasn't enabled naoTimesDB yet, will not load this cogs")
+async def setup(bot: naoTimesBot):
+    if bot.ntdb is None or bot.showqueue is None:
+        bot.logger.warning("Showtimes services are unavailable; not loading the collaboration cog")
         return
-    bot.add_cog(ShowtimesKolaborasi(bot))
+    await bot.add_cog(ShowtimesKolaborasi(bot))
