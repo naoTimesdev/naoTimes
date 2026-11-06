@@ -36,4 +36,4 @@ jobs:
         run: uv run ruff format --check .
 
       - name: Check i18n catalogs
-        run: uv run python pipelines/i18n_check.py --strict
+        run: uv run python tools/i18n_check.py --strict
