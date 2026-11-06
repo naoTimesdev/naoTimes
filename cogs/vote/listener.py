@@ -1,7 +1,7 @@
 """
 MIT License
 
-Copyright (c) 2019-2021 naoTimesdev
+Copyright (c) 2019-2022 naoTimesdev
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -24,12 +24,12 @@ SOFTWARE.
 
 import asyncio
 import logging
+from dataclasses import dataclass
 from enum import Enum
-from typing import List, NamedTuple, Union
 
 import arrow
-import disnake
-from disnake.ext import commands, tasks
+import discord
+from discord.ext import commands, tasks
 
 from naotimes.bot import naoTimesBot
 from naotimes.socket import ntevent
@@ -39,7 +39,8 @@ res2num = dict(zip(reactions_num, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]))
 num2res = dict(zip([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], reactions_num))
 
 
-class UserVote(NamedTuple):
+@dataclass
+class UserVote:
     id: int
     uuid: int
     choice: str
@@ -58,19 +59,17 @@ class VoteType(Enum):
 
 
 class VoteManager:
-    def __init__(
-        self, id: Union[str, int], name: Union[str, int], emote: str, limit: int = 0, voter: List[int] = []
-    ):
+    def __init__(self, id: str | int, name: str | int, emote: str, limit: int = 0, voter: list[int] = []):
         self.id = id
         self.name = name
         self.emote = emote
         self.limit = limit
         self._voter = voter
 
-    def __eq__(self, other: Union[str, int, "VoteManager"]) -> bool:
-        if isinstance(other, str) and isinstance(self.id, str):
-            return self.id == other
-        elif isinstance(other, int) and isinstance(self.id, int):
+    def __eq__(self, other: object) -> bool:
+        if (isinstance(other, str) and isinstance(self.id, str)) or (
+            isinstance(other, int) and isinstance(self.id, int)
+        ):
             return self.id == other
         elif isinstance(other, VoteManager):
             return self.id == other.id
@@ -80,21 +79,21 @@ class VoteManager:
         return len(self._voter)
 
     def __repr__(self):
-        __context = [
+        context = [
             f"id={self.id!r}",
             f"name={self.name!r}",
             f"emote={self.emote!r}",
             f"limit={self.limit!r}",
             f"voter={self._voter!r}",
         ]
-        return f"<VoteManager {' '.join(__context)}>"
+        return f"<VoteManager {' '.join(context)}>"
 
     @property
-    def voter(self) -> List[int]:
+    def voter(self) -> list[int]:
         return self._voter
 
     @voter.setter
-    def voter(self, new_voter: List[int]) -> List[int]:
+    def voter(self, new_voter: list[int]) -> None:
         real_int_voter = []
         for voter in new_voter:
             if isinstance(voter, int):
@@ -127,7 +126,8 @@ class VoteManager:
         }
 
 
-class VoteResult(NamedTuple):
+@dataclass
+class VoteResult:
     data: VoteManager
     type: VoteType
     is_tied: bool = False
@@ -141,7 +141,7 @@ class VoteMetadata:
         self._aid = author_id
         self.title = title
 
-    def __eq__(self, other: Union[int, "VoteMetadata"]) -> bool:
+    def __eq__(self, other: object) -> bool:
         if isinstance(other, int):
             return self._mid == other
         elif isinstance(other, VoteMetadata):
@@ -149,13 +149,13 @@ class VoteMetadata:
         return False
 
     def __repr__(self):
-        __context = [
+        context = [
             f"id={self._mid!r}",
             f"channel={self._cid!r}",
             f"author={self._aid!r}",
             f"title={self.title!r}",
         ]
-        return f"<VoteMetadata {' '.join(__context)}>"
+        return f"<VoteMetadata {' '.join(context)}>"
 
     @property
     def message(self) -> int:
@@ -181,9 +181,9 @@ class VoteMetadata:
 
 
 class VoteData:
-    def __init__(
-        self, metadata: VoteMetadata, choices: List[VoteManager], timeout: int, mode: VoteType = None
-    ):
+    def __init__(self, metadata: VoteMetadata, choices: list[VoteManager], timeout: int, mode: VoteType | None = None):
+        if not choices:
+            raise ValueError("A vote must include at least one choice")
         self._meta = metadata
         self._choices = choices
         self._timeout = timeout
@@ -217,7 +217,7 @@ class VoteData:
         return self._choices
 
     @choices.setter
-    def choices(self, new_choices: List[VoteManager]):
+    def choices(self, new_choices: list[VoteManager]):
         self._choices = new_choices
 
     @property
@@ -240,7 +240,7 @@ class VoteData:
                 return True
         return self.is_timeout()
 
-    def get_vote(self, vote_id: Union[str, int]):
+    def get_vote(self, vote_id: str | int):
         for vote in self._choices:
             if vote == vote_id:
                 return vote
@@ -346,21 +346,21 @@ class VoteListener(commands.Cog):
     def __init__(self, bot: naoTimesBot):
         self.bot = bot
         self.logger = logging.getLogger("VoteSystem.ListenerV2")
+        if bot.redisdb is None:
+            raise RuntimeError("VoteListener requires the Redis bridge to be initialized")
         self._client = bot.redisdb
         self._is_ready = False
 
         self._is_unloding = False
 
         self._lock = asyncio.Lock()
-        self._vote_queue = asyncio.Queue[UserVote](loop=self.bot.loop)
+        self._vote_queue = asyncio.Queue[UserVote]()
         self._vote_task = asyncio.Task(self._handle_new_vote())
-        self._cached_vote_message: List[int] = []
+        self._cached_vote_message: list[int] = []
         self._handle_existing_vote.start()
-        self._temp_task = self.bot.loop.create_task(
-            self._on_cog_loaded(), name="preload-vote-data-on-cog-load"
-        )
+        self._temp_task = self.bot.loop.create_task(self._on_cog_loaded(), name="preload-vote-data-on-cog-load")
 
-    def cog_unload(self):
+    async def cog_unload(self):
         self._is_unloding = True
         self._vote_task.cancel()
         self._handle_existing_vote.cancel()
@@ -375,7 +375,7 @@ class VoteListener(commands.Cog):
 
     async def _get_all_votes(self):
         vote_data = await self._client.getall(f"{self.PRE_KEY}*")
-        real_vote: List[VoteData] = []
+        real_vote: list[VoteData] = []
         for vote in vote_data:
             real_vote.append(VoteData.from_dict(vote))
         return real_vote
@@ -398,26 +398,36 @@ class VoteListener(commands.Cog):
         except (ValueError, KeyError, AttributeError, IndexError):
             pass
 
+    def _dispatch(self, event: str, vote_data: VoteData) -> None:
+        if self.bot.ntevent is None:
+            self.logger.error("Cannot dispatch vote event %r because the event manager is unavailable", event)
+            return
+        self.bot.ntevent.dispatch(event, vote_data)
+
+    @staticmethod
+    async def _reaction_users(reaction: discord.Reaction) -> list[discord.Member | discord.User]:
+        return [user async for user in reaction.users()]
+
     async def _tally_up_missing(self, vote_meta: VoteData):
         """Tally up the votes that are missing"""
         metadata = vote_meta.metadata
         message_id = metadata.message
         channel_id = metadata.channel
-        channel_data: disnake.TextChannel = self.bot.get_channel(channel_id)
-        if channel_data is None:
+        channel_data = self.bot.get_channel(channel_id)
+        if not isinstance(channel_data, discord.TextChannel):
             return None
         self.logger.info(f"Fetching message: {message_id} at #{channel_data}")
         try:
             message = await channel_data.fetch_message(message_id)
-        except disnake.NotFound:
+        except discord.NotFound:
             return None
 
         the_reactions = message.reactions
 
-        IGNORED_AUTHOR = [
-            metadata.author,
-            self.bot.user.id,
-        ]
+        bot_user = self.bot.user
+        if bot_user is None:
+            return None
+        ignored_author = [metadata.author, bot_user.id]
 
         new_votes = []
         self.logger.info("Trying to accumulate reaction while bot is gone!")
@@ -437,17 +447,17 @@ class VoteListener(commands.Cog):
                     no_react = react
 
             if yes_react is not None:
-                voter_yes = await yes_react.users().flatten()
+                voter_yes = await self._reaction_users(yes_react)
                 complete_voter = []
                 for voter in voter_yes:
-                    if voter.id not in IGNORED_AUTHOR and not voter.bot:
+                    if voter.id not in ignored_author and not voter.bot:
                         complete_voter.append(voter.id)
                 choice_yes.voter = complete_voter
             if no_react is not None:
-                voter_no = await no_react.users().flatten()
+                voter_no = await self._reaction_users(no_react)
                 complete_voter = []
                 for voter in voter_no:
-                    if voter.id not in IGNORED_AUTHOR and not voter.bot:
+                    if voter.id not in ignored_author and not voter.bot:
                         complete_voter.append(voter.id)
                 choice_no.voter = complete_voter
             new_votes.append(choice_yes)
@@ -462,16 +472,16 @@ class VoteListener(commands.Cog):
                     popper_react = react
 
             if popper_react is not None:
-                voter_give = await popper_react.users().flatten()
+                voter_give = await self._reaction_users(popper_react)
                 complete_voter = []
                 for voter in voter_give:
-                    if voter.id not in IGNORED_AUTHOR and not voter.bot:
+                    if voter.id not in ignored_author and not voter.bot:
                         complete_voter.append(voter.id)
                 choice_popper.voter = complete_voter
             new_votes.append(choice_popper)
         else:
             self.logger.info("Detected multi type, ignoring")
-            reparsed_reaction: List[disnake.Reaction] = []
+            reparsed_reaction: list[discord.Reaction] = []
             ALL_VALID_REACTION = [vote.emote for vote in vote_meta.choices]
             for react in the_reactions:
                 if react.emoji in ALL_VALID_REACTION:
@@ -484,10 +494,10 @@ class VoteListener(commands.Cog):
 
             reparsed_count = vote_meta.choices[:]
             for react in reparsed_reaction:
-                voter_user = await react.users().flatten()
+                voter_user = await self._reaction_users(react)
                 complete_voter = []
                 for voter in voter_user:
-                    if voter.id not in IGNORED_AUTHOR and not voter.bot:
+                    if voter.id not in ignored_author and not voter.bot:
                         complete_voter.append(voter.id)
                 react_pos = res2num[str(react.emoji)]
                 react_data = reparsed_count[react_pos]
@@ -515,11 +525,9 @@ class VoteListener(commands.Cog):
                 self.logger.warning(f"Vote {vote.id} message went missing!? ignoring...")
                 continue
             if new_vote.is_done():
-                self.logger.info(
-                    f"Vote {vote.id} is done, collecting missing reaction and dispatching event..."
-                )
+                self.logger.info(f"Vote {vote.id} is done, collecting missing reaction and dispatching event...")
                 await self._delete_vote_data(new_vote)
-                self.bot.ntevent.dispatch("vote finished", new_vote)
+                self._dispatch("vote finished", new_vote)
             else:
                 await self._save_vote_data(new_vote)
                 self._cached_vote_message.append(new_vote.id)
@@ -541,12 +549,12 @@ class VoteListener(commands.Cog):
                     if vote_data.is_done():
                         self.logger.debug(f"Vote {new_vote.id} is done, dispatching event...")
                         await self._delete_vote_data(vote_data)
-                        self.bot.ntevent.dispatch("vote finished", vote_data)
+                        self._dispatch("vote finished", vote_data)
                     else:
                         self.logger.debug(f"Vote {new_vote.id} is not done, saving...")
                         await self._save_vote_data(vote_data)
                         # Dispatch event to update embed :peepoSmile:
-                        self.bot.ntevent.dispatch("vote updated", vote_data)
+                        self._dispatch("vote updated", vote_data)
                 self._vote_queue.task_done()
             except asyncio.CancelledError:
                 break
@@ -565,7 +573,7 @@ class VoteListener(commands.Cog):
                     if vote.is_done():
                         self.logger.warning(f"Vote {vote.metadata.message} is over!")
                         await self._delete_vote_data(vote)
-                        self.bot.ntevent.dispatch("vote finished", vote)
+                        self._dispatch("vote finished", vote)
         except asyncio.CancelledError:
             self.logger.warning("Got cancel signal, stopping process...")
 
@@ -574,7 +582,7 @@ class VoteListener(commands.Cog):
         await self.bot.wait_until_ready()
 
     @commands.Cog.listener("on_reaction_add")
-    async def _listen_new_vote(self, reaction: disnake.Reaction, member: disnake.Member):
+    async def _listen_new_vote(self, reaction: discord.Reaction, member: discord.Member):
         if member.bot:
             return
         if reaction.message.id not in self._cached_vote_message:
@@ -597,7 +605,7 @@ class VoteListener(commands.Cog):
             await self._vote_queue.put(user_vote)
 
     @commands.Cog.listener("on_reaction_remove")
-    async def _listen_remove_vote(self, reaction: disnake.Reaction, member: disnake.Member):
+    async def _listen_remove_vote(self, reaction: discord.Reaction, member: discord.Member):
         if member.bot:
             return
         if reaction.message.id not in self._cached_vote_message:
@@ -620,5 +628,5 @@ class VoteListener(commands.Cog):
             await self._vote_queue.put(user_vote)
 
 
-def setup(bot: naoTimesBot):
-    bot.add_cog(VoteListener(bot))
+async def setup(bot: naoTimesBot):
+    await bot.add_cog(VoteListener(bot))

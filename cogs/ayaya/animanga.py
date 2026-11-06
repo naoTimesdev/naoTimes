@@ -1,20 +1,21 @@
 import logging
-from typing import Dict, List, Union
+from collections.abc import Callable, Mapping
+from functools import partial
 
 import arrow
-import disnake
-from disnake.ext import commands
+import discord
+from discord import app_commands
+from discord.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesContext
-from naotimes.paginator import DiscordPaginator, DiscordPaginatorUI
+from naotimes.paginator import DiscordPaginatorUI
 from naotimes.showtimes import ShowtimesPoster
 from naotimes.showtimes.cogbase import rgbhex_to_rgbint
-from naotimes.t import T
-from naotimes.utils import complex_walk, cutoff_text
+from naotimes.utils import WalkValue, complex_walk, cutoff_text
 
 ANILIST_QUERY = """
-query ($page: Int, $perPage: Int, $search: String, $type: MediaType) {
+query ($page: Int, $perPage: Int, $search: String, $type: MediaType, $format: MediaFormat) {
     Page (page: $page, perPage: $perPage) {
         pageInfo {
             total
@@ -23,7 +24,7 @@ query ($page: Int, $perPage: Int, $search: String, $type: MediaType) {
             hasNextPage
             perPage
         }
-        media(search: $search, type: $type) {
+        media(search: $search, type: $type, format: $format) {
             id
             idMal
             title {
@@ -42,8 +43,9 @@ query ($page: Int, $perPage: Int, $search: String, $type: MediaType) {
             volumes
             episodes
             format
-            status
-            source
+            status(version:2)
+            source(version:3)
+            season
             genres
             description(asHtml:false)
             startDate {
@@ -105,10 +107,10 @@ query ($season: MediaSeason, $year: Int, $page: Int, $perPage: Int, $statuses: [
         }
     }
 }
-"""  # noqa: E501
+"""
 
 
-def create_time_format(secs: Union[int, float]):
+def create_time_format(secs: float, t: Callable[..., str]) -> str:
     months = int(secs // 2592000)  # 30 days format
     secs -= months * 2592000
     days = int(secs // 86400)
@@ -120,29 +122,39 @@ def create_time_format(secs: Union[int, float]):
 
     return_text = ""
     if months != 0:
-        return_text += f"{months} bulan "
+        return_text += t("animanga.time.months", months=months) + " "
 
-    return return_text + f"{days} hari {hours} jam {minutes} menit {secs} detik lagi"
+    return return_text + t("animanga.time.remaining", days=days, hours=hours, minutes=minutes, seconds=secs)
 
 
 class EpisodeInfo:
-    def __init__(self, episode: int = None, time_remain: str = None, airdate: str = None):
+    def __init__(
+        self,
+        episode: int | None = None,
+        time_remain: str | None = None,
+        airdate: str | None = None,
+        *,
+        sort_seconds: float | None = None,
+        t: Callable[..., str],
+    ):
         self._episode = episode
         self.time_remain = time_remain
         self.airdate = airdate
+        self.sort_seconds = sort_seconds
+        self._t = t
 
         self._id = None
         self._title = None
         self._color = 0x19212D
 
     @property
-    def episode(self):
+    def episode(self) -> str:
         if isinstance(self._episode, int):
             return str(self._episode).zfill(2)
-        return "??"
+        return self._t("animanga.episode.unknown")
 
     @property
-    def raw_episode(self):
+    def raw_episode(self) -> int | None:
         return self._episode
 
     def bind(self, id: str, title: str, color: int = 0x19212D):
@@ -153,34 +165,29 @@ class EpisodeInfo:
 
 
 class EpisodeInfoWrap:
-    def __init__(self, dataset: List[EpisodeInfo], season: str, time: str):
+    def __init__(self, dataset: list[EpisodeInfo], season: str, time: str):
         self.dataset = dataset
         self.season = season
         self.time = time
 
 
 class ChapterInfo:
-    def __init__(self, chapter: int = None, volume: int = None):
+    def __init__(self, chapter: int | None = None, volume: int | None = None, *, t: Callable[..., str]):
         self._chapter = chapter
         self._volume = volume
+        self._t = t
 
     @property
     def chapter(self):
         if isinstance(self._chapter, int):
-            add_s = ""
-            if self._chapter > 1:
-                add_s = "s"
-            return f"{self._chapter} chapter{add_s}"
-        return "?? chapter"
+            return self._t("animanga.chapter.label", chapter=self._chapter)
+        return self._t("animanga.chapter.unknown")
 
     @property
     def volume(self):
         if isinstance(self._volume, int):
-            add_s = ""
-            if self._volume > 1:
-                add_s = "s"
-            return f"{self._volume} volume{add_s}"
-        return "?? volume"
+            return self._t("animanga.volume.label", volume=self._volume)
+        return self._t("animanga.volume.unknown")
 
     def __str__(self):
         return f"{self.chapter}/{self.volume}"
@@ -191,20 +198,23 @@ class AnilistResult:
         self,
         id: str,
         title: str,
-        other_title: List[str] = [],
-        description: str = None,
-        start: str = None,
-        end: str = None,
-        poster: ShowtimesPoster = None,
-        format: str = None,
-        source: str = None,
-        status: str = None,
-        genres: List[str] = [],
-        rating: int = None,
+        other_title: list[str] | None = None,
+        description: str | None = None,
+        start: str | None = None,
+        end: str | None = None,
+        poster: ShowtimesPoster | None = None,
+        format: str | None = None,
+        source: str | None = None,
+        status: str | None = None,
+        season: str | None = None,
+        genres: list[str] | None = None,
+        rating: int | None = None,
+        *,
+        t: Callable[..., str],
     ):
         self.id = id
         self.title = title
-        self._other = other_title
+        self._other = other_title if other_title is not None else []
         self.description = description
         self._start = start
         self._end = end
@@ -213,34 +223,34 @@ class AnilistResult:
         self._source = source
         self._status = status
         self._rating = rating
-        self._genres = genres
+        self._genres = genres if genres is not None else []
+        self._season = season
+        self._t = t
 
-        self._extra_data: Union[EpisodeInfo, ChapterInfo] = None
+        self._extra_data: EpisodeInfo | ChapterInfo | None = None
         self._is_anime = False
 
     @property
     def other_title(self) -> str:
         if len(self._other) < 1:
-            return "*Tidak ada*"
+            return self._t("animanga.common.none")
         return "\n".join(self._other)
 
     @property
     def start(self) -> str:
         if not self._start:
-            return "Belum Rilis"
+            return self._t("animanga.common.not_released")
         return self._start
 
     @property
     def end(self) -> str:
         if not self._end:
-            return "Belum Berakhir"
+            return self._t("animanga.common.not_ended")
         return self._end
 
     @property
-    def poster_url(self) -> str:
+    def poster_url(self) -> str | None:
         if self._poster is None:
-            return None
-        if self._poster.url is None:
             return None
         return self._poster.url
 
@@ -255,45 +265,68 @@ class AnilistResult:
     @property
     def format(self) -> str:
         format_tl = {
-            "TV": "Anime",
-            "TV_SHORT": "Anime Pendek",
-            "MOVIE": "Film",
-            "SPECIAL": "Spesial",
-            "OVA": "OVA",
-            "ONA": "ONA",
-            "MUSIC": "MV",
-            "NOVEL": "Novel",
-            "MANGA": "Manga",
-            "ONE_SHOT": "One-Shot",
+            "TV": "tv",
+            "TV_SHORT": "tv_short",
+            "MOVIE": "movie",
+            "SPECIAL": "special",
+            "OVA": "ova",
+            "ONA": "ona",
+            "MUSIC": "music",
+            "NOVEL": "novel",
+            "MANGA": "manga",
+            "ONE_SHOT": "one_shot",
         }
-        return format_tl.get(fallback_str(self._format, ""), "Lainnya")
+        return self._t(f"animanga.format.{format_tl.get(self._format or '', 'other')}")
 
     @property
     def source(self) -> str:
         source_tl = {
-            "ORIGINAL": "Orisinil",
-            "MANGA": "Manga",
-            "VISUAL_NOVEL": "Visual Novel",
-            "LIGHT_NOVEL": "Novel Ringan",
-            "VIDEO_GAME": "Gim",
-            "OTHER": "Lainnya",
+            "ORIGINAL": "original",
+            "MANGA": "manga",
+            "VISUAL_NOVEL": "visual_novel",
+            "LIGHT_NOVEL": "light_novel",
+            "VIDEO_GAME": "video_game",
+            "OTHER": "other",
+            "NOVEL": "novel",
+            "DOUJINSHI": "doujinshi",
+            "ANIME": "anime",
+            "WEB_NOVEL": "web_novel",
+            "LIVE_ACTION": "live_action",
+            "GAME": "game",
+            "COMIC": "comic",
+            "MULTIMEDIA_PROJECT": "multimedia_project",
+            "PICTURE_BOOK": "picture_book",
         }
-        return source_tl.get(fallback_str(self._source, ""), "Lainnya")
+        return self._t(f"animanga.source.{source_tl.get(self._source or '', 'other')}")
 
     @property
     def status(self) -> str:
         status_tl = {
-            "FINISHED": "Tamat",
-            "RELEASING": "Sedang Berlangsung",
-            "NOT_YET_RELEASED": "Belum Rilis",
-            "CANCELLED": "Batal Tayang",
+            "FINISHED": "finished",
+            "RELEASING": "releasing",
+            "NOT_YET_RELEASED": "not_yet_released",
+            "CANCELLED": "cancelled",
+            "HIATUS": "hiatus",
         }
-        return status_tl.get(fallback_str(self._status, ""), "Lainnya")
+        return self._t(f"animanga.status.{status_tl.get(self._status or '', 'other')}")
+
+    @property
+    def season(self) -> str | None:
+        season_tl = {
+            "WINTER": "winter",
+            "SPRING": "spring",
+            "SUMMER": "summer",
+            "FALL": "fall",
+        }
+        key = season_tl.get(self._season or "")
+        if key is None:
+            return None
+        return self._t(f"animanga.season.{key}")
 
     @property
     def rating(self) -> str:
         if self._rating is None:
-            return "*Tidak ada*"
+            return self._t("animanga.common.none")
         return f"{self._rating / 10}/10.0"
 
     @property
@@ -301,14 +334,14 @@ class AnilistResult:
         if isinstance(self._genres, list):
             if len(self._genres) > 0:
                 return ", ".join(self._genres)
-        return "Tidak diketahui"
+        return self._t("animanga.common.unknown")
 
     @property
     def url(self) -> str:
         method = "anime" if self._is_anime else "manga"
         return f"https://anilist.co/{method}/{self.id}"
 
-    def bind(self, extra_data: Union[EpisodeInfo, ChapterInfo]):
+    def bind(self, extra_data: EpisodeInfo | ChapterInfo) -> None:
         if isinstance(extra_data, EpisodeInfo):
             extra_data.bind(self.id, self.title, self.color)
             self._is_anime = True
@@ -317,11 +350,11 @@ class AnilistResult:
             self._extra_data = extra_data
 
     @property
-    def extras(self):
+    def extras(self) -> EpisodeInfo | ChapterInfo | None:
         return self._extra_data
 
     @property
-    def has_next(self):
+    def has_next(self) -> bool:
         if self._extra_data is None:
             return False
         if isinstance(self._extra_data, EpisodeInfo):
@@ -330,20 +363,44 @@ class AnilistResult:
         return False
 
 
-def create_nicer_anilist_date(date: dict):
-    if not isinstance(date, dict):
-        return None
-    extended = [date.get("year"), date.get("month"), date.get("day")]
-    extended = filter(lambda x: x is not None, extended)
-    if len(list(extended)) < 1:
-        return None
-    return "/".join(map(str, extended))
+def _as_mapping(value: WalkValue | None) -> Mapping[str | int, WalkValue] | None:
+    if isinstance(value, Mapping):
+        return value
+    return None
 
 
-def fallback_str(content: T, fallback: str) -> Union[T, str]:
-    if content is None:
-        return fallback
-    return content
+def _optional_string(value: WalkValue | None) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _optional_int(value: WalkValue | None) -> int | None:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return None
+
+
+def _optional_number(value: WalkValue | None) -> int | float | None:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value
+    return None
+
+
+def create_nicer_anilist_date(date: WalkValue | None, locale: str | None = None) -> str | None:
+    date_data = _as_mapping(date)
+    if date_data is None:
+        return None
+    year = _optional_int(date_data.get("year"))
+    month = _optional_int(date_data.get("month"))
+    day = _optional_int(date_data.get("day"))
+    if year is None:
+        return None
+
+    # Use arrow to format the date
+    if day and month:
+        return f"{arrow.get(year, month, day).format('DD MMM YYYY', locale=locale or 'id')}"
+    elif month:
+        return f"{arrow.get(year, month, 1).format('MMM YYYY', locale=locale or 'id')}"
+    return str(year)
 
 
 def html2markdown(text: str) -> str:
@@ -354,6 +411,7 @@ def html2markdown(text: str) -> str:
         "<br/>": "\n",
         "<i>": "*",
         "</i>": "*",
+        "<i/>": "*",
         "<b>": "**",
         "</b>": "**",
         "<u>": "__",
@@ -371,54 +429,77 @@ class AyayaAnimeManga(commands.Cog):
         self.logger = logging.getLogger("Ayaya.AnimeManga")
 
     @staticmethod
-    def __select_cover(media: dict) -> str:
-        large = media.get("coverImage", {}).get("large")
-        medium = media.get("coverImage", {}).get("medium")
-        extra_large = media.get("coverImage", {}).get("extraLarge")
-        extended = list(filter(lambda x: x is not None, [extra_large, large, medium]))
-        if len(extended) < 1:
+    def __select_cover(media: Mapping[str | int, WalkValue]) -> str | None:
+        cover = _as_mapping(media.get("coverImage"))
+        if cover is None:
             return None
-        return extended[0]
+        return (
+            _optional_string(cover.get("extraLarge"))
+            or _optional_string(cover.get("large"))
+            or _optional_string(cover.get("medium"))
+        )
 
-    async def __parse_anilist(self, raw_data: dict, is_anime: bool = True):
-        media_info: list = complex_walk(raw_data, "Page.media")
+    async def __parse_anilist(
+        self,
+        raw_data: Mapping[str | int, WalkValue],
+        is_anime: bool = True,
+        force_manga_only: bool = False,
+        *,
+        t: Callable[..., str],
+        locale: str | None = None,
+    ) -> list[AnilistResult]:
+        media_info = complex_walk(raw_data, "Page.media")
+        if not isinstance(media_info, list):
+            return []
         self.logger.info(f"Got {len(media_info)} raw results...")
         if len(media_info) == 0:
             return []
 
-        parsed_result: List[AnilistResult] = []
+        parsed_result: list[AnilistResult] = []
         self.logger.info("Parsing search result...")
-        for media in media_info:
-            started = create_nicer_anilist_date(complex_walk(media, "startDate"))
-            ended = create_nicer_anilist_date(complex_walk(media, "endDate"))
-
-            anilist_id = str(media["id"])
-            roman = complex_walk(media, "title.romaji")
-            english = complex_walk(media, "title.english")
-            native = complex_walk(media, "title.native")
-            main_title = fallback_str(roman, fallback_str(english, native))
-            other_title = []
-            for title in (roman, english, native):
+        for raw_media in media_info:
+            media = _as_mapping(raw_media)
+            if media is None:
+                continue
+            media_id = media.get("id")
+            if not isinstance(media_id, (str, int)) or isinstance(media_id, bool):
+                continue
+            anilist_id = str(media_id)
+            title_data = _as_mapping(media.get("title"))
+            titles = [
+                _optional_string(title_data.get(key)) if title_data is not None else None
+                for key in ("romaji", "english", "native")
+            ]
+            main_title = next((title for title in titles if title), None)
+            if main_title is None:
+                continue
+            other_title: list[str] = []
+            for title in titles:
                 if not title:
                     continue
                 if title == main_title:
                     continue
                 other_title.append(title)
 
-            rating = complex_walk(media, "averageScore")
-
-            description = complex_walk(media, "description")
-            if isinstance(description, str) and description:
+            rating = _optional_int(media.get("averageScore"))
+            description = _optional_string(media.get("description"))
+            if description:
                 description = html2markdown(description)
-            genres = media.get("genres", [])
-            status = media.get("status", None)
-            format = media.get("format", None)
-            source = media.get("source", None)
+            raw_genres = media.get("genres", [])
+            genres = [genre for genre in raw_genres if isinstance(genre, str)] if isinstance(raw_genres, list) else []
+            status = _optional_string(media.get("status"))
+            format = _optional_string(media.get("format"))
+            source = _optional_string(media.get("source"))
+            season = _optional_string(media.get("season"))
+            if force_manga_only and format == "NOVEL":
+                continue
 
-            cover_color = rgbhex_to_rgbint(complex_walk(media, "coverImage.color"))
+            cover_color_value = complex_walk(media, "coverImage.color")
+            cover_color = rgbhex_to_rgbint(_optional_string(cover_color_value) or "")
             cover_image = self.__select_cover(media)
-
-            poster = ShowtimesPoster(cover_image, cover_color)
+            poster = ShowtimesPoster(cover_image, cover_color) if cover_image is not None else None
+            started = create_nicer_anilist_date(complex_walk(media, "startDate"), locale)
+            ended = create_nicer_anilist_date(complex_walk(media, "endDate"), locale)
 
             result = AnilistResult(
                 anilist_id,
@@ -431,30 +512,35 @@ class AyayaAnimeManga(commands.Cog):
                 format,
                 source,
                 status,
+                season,
                 genres,
                 rating,
+                t=t,
             )
             if is_anime:
-                episode = media.get("episodes")
-                ep_info = EpisodeInfo(episode)
-                airdate = complex_walk(media, "nextAiringEpisode.airingAt")
-                if airdate is not None:
-                    airdate_arrow: arrow.Arrow = arrow.get(airdate)
-
-                    ep_info.airdate = airdate_arrow.format("DD MMMM YYYY")
-                    ep_info.time_remain = create_time_format(
-                        complex_walk(media, "nextAiringEpisode.timeUntilAiring")
-                    )
+                episode = _optional_int(media.get("episodes"))
+                ep_info = EpisodeInfo(episode, t=t)
+                next_airing = _as_mapping(media.get("nextAiringEpisode"))
+                if next_airing is not None:
+                    airdate = next_airing.get("airingAt")
+                    if isinstance(airdate, (str, int, float)) and not isinstance(airdate, bool):
+                        try:
+                            ep_info.airdate = arrow.get(airdate).format("DD MMMM YYYY", locale=locale or "id")
+                        except (TypeError, ValueError):
+                            pass
+                    time_until_air = _optional_number(next_airing.get("timeUntilAiring"))
+                    if time_until_air is not None:
+                        ep_info.time_remain = create_time_format(float(time_until_air), t)
                 result.bind(ep_info)
             else:
-                chapter = media.get("chapters", None)
-                volumes = media.get("volumes", None)
-                result.bind(ChapterInfo(chapter, volumes))
+                chapter = _optional_int(media.get("chapters"))
+                volumes = _optional_int(media.get("volumes"))
+                result.bind(ChapterInfo(chapter, volumes, t=t))
             parsed_result.append(result)
 
         return parsed_result
 
-    async def _fetch_anichart_data(self):
+    async def _fetch_anichart_data(self, t: Callable[..., str], locale: str | None = None):
         self.logger.info("Querying anichart...")
         current_time = self.bot.now().datetime
         current_month = current_time.month
@@ -475,7 +561,7 @@ class AyayaAnimeManga(commands.Cog):
             12: "fall",
         }
 
-        def _format_time(time_secs: Union[int, float]):
+        def _format_time(time_secs: float):
             time_days = int(time_secs // 86400)
             time_secs -= time_days * 86400
             time_hours = int(time_secs // 3600)
@@ -485,21 +571,25 @@ class AyayaAnimeManga(commands.Cog):
 
             if time_days > 0:
                 if time_hours > 0:
-                    return f"{time_days} hari, {time_hours} jam"
-                return f"{time_days} hari, {time_minutes} menit"
+                    return t("animanga.time.days_hours", days=time_days, hours=time_hours)
+                return t("animanga.time.days_minutes", days=time_days, minutes=time_minutes)
 
             if time_hours > 0:
                 if time_minutes > 0:
-                    return f"{time_hours} jam, {time_minutes} menit"
-                return f"{time_hours} jam"
+                    return t("animanga.time.hours_minutes", hours=time_hours, minutes=time_minutes)
+                return t("animanga.time.hours", hours=time_hours)
 
             if time_minutes > 0:
-                return f"{time_minutes} menit"
+                return t("animanga.time.minutes", minutes=time_minutes)
 
-            return f"{time_secs} detik"
+            return t("animanga.time.seconds", seconds=time_secs)
 
         current_season = seasonal.get(current_month, "winter").upper()
-        all_query_results = []
+        season_info = f"{t(f'animanga.season.{current_season.lower()}')} {current_year}"
+        anibucket = self.bot.anibucket
+        if anibucket is None:
+            return t("animanga.anilist_unavailable"), season_info
+        all_query_results: list[WalkValue] = []
         base_vars = {
             "season": current_season,
             "year": current_year,
@@ -509,243 +599,336 @@ class AyayaAnimeManga(commands.Cog):
             "format": ["TV", "TV_SHORT", "MOVIE", "ONA"],
         }
         current_page = 1
-        async for api_res in self.bot.anibucket.paginate(ANICHART_QUERY, base_vars):
+        async for api_res in anibucket.paginate(ANICHART_QUERY, base_vars):
+            if api_res.data is None:
+                current_page += 1
+                continue
             collected_media = complex_walk(api_res.data, "Page.media")
             if isinstance(collected_media, list):
                 self.logger.info(f"Merging page: {current_page}")
                 all_query_results.extend(collected_media)
             current_page += 1
 
-        season_info = f"{current_season.lower().capitalize()} {current_year}"
+        formatted_query: list[EpisodeInfo] = []
+        for raw_media in all_query_results:
+            media = _as_mapping(raw_media)
+            if media is None:
+                continue
+            media_id = media.get("id")
+            if not isinstance(media_id, (str, int)) or isinstance(media_id, bool):
+                continue
+            anilist_id = str(media_id)
+            title_data = _as_mapping(media.get("title"))
+            titles = [
+                _optional_string(title_data.get(key)) if title_data is not None else None
+                for key in ("romaji", "english", "native")
+            ]
+            main_title = next((title for title in titles if title), None)
+            if main_title is None:
+                continue
+            next_airs = _as_mapping(media.get("nextAiringEpisode"))
 
-        formatted_query: List[EpisodeInfo] = []
-        for media in all_query_results:
-            anilist_id = str(media["id"])
-            roman = complex_walk(media, "title.romaji")
-            english = complex_walk(media, "title.english")
-            native = complex_walk(media, "title.native")
-            main_title = fallback_str(roman, fallback_str(english, native))
-            start_date = complex_walk(media, "startDate")
-            next_airs = complex_walk(media, "nextAiringEpisode")
-
-            next_episode = complex_walk(next_airs, "episode")
+            next_episode = _optional_int(next_airs.get("episode")) if next_airs is not None else None
             if next_airs:
-                time_secs = next_airs.get("timeUntilAiring")
-                time_until_air = _format_time(time_secs)
+                time_secs = _optional_number(next_airs.get("timeUntilAiring"))
+                if time_secs is None:
+                    sort_seconds = None
+                    time_until_air = t("animanga.embed.schedule_value_placeholder")
+                else:
+                    sort_seconds = float(time_secs)
+                    time_until_air = _format_time(sort_seconds)
             else:
-                time_secs = 100
-                time_until_air = str(start_date["year"])
-                st_month = complex_walk(start_date, "month")
-                st_day = complex_walk(start_date, "day")
-                if st_month:
-                    time_until_air = f"{str(st_month).zfill(2)}/{time_until_air}"
-                if st_day:
-                    time_until_air = f"{str(st_day).zfill(2)}/{time_until_air}"
+                sort_seconds = 100.0
+                time_until_air = create_nicer_anilist_date(media.get("startDate"), locale) or t(
+                    "animanga.embed.unknown_date"
+                )
 
             episode_info = EpisodeInfo(
                 next_episode,
-                time_secs,
                 time_until_air,
+                time_until_air,
+                sort_seconds=sort_seconds,
+                t=t,
             )
             episode_info.bind(anilist_id, main_title)
             formatted_query.append(episode_info)
 
         if len(formatted_query) < 1:
-            return "Tidak ada hasil untuk musim ini", season_info
+            return t("animanga.no_season_results"), season_info
 
         # Sort by airtime
-        formatted_query.sort(key=lambda x: x.time_remain)
+        formatted_query.sort(key=lambda x: x.sort_seconds if x.sort_seconds is not None else float("inf"))
 
-        mapped_airing: Dict[str, EpisodeInfoWrap] = {}
+        mapped_airing: dict[str, EpisodeInfoWrap] = {}
+        others_label = t("animanga.schedule.others")
         for data in formatted_query:
-            if data.raw_episode is None:
-                if "Lain-Lain" not in mapped_airing:
-                    mapped_airing["Lain-Lain"] = EpisodeInfoWrap([], season_info, "Lain-Lain")
-                mapped_airing["Lain-Lain"].dataset.append(data)
+            if data.raw_episode is None or data.sort_seconds is None:
+                if others_label not in mapped_airing:
+                    mapped_airing[others_label] = EpisodeInfoWrap([], season_info, others_label)
+                mapped_airing[others_label].dataset.append(data)
             else:
-                day = str(data.time_remain // 86400).zfill(2)
+                day = str(int(data.sort_seconds // 86400)).zfill(2)
 
                 if day not in mapped_airing:
                     mapped_airing[day] = EpisodeInfoWrap([], season_info, day)
                 mapped_airing[day].dataset.append(data)
 
-        sorted_mapped_airing: Dict[str, EpisodeInfoWrap] = {}
+        sorted_mapped_airing: dict[str, EpisodeInfoWrap] = {}
         for the_day in sorted(mapped_airing.keys()):
             original_key = str(the_day)
-            if the_day.startswith("0"):
-                the_day = the_day[1:]
-
-            if the_day != "Lain-Lain":
-                the_day += " hari lagi"
-            if the_day == "0 hari lagi":
-                the_day = "<24 jam lagi"
+            day_label = the_day.removeprefix("0")
+            if the_day == others_label:
+                display_day = others_label
+            elif day_label == "0":
+                display_day = t("animanga.schedule.less_than_day")
+            else:
+                display_day = t("animanga.schedule.days_left", days=day_label)
             fixed_data = mapped_airing[original_key]
-            fixed_data.time = the_day
-            sorted_mapped_airing[the_day] = fixed_data
+            fixed_data.time = display_day
+            sorted_mapped_airing[display_day] = fixed_data
 
         return sorted_mapped_airing, season_info
 
     @staticmethod
-    def _generate_anime_embed(data: AnilistResult) -> disnake.Embed:
-        embed = disnake.Embed(color=data.color)
+    def _generate_anime_embed(data: AnilistResult, t: Callable[..., str]) -> discord.Embed:
+        embed = discord.Embed(color=data.color)
         if data.poster_url:
             embed.set_thumbnail(url=data.poster_url)
         embed.set_author(
             name=data.title,
             url=data.url,
-            icon_url="https://p.ihateani.me/wtelbjmn.png",
+            icon_url="https://p.ihateani.me/hxlsxvpo.png",
         )
-        embed.description = cutoff_text(fallback_str(data.description, "*Tidak ada sinopsis*"), 2000)
-        embed.set_footer(text=f"ID: {data.id}")
+        embed.description = cutoff_text(data.description or t("animanga.embed.synopsis_placeholder"), 2000)
+        embed.set_footer(text=t("animanga.embed.footer_id", id=data.id))
 
-        embed.add_field(name="Nama lain", value=data.other_title)
-        embed.add_field(name="Episode", value=data.extras.episode)
-        embed.add_field(name="Status", value=data.status)
-        embed.add_field(name="Skor", value=data.rating)
-        embed.add_field(name="Rilis", value=data.start)
-        embed.add_field(name="Berakhir", value=data.end)
-        embed.add_field(name="Format", value=data.format)
-        embed.add_field(name="Adaptasi", value=data.source)
+        embed.add_field(name=t("animanga.embed.other_title"), value=data.other_title)
+        extras = data.extras
+        episode = extras.episode if isinstance(extras, EpisodeInfo) else t("animanga.episode.unknown")
+        embed.add_field(name=t("animanga.embed.episode"), value=episode)
+        embed.add_field(name=t("animanga.embed.status"), value=data.status)
+        embed.add_field(name=t("animanga.embed.score"), value=data.rating)
+        start_fmt = data.start
+        season_fmt = data.season
+        if season_fmt:
+            start_fmt += f"\n({season_fmt})"
+        embed.add_field(name=t("animanga.embed.release"), value=start_fmt)
+        embed.add_field(name=t("animanga.embed.end"), value=data.end)
+        embed.add_field(name=t("animanga.embed.format"), value=data.format)
+        embed.add_field(name=t("animanga.embed.source"), value=data.source)
         return embed
 
     @staticmethod
-    def _generate_manga_embed(data: AnilistResult) -> disnake.Embed:
-        embed = disnake.Embed(color=data.color)
+    def _generate_manga_embed(data: AnilistResult, t: Callable[..., str]) -> discord.Embed:
+        embed = discord.Embed(color=data.color)
         if data.poster_url:
             embed.set_thumbnail(url=data.poster_url)
         embed.set_author(
             name=data.title,
             url=data.url,
-            icon_url="https://p.ihateani.me/wtelbjmn.png",
+            icon_url="https://p.ihateani.me/hxlsxvpo.png",
         )
-        embed.description = cutoff_text(fallback_str(data.description, "*Tidak ada sinopsis*"), 2000)
-        embed.set_footer(text=f"ID: {data.id}")
+        embed.description = cutoff_text(data.description or t("animanga.embed.synopsis_placeholder"), 2000)
+        embed.set_footer(text=t("animanga.embed.footer_id", id=data.id))
 
-        embed.add_field(name="Nama lain", value=data.other_title)
-        embed.add_field(name="Chapter/Volume", value=str(data.extras))
-        embed.add_field(name="Status", value=data.status)
-        embed.add_field(name="Skor", value=data.rating)
-        embed.add_field(name="Rilis", value=data.start)
-        embed.add_field(name="Berakhir", value=data.end)
-        embed.add_field(name="Format", value=data.format)
-        embed.add_field(name="Adaptasi", value=data.source)
+        embed.add_field(name=t("animanga.embed.other_title"), value=data.other_title)
+        extras = data.extras
+        chapter_volume = str(extras) if isinstance(extras, ChapterInfo) else t("animanga.chapter_volume.unknown")
+        embed.add_field(name=t("animanga.embed.chapter_volume"), value=chapter_volume)
+        embed.add_field(name=t("animanga.embed.status"), value=data.status)
+        embed.add_field(name=t("animanga.embed.score"), value=data.rating)
+        embed.add_field(name=t("animanga.embed.release"), value=data.start)
+        embed.add_field(name=t("animanga.embed.end"), value=data.end)
+        embed.add_field(name=t("animanga.embed.format"), value=data.format)
+        embed.add_field(name=t("animanga.embed.source"), value=data.source)
         return embed
 
     @staticmethod
-    def _next_episode_embed(data: AnilistResult) -> disnake.Embed:
-        embed = disnake.Embed(color=data.color)
-        embed.set_author(name=data.title, url=data.url, icon_url="https://p.ihateani.me/wtelbjmn.png")
-        embed.set_footer(text=f"Akan tayang pada {data.extras.airdate}")
-        embed.add_field(name=f"Episode {data.extras.episode}", value=data.extras.time_remain, inline=False)
+    def _next_episode_embed(data: AnilistResult, t: Callable[..., str]) -> discord.Embed:
+        embed = discord.Embed(color=data.color)
+        embed.set_author(name=data.title, url=data.url, icon_url="https://p.ihateani.me/hxlsxvpo.png")
+        extras = data.extras
+        if isinstance(extras, EpisodeInfo):
+            embed.set_footer(
+                text=t(
+                    "animanga.embed.airing_on",
+                    date=extras.airdate or t("animanga.embed.unknown_date"),
+                )
+            )
+            embed.add_field(
+                name=t("animanga.embed.episode_label", episode=extras.episode),
+                value=extras.time_remain or t("animanga.embed.schedule_value_placeholder"),
+                inline=False,
+            )
+        else:
+            embed.add_field(
+                name=t("animanga.embed.schedule_field"),
+                value=t("animanga.embed.schedule_unavailable"),
+                inline=False,
+            )
         return embed
 
     def _check_bot_perms(self, ctx: naoTimesContext):
-        the_guild: disnake.Guild = ctx.guild
-        is_guild = the_guild is not None
-        the_channel: disnake.TextChannel = ctx.channel
-        bot_member = the_guild.get_member(self.bot.user.id)
-        bbperms = the_channel.permissions_for(bot_member)
+        guild = ctx.guild
+        if guild is None:
+            # DMs: embeds are always allowed.
+            return False, True
+        bot_member = guild.me
+        if bot_member is None or ctx.channel is None:
+            return True, False
+        has_embed_perms = ctx.channel.permissions_for(bot_member).embed_links
+        return True, has_embed_perms
 
-        is_valid_perm = True
-        has_embed_perms = bbperms.embed_links
-        for perm in (
-            bbperms.manage_messages,
-            bbperms.embed_links,
-            bbperms.read_message_history,
-            bbperms.add_reactions,
-        ):
-            if not perm:
-                is_valid_perm = False
-                break
-        return is_guild, is_valid_perm, has_embed_perms
-
-    @commands.command(name="anime", aliases=["animu", "kartun", "ani"])
-    async def _ayaya_anime(self, ctx: naoTimesContext, *, judul: str) -> None:
+    @app_commands.command(
+        name="anime",
+        description=app_commands.locale_str("Cari anime di Anilist", key="ayaya.animanga.description_anime"),
+    )
+    @app_commands.describe(
+        judul=app_commands.locale_str("Judul yang ingin dicari", key="ayaya.animanga.option_judul"),
+    )
+    async def _ayaya_anime(self, inter: discord.Interaction, judul: str):
+        """Cari anime di Anilist"""
+        ctx = await self.bot.get_context(inter)
+        await ctx.defer()
         self.logger.info(f"Searching for {judul}")
         variables = {"search": judul, "page": 1, "perPage": 25, "type": "ANIME"}
-        requested = await self.bot.anibucket.handle(ANILIST_QUERY, variables)
-        if len(requested.errors) > 0:
-            await ctx.send("Gagal menghubungi Anilist, mohon coba sesaat lagi!")
+        anibucket = self.bot.anibucket
+        if anibucket is None:
+            await ctx.send(ctx.t("animanga.anilist_unavailable"))
+            return
+        requested = await anibucket.handle(ANILIST_QUERY, variables)
+        if requested.errors:
+            await ctx.send(ctx.t("animanga.anilist_unavailable"))
+            return
+        if requested.data is None:
+            await ctx.send(ctx.t("animanga.anilist_no_data"))
             return
 
-        is_guild, can_paginate, has_embed_perms = self._check_bot_perms(ctx)
+        _, has_embed_perms = self._check_bot_perms(ctx)
+        if not has_embed_perms:
+            return await ctx.send(ctx.t("animanga.embed_permission"))
 
-        parsed_result = await self.__parse_anilist(requested.data, True)
+        parsed_result = await self.__parse_anilist(requested.data, True, t=ctx.t, locale=ctx.locale)
         if len(parsed_result) < 1:
-            return await ctx.send("Tidak ada hasil!")
+            return await ctx.send(ctx.t("animanga.no_results"))
         self.logger.info(f"Got {len(parsed_result)} hits")
 
-        async def handle_episode_table(dataset: EpisodeInfo, _, message: disnake.Message):
-            nextep_gen = DiscordPaginator(self.bot, ctx, [dataset])
-            nextep_gen.remove_at_trashed = False
-            nextep_gen.paginateable = False
-            nextep_gen.stop_on_no_result = False
-            nextep_gen.set_generator(self._next_episode_embed)
-            timeout = await nextep_gen.paginate(30.0, message)
-            return None, message, timeout
+        def handle_episode_table(dataset: EpisodeInfo, _: int, __: discord.Message, view: DiscordPaginatorUI):
+            nextep_gen = DiscordPaginatorUI(view.ctx, [dataset], paginateable=False)
+            nextep_gen.attach(partial(self._next_episode_embed, t=ctx.t))
+            nextep_gen.parent = view
+            nextep_gen.timeout = 30.0
+            return nextep_gen
 
-        if is_guild:
-            if can_paginate:
-                main_gen = DiscordPaginator(self.bot, ctx, parsed_result)
-                main_gen.set_generator(self._generate_anime_embed)
-                main_gen.add_handler("⌛", lambda data: data.has_next, handle_episode_table)
-                main_gen.remove_at_trashed = False
-                await main_gen.paginate(30.0)
-            else:
-                if has_embed_perms:
-                    generate_embed = self._generate_anime_embed(parsed_result[0])
-                    await ctx.send(embed=generate_embed)
-                    perms_need = ["Manage Messages", "Read Message History", "Add Reactions"]
-                    err_msg = "Bot tidak dapat melakukan paginating karena kekurangan "
-                    err_msg += "salah satu permission berikut:\n"
-                    err_msg += "\n".join(perms_need)
-                    await ctx.send(err_msg)
-                else:
-                    perms_need = ["Manage Messages", "Read Message History", "Add Reactions", "Embed Links"]
-                    err_msg = "Bot tidak dapat memberikan hasil karena kekurangan "
-                    err_msg += "salah satu permission berikut:\n"
-                    err_msg += "\n".join(perms_need)
-                    await ctx.send(err_msg)
-        else:
-            generate_embed = self._generate_anime_embed(parsed_result[0])
-            await ctx.send(embed=generate_embed)
+        main_gen = DiscordPaginatorUI(ctx, parsed_result)
+        main_gen.attach(partial(self._generate_anime_embed, t=ctx.t))
+        main_gen.add_handler(
+            ctx.t("animanga.schedule.handler"),
+            lambda data: data.has_next,
+            handle_episode_table,
+            emoji="⌛",
+        )
+        await main_gen.interact(30.0)
 
-    @commands.command(name="manga", aliases=["komik", "mango"])
-    async def _ayaya_manga(self, ctx: naoTimesContext, *, judul: str):
+    @app_commands.command(
+        name="manga",
+        description=app_commands.locale_str("Cari manga di Anilist", key="ayaya.animanga.description_manga"),
+    )
+    @app_commands.describe(
+        judul=app_commands.locale_str("Judul yang ingin dicari", key="ayaya.animanga.option_judul"),
+    )
+    async def _ayaya_manga(self, inter: discord.Interaction, judul: str):
+        """Cari manga di Anilist"""
+        ctx = await self.bot.get_context(inter)
+        await ctx.defer()
+        _, has_embed_perms = self._check_bot_perms(ctx)
+        if not has_embed_perms:
+            return await ctx.send(ctx.t("animanga.embed_permission"))
         self.logger.info(f"Searching for {judul}")
         variables = {"search": judul, "page": 1, "perPage": 25, "type": "MANGA"}
-        requested = await self.bot.anibucket.handle(ANILIST_QUERY, variables)
-        if len(requested.errors) > 0:
-            await ctx.send("Gagal menghubungi Anilist, mohon coba sesaat lagi!")
+        anibucket = self.bot.anibucket
+        if anibucket is None:
+            await ctx.send(ctx.t("animanga.anilist_unavailable"))
+            return
+        requested = await anibucket.handle(ANILIST_QUERY, variables)
+        if requested.errors:
+            await ctx.send(ctx.t("animanga.anilist_unavailable"))
+            return
+        if requested.data is None:
+            await ctx.send(ctx.t("animanga.anilist_no_data"))
             return
 
-        parsed_result = await self.__parse_anilist(requested.data, False)
+        parsed_result = await self.__parse_anilist(requested.data, False, True, t=ctx.t, locale=ctx.locale)
         if len(parsed_result) < 1:
-            return await ctx.send("Tidak ada hasil!")
+            return await ctx.send(ctx.t("animanga.no_results"))
         self.logger.info(f"Got {len(parsed_result)} hits")
 
         if ctx.guild is not None:
             main_gen = DiscordPaginatorUI(ctx, parsed_result)
-            main_gen.attach(self._generate_manga_embed)
+            main_gen.attach(partial(self._generate_manga_embed, t=ctx.t))
             await main_gen.interact(30.0)
         else:
-            generate_embed = self._generate_manga_embed(parsed_result[0])
+            generate_embed = self._generate_manga_embed(parsed_result[0], t=ctx.t)
             await ctx.send(embed=generate_embed)
 
-    @commands.command(name="tayang")
-    async def _ayaya_anime_tayang(self, ctx: naoTimesContext):
-        self.logger.info("Requesting anime airing time...")
-        is_guild, can_paginate, _ = self._check_bot_perms(ctx)
-        if not is_guild:
-            return await ctx.send("Hanya bisa dilakukan di peladen!")
-        if not can_paginate:
-            perms_need = ["Manage Messages", "Read Message History", "Add Reactions", "Embed Links"]
-            err_msg = "Bot tidak dapat memberikan hasil karena kekurangan "
-            err_msg += "salah satu permission berikut:\n"
-            err_msg += "\n".join(perms_need)
-            return await ctx.send(err_msg)
+    @app_commands.command(
+        name="novel",
+        description=app_commands.locale_str("Cari light novel di Anilist", key="ayaya.animanga.description_novel"),
+    )
+    @app_commands.describe(
+        judul=app_commands.locale_str("Judul yang ingin dicari", key="ayaya.animanga.option_judul"),
+    )
+    async def _ayaya_novel(self, inter: discord.Interaction, judul: str):
+        """Cari light novel di Anilist"""
+        ctx = await self.bot.get_context(inter)
+        await ctx.defer()
+        _, has_embed_perms = self._check_bot_perms(ctx)
+        if not has_embed_perms:
+            return await ctx.send(ctx.t("animanga.embed_permission"))
+        self.logger.info(f"Searching for {judul}")
+        variables = {"search": judul, "page": 1, "perPage": 25, "type": "MANGA", "format": "NOVEL"}
+        anibucket = self.bot.anibucket
+        if anibucket is None:
+            await ctx.send(ctx.t("animanga.anilist_unavailable"))
+            return
+        requested = await anibucket.handle(ANILIST_QUERY, variables)
+        if requested.errors:
+            await ctx.send(ctx.t("animanga.anilist_unavailable"))
+            return
+        if requested.data is None:
+            await ctx.send(ctx.t("animanga.anilist_no_data"))
+            return
 
-        fetched_result, season = await self._fetch_anichart_data()
+        parsed_result = await self.__parse_anilist(requested.data, False, t=ctx.t, locale=ctx.locale)
+        if len(parsed_result) < 1:
+            return await ctx.send(ctx.t("animanga.no_results"))
+        self.logger.info(f"Got {len(parsed_result)} hits")
+
+        if ctx.guild is not None:
+            main_gen = DiscordPaginatorUI(ctx, parsed_result)
+            main_gen.attach(partial(self._generate_manga_embed, t=ctx.t))
+            await main_gen.interact(30.0)
+        else:
+            generate_embed = self._generate_manga_embed(parsed_result[0], t=ctx.t)
+            await ctx.send(embed=generate_embed)
+
+    @app_commands.command(
+        name="tayang",
+        description=app_commands.locale_str(
+            "Lihat jadwal tayang anime musim ini",
+            key="ayaya.animanga.description_tayang",
+        ),
+    )
+    async def _ayaya_anime_tayang(self, inter: discord.Interaction):
+        """Lihat jadwal tayang anime musim ini"""
+        ctx = await self.bot.get_context(inter)
+        await ctx.defer()
+        self.logger.info("Requesting anime airing time...")
+        _, has_embed_perms = self._check_bot_perms(ctx)
+        if not has_embed_perms:
+            return await ctx.send(ctx.t("animanga.embed_permission"))
+
+        fetched_result, season = await self._fetch_anichart_data(ctx.t, ctx.locale)
         if isinstance(fetched_result, str):
             return await ctx.send(fetched_result)
 
@@ -769,7 +952,7 @@ class AyayaAnimeManga(commands.Cog):
         ]
 
         def generate_embed_for_real(dataset: EpisodeInfoWrap):
-            embed = disnake.Embed(color=0x19212D)
+            embed = discord.Embed(color=0x19212D)
             embed.set_author(
                 name="Anichart",
                 url="https://anichart.net/",
@@ -778,16 +961,16 @@ class AyayaAnimeManga(commands.Cog):
             final_value = []
             for data in dataset.dataset:
                 final_value.append(f"- **{data._title}**\n{data.airdate}")
-            embed.description = f"**{dataset.time}**" + "\n\n".join(final_value)
+            embed.description = f"**{dataset.time}**\n" + "\n\n".join(final_value)
             embed.set_footer(text=f"{dataset.season}")
             return embed
 
-        def generate_embed_wrapper(dataset: Dict[str, EpisodeInfoWrap]):
-            embed = disnake.Embed(title="Listing Jadwal Tayang - " + season, color=0x19212D)
+        def generate_embed_wrapper(dataset: dict[str, EpisodeInfoWrap]):
+            embed = discord.Embed(title=ctx.t("animanga.schedule.title", season=season), color=0x19212D)
             embed.set_author(
                 name="Anichart",
                 url="https://anichart.net/",
-                icon_url="https://p.ihateani.me/wtelbjmn.png",
+                icon_url="https://p.ihateani.me/hxlsxvpo.png",
             )
             real_value = []
             data_kk = list(dataset.keys())[: len(emote_list)]
@@ -796,32 +979,37 @@ class AyayaAnimeManga(commands.Cog):
             embed.description = "\n".join(real_value)
             return embed
 
-        async def _generator_jadwal(
-            dataset: Dict[str, EpisodeInfoWrap], _, message: disnake.Message, emote: str
+        def _generator_jadwal(
+            dataset: dict[str, EpisodeInfoWrap], _, __: discord.Message, view: DiscordPaginatorUI, emote: str
         ):
             try:
                 emote_pos = emote_list.index(emote)
             except ValueError:
-                return None, message
+                return ""
 
             all_keys = list(dataset.keys())
             proper_list = dataset.get(all_keys[emote_pos])
             if proper_list is None:
-                return None, message
-            child_gen = DiscordPaginator(self.bot, ctx, [proper_list])
-            child_gen.set_generator(generate_embed_for_real)
-            child_gen.remove_at_trashed = False
-            child_gen.paginateable = False
-            await child_gen.paginate(None, message)
-            return None, message
+                return ""
+            child_gen = DiscordPaginatorUI(ctx, [proper_list], paginateable=False)
+            child_gen.attach(generate_embed_for_real)
+            child_gen.parent = view
+            child_gen.timeout = 30.0
+            return child_gen
 
-        main_gen = DiscordPaginator(self.bot, ctx, [fetched_result])
-        main_gen.set_generator(generate_embed_wrapper)
+        main_gen = DiscordPaginatorUI(ctx, [fetched_result])
+        main_gen.attach(generate_embed_wrapper)
         all_fetch_keys = list(fetched_result.keys())[: len(emote_list)]
-        for n, _ in enumerate(all_fetch_keys):
-            main_gen.add_handler(emote_list[n], lambda x: True, _generator_jadwal)
-        await main_gen.paginate(30.0)
+        for idx, namae in enumerate(all_fetch_keys):
+            emote = emote_list[idx]
+            partial_gen = partial(_generator_jadwal, emote=emote)
+            main_gen.add_handler(namae, lambda x: True, partial_gen, emoji=emote)
+        await main_gen.interact(30.0)
+        # all_fetch_keys = list(fetched_result.keys())[: len(emote_list)]
+        # for n, _ in enumerate(all_fetch_keys):
+        #     main_gen.add_handler(emote_list[n], lambda x: True, _generator_jadwal)
+        # await main_gen.paginate(30.0)
 
 
-def setup(bot: naoTimesBot):
-    bot.add_cog(AyayaAnimeManga(bot))
+async def setup(bot: naoTimesBot):
+    await bot.add_cog(AyayaAnimeManga(bot))

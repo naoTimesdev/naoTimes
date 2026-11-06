@@ -1,11 +1,11 @@
 import logging
 import random
 
-import disnake
-from disnake.ext import commands
+import discord
+from discord import app_commands
+from discord.ext import commands
 
 from naotimes.bot import naoTimesBot
-from naotimes.context import naoTimesContext
 
 _F = "https://discordapp.com/assets/e99e3416d4825a09c106d7dfe51939cf.svg"
 _KERANG = "https://www.shodor.org/~alexc/pics/MagicConch.png"
@@ -17,108 +17,83 @@ class FunTanyaJawab(commands.Cog):
         self.bot = bot
         self.logger = logging.getLogger("Fun.TanyaJawab")
 
-    @commands.command(name="f")
-    async def _fun_tanya_f(self, ctx: naoTimesContext, *, pesan: str = None):
-        pemberi_f = str(ctx.author)
-        rtext = "telah memberikan respek"
+    @app_commands.command(
+        name="f",
+        description=app_commands.locale_str("Berikan respek (press F)", key="fun.respek.description"),
+    )
+    @app_commands.describe(pesan=app_commands.locale_str("Untuk apa respeknya", key="fun.respek.option_pesan"))
+    async def _fun_tanya_f(self, inter: discord.Interaction, pesan: str | None = None):
+        i18n = self.bot.i18n_for(inter.guild, "fun")
+        pemberi_f = str(inter.user)
         if pesan:
-            rtext += f" untuk `{pesan}`"
-        rtext += "."
+            rtext = i18n.t("respek.embed_value", message=pesan)
+        else:
+            rtext = i18n.t("respek.embed_value_empty")
 
-        embed = disnake.Embed(timestamp=self.bot.now().datetime, color=disnake.Colour.random())
+        embed = discord.Embed(timestamp=self.bot.now().datetime, color=discord.Colour.random())
         embed.set_thumbnail(url=_F)
         embed.add_field(name=pemberi_f, value=rtext)
-        await ctx.send(embed=embed)
+        await inter.response.send_message(embed=embed)
 
-    @commands.command(name="kerang", aliases=["kerangajaib"])
-    async def _fun_tanya_kerang(self, ctx: naoTimesContext, *, pertanyaan: str):
+    @app_commands.command(
+        name="kerang",
+        description=app_commands.locale_str("Tanya kerang ajaib", key="fun.kerang.description"),
+    )
+    @app_commands.describe(
+        pertanyaan=app_commands.locale_str("Pertanyaan untuk kerang", key="fun.kerang.option_pertanyaan")
+    )
+    async def _fun_tanya_kerang(self, inter: discord.Interaction, pertanyaan: str):
+        i18n = self.bot.i18n_for(inter.guild, "fun")
         rand = random.random()
-        author: disnake.User = ctx.author
-        embed = disnake.Embed(
-            title="Kerang Ajaib", timestamp=self.bot.now().datetime, color=disnake.Colour.random()
+        author: discord.User | discord.Member = inter.user
+        embed = discord.Embed(
+            title=i18n.t("kerang.embed_title"), timestamp=self.bot.now().datetime, color=discord.Colour.random()
         )
         embed.set_thumbnail(url=_KERANG)
-        answer = "Ya"
+        answer = i18n.t("kerang.answer_yes")
         if rand <= 0.5:
-            answer = "Tidak"
-        embed.description = f"**{pertanyaan}**\n{answer}"
-        embed.set_footer(text=f"Ditanyakan oleh: {author}", icon_url=author.avatar)
-        await ctx.send(embed=embed)
+            answer = i18n.t("kerang.answer_no")
+        embed.description = i18n.t("kerang.embed_description", question=pertanyaan, answer=answer)
+        embed.set_footer(text=i18n.t("kerang.embed_footer", author=author), icon_url=author.avatar)
+        await inter.response.send_message(embed=embed)
 
-    @commands.command(name="crot")
-    async def _fun_tanya_crot(self, ctx: naoTimesContext, *, orang: commands.MemberConverter = None):
-        if orang is None:
-            orang = ctx.author
+    @app_commands.command(
+        name="crot",
+        description=app_commands.locale_str("Cek kekuatan... bertahan", key="fun.crot.description"),
+    )
+    @app_commands.describe(
+        orang=app_commands.locale_str("Orang yang diperiksa (default: kamu)", key="fun.crot.option_orang")
+    )
+    async def _fun_tanya_crot(self, inter: discord.Interaction, orang: discord.Member | None = None):
+        i18n = self.bot.i18n_for(inter.guild, "fun")
+        target_user: discord.User | discord.Member = orang or inter.user
 
-        if not isinstance(orang, (disnake.Member, disnake.User)):
-            return await ctx.send(
-                "Bot tidak menemukan orang tersebut, jadi tidak bisa memeriksa kekuatan crot!"
-            )
-
-        waktu = [
-            "1 detik",
-            "5 detik",
-            "20 detik",
-            "1 menit",
-            "5 menit",
-            "15 menit",
-            "30 menit",
-            "1 jam",
-            "4 jam",
-            "12 jam",
-            "24 jam",
-            "sepekan",
-            "1 bulan",
-            "3 bulan",
-            "6 bulan",
-            "1 tahun",
-            "10 tahun",
-            "25 tahun",
-            "50 tahun",
-            "69 tahun",
-        ]
+        waktu = [i18n.t(f"crot.duration_{index}") for index in range(20)]
 
         pilih_waktu = random.choice(waktu)
 
-        pesan = f"**{orang}** bertahan selama {pilih_waktu} lalu akhirnya klimaks dan crot"
-        await ctx.send(pesan)
+        await inter.response.send_message(i18n.t("crot.result", target=target_user, duration=pilih_waktu))
 
-    @commands.command(name="8ball")
-    async def _fun_tanya_8ball(self, ctx: naoTimesContext, *, pertanyaan: str):
+    @app_commands.command(
+        name="8ball",
+        description=app_commands.locale_str("Tanya bola delapan", key="fun.eightball.description"),
+    )
+    @app_commands.describe(
+        pertanyaan=app_commands.locale_str("Pertanyaan untuk bola delapan", key="fun.eightball.option_pertanyaan")
+    )
+    async def _fun_tanya_8ball(self, inter: discord.Interaction, pertanyaan: str):
+        i18n = self.bot.i18n_for(inter.guild, "fun")
         JAWABAN = {
-            "positif": [
-                "Pastinya.",
-                "Woiyadong.",
-                "Takusah ragu.",
-                "Tentu saja.",
-                "Kalau kau yakin, mungkin saja.",
-                "Kalau begitu, iya.",
-                "Sudah seharusnya.",
-                "Mungkin saja.",
-                "Yoi.",
-                'Aku sih "yes."',
-            ],
-            "netral": [
-                "Masih belum pasti, coba lagi.",
-                "Tanyakan lain waktu, ya.",
-                "Nanti akan kuberitahu.",
-                "Aku tidak bisa menebaknya sekarang.",
-                "Konsentrasi lalu coba lagi.",
-            ],
-            "negatif": [
-                "Jangan harap.",
-                "Gak.",
-                'Kata bapak tebe, "Gak boleh!"',
-                "Tidak mungkin.",
-                "Ya enggak lah, pekok!",
-            ],
+            "positif": [i18n.t(f"eightball.positive_{index}") for index in range(10)],
+            "netral": [i18n.t(f"eightball.neutral_{index}") for index in range(5)],
+            "negatif": [i18n.t(f"eightball.negative_{index}") for index in range(5)],
         }
         WARNA_JAWABAN = {
             "positif": 0x6AC213,
             "netral": 0xFFDC4A,
             "negatif": 0xFF4A4A,
         }
-        author: disnake.User = ctx.author
+        author: discord.User | discord.Member = inter.user
 
         # chance = 300
         positif_get = ["positif"] * 120
@@ -134,83 +109,51 @@ class FunTanyaJawab(commands.Cog):
         colored = WARNA_JAWABAN[select_one]
         answer_of_life = random.choice(jawaban)
 
-        tukang_tanya = f"Ditanyakan oleh: {str(author)}"
-
-        embed = disnake.Embed(
-            title="Bola delapan (8 Ball)",
+        embed = discord.Embed(
+            title=i18n.t("eightball.embed_title"),
             timestamp=self.bot.now().datetime,
             color=colored,
         )
         embed.set_thumbnail(url=_8BALL)
-        embed.description = f"**{pertanyaan}**\n{answer_of_life}"
-        embed.set_footer(text=tukang_tanya, icon_url=author.avatar)
-        await ctx.send(embed=embed)
+        embed.description = i18n.t("eightball.embed_description", question=pertanyaan, answer=answer_of_life)
+        embed.set_footer(text=i18n.t("eightball.embed_footer", author=author), icon_url=author.avatar)
+        await inter.response.send_message(embed=embed)
 
-    @commands.command(name="agama")
-    async def _fun_tanya_agama(self, ctx: naoTimesContext, *, tentang: str = ""):
+    @app_commands.command(
+        name="agama",
+        description=app_commands.locale_str("Tanya agama seseorang/sesuatu", key="fun.agama.description"),
+    )
+    @app_commands.describe(
+        tentang=app_commands.locale_str("Tentang apa (default: kamu)", key="fun.agama.option_tentang")
+    )
+    async def _fun_tanya_agama(self, inter: discord.Interaction, tentang: str = ""):
+        i18n = self.bot.i18n_for(inter.guild, "fun")
         if not tentang:
-            tentang = str(ctx.author)
+            tentang = str(inter.user)
         tentang = f"**{tentang}**"
 
-        pilihan_agama = [
-            "Islam",
-            "Katolik",
-            "Protestan",
-            "Kong Hu Cu",
-            "Budha",
-            "Hindu",
-            "Atheis",
-            "Agnostik",
-            "Shinto",
-            "Yahudi",
-            "Sunda",
-        ]
+        pilihan_agama = [i18n.t(f"agama.choice_{index}") for index in range(11)]
 
-        text_to_send = f"Agama {tentang} itu apa?\n"
-        text_to_send += f"{random.choice(pilihan_agama)}."
-        await ctx.send(text_to_send)
+        await inter.response.send_message(i18n.t("agama.result", tentang=tentang, answer=random.choice(pilihan_agama)))
 
-    @commands.command(name="ras")
-    async def _fun_tanya_ras(self, ctx: naoTimesContext, *, tentang: str = ""):
+    @app_commands.command(
+        name="ras",
+        description=app_commands.locale_str("Tanya ras seseorang/sesuatu", key="fun.ras.description"),
+    )
+    @app_commands.describe(tentang=app_commands.locale_str("Tentang apa (default: kamu)", key="fun.ras.option_tentang"))
+    async def _fun_tanya_ras(self, inter: discord.Interaction, tentang: str = ""):
+        i18n = self.bot.i18n_for(inter.guild, "fun")
         if not tentang:
-            tentang = str(ctx.author)
+            tentang = str(inter.user)
         tentang = f"**{tentang}**"
 
-        pilihan_ras = [
-            "Jawa",
-            "Sunda",
-            "Batak",
-            "Cina",
-            "Bugis",
-            "Asmat",
-            "Mongoloid",
-            "Melayu",
-            "YOASOBI Gendut",
-            "Samin",
-            "Yahudi",
-            "Arya",
-            "Ngapak",
-            "Madura",
-            "Minang",
-            "Dayak",
-            "Banjar",
-            "Arab",
-            "Wibu",
-            "Gay-mer",
-            "Ras hanip, kontol anjing",
-            "Cebong",
-            "Kampret",
-            "Pembuat mobil",
-            "Kadrun",
-            "Gen Halilintar",
-        ]
+        pilihan_ras = [i18n.t(f"ras.choice_{index}") for index in range(26)]
 
-        text_to_send = f"Ras {tentang} itu apa?\n"
-        text_to_send += f"{random.choice(pilihan_ras)}."
-        embed = disnake.Embed(description=text_to_send)
-        embed.set_footer(text="Jangan dibawa serius :)")
-        await ctx.send(embed=embed)
+        text_to_send = i18n.t("ras.result", tentang=tentang, answer=random.choice(pilihan_ras))
+        embed = discord.Embed(description=text_to_send)
+        embed.set_footer(text=i18n.t("ras.footer"))
+        await inter.response.send_message(embed=embed)
 
 
-def setup(bot: naoTimesBot):
-    bot.add_cog(FunTanyaJawab(bot))
+async def setup(bot: naoTimesBot):
+    await bot.add_cog(FunTanyaJawab(bot))

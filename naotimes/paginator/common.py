@@ -1,7 +1,7 @@
 """
 MIT License
 
-Copyright (c) 2019-2021 naoTimesdev
+Copyright (c) 2019-2022 naoTimesdev
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -24,39 +24,40 @@ SOFTWARE.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Coroutine
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
-    Coroutine,
-    Protocol,
-    Tuple,
+    Generic,
     TypedDict,
     TypeVar,
     Union,
-    overload,
 )
 
-from disnake import Embed, Emoji, Message, PartialEmoji
-from disnake.ui import View
+from discord import Embed, Message
+from discord.ui import View
 
 if TYPE_CHECKING:
     from .react import DiscordPaginator
-    from .ui import DiscordPaginatorUI
+    from .uiv2 import DiscordPaginatorUI
 
 
 T = TypeVar("T")
 IT = TypeVar("IT")
 GeneratorOutput = Union[
-    Tuple[Embed, str],
-    Tuple[str, Embed],
+    tuple[Embed, str],
+    tuple[str, Embed],
+    tuple[Any, ...],
+    list[Any],
     Embed,
     str,
+    int,
+    float,
+    View,
 ]
-PaginatorT = TypeVar("PaginatorT", bound="Union[DiscordPaginator, DiscordPaginatorUI]")
+PaginatorT = TypeVar("PaginatorT", bound="DiscordPaginator | DiscordPaginatorUI")
 
-Coro = Coroutine[Any, Any, T]
-Emote = Union[Emoji, PartialEmoji, str]
+PaginatorGenerator = Callable[..., GeneratorOutput | Coroutine[Any, Any, GeneratorOutput]]
 
 __all__ = ("PaginationFailure",)
 
@@ -67,26 +68,7 @@ class GeneratedKwargs(TypedDict, total=False):
     embed: Embed
 
 
-class PaginatorGenerator(Protocol[IT]):
-    """A protocol implementation or typing for paginator generator"""
-
-    @overload
-    def __call__(self, item: IT) -> Coro[GeneratorOutput]:
-        ...
-
-    @overload
-    def __call__(self, item: IT, position: int) -> Coro[GeneratorOutput]:
-        ...
-
-    @overload
-    def __call__(self, item: IT, position: int, message: Message) -> Coro[GeneratorOutput]:
-        ...
-
-    def __call__(self, item: IT, position: int, message: Message, emote: Emote) -> Coro[GeneratorOutput]:
-        ...
-
-
-class PaginationFailure(Exception):
+class PaginationFailure(Exception, Generic[IT, PaginatorT]):
     """Raised when pagination fails"""
 
     def __init__(self, content: IT, position: int, paginator: PaginatorT):

@@ -1,7 +1,7 @@
 """
 MIT License
 
-Copyright (c) 2019-2021 naoTimesdev
+Copyright (c) 2019-2022 naoTimesdev
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -26,23 +26,22 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
+from collections.abc import MutableSet
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Deque, List, MutableSet, Optional, Type, TypeVar, Union
+from typing import TypeVar, Union
 
-from disnake.channel import StageChannel, TextChannel, VoiceChannel
-from disnake.member import Member
-from wavelink.tracks import Track
-
-from .tracks import TrackResults
+from discord.channel import StageChannel, TextChannel, VoiceChannel
+from discord.member import Member
+from wavelink import Playable
 
 __all__ = (
-    "TrackRepeat",
+    "GuildMusicInstance",
     "TrackEntry",
+    "TrackQueueAll",
     "TrackQueueImpl",
     "TrackQueueSingle",
-    "TrackQueueAll",
-    "GuildMusicInstance",
+    "TrackRepeat",
 )
 
 NT = TypeVar("NT", bound="TrackEntry")
@@ -62,15 +61,14 @@ class TrackRepeat(Enum):
 
 @dataclass
 class TrackEntry:
-    track: Union[Track, TrackResults]
+    track: Playable
     requester: Member
     channel: TextChannel
 
 
 class TrackQueueImpl(asyncio.Queue[NT]):
-
     _maxsize: int
-    _original_queue: Deque[NT]
+    _original_queue: deque[NT]
 
     def __len__(self):
         return self.qsize()
@@ -85,13 +83,13 @@ class TrackQueueImpl(asyncio.Queue[NT]):
             self._original_queue.clear()
 
     @staticmethod
-    def _process_list(items: Union[List[NT], Deque[NT]]) -> List[NT]:
+    def _process_list(items: list[NT] | deque[NT]) -> list[NT]:
         return list(items)
 
     @classmethod
-    def from_other(cls: Type[TrackQueueImpl], other: TrackQueueImpl) -> TrackQueueImpl:
+    def from_other(cls: type[TrackQueueImpl], other: TrackQueueImpl) -> TrackQueueImpl:
         new_queue = cls(maxsize=other._maxsize)
-        other_queue = getattr(other, "_original_queue", getattr(other, "_queue"))
+        other_queue = getattr(other, "_original_queue", other._queue)
         if isinstance(other_queue, list):
             # Use normal list
             new_queue._queue = cls._process_list(other_queue)
@@ -110,9 +108,8 @@ class TrackQueueImpl(asyncio.Queue[NT]):
 
 
 class TrackQueueSingle(TrackQueueImpl[NT]):
-
-    _queue: List[NT]
-    _original_queue: Deque[NT]
+    _queue: list[NT]
+    _original_queue: deque[NT]
 
     def _init(self, maxsize: int):
         self._maxsize = maxsize
@@ -126,17 +123,12 @@ class TrackQueueSingle(TrackQueueImpl[NT]):
         return self._queue[0]
 
     @staticmethod
-    def _process_list(items: Union[List[NT], Deque[NT]]) -> Optional[NT]:
-        as_list = list(items)
-        try:
-            return as_list[0]
-        except IndexError:
-            return None
+    def _process_list(items: list[NT] | deque[NT]) -> list[NT]:
+        return list(items)
 
 
 class TrackQueueAll(TrackQueueImpl[NT]):
-
-    _queue: Deque[NT]
+    _queue: deque[NT]
 
     def _init(self, maxsize: int):
         self._maxsize = maxsize
@@ -155,9 +147,22 @@ class TrackQueueAll(TrackQueueImpl[NT]):
 class GuildMusicInstance:
     queue: TrackQueueImpl[TrackEntry]
     repeat: TrackRepeat = TrackRepeat.disable
-    current: Optional[TrackEntry] = None
+    current: TrackEntry | None = None
 
     # votes related stuff
     skip_votes: MutableSet[int] = field(default_factory=set)
-    host: Optional[Member] = None
-    channel: Optional[VocalChannel] = None
+    host: Member | None = None
+    channel: VocalChannel | None = None
+    queue_freezed: asyncio.Event = field(default_factory=asyncio.Event)
+
+    def __post_init__(self):
+        self.unfreeze()
+
+    async def wait_unfreeze(self):
+        await self.queue_freezed.wait()
+
+    def unfreeze(self):
+        self.queue_freezed.set()
+
+    def freeze(self):
+        self.queue_freezed.clear()

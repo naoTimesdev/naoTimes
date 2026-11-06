@@ -5,7 +5,7 @@ A wrapper of JishoAPI (Utilizing ihateani.me API)
 
 MIT License
 
-Copyright (c) 2019-2021 naoTimesdev
+Copyright (c) 2019-2022 naoTimesdev
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -29,14 +29,13 @@ SOFTWARE.
 import asyncio
 import logging
 import time
-from typing import List, Tuple, Union
 
 import aiohttp
 import cutlet
 
 from ..version import __version__ as semver
 
-__all__ = ("JishoParseFailed", "JishoWord", "JishoAPI")
+__all__ = ("JishoAPI", "JishoParseFailed", "JishoWord")
 
 
 class JishoParseFailed(Exception):
@@ -75,6 +74,8 @@ class JishoWord:
             setattr(self, "__success", False)
             return
         raw_slug = self.__raw.get("slug")
+        if not isinstance(raw_slug, str):
+            raise JishoParseFailed("Jisho result is missing its slug")
         parsed_slug = raw_slug.split("-")
         if len(parsed_slug) > 1:
             word = parsed_slug[0]
@@ -108,6 +109,8 @@ class JishoWord:
         else:
             setattr(self, "__jlpt", None)
         tags = self.__raw.get("tags")
+        if not isinstance(tags, list):
+            tags = []
         wanikani = None
         for tag in tags:
             if "wanikani" in tag:
@@ -143,7 +146,7 @@ class JishoWord:
             other_readings.append({"word": word, "reading": reading, "romaji": romanization})
         setattr(self, "__other_forms", other_readings)
         meanings = []
-        _temporary_wiki_meaning_single = None
+        temporary_wiki_meaning_single = None
         meanings = []
         for meaning in self.__raw.get("senses", []):
             parts = ", ".join(meaning["parts_of_speech"]).lower()
@@ -155,8 +158,8 @@ class JishoWord:
             extra_info = "; ".join(meaning.get("info", []))
             see_also = "; ".join(meaning.get("see_also", []))
             if "wikipedia" in parts:
-                if _temporary_wiki_meaning_single is None:
-                    _temporary_wiki_meaning_single = {
+                if temporary_wiki_meaning_single is None:
+                    temporary_wiki_meaning_single = {
                         "part": ["(wiki)"],
                         "definition": english_definitions,
                         "extra_info": extra_info or None,
@@ -168,17 +171,15 @@ class JishoWord:
                 extra_info = None
             if not see_also:
                 see_also = None
-            meanings.append(
-                {
-                    "part": wrap_parts,
-                    "definition": english_definitions,
-                    "extra_info": extra_info,
-                    "suggestion": see_also,
-                    "tags": tagged_stuff,
-                }
-            )
-        if not meanings and _temporary_wiki_meaning_single is not None:
-            meanings.append(_temporary_wiki_meaning_single)
+            meanings.append({
+                "part": wrap_parts,
+                "definition": english_definitions,
+                "extra_info": extra_info,
+                "suggestion": see_also,
+                "tags": tagged_stuff,
+            })
+        if not meanings and temporary_wiki_meaning_single is not None:
+            meanings.append(temporary_wiki_meaning_single)
         setattr(self, "__meanings", meanings)
         setattr(self, "__wanikani", wanikani)
         setattr(self, "__success", True)
@@ -230,7 +231,7 @@ class JishoWord:
         :return: formatted text of the definitions or meanings
         :rtype: str
         """
-        meanings: List[dict] = getattr(self, "__meanings", [])
+        meanings: list[dict] = getattr(self, "__meanings", [])
         if len(meanings) < 1:
             return "Tidak ada arti."
         collected_text = []
@@ -293,7 +294,7 @@ class JishoWord:
 
         other_forms = getattr(self, "__other_forms", [])
 
-        meanings: List[dict] = getattr(self, "__meanings", [])
+        meanings: list[dict] = getattr(self, "__meanings", [])
         wanikani = getattr(self, "__wanikani", None)
         jlpt = getattr(self, "__jlpt", None)
 
@@ -310,7 +311,7 @@ class JishoWord:
 
 
 class JishoAPI:
-    def __init__(self, session: aiohttp.ClientSession = None) -> None:
+    def __init__(self, session: aiohttp.ClientSession | None = None) -> None:
         if session is None:
             self._conn = aiohttp.ClientSession(
                 headers={"User-Agent": f"naoTimes/v{semver} (https://github.com/noaione/naoTimes)"}
@@ -336,7 +337,7 @@ class JishoAPI:
         self._is_closing = True
         await self._conn.close()
 
-    async def parse(self, results: Union[List[dict], dict]) -> List[JishoWord]:
+    async def parse(self, results: list[dict] | dict) -> list[JishoWord]:
         """|coro|
 
         This function parse the results of a Jisho API response or the data list of it.
@@ -352,7 +353,7 @@ class JishoAPI:
             if status_code >= 400:
                 return []
             results = results.get("data", [])
-        parsed_results: List[JishoWord] = []
+        parsed_results: list[JishoWord] = []
         for n, result in enumerate(results):
             try:
                 parsed_results.append(JishoWord(result))
@@ -360,7 +361,7 @@ class JishoAPI:
                 self._logger.error(f"Failed to parse data index {n}")
         return parsed_results
 
-    async def search(self, keyword: str) -> Tuple[List[JishoWord], str]:
+    async def search(self, keyword: str) -> tuple[list[JishoWord], str]:
         """|coro|
 
         Search Jisho for a kanji, word, or anything else by providing a keyword.
@@ -371,13 +372,14 @@ class JishoAPI:
         :rtype: List[JishoWord]
         """
         if self._is_closing:
-            return []
+            return [], "Jisho client is closing."
         uniq_id = f"search_{time.time()}"
         self._on_request.append(uniq_id)
         parameter = {"keyword": keyword}
         async with self._conn.get("https://jisho.org/api/v1/search/words", params=parameter) as resp:
             if resp.status != 200:
                 if resp.status == 404:
+                    self._on_request.remove(uniq_id)
                     return [], "Tidak ada hasil."
                 self._logger.warning(f"error, status code: {resp.status}")
                 self._on_request.remove(uniq_id)

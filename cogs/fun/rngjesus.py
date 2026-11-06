@@ -1,11 +1,11 @@
 import logging
 import random
 
-import disnake
-from disnake.ext import commands
+import discord
+from discord import app_commands
+from discord.ext import commands
 
 from naotimes.bot import naoTimesBot
-from naotimes.context import naoTimesContext
 from naotimes.utils import bold as discord_bold
 
 
@@ -14,99 +14,116 @@ class FunRNGJesus(commands.Cog):
         self.bot = bot
         self.logger = logging.getLogger("Fun.RNGJesus")
 
-    @commands.command(name="pilih")
-    async def _fun_rng_pilih(self, ctx: naoTimesContext, *, konteks: str):
-        pisah_konteks = konteks.split(",")
-        pisah_konteks = [x for x in pisah_konteks if x]
+    @app_commands.command(
+        name="pilih",
+        description=app_commands.locale_str("Pilih salah satu dari beberapa pilihan", key="fun.pilih.description"),
+    )
+    @app_commands.describe(
+        pilihan=app_commands.locale_str("Daftar pilihan, pisahkan dengan koma (,)", key="fun.pilih.option_pilihan")
+    )
+    async def _fun_rng_pilih(self, inter: discord.Interaction, pilihan: str):
+        i18n = self.bot.i18n_for(inter.guild, "fun")
+        options = [x.strip() for x in pilihan.split(",") if x.strip()]
+        if len(options) < 2:
+            return await inter.response.send_message(i18n.t("pilih.need_two"), ephemeral=True)
+        await inter.response.send_message(i18n.t("pilih.result", user=inter.user, choice=random.choice(options)))
 
-        if not pisah_konteks:
-            return await ctx.send("Tidak ada input untuk dipilih\nGunakan `,` sebagai pemisah.")
-
-        if len(pisah_konteks) < 2:
-            return await ctx.send("Hanya ada 1 input untuk dipilih\nGunakan `,` sebagai pemisah.")
-
-        generate_chance = random.uniform(0.0, float(len(pisah_konteks) - 1))
-        hasil_pilih = pisah_konteks[int(round(generate_chance))]
-        await ctx.send(f"**{ctx.author}** aku memilih: **{hasil_pilih.strip()}**")
-
-    @commands.command(name="kontol", aliases=["penis", "dick", "kntl"])
-    async def _fun_rng_kontol(self, ctx: naoTimesContext, *, orang_lain: commands.MemberConverter = None):
-        _mul = {1: "cm", 2: "m", 5: "km"}
+    @app_commands.command(
+        name="kontol",
+        description=app_commands.locale_str("Ukur panjang... sesuatu", key="fun.kontol.description"),
+    )
+    @app_commands.describe(
+        orang=app_commands.locale_str("Orang yang ingin diukur (default: kamu)", key="fun.kontol.option_orang")
+    )
+    async def _fun_rng_kontol(self, inter: discord.Interaction, orang: discord.Member | None = None):
+        i18n = self.bot.i18n_for(inter.guild, "fun")
+        mul_ = {1: "cm", 2: "m", 5: "km"}
         cocka = random.randint(2, 12)
-        member = ctx.author
-        if isinstance(orang_lain, disnake.Member):
-            member = orang_lain
-        omega = f"Panjang kntl **{member}** adalah:\n"
+        member = orang or inter.user
         mult = random.choice([1, 2, 5])
-        mul = _mul.get(mult, "??")
+        mul = mul_.get(mult, "??")
+        bar = "`8" + "=" * cocka * mult + "D`"
+        await inter.response.send_message(i18n.t("kontol.result", member=member, bar=bar, size=f"{cocka}{mul}"))
 
-        omega += "`8"
-        omega += "=" * cocka * mult
-        omega += "D`"
-        omega += f" {cocka}{mul}"
-        await ctx.send(omega)
-
-    @commands.command(name="dadu", aliases=["dice"])
-    async def _fun_rng_dadu(self, ctx: naoTimesContext, dice_type: str):
+    @app_commands.command(
+        name="dadu",
+        description=app_commands.locale_str("Kocok dadu, contoh: d20 atau 3d6", key="fun.dadu.description"),
+    )
+    @app_commands.describe(
+        jenis=app_commands.locale_str("Jenis dadu, contoh: d20 atau 3d6", key="fun.dadu.option_jenis")
+    )
+    async def _fun_rng_dadu(self, inter: discord.Interaction, jenis: str):
+        i18n = self.bot.i18n_for(inter.guild, "fun")
         try:
-            roll_amount, dice_faces = dice_type.split("d")
+            roll_amount, dice_faces = jenis.lower().split("d")
         except ValueError:
-            return await ctx.send("Jenis dadu tidak diketahui, gunakan format seperti `d20`")
+            return await inter.response.send_message(i18n.t("dadu.invalid_format"), ephemeral=True)
 
         if not roll_amount.strip():
-            roll_amount = 1
+            amount = 1
+        elif roll_amount.isdigit():
+            amount = int(roll_amount)
         else:
-            if not roll_amount.isdigit():
-                return await ctx.send(f"Jumlah roll `{roll_amount}` bukanlah angka")
-            roll_amount = int(roll_amount)
-        if not dice_faces.isdigit():
-            return await ctx.send(f"Jumlah sisi dadu `{dice_faces}` bukanlah angka")
-        dice_faces = int(dice_faces)
-        dice_faces_range = list(range(1, dice_faces + 1))
+            return await inter.response.send_message(i18n.t("dadu.invalid_amount", amount=roll_amount), ephemeral=True)
+        if not dice_faces.isdigit() or int(dice_faces) < 1:
+            return await inter.response.send_message(i18n.t("dadu.invalid_faces", faces=dice_faces), ephemeral=True)
+        if not 1 <= amount <= 100:
+            return await inter.response.send_message(i18n.t("dadu.invalid_range"), ephemeral=True)
 
-        total_output = []
-        for _ in range(roll_amount):
-            total_output.append(random.choice(dice_faces_range))
+        results = [random.randint(1, int(dice_faces)) for _ in range(amount)]
+        output_text = i18n.t("dadu.result", jenis=jenis, results=" + ".join(map(discord_bold, map(str, results))))
+        if len(results) > 1:
+            output_text += i18n.t("dadu.result_total", total=sum(results))
+        await inter.response.send_message(output_text[:2000])
 
-        total_output_text = list(map(discord_bold, total_output))
-        output_text = f"Hasil kocok dadu (**{dice_type}**): "
-        output_text += " + ".join(total_output_text)
-        if len(output_text) > 1:
-            cash_out = sum(total_output)
-            output_text += f" = **{cash_out}**"
-        await ctx.send(output_text)
+    @app_commands.command(
+        name="kocok",
+        description=app_commands.locale_str("Kocok angka acak dalam rentang tertentu", key="fun.kocok.description"),
+    )
+    @app_commands.describe(
+        dari=app_commands.locale_str("Angka awal", key="fun.kocok.option_dari"),
+        sampai=app_commands.locale_str(
+            "Angka akhir (default: sama dengan angka awal, mulai dari 1)", key="fun.kocok.option_sampai"
+        ),
+    )
+    async def _fun_rng_kocok_dadu(self, inter: discord.Interaction, dari: int, sampai: int | None = None):
+        i18n = self.bot.i18n_for(inter.guild, "fun")
+        if sampai is None:
+            dari, sampai = 1, dari
+        if dari > sampai:
+            return await inter.response.send_message(
+                i18n.t("kocok.invalid_range", start=dari, end=sampai), ephemeral=True
+            )
+        outcome = random.randint(dari, sampai)
+        await inter.response.send_message(i18n.t("kocok.result", outcome=outcome, start=dari, end=sampai))
 
-    @commands.command(name="kocok", aliases=["roll"])
-    async def _fun_rng_kocok_dadu(self, ctx: naoTimesContext, *, range_amount: str):
-        split_range = range_amount.split("-")
-        first_range = split_range[0]
-        second_range = split_range[0]
-        if len(split_range) > 1:
-            second_range = split_range[1]
-        if not isinstance(first_range, int):
+    @app_commands.command(
+        name="santet",
+        description=app_commands.locale_str("Kirim santet ke seseorang", key="fun.santet.description"),
+    )
+    @app_commands.describe(target=app_commands.locale_str("Target santet", key="fun.santet.option_target"))
+    @app_commands.guild_only()
+    async def _fun_santet(self, inter: discord.Interaction, target: discord.Member):
+        i18n = self.bot.i18n_for(inter.guild, "fun")
+        guild = inter.guild
+        author = inter.user
+        should_kick_user = (
+            isinstance(author, discord.Member) and random.random() <= 0.1 and author.guild_permissions.kick_members
+        )
+
+        if should_kick_user:
             try:
-                first_range = int(first_range)
-            except ValueError:
-                return await ctx.send(f"Angka `{first_range}` bukanlah angka yang benar!")
-        if not isinstance(second_range, int):
-            try:
-                second_range = int(second_range)
-            except ValueError:
-                second_range = first_range
+                await target.send(i18n.t("santet.victim_message", author=author, guild=guild))
+                await target.kick(reason=i18n.t("santet.kick_reason", author=author))
+            except discord.HTTPException:
+                should_kick_user = False
 
-        if first_range > second_range:
-            return await ctx.send(f"Range {first_range} tidak bisa lebih besar dari angka {second_range}")
-
-        range_num = f"**1**-**{second_range}**"
-        if first_range == second_range:
-            dice_faces_range = list(range(1, second_range + 1))
-        else:
-            range_num = f"**{first_range}**-**{second_range}**"
-            dice_faces_range = list(range(first_range, second_range + 1))
-
-        roll_outcome = random.choice(dice_faces_range)
-        await ctx.send(f"Hasil kocok dadu: **{roll_outcome}** ({range_num})")
+        if should_kick_user:
+            return await inter.response.send_message(
+                i18n.t("santet.result_kicked", author=author, target=target, guild=guild)
+            )
+        await inter.response.send_message(i18n.t("santet.result", author=author, target=target))
 
 
-def setup(bot: naoTimesBot):
-    bot.add_cog(FunRNGJesus(bot))
+async def setup(bot: naoTimesBot):
+    await bot.add_cog(FunRNGJesus(bot))

@@ -1,10 +1,10 @@
 import logging
 
-import disnake
-from disnake.ext import commands
+import discord
+from discord import app_commands
+from discord.ext import commands
 
 from naotimes.bot import naoTimesBot
-from naotimes.context import naoTimesContext
 from naotimes.paginator import DiscordPaginatorUI
 
 
@@ -13,22 +13,32 @@ class PeninjauGameHLTB(commands.Cog):
         self.bot = bot
         self.logger = logging.getLogger("Peninjau.Gaming.HLTB")
 
-    @commands.command(name="hltb", aliases=["howlongtobeat"])
-    @commands.guild_only()
-    async def _peninjau_gaming_hltb(self, ctx: naoTimesContext, *, game_title: str):
+    @app_commands.command(
+        name="hltb",
+        description=app_commands.locale_str(
+            "Lihat berapa lama untuk menamatkan sebuah game (HowLongToBeat)", key="peninjau.hltb.description"
+        ),
+    )
+    @app_commands.describe(game_title=app_commands.locale_str("Judul game", key="peninjau.hltb.option"))
+    async def _peninjau_gaming_hltb(self, inter: discord.Interaction, game_title: str):
+        """Lihat berapa lama untuk menamatkan sebuah game (HowLongToBeat)"""
+        ctx = await self.bot.get_context(inter)
+        await ctx.defer()
         self.logger.info(f"Searching: {game_title}")
         URL = "https://api.ihateani.me/v1/games/hltb"
+        if self.bot.aiosession is None:
+            return await ctx.send(ctx.t("hltb.http_unavailable"))
         async with self.bot.aiosession.get(URL, params={"q": game_title}) as resp:
             try:
                 data = await resp.json()
             except ValueError:
                 self.logger.error(f"{game_title}: An error occured while trying to unpack json data!")
-                return await ctx.send("Terjadi kesalahan ketika meminta data JSON dari HLTB")
+                return await ctx.send(ctx.t("hltb.json_error"))
 
         hltb_results = data["results"]
         if len(hltb_results) < 1:
             self.logger.warning(f"{game_title}: No results...")
-            return await ctx.send("Tidak ada hasil!")
+            return await ctx.send(ctx.t("hltb.no_results"))
 
         def _merge_image(image_url: str):
             if image_url.startswith("/"):
@@ -36,23 +46,23 @@ class PeninjauGameHLTB(commands.Cog):
             return f"https://howlongtobeat.com/{image_url}"
 
         def _generate_embed(hltb_data: dict):
-            embed = disnake.Embed(
+            embed = discord.Embed(
                 title=hltb_data["title"], url=hltb_data["url"], color=hltb_data.get("color", 0x858585)
             )
             embed.set_thumbnail(url=_merge_image(hltb_data["image"]))
             hltbs = hltb_data["hltb"]
             hltb_text = ""
             if hltbs["main"] is not None:
-                hltb_text += "**Bagian Utama**: {}\n".format(hltbs["main"])
+                hltb_text += ctx.t("hltb.main", duration=hltbs["main"])
             if hltbs["main_extra"] is not None:
-                hltb_text += "**Bagian Utama + Ekstra**: {}\n".format(hltbs["main_extra"])
+                hltb_text += ctx.t("hltb.main_extra", duration=hltbs["main_extra"])
             if hltbs["complete"] is not None:
-                hltb_text += "**Perfeksionis**: {}\n".format(hltbs["complete"])
+                hltb_text += ctx.t("hltb.complete", duration=hltbs["complete"])
             hltb_text = hltb_text.rstrip("\n")
-            hltb_text += f"\n\n*(Info lebih lanjut? [Klik Di sini]({hltb_data['url']}))*"  # noqa: E501
+            hltb_text += ctx.t("hltb.more_info", url=hltb_data["url"])
 
             embed.add_field(
-                name="Seberapa lama untuk diselesaikan?",
+                name=ctx.t("hltb.field_time"),
                 value=hltb_text,
                 inline=False,
             )
@@ -62,9 +72,9 @@ class PeninjauGameHLTB(commands.Cog):
                     txt = f"**{st_name.capitalize()}**: {st_stats}"
                     stats_data.append(txt)
             if stats_data != []:
-                embed.add_field(name="Statistik", value="\n".join(stats_data), inline=False)
+                embed.add_field(name=ctx.t("hltb.field_stats"), value="\n".join(stats_data), inline=False)
             embed.set_footer(
-                text="Diprakasi oleh HowLongToBeat.com",
+                text=ctx.t("hltb.footer"),
                 icon_url="https://howlongtobeat.com/img/hltb_brand.png",
             )
             return embed
@@ -75,5 +85,5 @@ class PeninjauGameHLTB(commands.Cog):
         await ui_gen.interact()
 
 
-def setup(bot: naoTimesBot):
-    bot.add_cog(PeninjauGameHLTB(bot))
+async def setup(bot: naoTimesBot):
+    await bot.add_cog(PeninjauGameHLTB(bot))

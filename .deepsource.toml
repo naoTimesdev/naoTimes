@@ -1,6 +1,10 @@
 version = 1
 
-exclude_patterns = ["*.json", "nthelper/romkan.py"]
+exclude_patterns = [
+    "*.json",
+    "logs/**",
+    "**/__pycache__/**"
+]
 
 [[analyzers]]
 name = "python"

@@ -1,14 +1,41 @@
-from typing import Literal, NamedTuple
+"""
+MIT License
+
+Copyright (c) 2019-2022 naoTimesdev
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+"""
+
+from dataclasses import dataclass
+from typing import Literal, cast
 
 __all__ = ("__version__", "version_info")
+ReleaseLevel = Literal["alpha", "beta", "candidate", "development", "final"]
 
 
-class VersionInfo(NamedTuple):
+@dataclass
+class VersionInfo:
     major: int
     minor: int
     micro: int
     serial: int
-    level: Literal["alpha", "beta", "candidate", "development", "final"]
+    level: ReleaseLevel
 
     @property
     def text(self) -> str:
@@ -59,8 +86,18 @@ class VersionInfo(NamedTuple):
             "dev": "development",
             "rc": "candidate",
         }
-        return cls(*VERSION_TOKEN, TOKEN_LEVEL_LONG.get(LEVEL, LEVEL))
+        parts = [*VERSION_TOKEN, 0, 0, 0, 0][:4]
+        level = TOKEN_LEVEL_LONG.get(LEVEL, LEVEL) or "final"
+        if level not in {"alpha", "beta", "candidate", "development", "final"}:
+            level = "final"
+        return cls(
+            parts[0],
+            parts[1],
+            parts[2],
+            parts[3],
+            cast(ReleaseLevel, level),
+        )
 
 
-__version__ = "3.1.0b1"
+__version__ = "3.2.0b1"
 version_info = VersionInfo.parse(__version__)

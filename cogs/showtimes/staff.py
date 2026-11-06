@@ -1,14 +1,14 @@
 import logging
 from enum import Enum
-from typing import List, Optional
 
-import disnake
-from disnake.embeds import EmptyEmbed
-from disnake.ext import commands, tasks
+import discord
+from discord import app_commands
+from discord.ext import commands, tasks
 
 from naotimes.bot import naoTimesBot, naoTimesContext
 from naotimes.showtimes import Showtimes, ShowtimesEpisodeStatus, ShowtimesProject
-from naotimes.utils import get_current_time, get_indexed
+from naotimes.showtimes.slash import load_server, project_autocomplete, resolve_project
+from naotimes.utils import get_current_time
 
 
 class ReleaseEnum(Enum):
@@ -26,14 +26,19 @@ class ProgressEnum(Enum):
 class ShowtimesStaff(commands.Cog):
     def __init__(self, bot: naoTimesBot):
         self.bot = bot
-        self.queue = bot.showqueue
-        self.base = bot.showcogs
-        self.ntdb = bot.ntdb
+        queue = bot.showqueue
+        base = bot.showcogs
+        ntdb = bot.ntdb
+        if queue is None or base is None or ntdb is None:
+            raise RuntimeError("Showtimes services must be initialized before loading this cog")
+        self.queue = queue
+        self.base = base
+        self.ntdb = ntdb
         self.logger = logging.getLogger("Showtimes.Staff")
 
         self.resync_failed_server.start()
 
-    def cog_unload(self):
+    async def cog_unload(self):
         self.resync_failed_server.cancel()
 
     @tasks.loop(minutes=1.0)
@@ -60,46 +65,37 @@ class ShowtimesStaff(commands.Cog):
         self,
         ctx: naoTimesContext,
         server: Showtimes,
-        title: str = None,
+        project: ShowtimesProject,
         mode: ReleaseEnum = ReleaseEnum.SINGLE,
-        episode: Optional[int] = None,
+        episode: int | None = None,
         progress: ProgressEnum = ProgressEnum.DONE,
     ):
-        self.logger.info(f"Requested release {title} at {server.id} with mode {mode}")
+        self.logger.info(f"Requested release {project.title} at {server.id} with mode {mode}")
 
-        all_matches = server.find_projects(title)
-        if len(all_matches) < 1:
-            self.logger.warning(f"{server.id}: no matches.")
-            return await ctx.send("Tidak dapat menemukan judul tersebut di database")
-        if len(all_matches) > 1:
-            self.logger.info(f"{server.id}: found multiple matches!")
-            selected_anime = await ctx.select_simple(all_matches, lambda x: x.title)
-            if selected_anime is None:
-                return await ctx.send("**Dibatalkan!**")
-            all_matches = [selected_anime]
-
-        matched_anime = all_matches[0]
+        matched_anime = project
         self.logger.info(f"{server.id}: matched {matched_anime.title}")
         current_episode = matched_anime.get_current()
         if progress == ProgressEnum.UNDONE:
             current_episode = matched_anime.get_previous_episode()
             if current_episode is None:
-                return await ctx.send("Belum ada Episode yang dirilis?")
+                return await ctx.send(ctx.t("rilis.no_previous"))
         else:
             if current_episode is None:
-                return await ctx.send("Anime telah selesai digarap!")
+                return await ctx.send(ctx.t("errors.anime_finished"))
+        if current_episode is None:
+            return await ctx.send(ctx.t("errors.no_active_episode"))
         first_episode = matched_anime.status[0]
         final_episode = matched_anime.status[-1]
         should_update_fsdb = False
         fsdb_update_to = "Tentatif"
 
         if not matched_anime.assignment.can_release(ctx.author) and not server.is_admin(ctx.author):
-            return await ctx.send(
-                "**Tidak secepat itu ferguso, yang bisa melakukan perintah rilis hanyalah admin atau QCer**"
-            )
+            return await ctx.send(ctx.t("rilis.not_allowed"))
 
         if episode is None and mode == ReleaseEnum.BATCH:
-            return await ctx.send("Mohon ketik jumlah episode yang benar")
+            return await ctx.send(ctx.t("rilis.batch_count"))
+        if mode == ReleaseEnum.BATCH and episode is None:
+            return await ctx.send(ctx.t("rilis.batch_count"))
         if progress == ProgressEnum.DONE:
             if mode == ReleaseEnum.SINGLE:
                 if current_episode.episode == final_episode.episode:
@@ -129,30 +125,29 @@ class ShowtimesStaff(commands.Cog):
             elif mode == ReleaseEnum.ALL:
                 should_update_fsdb = True
 
-        joined_koleb: List[Showtimes] = []
+        joined_koleb: list[Showtimes] = []
         for kolaborasi in matched_anime.kolaborasi:
             if kolaborasi == server.id:
                 continue
-            osrv_info = await self.queue.fetch_database(kolaborasi)
+            osrv_info = await self.queue.fetch_database(str(kolaborasi))
             if osrv_info is not None:
                 joined_koleb.append(osrv_info)
 
-        updated_episode = []
-        text_update = f"**{matched_anime.title} - #{current_episode.episode}** telah dirilis"
-        embed_update = f"{matched_anime.title} - #{current_episode.episode} telah dirilis!"
+        updated_episode: list[int] = []
+        text_update = ctx.t("rilis.single_done", title=matched_anime.title, episode=current_episode.episode)
+        embed_update = ctx.t("rilis.single_done_embed", title=matched_anime.title, episode=current_episode.episode)
         if progress == ProgressEnum.UNDONE:
-            text_update = (
-                f"Berhasil membatalkan rilisan **{matched_anime.title}** episode #{current_episode.episode}"
-            )
-            embed_update = (
-                f"Rilisan **episode #{current_episode.episode}** dibatalkan dan sedang dikerjakan kembali"
-            )
+            text_update = ctx.t("rilis.single_undone", title=matched_anime.title, episode=current_episode.episode)
+            embed_update = ctx.t("rilis.single_undone_embed", episode=current_episode.episode)
         if mode == ReleaseEnum.SINGLE:
             updated_episode.append(current_episode.episode)
         elif mode == ReleaseEnum.BATCH:
+            if episode is None:
+                return await ctx.send(ctx.t("rilis.batch_count"))
             # start episode
             start_ep = current_episode.episode
             hop_step = 1
+            end_ep = start_ep
             if progress == ProgressEnum.DONE:
                 end_ep = start_ep + episode
                 if end_ep >= final_episode.episode:
@@ -166,31 +161,28 @@ class ShowtimesStaff(commands.Cog):
                     fsdb_update_to = "Tentatif"
                     end_ep = first_episode.episode
                 hop_step = -1
-            text_update = f"**{matched_anime.title} - #{start_ep} sampai #{end_ep}** telah dirilis"
-            embed_update = f"{matched_anime.title} - #{start_ep} sampai #{end_ep} telah dirilis!"
+            text_update = ctx.t("rilis.range_done", title=matched_anime.title, start=start_ep, end=end_ep)
+            embed_update = ctx.t("rilis.range_done_embed", title=matched_anime.title, start=start_ep, end=end_ep)
             updated_episode.extend(range(start_ep, end_ep + hop_step, hop_step))
             if progress == ProgressEnum.UNDONE:
-                text_update = f"Berhasil membatalkan rilisan **{matched_anime.title}** "
-                text_update += f"episode #{end_ep} sampai #{start_ep}"
-                embed_update = f"Rilisan **episode #{end_ep} sampai {start_ep}** dibatalkan"
-                embed_update += " dan sedang dikerjakan kembali"
+                text_update = ctx.t("rilis.range_undone", title=matched_anime.title, end=end_ep, start=start_ep)
+                embed_update = ctx.t("rilis.range_undone_embed", end=end_ep, start=start_ep)
         elif mode == ReleaseEnum.ALL:
             # start episode
             start_ep = current_episode.episode
             hop_step = 1
+            end_ep = start_ep
             if progress == ProgressEnum.DONE:
                 end_ep = final_episode.episode
             elif progress == ProgressEnum.UNDONE:
                 end_ep = first_episode.episode
                 hop_step = -1
             updated_episode.extend(range(start_ep, end_ep + hop_step, hop_step))
-            text_update = f"**{matched_anime.title} - #{start_ep} sampai #{end_ep}** telah dirilis"
-            embed_update = f"{matched_anime.title} - #{start_ep} sampai #{end_ep} telah dirilis!"
+            text_update = ctx.t("rilis.range_done", title=matched_anime.title, start=start_ep, end=end_ep)
+            embed_update = ctx.t("rilis.range_done_embed", title=matched_anime.title, start=start_ep, end=end_ep)
             if progress == ProgressEnum.UNDONE:
-                text_update = f"Berhasil membatalkan rilisan **{matched_anime.title}** "
-                text_update += f"episode #{end_ep} sampai #{start_ep}"
-                embed_update = f"Rilisan **episode #{end_ep} sampai {start_ep}** dibatalkan"
-                embed_update += " dan sedang dikerjakan kembali"
+                text_update = ctx.t("rilis.range_undone", title=matched_anime.title, end=end_ep, start=start_ep)
+                embed_update = ctx.t("rilis.range_undone_embed", end=end_ep, start=start_ep)
 
         for episode in updated_episode:
             if episode == current_episode.episode:
@@ -203,7 +195,7 @@ class ShowtimesStaff(commands.Cog):
             the_episode.finished = progress == ProgressEnum.DONE
             matched_anime.status = the_episode
 
-        save_queue: List[Showtimes] = []
+        save_queue: list[Showtimes] = []
         server.update_project(matched_anime)
         save_queue.append(server)
         for osrv in joined_koleb:
@@ -230,9 +222,7 @@ class ShowtimesStaff(commands.Cog):
         await ctx.send(text_update)
 
         if matched_anime.fsdb is not None and should_update_fsdb and self.bot.fsdb is not None:
-            self.logger.info(
-                f"{matched_anime.id}: Updating FSDB status data for project to {fsdb_update_to}..."
-            )
+            self.logger.info(f"{matched_anime.id}: Updating FSDB status data for project to {fsdb_update_to}...")
             if matched_anime.fsdb.id is not None:
                 await self.bot.fsdb.update_project(matched_anime.fsdb.id, "status", fsdb_update_to)
         for all_srv in save_queue:
@@ -240,133 +230,132 @@ class ShowtimesStaff(commands.Cog):
             res, msg = await self.ntdb.update_server(all_srv)
             if not res:
                 if all_srv.id not in self.bot.showtimes_resync:
-                    self.bot.showtimes_resync.append(all_srv.id)
+                    self.bot.showtimes_resync.append(str(all_srv.id))
                 self.logger.error(f"{all_srv.id}: failed to update, reason: {msg}")
 
         for update in save_queue:
-            embed = disnake.Embed(title=matched_anime.title, color=0x1EB5A6)
-            nn_embed = "Rilis!"
+            embed = discord.Embed(title=matched_anime.title, color=0x1EB5A6)
+            nn_embed = ctx.t("rilis.embed_done")
             if progress == ProgressEnum.UNDONE:
-                nn_embed = "Batal rilis..."
+                nn_embed = ctx.t("rilis.embed_undone")
                 embed.colour = 0xB51E1E
             embed.add_field(name=nn_embed, value=embed_update, inline=False)
-            embed.set_footer(text=f"Pada: {get_current_time()}")
-            await self.bot.showcogs.announce_embed(self.bot, update.announcer, embed)
+            embed.set_footer(text=ctx.t("footer.at", time=get_current_time(ctx.locale)))
+            await self.base.announce_embed(self.bot, update.announcer, embed)
 
-    @commands.group(name="rilis", aliases=["release"])
-    @commands.guild_only()
-    async def _showstaff_rilis(self, ctx: naoTimesContext):
-        """Showtimes staff release command"""
-        if ctx.invoked_subcommand is None:
-            pesan: disnake.Message = ctx.message
-            split_content = pesan.clean_content.split(" ")
-            the_real_title = None
-            for pos, konten in enumerate(split_content):
-                if "rilis" in konten.lower() or "release" in konten.lower():
-                    the_real_title = get_indexed(split_content, pos + 1)
-                    if isinstance(the_real_title, str) and not the_real_title.strip():
-                        the_real_title = None
+    # ------------------------------------------------------------------ slash helpers
+    async def _project_auto(self, inter: discord.Interaction, current: str):
+        return await project_autocomplete(self.bot, inter, current)
 
-            srv_data = await self.queue.fetch_database(ctx.guild.id)
-            if srv_data is None:
-                return
-            self.logger.info(f"{ctx.guild.id}: showtimes data found!")
-            if not the_real_title:
-                return await self.base.send_all_projects(ctx, srv_data)
-
-            await self._do_release(ctx, srv_data, the_real_title, ReleaseEnum.SINGLE)
-
-    @_showstaff_rilis.command(name="batch")
-    async def _showstaff_rilis_batch(self, ctx: naoTimesContext, episode: int, *, judul: str = None):
-        """Batch release command"""
-        srv_data = await self.queue.fetch_database(ctx.guild.id)
-        if srv_data is None:
-            return
-        self.logger.info(f"{ctx.guild.id}: showtimes data found!")
-        if episode < 1:
-            return await ctx.send("Mohon tulis episode lebih dari angka 0!")
-        if not judul:
-            return await self.base.send_all_projects(ctx, srv_data)
-
-        await self._do_release(ctx, srv_data, judul, ReleaseEnum.BATCH, episode)
-
-    @_showstaff_rilis.command(name="semua")
-    async def _showstaff_rilis_semua(self, ctx: naoTimesContext, *, judul: str = None):
-        """Full episode release command"""
-        srv_data = await self.queue.fetch_database(ctx.guild.id)
-        if srv_data is None:
-            return
-        self.logger.info(f"{ctx.guild.id}: showtimes data found!")
-        if not judul:
-            return await self.base.send_all_projects(ctx, srv_data)
-
-        await self._do_release(ctx, srv_data, judul, ReleaseEnum.ALL)
-
-    @commands.group(name="batalrilis", aliases=["undorelease", "revertrelease"])
-    @commands.guild_only()
-    async def _showstaff_batalrilis(self, ctx: naoTimesContext):
-        """Showtimes staff release command"""
-        if ctx.invoked_subcommand is None:
-            pesan: disnake.Message = ctx.message
-            split_content = pesan.clean_content.split(" ")
-            the_real_title = None
-            for pos, konten in enumerate(split_content):
-                if "rilis" in konten.lower() or "release" in konten.lower():
-                    the_real_title = get_indexed(split_content, pos + 1)
-                    if isinstance(the_real_title, str) and not the_real_title.strip():
-                        the_real_title = None
-
-            srv_data = await self.queue.fetch_database(ctx.guild.id)
-            if srv_data is None:
-                return
-            self.logger.info(f"{ctx.guild.id}: showtimes data found!")
-            if not the_real_title:
-                return await self.base.send_all_projects(ctx, srv_data)
-
-            await self._do_release(
-                ctx, srv_data, the_real_title, ReleaseEnum.SINGLE, progress=ProgressEnum.UNDONE
+    async def _posisi_auto(self, inter: discord.Interaction, current: str):
+        judul = getattr(inter.namespace, "judul", None)
+        server = await self.queue.fetch_database(str(inter.guild.id)) if inter.guild else None
+        if server is None or not judul:
+            return []
+        project = server.get_project(judul) or server.exact_match(judul)
+        if project is None:
+            return []
+        choices = [
+            app_commands.Choice(
+                name=project.assignment.get_custom_name(role) or self.base.normalize_role_name(role, True),
+                value=role,
             )
+            for role, _ in project.assignment
+        ]
+        return [c for c in choices if current.lower() in c.name.lower() or current.lower() in c.value.lower()][:25]
 
-    @_showstaff_batalrilis.command(name="batch")
-    async def _showstaff_batalrilis_batch(self, ctx: naoTimesContext, episode: int, *, judul: str = None):
-        """Batch release command"""
-        srv_data = await self.queue.fetch_database(ctx.guild.id)
+    async def _release_entry(
+        self,
+        inter: discord.Interaction,
+        judul: str,
+        mode: ReleaseEnum,
+        jumlah: int | None,
+        progress: ProgressEnum,
+    ):
+        ctx = await self.bot.get_context(inter)
+        srv_data = await load_server(self.bot, inter)
         if srv_data is None:
             return
-        self.logger.info(f"{ctx.guild.id}: showtimes data found!")
-        if episode < 1:
-            return await ctx.send("Mohon tulis episode lebih dari angka 0!")
-        if not judul:
-            return await self.base.send_all_projects(ctx, srv_data)
+        if mode == ReleaseEnum.BATCH and (jumlah is None or jumlah < 1):
+            return await inter.response.send_message(ctx.t("rilis.batch_option"), ephemeral=True)
+        project, error = await resolve_project(self.bot, srv_data, judul)
+        if project is None:
+            return await inter.response.send_message(error, ephemeral=True)
+        await inter.response.defer()
+        await self._do_release(ctx, srv_data, project, mode, jumlah, progress)
 
-        await self._do_release(ctx, srv_data, judul, ReleaseEnum.BATCH, episode, ProgressEnum.UNDONE)
+    @app_commands.command(
+        name="rilis",
+        description=app_commands.locale_str("Rilis episode yang sedang digarap", key="showtimes.rilis.description"),
+    )
+    @app_commands.guild_only()
+    @app_commands.describe(
+        judul=app_commands.locale_str("Judul proyek", key="showtimes.options.judul"),
+        mode=app_commands.locale_str(
+            "Satu episode (bawaan), batch beberapa episode, atau semua episode", key="showtimes.options.mode"
+        ),
+        jumlah=app_commands.locale_str("Jumlah episode (khusus mode batch)", key="showtimes.options.jumlah"),
+    )
+    @app_commands.choices(
+        mode=[
+            app_commands.Choice(name=app_commands.locale_str("Satu episode", key="showtimes.choices.single"), value=0),
+            app_commands.Choice(name=app_commands.locale_str("Batch", key="showtimes.choices.batch"), value=1),
+            app_commands.Choice(name=app_commands.locale_str("Semua", key="showtimes.choices.all"), value=2),
+        ]
+    )
+    async def _showstaff_rilis(
+        self,
+        inter: discord.Interaction,
+        judul: str,
+        mode: app_commands.Choice[int] | None = None,
+        jumlah: app_commands.Range[int, 1, 100] | None = None,
+    ):
+        release_mode = ReleaseEnum(mode.value if mode is not None else 0)
+        await self._release_entry(inter, judul, release_mode, jumlah, ProgressEnum.DONE)
 
-    @_showstaff_batalrilis.command(name="semua")
-    async def _showstaff_batalrilis_semua(self, ctx: naoTimesContext, *, judul: str = None):
-        """Full episode release command"""
-        srv_data = await self.queue.fetch_database(ctx.guild.id)
-        if srv_data is None:
-            return
-        self.logger.info(f"{ctx.guild.id}: showtimes data found!")
-        if not judul:
-            return await self.base.send_all_projects(ctx, srv_data)
+    @app_commands.command(
+        name="batalrilis",
+        description=app_commands.locale_str("Batalkan rilisan episode", key="showtimes.batalrilis.description"),
+    )
+    @app_commands.guild_only()
+    @app_commands.describe(
+        judul=app_commands.locale_str("Judul proyek", key="showtimes.options.judul"),
+        mode=app_commands.locale_str(
+            "Satu episode (bawaan), batch beberapa episode, atau semua episode", key="showtimes.options.mode"
+        ),
+        jumlah=app_commands.locale_str("Jumlah episode (khusus mode batch)", key="showtimes.options.jumlah"),
+    )
+    @app_commands.choices(
+        mode=[
+            app_commands.Choice(name=app_commands.locale_str("Satu episode", key="showtimes.choices.single"), value=0),
+            app_commands.Choice(name=app_commands.locale_str("Batch", key="showtimes.choices.batch"), value=1),
+            app_commands.Choice(name=app_commands.locale_str("Semua", key="showtimes.choices.all"), value=2),
+        ]
+    )
+    async def _showstaff_batalrilis(
+        self,
+        inter: discord.Interaction,
+        judul: str,
+        mode: app_commands.Choice[int] | None = None,
+        jumlah: app_commands.Range[int, 1, 100] | None = None,
+    ):
+        release_mode = ReleaseEnum(mode.value if mode is not None else 0)
+        await self._release_entry(inter, judul, release_mode, jumlah, ProgressEnum.UNDONE)
 
-        await self._do_release(ctx, srv_data, judul, ReleaseEnum.ALL, progress=ProgressEnum.UNDONE)
-
-    @staticmethod
-    def _create_progress_embed(project_info: ShowtimesProject, episode_info: ShowtimesEpisodeStatus):
-        status_lists = []
-        for work, c_stat in episode_info.progress:
-            wrap = "~~" if c_stat else "**"
-            status_lists.append(f"{wrap}{work}{wrap}")
-        statuses = " ".join(status_lists)
+    def _create_progress_embed(
+        self, ctx: naoTimesContext, project_info: ShowtimesProject, episode_info: ShowtimesEpisodeStatus
+    ):
+        statuses = self.base.parse_status(episode_info.progress)
 
         poster_image, poster_color = project_info.poster.url, project_info.poster.color
-        embed = disnake.Embed(title=f"{project_info.title} - #{episode_info.episode}", color=poster_color)
+        embed = discord.Embed(
+            title=ctx.t("tagih.embed_title", title=project_info.title, episode=episode_info.episode),
+            color=poster_color,
+        )
         embed.set_thumbnail(url=poster_image)
-        embed.add_field(name="Status", value=statuses, inline=False)
-        embed.add_field(name="Update Terakhir", value="Baru saja", inline=False)
-        embed.set_footer(text="Dibawakan oleh naoTimes™", icon_url="https://naoti.me/assets/img/nt192.png")
+        embed.add_field(name=ctx.t("embed.status"), value=statuses, inline=False)
+        embed.add_field(name=ctx.t("embed.last_update"), value=ctx.t("embed.recent"), inline=False)
+        embed.set_footer(text=ctx.t("footer.credit"), icon_url="https://naoti.me/assets/img/nt192.png")
         return embed
 
     async def _do_beres_batal(
@@ -374,29 +363,36 @@ class ShowtimesStaff(commands.Cog):
         ctx: naoTimesContext,
         server: Showtimes,
         mode: ProgressEnum,
-        posisi: str,
-        judul=None,
-        episode: int = None,
+        posisi: str | None,
+        posisi_asli: str,
+        project: ShowtimesProject,
+        episode: int | None = None,
     ):
         """A function to be used for !beres and !gakjadi"""
-        server_id: int = ctx.guild.id
-        self.logger.info(f"{server_id}: getting close matches...")
-        all_matches = server.find_projects(judul)
-        if len(all_matches) < 1:
-            self.logger.warning(f"{server_id}: no matches.")
-            return await ctx.send("Tidak dapat menemukan judul tersebut di database")
-        if len(all_matches) > 1:
-            self.logger.info(f"{server_id}: found multiple matches!")
-            selected_anime = await ctx.select_simple(all_matches, lambda x: x.title)
-            if selected_anime is None:
-                return await ctx.send("**Dibatalkan!**")
-            all_matches = [selected_anime]
+        server_id = server.id
 
         if mode == ProgressEnum.TOGGLE and episode is None:
-            return await ctx.send("Episode kosong tetapi meminta perintah tandakan...?")
+            return await ctx.send(ctx.t("progress.empty_episode"))
 
-        matched_anime = all_matches[0]
+        matched_anime = project
         self.logger.info(f"{server_id}: matched {matched_anime.title}")
+
+        is_custom = False
+        if posisi is None:
+            valid_position = ["tl", "tlc", "enc", "ed", "tm", "ts"]
+            for custom in matched_anime.assignment.custom:
+                valid_position.append(custom.key.lower())
+            valid_position.append("qc")
+            if posisi_asli.lower() not in valid_position:
+                return await ctx.send(
+                    ctx.t(
+                        "progress.unknown_position",
+                        position=posisi_asli,
+                        available="`, `".join(valid_position),
+                    )
+                )
+            posisi = posisi_asli.lower()
+            is_custom = True
 
         if not matched_anime.assignment.can_toggle(posisi, ctx.author) and not server.is_admin(ctx.author):
             return
@@ -405,13 +401,15 @@ class ShowtimesStaff(commands.Cog):
         log_pre = f"{server_id}-{matched_anime.title}"
         if active_episode is None:
             self.logger.warning(f"{log_pre}: no active episode left")
-            return await ctx.send("**Sudah selesai digarap!**")
+            return await ctx.send(ctx.t("errors.already_finished"))
 
         if mode == ProgressEnum.TOGGLE:
+            if episode is None:
+                return await ctx.send(ctx.t("progress.episode_required"))
             active_episode = matched_anime.get_episode(episode)
             if active_episode is None:
                 self.logger.warning(f"{log_pre}: episode out of range")
-                return await ctx.send("Episode tersebut tidak ada di database.")
+                return await ctx.send(ctx.t("progress.episode_not_found"))
 
         is_done = mode == ProgressEnum.DONE
         posisi = posisi.upper()
@@ -420,19 +418,19 @@ class ShowtimesStaff(commands.Cog):
             active_episode.progress.toggle(posisi, not active_episode.progress.get(posisi))
         else:
             if is_done and active_episode.progress.get(posisi):
-                return await ctx.send('Role tersebut sudah ditandakan sebagai "Beres".')
+                return await ctx.send(ctx.t("progress.already_done"))
             elif not is_done and not active_episode.progress.get(posisi):
-                return await ctx.send('Role tersebut sudah ditandakan sebagai "Gak Jadi".')
+                return await ctx.send(ctx.t("progress.already_undone"))
             active_episode.progress.toggle(posisi, is_done)
         matched_anime.status = active_episode
         server.update_project(matched_anime)
 
-        update_queue: List[Showtimes] = []
+        update_queue: list[Showtimes] = []
         update_queue.append(server)
         for osrv in matched_anime.kolaborasi:
             if osrv == server_id:
                 continue
-            osrv_srv = await self.queue.fetch_database(osrv)
+            osrv_srv = await self.queue.fetch_database(str(osrv))
             if osrv_srv is None:
                 continue
             osrv_project = osrv_srv.get_project(matched_anime)
@@ -446,123 +444,136 @@ class ShowtimesStaff(commands.Cog):
             await self.queue.add_job(peladen)
         self.logger.info(f"{log_pre}: sending progress info to staff...")
         if mode == ProgressEnum.TOGGLE:
-            toggle_to = "beres" if active_episode.progress.get(posisi) else "belum beres"
+            toggle_to = (
+                ctx.t("progress.toggled_done")
+                if active_episode.progress.get(posisi)
+                else ctx.t("progress.toggled_undone")
+            )
             await ctx.send(
-                f"Berhasil mengubah status `{posisi}` **{matched_anime.title}** episode "
-                f"**#{active_episode.episode}** ke **{toggle_to}**"
+                ctx.t(
+                    "progress.toggle_success",
+                    position=posisi,
+                    title=matched_anime.title,
+                    episode=active_episode.episode,
+                    state=toggle_to,
+                )
             )
         else:
-            await ctx.send(
-                f"Berhasil mengubah status garapan {matched_anime.title} - #{active_episode.episode}"
-            )
+            await ctx.send(ctx.t("progress.change_success", title=matched_anime.title, episode=active_episode.episode))
 
         for peladen in update_queue:
             self.logger.info(f"{peladen.id}: Updating database...")
             success, msg = await self.ntdb.update_server(peladen)
             if not success:
                 if peladen.id not in self.bot.showtimes_resync:
-                    self.bot.showtimes_resync.append(peladen.id)
+                    self.bot.showtimes_resync.append(str(peladen.id))
                 self.logger.warning(f"{peladen.id}: Failed to update database: {msg}")
 
         if mode == ProgressEnum.TOGGLE:
             # Dont sent announce message
             return
 
-        color_pog = disnake.Color.from_rgb(120, 222, 118)
+        color_pog = discord.Color.from_rgb(120, 222, 118)
         if mode == ProgressEnum.UNDONE:
-            color_pog = disnake.Color.from_rgb(218, 97, 97)
+            color_pog = discord.Color.from_rgb(218, 97, 97)
 
         self.logger.info(f"{log_pre}: Sending progress to all servers...")
         for update in update_queue:
-            embed = disnake.Embed(title=f"{matched_anime.title} - #{active_episode.episode}", color=color_pog)
-            embed.add_field(
-                name="Status", value=self.base.parse_status(active_episode.progress), inline=False
+            embed = discord.Embed(
+                title=ctx.t("tagih.embed_title", title=matched_anime.title, episode=active_episode.episode),
+                color=color_pog,
             )
-            embed.set_thumbnail(url=EmptyEmbed)
+            embed.add_field(
+                name=ctx.t("embed.status"),
+                value=self.base.parse_status(active_episode.progress),
+                inline=False,
+            )
+            embed.set_thumbnail(url=None)
             pre_tar = "✅"
             if not is_done:
                 pre_tar = "❌"
-            embed.description = f"{pre_tar} {self.base.normalize_role_name(posisi)}"
-            embed.set_footer(text=f"Pada: {get_current_time()}")
-            await self.bot.showcogs.announce_embed(self.bot, update.announcer, embed)
+            posisi_as_name = self.base.normalize_role_name(posisi)
+            if is_custom:
+                self.logger.info(f"{log_pre}: {posisi} is custom role")
+                posisi_as_name = active_episode.progress.get_custom_name(posisi) or posisi_as_name
+            embed.description = f"{pre_tar} {posisi_as_name}"
+            embed.set_footer(text=ctx.t("footer.at", time=get_current_time(ctx.locale)))
+            await self.base.announce_embed(self.bot, update.announcer, embed)
 
         self.logger.info(f"{log_pre}: Sending final information to staff...")
-        await ctx.send(embed=self._create_progress_embed(matched_anime, active_episode))
+        await ctx.send(embed=self._create_progress_embed(ctx, matched_anime, active_episode))
 
-    @commands.command(name="beres", aliases=["done"])
-    async def _showstaff_beres(self, ctx: naoTimesContext, posisi: str, *, judul: str = None):
-        """Showtimes staff done command"""
-        server_id = ctx.guild.id
-        self.logger.info(f"Requested beres at: {server_id}")
-        posisi, posisi_asli = self.base.get_roles(posisi)
-        if posisi is None:
-            self.logger.warning("Unknown position")
-            return await ctx.send(
-                f"Tidak ada posisi **{posisi_asli}**\n"
-                "Yang tersedia: `tl`, `tlc`, `enc`, `ed`, `tm`, `ts`, dan `qc`"
-            )
-        srv_data = await self.queue.fetch_database(server_id)
-
-        if srv_data is None:
-            return
-        self.logger.info(f"{server_id}: found a showtimes match")
-
-        if not judul:
-            return await self.base.send_all_projects(ctx, srv_data)
-
-        await self._do_beres_batal(ctx, srv_data, ProgressEnum.DONE, posisi, judul)
-
-    @commands.command(name="gakjadi", aliases=["undone", "cancel"])
-    async def _showstaff_gakjadi(self, ctx: naoTimesContext, posisi: str, *, judul: str = None):
-        """Showtimes staff undone command"""
-        server_id = ctx.guild.id
-        self.logger.info(f"Requested gakjadi at: {server_id}")
-        posisi, posisi_asli = self.base.get_roles(posisi)
-        if posisi is None:
-            self.logger.warning("Unknown position")
-            return await ctx.send(
-                f"Tidak ada posisi **{posisi_asli}**\n"
-                "Yang tersedia: `tl`, `tlc`, `enc`, `ed`, `tm`, `ts`, dan `qc`"
-            )
-        srv_data = await self.queue.fetch_database(server_id)
-
-        if srv_data is None:
-            return
-        self.logger.info(f"{server_id}: found a showtimes match")
-
-        if not judul:
-            return await self.base.send_all_projects(ctx, srv_data)
-
-        await self._do_beres_batal(ctx, srv_data, ProgressEnum.UNDONE, posisi, judul)
-
-    @commands.command(name="tandakan", aliases=["mark"])
-    async def _showstaff_tandakan(
-        self, ctx: naoTimesContext, posisi: str, episode: int, *, judul: str = None
+    async def _progress_entry(
+        self,
+        inter: discord.Interaction,
+        judul: str,
+        posisi: str,
+        mode: ProgressEnum,
+        episode: int | None = None,
     ):
-        """Showtimes toggle position command"""
-        server_id = ctx.guild.id
-        self.logger.info(f"Requested tandakan at: {server_id}")
-        posisi, posisi_asli = self.base.get_roles(posisi)
-        if posisi is None:
-            self.logger.warning("Unknown position")
-            return await ctx.send(
-                f"Tidak ada posisi **{posisi_asli}**\n"
-                "Yang tersedia: `tl`, `tlc`, `enc`, `ed`, `tm`, `ts`, dan `qc`"
-            )
-        srv_data = await self.queue.fetch_database(server_id)
-
+        srv_data = await load_server(self.bot, inter)
         if srv_data is None:
             return
-        self.logger.info(f"{server_id}: found a showtimes match")
+        project, error = await resolve_project(self.bot, srv_data, judul)
+        if project is None:
+            return await inter.response.send_message(error, ephemeral=True)
+        posisi_r, posisi_asli = self.base.get_roles(posisi)
+        await inter.response.defer()
+        ctx = await self.bot.get_context(inter)
+        await self._do_beres_batal(ctx, srv_data, mode, posisi_r, posisi_asli, project, episode)
 
-        if not judul:
-            return await self.base.send_all_projects(ctx, srv_data)
+    @app_commands.command(
+        name="beres",
+        description=app_commands.locale_str(
+            "Tandai posisi sudah selesai dikerjakan", key="showtimes.beres.description"
+        ),
+    )
+    @app_commands.guild_only()
+    @app_commands.describe(
+        judul=app_commands.locale_str("Judul proyek", key="showtimes.options.judul"),
+        posisi=app_commands.locale_str("Posisi yang sudah beres", key="showtimes.beres.option_posisi"),
+    )
+    async def _showstaff_beres(self, inter: discord.Interaction, judul: str, posisi: str):
+        await self._progress_entry(inter, judul, posisi, ProgressEnum.DONE)
 
-        await self._do_beres_batal(ctx, srv_data, ProgressEnum.TOGGLE, posisi, judul, episode)
+    @app_commands.command(
+        name="gakjadi",
+        description=app_commands.locale_str("Batalkan tanda beres sebuah posisi", key="showtimes.gakjadi.description"),
+    )
+    @app_commands.guild_only()
+    @app_commands.describe(
+        judul=app_commands.locale_str("Judul proyek", key="showtimes.options.judul"),
+        posisi=app_commands.locale_str("Posisi yang dibatalkan", key="showtimes.gakjadi.option_posisi"),
+    )
+    async def _showstaff_gakjadi(self, inter: discord.Interaction, judul: str, posisi: str):
+        await self._progress_entry(inter, judul, posisi, ProgressEnum.UNDONE)
+
+    @app_commands.command(
+        name="tandakan",
+        description=app_commands.locale_str(
+            "Ubah (toggle) status posisi di episode tertentu", key="showtimes.tandakan.description"
+        ),
+    )
+    @app_commands.guild_only()
+    @app_commands.describe(
+        judul=app_commands.locale_str("Judul proyek", key="showtimes.options.judul"),
+        posisi=app_commands.locale_str("Posisi yang diubah", key="showtimes.tandakan.option_posisi"),
+        episode=app_commands.locale_str("Nomor episode", key="showtimes.tandakan.option_episode"),
+    )
+    async def _showstaff_tandakan(
+        self, inter: discord.Interaction, judul: str, posisi: str, episode: app_commands.Range[int, 1, 10000]
+    ):
+        await self._progress_entry(inter, judul, posisi, ProgressEnum.TOGGLE, episode)
+
+    for _cmd in (_showstaff_rilis, _showstaff_batalrilis, _showstaff_beres, _showstaff_gakjadi, _showstaff_tandakan):
+        _cmd.autocomplete("judul")(_project_auto)
+    for _cmd in (_showstaff_beres, _showstaff_gakjadi, _showstaff_tandakan):
+        _cmd.autocomplete("posisi")(_posisi_auto)
+    del _cmd
 
 
-def setup(bot: naoTimesBot):
+async def setup(bot: naoTimesBot):
     if bot.ntdb is None:
         bot.logger.warning("Owner hasn't enabled naoTimesDB yet, will not load this cogs")
         return
-    bot.add_cog(ShowtimesStaff(bot))
+    await bot.add_cog(ShowtimesStaff(bot))

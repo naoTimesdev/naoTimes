@@ -7,7 +7,7 @@ This contains internal socket and another one exposed to the internet
 
 MIT License
 
-Copyright (c) 2019-2021 naoTimesdev
+Copyright (c) 2019-2022 naoTimesdev
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -37,10 +37,11 @@ import platform
 import socket
 import traceback
 from base64 import b64encode
+from collections.abc import Callable
 from dataclasses import dataclass
 from inspect import signature
 from time import struct_time
-from typing import Any, Callable, Dict, List, Optional, Tuple, TypedDict, Union
+from typing import Any, TypeAlias, TypedDict
 
 import arrow
 import orjson
@@ -61,19 +62,11 @@ class SocketDecoParam(EventDecoParam):
     locked: bool
 
 
-class SServerFunc(Callable[[str, Any], Any]):
-    __nt_socket__: Union[SocketDecoParam, List[SocketDecoParam]]
-    __func__: SServerFunc
-    func: SServerFunc
+SServerFunc: TypeAlias = Callable[..., Any]
+EventFunc: TypeAlias = Callable[..., Any]
 
 
-class EventFunc(Callable[..., None]):
-    __nt_event__: Union[EventDecoParam, List[EventDecoParam]]
-    __func__: EventFunc
-    func: EventFunc
-
-
-async def maybe_asyncute(func: Union[SServerFunc, EventFunc], *args, **kwargs):
+async def maybe_asyncute(func: SServerFunc | EventFunc, *args, **kwargs):
     """
     Try to execute function
     """
@@ -97,10 +90,9 @@ class SocketServer:
     def __init__(
         self,
         port: int,
-        password: Optional[str] = None,
+        password: str | None = None,
         *,
-        logger: Optional[logging.Logger] = None,
-        loop: Optional[asyncio.AbstractEventLoop] = None,
+        logger: logging.Logger | None = None,
     ):
         """
         A simple external socket server
@@ -110,10 +102,8 @@ class SocketServer:
         self._server_lock = False
         self._authenticated_sid = []
 
-        self._event_map: Dict[str, SocketEvent] = {}
-        self._loop = loop
-        if self._loop is None:
-            self._loop = asyncio.get_event_loop()
+        self._event_map: dict[str, SocketEvent] = {}
+        self._loop = asyncio.get_event_loop()
 
         self._port = port
         self._password = password
@@ -124,7 +114,7 @@ class SocketServer:
 
         self._INTERNAL_EVENT = ["ping", "authenticate"]
         self._event_map["authenticate"] = SocketEvent(self.on_authenticate)
-        self._internal_task = asyncio.Task(self._start_server(), loop=self._loop)
+        self._internal_task = asyncio.Task(self._start_server())
 
     def log(self, uuid: str, event: str, success: int, data: Any, time: float):
         now = arrow.utcnow().shift(seconds=-time).to("local")
@@ -150,16 +140,25 @@ class SocketServer:
         server = await asyncio.start_server(self._handle_message, "0.0.0.0", self._port)
         # Set tcpalive
         if platform.system() == "Linux":
-            server.sockets[0].setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-            server.sockets[0].setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 1)
-            server.sockets[0].setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 3)
-            server.sockets[0].setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 5)
+            sock = server.sockets[0] if server.sockets else None
+            if sock is not None:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+                for option_name, value in (("TCP_KEEPIDLE", 1), ("TCP_KEEPINTVL", 3), ("TCP_KEEPCNT", 5)):
+                    option = getattr(socket, option_name, None)
+                    if option is not None:
+                        sock.setsockopt(socket.IPPROTO_TCP, option, value)
         elif platform.system() == "Darwin":
             TCP_KEEPALIVE = 0x10
-            server.sockets[0].setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-            server.sockets[0].setsockopt(socket.IPPROTO_TCP, TCP_KEEPALIVE, 3)
+            sock = server.sockets[0] if server.sockets else None
+            if sock is not None:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+                sock.setsockopt(socket.IPPROTO_TCP, TCP_KEEPALIVE, 3)
         elif platform.system() == "Windows":
-            server.sockets[0].ioctl(socket.SIO_KEEPALIVE_VALS, (1, 10000, 3000))
+            sock = server.sockets[0] if server.sockets else None
+            ioctl = getattr(sock, "ioctl", None)
+            keepalive_option = getattr(socket, "SIO_KEEPALIVE_VALS", None)
+            if callable(ioctl) and keepalive_option is not None:
+                ioctl(keepalive_option, (1, 10000, 3000))
 
         # Get sockname
         addr = server.sockets[0].getsockname()
@@ -192,11 +191,14 @@ class SocketServer:
                 addr = orjson.dumps(addr).decode("utf-8")
         return b64encode(addr.encode("utf-8")).decode("utf-8")
 
-    @staticmethod
-    def __parse_json(recv_bytes: bytes):
+    def __parse_json(self, recv_bytes: bytes):
         if b"\x04" == recv_bytes[-len(b"\x04") :]:
             recv_bytes = recv_bytes[: -len(b"\x04")]
-        decoded = recv_bytes.decode("utf-8").strip()
+        try:
+            decoded = recv_bytes.decode("utf-8").strip()
+        except Exception as exc:
+            self.logger.error(f"Unable to decode message as utf-8 (len {len(recv_bytes)})", exc_info=exc)
+            return None
         return orjson.loads(decoded)
 
     @staticmethod
@@ -221,7 +223,7 @@ class SocketServer:
         return any_data.encode("utf-8") + b"\x04"
 
     @staticmethod
-    def __create_argument(func: Callable[..., T], sid: str, data: str):
+    def __create_argument(func: Callable[..., T], sid: str, data: Any):
         available_args = []
         sigmaballs = signature(func)
         for param in sigmaballs.parameters.values():
@@ -240,7 +242,7 @@ class SocketServer:
         return sid in self._authenticated_sid
 
     # Internal event
-    async def on_authenticate(self, sid: str, data: str) -> Union[str, dict]:
+    async def on_authenticate(self, sid: str, data: str) -> str | dict:
         """Function to authenticate, you can override this
 
         :param sid: the uuid
@@ -260,12 +262,12 @@ class SocketServer:
             return "ok"
         return {"message": "not ok", "success": 0}
 
-    async def _on_message(self, sid: str, recv_data: Any) -> None:
+    async def _on_message(self, sid: str, recv_data: Any) -> dict[str, Any]:
         parsed = self.__parse_json(recv_data)
         if not isinstance(parsed, dict):
             return {"message": "unknown message received", "success": 0, "event": None}
-        event: str = parsed.get("event")
-        if event is None:
+        event = parsed.get("event")
+        if not isinstance(event, str):
             return {"message": "unknown event", "success": 0, "event": None}
         event = event.lower()
         if event == "ping":
@@ -323,16 +325,19 @@ class SocketServer:
             answer = {"message": "incomplete data received", "success": 0}
         writer.write(self._encode_message(answer))
         event_name = answer.get("event", "UNKNOWN")
+        if not isinstance(event_name, str):
+            event_name = "UNKNOWN"
+        success = answer.get("success", 0)
+        if not isinstance(success, int):
+            success = 0
         self.logger.info(f"answering back request to {uuid} on event {event_name}")
         await writer.drain()
         end = arrow.utcnow().timestamp()
         # Log access
-        self.log(uuid, event_name, answer["success"], answer, end - start)
+        self.log(uuid, event_name, success, answer, end - start)
         writer.close()
 
-    def _bind_function_attr(
-        self, bind_this: SServerFunc, name: str, lock: bool = True, installed: bool = True
-    ):
+    def _bind_function_attr(self, bind_this: SServerFunc, name: str, lock: bool = True, installed: bool = True):
         original_attr = getattr(bind_this, "__nt_socket__", None)
         socket_info = {
             "name": name,
@@ -354,15 +359,11 @@ class SocketServer:
                 socket_info["name"] = original_attr["name"]
                 socket_info["locked"] = original_attr["locked"]
 
-        if hasattr(bind_this, "__func__"):
-            # Bound method
-            bind_this.__func__.__nt_socket__ = socket_info
-        else:
-            # function
-            bind_this.__nt_socket__ = socket_info
+        target = getattr(bind_this, "__func__", bind_this)
+        setattr(target, "__nt_socket__", socket_info)
 
     # Function to bind
-    def on(self, event: str, callback: Union[SServerFunc, Tuple[SServerFunc, bool], SocketEvent]) -> None:
+    def on(self, event: str, callback: SServerFunc | tuple[SServerFunc, bool] | SocketEvent) -> None:
         """Bind an event to a callback"""
         event = event.lower()
         if event in self._INTERNAL_EVENT:
@@ -400,10 +401,10 @@ class SocketServer:
 class EventManager:
     """A simple event manager to dispatch a event to another cogs"""
 
-    def __init__(self, loop: Optional[asyncio.AbstractEventLoop] = None):
+    def __init__(self, loop: asyncio.AbstractEventLoop | None = None):
         """A simple event manager to dispatch a event to another cogs"""
         self.logger = logging.getLogger("naoTimes.EventManager")
-        self._event_map: Dict[str, List[EventFunc]] = {}
+        self._event_map: dict[str, list[EventFunc]] = {}
 
         self._loop = loop or asyncio.get_event_loop()
         self._blocking = False
@@ -424,9 +425,7 @@ class EventManager:
         self._blocking = True
         task_retriever = asyncio.all_tasks
         tasks = {
-            t
-            for t in task_retriever(loop=self._loop)
-            if not t.done() and t.get_name().startswith("naoTimesEvent:")
+            t for t in task_retriever(loop=self._loop) if not t.done() and t.get_name().startswith("naoTimesEvent:")
         }
         if not tasks:
             return
@@ -439,9 +438,7 @@ class EventManager:
             if task.cancelled():
                 continue
             if task.exception() is not None:
-                self.logger.error(
-                    "An exception occured while trying to cancel event task:", exc_info=task.exception()
-                )
+                self.logger.error("An exception occured while trying to cancel event task:", exc_info=task.exception())
 
     def __extract_event(self, event: str):
         event = event.lower()
@@ -454,8 +451,8 @@ class EventManager:
             return "_".join(extracted), digit
         return event, None
 
-    def __find_callback(self, event: str, numbering: int = None):
-        event_map = []
+    def __find_callback(self, event: str, numbering: int | None = None):
+        event_map: list[EventFunc] = []
         is_realfn = False
         if event not in self._event_map:
             if "realfn_" + event not in self._event_map:
@@ -477,8 +474,8 @@ class EventManager:
 
         return event_map
 
-    def __create_kwarguments(self, callback: EventFunc, *args, **kwargs):
-        valid_kwargs = {}
+    def __create_kwarguments(self, callback: EventFunc, *args: Any, **kwargs: Any) -> dict[str, Any] | None:
+        valid_kwargs: dict[str, Any] = {}
         missing_kwargs = []
         sigmaballs = signature(callback)
         for idx, param in enumerate(sigmaballs.parameters.values()):
@@ -494,17 +491,15 @@ class EventManager:
             if args_index is not None:
                 valid_kwargs[param.name] = args_index
             else:
-                missing_kwargs.append(
-                    {
-                        "index": idx,
-                        "name": param.name,
-                    }
-                )
+                missing_kwargs.append({
+                    "index": idx,
+                    "name": param.name,
+                })
 
         if len(missing_kwargs) > 0:
-            return False, None
+            return None
 
-        return True, valid_kwargs
+        return valid_kwargs
 
     def dispatch(self, event: str, *args, **kwargs) -> None:
         """Dispatch an event to all registered callbacks"""
@@ -520,24 +515,20 @@ class EventManager:
         if isinstance(callbacks, list):
             for callback in callbacks:
                 self.logger.info(f"Trying to dispatch event: {event}, callback: {callback}")
-                valid, real_kwargs = self.__create_kwarguments(callback, *args, **kwargs)
-                if not valid:
+                real_kwargs = self.__create_kwarguments(callback, *args, **kwargs)
+                if real_kwargs is None:
                     continue
                 self._internal_scheduler(event, callback, *[], **real_kwargs)
         else:
             self.logger.info(f"Trying to dispatch event: {event}, callback: {callbacks}")
-            valid, real_kwargs = self.__create_kwarguments(callbacks, *args, **kwargs)
-            if valid:
+            real_kwargs = self.__create_kwarguments(callbacks, *args, **kwargs)
+            if real_kwargs is not None:
                 self._internal_scheduler(event, callbacks, *[], **real_kwargs)
 
     @staticmethod
     def __extract_fn_name(fn: EventFunc):
-        def _naming():
-            if hasattr(fn, "func"):
-                return fn.func.__name__
-            return fn.__name__
-
-        name = _naming()
+        wrapped = getattr(fn, "func", fn)
+        name = getattr(wrapped, "__name__", type(wrapped).__name__)
 
         if name == "<lambda>":
             return f"lambda_{hash(fn)}"
@@ -563,12 +554,8 @@ class EventManager:
             else:
                 event_info["name"] = original_attr["name"]
 
-        if hasattr(bind_this, "__func__"):
-            # Bound method
-            bind_this.__func__.__nt_event__ = event_info
-        else:
-            # function
-            bind_this.__nt_event__ = event_info
+        target = getattr(bind_this, "__func__", bind_this)
+        setattr(target, "__nt_event__", event_info)
 
     def on(self, event: str, callback: EventFunc) -> None:
         """Bind an event to a callback"""
@@ -595,14 +582,14 @@ class EventManager:
         del self._event_map[event]
 
 
-def _check_for_existing_name(old_event: List[EventDecoParam], name: str):
+def _check_for_existing_name(old_event: list[EventDecoParam], name: str):
     for event in old_event:
         if event["name"] == name:
             return True
     return False
 
 
-def ntevent(name: str = None):
+def ntevent(name: str | None = None):
     """Decorator to mark a function as a ntevent function.
 
     Parameters
@@ -612,10 +599,9 @@ def ntevent(name: str = None):
     """
 
     def event_deco(fn: EventFunc):
-        _internal_name = fn.__name__
-        if _internal_name.startswith("on_"):
-            _internal_name = _internal_name[3:]
-        use_name = name or _internal_name
+        internal_name = fn.__name__
+        internal_name = internal_name.removeprefix("on_")
+        use_name = name or internal_name
         old_event = getattr(fn, "__nt_event__", None)
         if old_event is not None:
             event_info = []
@@ -623,24 +609,21 @@ def ntevent(name: str = None):
                 event_info = old_event
             else:
                 event_info.append(old_event)
-            if _check_for_existing_name(event_info, name):
+            if _check_for_existing_name(event_info, use_name):
                 if name is None:
                     raise ValueError("It's required to provide name parameter if you stack multiple @ntevent")
                 else:
                     raise ValueError(f"Cannot use the event name {use_name} since it already exist!")
             event_info.append({"name": use_name, "installed": False})
-            fn.__nt_event__ = event_info
+            setattr(fn, "__nt_event__", event_info)
         else:
-            fn.__nt_event__ = {
-                "name": use_name,
-                "installed": False,
-            }
+            setattr(fn, "__nt_event__", {"name": use_name, "installed": False})
         return fn
 
     return event_deco
 
 
-def ntsocket(name: str = None, locked: bool = True):
+def ntsocket(name: str | None = None, locked: bool = True):
     """Decorator to mark a function as a ntsocket function.
 
     Parameters
@@ -652,10 +635,9 @@ def ntsocket(name: str = None, locked: bool = True):
     """
 
     def socket_deco(fn: SServerFunc):
-        _internal_name = fn.__name__
-        if _internal_name.startswith("on_"):
-            _internal_name = _internal_name[3:]
-        use_name = name or _internal_name
+        internal_name = fn.__name__
+        internal_name = internal_name.removeprefix("on_")
+        use_name = name or internal_name
         old_event = getattr(fn, "__nt_socket__", None)
         if old_event is not None:
             event_info = []
@@ -665,19 +647,13 @@ def ntsocket(name: str = None, locked: bool = True):
                 event_info.append(old_event)
             if _check_for_existing_name(event_info, use_name):
                 if name is None:
-                    raise ValueError(
-                        "It's required to provide name parameter if you stack multiple @ntsocket"
-                    )
+                    raise ValueError("It's required to provide name parameter if you stack multiple @ntsocket")
                 else:
                     raise ValueError(f"Cannot use the event name {use_name} since it already exist!")
             event_info.append({"name": use_name, "installed": False, "locked": locked})
-            fn.__nt_socket__ = event_info
+            setattr(fn, "__nt_socket__", event_info)
         else:
-            fn.__nt_socket__ = {
-                "name": use_name,
-                "installed": False,
-                "locked": locked,
-            }
+            setattr(fn, "__nt_socket__", {"name": use_name, "installed": False, "locked": locked})
         return fn
 
     return socket_deco

@@ -1,0 +1,16 @@
+# English strings for cogs/bahaya (imageboard/booru search).
+booru:
+  description: "Search for images on an imageboard (booru) site"
+  option_engine: "Booru site to search"
+  option_tags: "Search tags, separated by spaces (leave empty for a random image)"
+  option_acak: "Pick one random image"
+  option_aman: "Only safe results (SFW). Non-safe results can only be viewed in NSFW channels."
+  nsfw_only: "Non-safe results can only be searched in NSFW channels."
+  no_results: "Didn't get any results!"
+  api_unavailable: "API service is unavailable"
+  api_contact_error: "An error occurred while contacting the API"
+  api_process_error: "An error occurred while processing data from the API\n`{error}`"
+  empty_result: "No results"
+  embed_page: "**Page**: {link}"
+  embed_source: "**Source**: [Click]({source})"
+  embed_footer: "Engine: {engine} | Powered by ihaAPI"

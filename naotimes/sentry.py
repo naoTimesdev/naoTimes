@@ -4,7 +4,7 @@ A simple wrapper around Sentry SDK
 
 MIT License
 
-Copyright (c) 2019-2021 naoTimesdev
+Copyright (c) 2019-2022 naoTimesdev
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -26,32 +26,49 @@ SOFTWARE.
 """
 
 import asyncio
+import importlib
 import logging
-import os
 import sys
 from dataclasses import dataclass
+from types import ModuleType
+from typing import TYPE_CHECKING, Any, Callable
 
 from yarl import URL
 
 from .version import __version__
 
+if TYPE_CHECKING:
+    from sentry_sdk.integrations import Integration as _IntegrationBase
+else:
+    try:
+        from sentry_sdk.integrations import Integration as _IntegrationBase
+    except ImportError:
+
+        class _IntegrationBase:
+            pass
+
+
+class Integration(_IntegrationBase):
+    """Base class with a runtime fallback when Sentry is not installed."""
+
+
+_sentry_sdk: ModuleType | None = None
+_LoggingIntegration: type[Any] | None = None
+_ignore_logger: Callable[[str], None] | None = None
+_RedisIntegration: type[Any] | None = None
+
 try:
-    import sentry_sdk
-    from sentry_sdk import Hub
-    from sentry_sdk._compat import reraise
-    from sentry_sdk.integrations import Integration
-    from sentry_sdk.integrations.logging import LoggingIntegration, ignore_logger
-    from sentry_sdk.integrations.redis import patch_redis_client
-    from sentry_sdk.utils import capture_internal_exceptions, event_from_exception
-
-    use_sentry = True
+    import sentry_sdk as _imported_sentry_sdk
+    from sentry_sdk.integrations.logging import LoggingIntegration as _imported_logging_integration
+    from sentry_sdk.integrations.logging import ignore_logger as _imported_ignore_logger
+    from sentry_sdk.integrations.redis import RedisIntegration as _imported_redis_integration
 except ImportError:
-    use_sentry = False
-
-    class Integration:
-        @staticmethod
-        def setup_once():
-            raise NotImplementedError
+    pass
+else:
+    _sentry_sdk = _imported_sentry_sdk
+    _LoggingIntegration = _imported_logging_integration
+    _ignore_logger = _imported_ignore_logger
+    _RedisIntegration = _imported_redis_integration
 
 
 __all__ = (
@@ -69,27 +86,11 @@ class SentryConfig:
     Configuration for the Sentry integration
     """
 
-    dsn: str = None
+    dsn: str | None = None
     release: str = __version__
-    git_commit: str = None
+    git_commit: str | None = None
     server_name: str = "naoTimesBotClient"
-    is_dev: bool = os.getenv("NAOTIMES_ENV", "production") == "development"
-
-
-class RedisIntegration(Integration):
-    """Custom redis integrations for Sentry
-    This is the same as the original support but patching aioredis.
-
-    """
-
-    identifier = "redis"
-
-    @staticmethod
-    def setup_once():
-        import aioredis
-
-        log.info("Patching aioredis.StrictRedis and aioredis.Redis ...")
-        patch_redis_client(aioredis.StrictRedis)
+    is_dev: bool = False
 
 
 class AIOHTPPClientIntegration(Integration):
@@ -99,30 +100,38 @@ class AIOHTPPClientIntegration(Integration):
 
     @staticmethod
     def setup_once():
+        if _sentry_sdk is None:
+            return
+
         import aiohttp
+        from sentry_sdk import Hub
+        from sentry_sdk.utils import capture_internal_exceptions, event_from_exception
 
-        old_request_cmd = aiohttp.ClientSession._request
+        old_request_cmd = getattr(aiohttp.ClientSession, "_request")
 
-        def _capture_exception(hub: Hub):
+        def _capture_exception(hub: Hub) -> None:
+            client = hub.client
+            if client is None:
+                return
             exc_info = sys.exc_info()
             event, hint = event_from_exception(
                 exc_info,
-                client_options=hub.client.options,
+                client_options=client.options,
                 mechanism={"type": "aiohttp-client", "handled": False},
             )
-            hub.capture_event(event, hint=hint)
-            return exc_info
+            if event is not None:
+                hub.capture_event(event, hint=hint)
 
-        async def aiohttp_request_patched(self, method: str, str_or_url: str, **kwargs):
+        async def aiohttp_request_patched(self, method: str, str_or_url: str, **kwargs: Any) -> Any:
             hub = Hub.current
-            if hub.get_integration(AIOHTPPClientIntegration) is None:
+            if hub is None or hub.get_integration(AIOHTPPClientIntegration) is None:
                 return await old_request_cmd(self, method, str_or_url, **kwargs)
 
             url_part = URL(str_or_url)
             description = repr(url_part)
 
             with capture_internal_exceptions():
-                description_parts = [url_part]
+                description_parts = [str(url_part)]
                 for i, arg in enumerate(list(kwargs.values())):
                     if i > 10:
                         break
@@ -147,13 +156,14 @@ class AIOHTPPClientIntegration(Integration):
                     span.set_status("cancelled")
                     raise
                 except Exception:
-                    reraise(*_capture_exception(hub))
+                    _capture_exception(hub)
+                    raise
                 span.set_tag("aiohttp.status_code", str(response.status))
                 span.set_http_status(response.status)
                 return response
 
         log.info("Patching aiohttp.ClientSession._request...")
-        aiohttp.ClientSession._request = aiohttp_request_patched
+        setattr(aiohttp.ClientSession, "_request", aiohttp_request_patched)
 
 
 class MongoDBIntegration(Integration):
@@ -165,14 +175,26 @@ class MongoDBIntegration(Integration):
 
     @staticmethod
     def setup_once():
-        import pymongo.network
+        if _sentry_sdk is None:
+            return
 
-        original_network_command = pymongo.network.command
+        from sentry_sdk import Hub
 
-        def patched_command(sock_info, dbname, *args, **kwargs):
+        try:
+            pymongo_network = importlib.import_module("pymongo.network")
+        except ImportError:
+            log.debug("PyMongo network module is unavailable; MongoDB tracing is disabled.")
+            return
+
+        original_network_command = getattr(pymongo_network, "command", None)
+        if not callable(original_network_command):
+            log.debug("PyMongo network command is unavailable; MongoDB tracing is disabled.")
+            return
+
+        def patched_command(sock_info: Any, dbname: str, *args: Any, **kwargs: Any) -> Any:
             hub = Hub.current
 
-            if hub.get_integration(MongoDBIntegration) is None:
+            if hub is None or hub.get_integration(MongoDBIntegration) is None:
                 return original_network_command(sock_info, dbname, *args, **kwargs)
 
             with hub.start_span(op="mongodb", description=dbname) as span:
@@ -182,23 +204,23 @@ class MongoDBIntegration(Integration):
                 return original_network_command(sock_info, dbname, *args, **kwargs)
 
         log.info("Patching pymongo.network.command...")
-        pymongo.network.command = patched_command
+        setattr(pymongo_network, "command", patched_command)
 
 
-def setup_sentry(config: SentryConfig) -> None:
+def setup_sentry(config: SentryConfig) -> bool:
     """Setup the sentry integrations"""
 
-    if not use_sentry:
-        log.warning("The SDK is not installed yet, please install with `pip install -U sentry-sdk`")
+    if _sentry_sdk is None or _LoggingIntegration is None or _ignore_logger is None or _RedisIntegration is None:
+        log.warning("The Sentry SDK or a required integration is unavailable.")
         return False
 
     # Ignore some loggers.
-    ignore_logger("discord")
-    ignore_logger("websockets")
-    ignore_logger("chardet")
-    ignore_logger("async_rediscache")
+    _ignore_logger("discord")
+    _ignore_logger("websockets")
+    _ignore_logger("chardet")
+    _ignore_logger("async_rediscache")
 
-    sentry_logging = LoggingIntegration(
+    sentry_logging = _LoggingIntegration(
         level=logging.DEBUG,
         event_level=logging.ERROR,  # Send errors as events
     )
@@ -207,17 +229,17 @@ def setup_sentry(config: SentryConfig) -> None:
     if config.git_commit is not None:
         release_note += f"+{config.git_commit}"
 
-    sentry_sdk.init(
+    _sentry_sdk.init(
         dsn=config.dsn,
         integrations=[
             sentry_logging,
-            RedisIntegration(),
+            _RedisIntegration(),
             AIOHTPPClientIntegration(),
             MongoDBIntegration(),
         ],
         release=release_note,
         server_name=config.server_name,
-        environment=config.is_dev and "development" or "production",
+        environment=(config.is_dev and "development") or "production",
     )
     log.info("Sentry SDK is now ready!")
     return True

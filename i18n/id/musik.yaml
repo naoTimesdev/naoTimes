@@ -1,0 +1,184 @@
+# Musik (music player) command strings.
+# Source language: Indonesian. Keep keys/placeholders in sync with i18n/en/musik.yaml.
+
+group:
+  musik: "Fitur musik naoTimes"
+  queue: "Sistem daftar putar"
+
+player:
+  author: "🎶 Pemutar Musik"
+
+error:
+  node_timeout: "Node musik terlalu lama merespons. Silakan coba lagi."
+  action_failed: "Aksi musik gagal dijalankan. Silakan coba lagi."
+  connect_failed: "Bot gagal terhubung ke {channel}. Pastikan voice channel dapat diakses, lalu coba lagi."
+  no_track_playing: "Tidak ada lagu yang diputar saat ini!"
+  track_exception: "Terjadi kesalahan ketika menyetel lagu `{title}`, mohon kontak Owner Bot!"
+
+requirement:
+  god: "Bukan orang yang memiliki hak cukup di Rolenya"
+  host: "Bukan host atau DJ utama"
+
+admin:
+  description: "Lihat peladen dengan pemutar musik aktif (owner)"
+  owner_only: "Hanya owner bot yang bisa memakai ini."
+  header: "**Pemutar aktif peladen**\n"
+  entry: "**{n}.** {name} (`{id}`)"
+  entry_unknown: "**{n}.** *Tidak diketahui* (`{id}`)"
+
+select:
+  prompt: "**Mohon pilih angka yang ingin anda tambahkan ke Bot!**"
+  entry: "**{n}**. `{title}` [{duration}]"
+
+join:
+  description: "Buat bot gabung ke VC"
+  option: "Kanal suara tujuan (default: VC kamu)"
+  already_connected: "Bot telah join VC lain ({channel}), mohon putuskan terlebih dahulu!"
+  no_voice: "Mohon join VC atau pilih VC yang anda mau!"
+  success: "🎵 Bergabung ke {channel}"
+
+play:
+  description: "Putar musik dari URL atau kueri pencarian"
+  option: "URL atau kueri pencarian (YouTube, SoundCloud, Spotify, dll)"
+  join_first: "Mohon join voice chat {channel} untuk menyetel lagu!"
+  search_timeout: "Pencarian lagu terlalu lama. Silakan coba lagi."
+  unsupported_url: "URL tidak didukung: <{url}>\n{reason}"
+  spotify_disabled: "Anda mencoba menyetel Spotify tetapi owner bot tidak mengaktifkan fitur Spotify!"
+  spotify_no_track: "Lagu dari Spotify tidak dapat dimuat (tidak ada di region, privat, atau semacamnya)!"
+  search_error: "Terjadi kesalahan saat mencari lagu, mohon coba lagi!"
+  not_found: "Tidak dapat menemukan lagu yang anda inginkan!"
+  none_selected: "Tidak ada lagu yang dipilih!"
+  cancelled: "Dibatalkan"
+  text_channel_only: "Perintah ini harus digunakan dari kanal teks!"
+  added_one: "Menambahkan `{title}` ke pemutar musik! (Posisi {position})"
+  added_many: "Menambahkan playlist ke pemutar musik! Total ada: {count}"
+
+nowplaying:
+  description: "Lihat lagu yang sedang diputar"
+
+stop:
+  description: "Hentikan lagu dan hapus daftar putar"
+  success: "👍 Dihentikan"
+
+leave:
+  description: "Keluar dari VC dan hapus daftar putar"
+  success: "👍 Keluar dari VC"
+
+skip:
+  description: "Lewati lagu yang sedang diputar"
+  no_next: "Tidak ada lagu yang akan diputar!"
+  dj: "DJ melewati lagu ini!"
+  admin: "Admin atau moderator melewati lagu ini!"
+  requester: "Pemutar lagu ini melewati lagu ini!"
+  join_first: "Mohon join voice chat {channel} untuk melewati lagu!"
+  already_voted: "Anda sudah voting untuk melewati lagu!"
+  voted: "Lagu di skip dikarenakan {current} dari {required} orang vote untuk skip"
+  vote_needed: "Dibutuhkan {required} untuk nge-skip lagu ({current}/{required} orang)"
+
+volume:
+  description: "Lihat atau atur volume"
+  option: "Angka 1-100, kosongkan untuk melihat volume sekarang"
+  current: "{emote} Volume sekarang adalah {volume}%"
+  set: "{emote} Volume diatur ke {volume}%"
+
+repeat:
+  description: "Atur mode pengulangan"
+  option: "Mode pengulangan, kosongkan untuk melihat mode sekarang"
+  choice_off: "Mati"
+  choice_single: "Satu lagu"
+  choice_all: "Semua lagu"
+  mode_disable: "Mati"
+  mode_single: "Satu lagu"
+  mode_all: "Semua lagu"
+  already: "Sudah dalam mode repeat yang anda berikan!"
+
+info:
+  description: "Informasi pemutar musik peladen ini"
+  no_host: "*Tidak ada host, mohon join VC*"
+  guild: "🪧 **Peladen**: {guild}"
+  host: "🧑‍🦱 **Host**: {host}"
+  active: "🎵 **Aktif**? `{active}`"
+  active_yes: "Ya"
+  active_no: "Tidak"
+  volume: "{emote} {volume}%"
+  repeat: "🔁 {repeat}"
+  queue_count: "🔢 {count} lagu lagi"
+  node: "📍 **Node**: `{node}`"
+
+delegasi:
+  description: "Ubah host/DJ utama ke member lain"
+  option: "Member yang menjadi DJ baru"
+  is_bot: "Member adalah bot, tidak bisa mengubah DJ/host ke bot."
+  success: "{member} sekarang menjadi DJ utama!"
+
+jeda:
+  description: "Jeda lagu"
+  already_paused: "Penyetelan lagu sudah dijeda!"
+  no_track: "Tidak ada lagu yang diputar!"
+  success: "Lagu dijeda!\nPutar kembali dengan: `/musik lanjut`"
+
+lanjut:
+  description: "Lanjutkan lagu yang dijeda"
+  not_paused: "Penyetelan sama sekali tidak dijeda?"
+  success: "Lagu dilanjutkan kembali!"
+
+lirik:
+  description: "Cari lirik lagu yang sedang diputar"
+  option: "Kueri pencarian lirik (default: judul lagu)"
+  no_track: "Tidak ada lagu yang sedang disetel untuk diliat liriknya!"
+  disabled: "Fitur lirik tidak diaktifkan!"
+  searching: "Mencari lirik untuk `{title}`..."
+  search_timeout: "Pencarian lirik terlalu lama. Silakan coba lagi."
+  search_error: "Terjadi kesalahan saat mencari lirik."
+  author: "🎶 Lirik Lagu"
+  select_prompt: "Pilih lirik yang diinginkan"
+  cancelled: "Dibatalkan!"
+  fetching: "Mengambil lirik: {title}"
+  fetch_timeout: "Pengambilan lirik terlalu lama. Silakan coba lagi."
+  fetch_error: "Terjadi kesalahan saat mengambil lirik."
+  footer: "Lirik diambil dari {source}"
+
+queue:
+  position_too_high: "Posisi tidak boleh lebih dari jumlah lagu di daftar putar!"
+  list:
+    description: "Lihat daftar putar"
+    entry: "**{n}**. `{title}` [{duration}] (Diputar oleh: `{requester}`)"
+    footer: "Tersisa {total} lagu ({current}/{maximum}) | {duration}"
+    empty: "Tidak ada lagu di daftar putar!"
+  remove:
+    description: "Hapus lagu dari daftar putar"
+    option: "Posisi lagu (lihat di /musik queue list)"
+    no_permission: "Anda tidak memiliki hak untuk menghapus lagu `{title}` dari daftar putar!"
+    success: "Lagu `{title}` berhasil dihapus dari daftar putar!"
+    failed: "Tidak dapat menghapus lagu dari daftar putar!"
+  clear:
+    description: "Bersihkan daftar putar"
+    repeat_single: "Tidak dapat menghapus daftar putar jika mode repeat adalah single!"
+    success: "Daftar putar dibersihkan!"
+  move:
+    description: "Pindahkan posisi lagu di daftar putar"
+    option_from: "Posisi awal"
+    option_to: "Posisi tujuan"
+    repeat_active: "Tidak dapat memindahkan lagu jika mode repeat tidak dinonaktifkan!"
+    error: "Terjadi kesalahan saat memindahkan lagu!"
+    success: "Lagu berhasil dipindahkan!"
+
+playback:
+  failed: "Lagu `{title}` gagal diputar, bot akan melewati lagu tersebut!"
+  spotify_failed: "Lagu dari Spotify tidak dapat diputar (Tidak ada di region, atau semacamnya), bot akan melewati lagu tersebut!"
+  retry_suffix: "\nBot akan mencoba menyetel lagu selanjutnya dalam {delay} detik"
+
+log:
+  title: "🎵 Music Error Log"
+  description: "Terjadi kesalahan ketika ingin memutar musik!"
+  track_info: "**Judul**: `{title}`\n**Artis**: `{author}`"
+  track_extra: "**Link**: [Link]({uri})\n**Source**: `{source}`"
+  field_track: "Lagu"
+  field_player: "Pemutar"
+  player_info: "**Peladen**: {guild}\n**Pemutar**: {requester}"
+  error_line_track: "Lagu: {author} - {title}"
+  error_line_url: "URL: {uri} ({source})"
+  error_line_guild: "Peladen: {guild}"
+  error_line_requester: "Pemutar: {requester}"
+  heading: "**Terjadi kesalahan pada pemutar musik**"
+  field_traceback: "Traceback"

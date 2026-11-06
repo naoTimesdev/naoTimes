@@ -5,7 +5,7 @@ A simple Anilist rate limiting handling
 
 MIT License
 
-Copyright (c) 2019-2021 naoTimesdev
+Copyright (c) 2019-2022 naoTimesdev
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -27,12 +27,11 @@ SOFTWARE.
 """
 
 from math import ceil
-from typing import Optional
 
 import aiohttp
 from aiolimiter import AsyncLimiter
 
-from ..utils import complex_walk
+from ..utils import AttributeDict, complex_walk
 from .gql import GraphQLClient, GraphQLResult
 
 __all__ = ("AnilistBucket",)
@@ -55,26 +54,36 @@ class AnilistBucket:
 
         self._requester = GraphQLClient(self.BASE_API, session)
 
-    async def handle(self, query: str, variables: dict = {}) -> GraphQLResult:
+    async def handle(self, query: str, variables: dict = {}, operation_name: str | None = None) -> GraphQLResult:
         async with self._limiter:
-            requested = await self._requester.query(query, variables)
+            requested = await self._requester.query(query, variables, operation_name)
             return requested
 
     async def paginate(self, query: str, variables: dict = {}):
-        def internal_function(data: Optional[dict]):
+        def internal_function(data: AttributeDict | None) -> tuple[bool, int | None, str | None]:
             if data is None:
                 return False, None, "page"
             page_info = complex_walk(data, "Page.pageInfo")
-            if page_info is None:
+            if not isinstance(page_info, dict):
                 return False, None, "page"
             has_next_page = page_info.get("hasNextPage", False)
+            if has_next_page is not True:
+                return False, None, "page"
             current_page = page_info.get("currentPage")
             per_page = page_info.get("perPage")
             total_data = page_info.get("total")
+            if not isinstance(current_page, int) or isinstance(current_page, bool):
+                return False, None, "page"
+            if not isinstance(per_page, int) or isinstance(per_page, bool):
+                return False, None, "page"
+            if not isinstance(total_data, int) or isinstance(total_data, bool):
+                return False, None, "page"
+            if per_page <= 0:
+                return False, None, "page"
             total_pages = ceil(total_data / per_page)
-            if current_page == total_pages:
-                has_next_page = False
-            return has_next_page, current_page + 1, "page"
+            if current_page >= total_pages:
+                return False, None, "page"
+            return True, current_page + 1, "page"
 
         await self._limiter.acquire()
         async for result, pageInfo in self._requester.paginate(query, internal_function, variables):

@@ -1,7 +1,7 @@
 """
 MIT License
 
-Copyright (c) 2019-2021 naoTimesdev
+Copyright (c) 2019-2022 naoTimesdev
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -24,12 +24,11 @@ SOFTWARE.
 
 from typing import TypeVar, Union
 
-import disnake
+import discord
 
-__all__ = ("MemberContext", "ModLogContext", "T", "KT", "VT")
+__all__ = ("KT", "VT", "MemberContext", "T")
 
-MemberContext = Union[disnake.Member, disnake.User]
-ModLogContext = Union[disnake.Message, disnake.Member, disnake.User]
+MemberContext = Union[discord.Member, discord.User]
 T = TypeVar("T")
 KT = TypeVar("KT")
 VT = TypeVar("VT")

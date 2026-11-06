@@ -1,1080 +1,611 @@
 import logging
-from typing import Dict, List, Tuple, TypeVar, Union
 
-import disnake
-from disnake.ext import commands
+import discord
+from discord import app_commands
+from discord.ext import commands
 
 from naotimes.bot import naoTimesBot
-from naotimes.context import naoTimesContext
 from naotimes.showtimes import (
     Showtimes,
-    ShowtimesAssignee,
+    ShowtimesAssigneeCustom,
     ShowtimesEpisodeStatus,
-    ShowtimesFSDB,
-    ShowtimesPoster,
+    ShowtimesEpisodeStatusChild,
     ShowtimesProject,
 )
+from naotimes.showtimes.slash import load_server, project_autocomplete, resolve_project
 from naotimes.utils import get_current_time
 
-Fallback = TypeVar("Fallback")
-
-ADD_EPISODE = """Jumlah yang dimaksud adalah jumlah yang ingin ditambahkan dari jumlah episode sekarang
-Misal ketik `4` dan total jumlah episode sekarang adalah `12`
-Maka total akan berubah menjadi `16` `(13, 14, 15, 16)`"""  # noqa: E501
-REMOVE_EPISODE = """Ranged number, bisa satu digit untuk 1 episode saja atau range dari episode x sampai y
-Contoh: `4` untuk episode 4 saja || `4-6` untuk episode 4 sampai 6"""  # noqa: E501
+BASE_ROLE_KEYS = ("TL", "TLC", "ENC", "ED", "TM", "TS", "QC")
+MAX_CUSTOM_ROLES = 5
 
 
 class ShowtimesAdmin(commands.Cog):
+    ubahdata = app_commands.Group(
+        name="ubahdata",
+        description=app_commands.locale_str("Ubah data garapan fansub (admin)", key="showtimes.ubahdata.description"),
+        guild_only=True,
+    )
+    ubah_staff = app_commands.Group(
+        name="staff",
+        description=app_commands.locale_str("Ubah staff garapan", key="showtimes.ubahdata.group_staff"),
+        parent=ubahdata,
+    )
+    ubah_episode = app_commands.Group(
+        name="episode",
+        description=app_commands.locale_str("Ubah jumlah episode", key="showtimes.ubahdata.group_episode"),
+        parent=ubahdata,
+    )
+    ubah_role = app_commands.Group(
+        name="role",
+        description=app_commands.locale_str("Atur role custom garapan", key="showtimes.ubahdata.group_role"),
+        parent=ubahdata,
+    )
+
     def __init__(self, bot: naoTimesBot):
         self.bot = bot
-        self.queue = bot.showqueue
-        self.base = bot.showcogs
+        queue = bot.showqueue
+        base = bot.showcogs
+        ntdb = bot.ntdb
+        if queue is None or base is None or ntdb is None:
+            raise RuntimeError("Showtimes services must be initialized before loading this cog")
+        self.queue = queue
+        self.base = base
+        self.ntdb = ntdb
         self.logger = logging.getLogger("Showtimes.Admin")
 
-    @commands.command(name="tambahutang")
-    @commands.guild_only()
-    async def _showadmin_tambahutang(self, ctx: naoTimesContext):
-        guild: disnake.Guild = ctx.guild
-        server_id = str(guild.id)
-        self.logger.info(f"Requested !tambahutang at {server_id}")
+    # ------------------------------------------------------------------ helpers
+    async def _commit(self, server_id: str, servers: list[Showtimes]) -> None:
+        """Queue the new data for saving, then sync the main database (retry later on failure)."""
+        for server in servers:
+            await self.queue.add_job(server)
+        for server in servers:
+            self.logger.info(f"{server_id}: updating main database for {server.id}...")
+            success, msg = await self.ntdb.update_server(server)
+            if not success:
+                if server.id not in self.bot.showtimes_resync:
+                    self.bot.showtimes_resync.append(str(server.id))
+                self.logger.error(f"{server_id}: failed to update {server.id}, reason: {msg}")
 
-        srv_data = await self.queue.fetch_database(server_id)
+    async def _collaborators(self, project: ShowtimesProject, current_server_id) -> list[Showtimes]:
+        servers: list[Showtimes] = []
+        for osrv in project.kolaborasi:
+            if str(osrv) == str(current_server_id):
+                continue
+            osrv_srv = await self.queue.fetch_database(str(osrv))
+            if osrv_srv is not None:
+                servers.append(osrv_srv)
+        return servers
 
+    async def _admin_project(self, inter: discord.Interaction, judul: str, *, admin_only: bool = True):
+        """Load server + project, replying with the error if anything fails.
+
+        Returns ``(server, project)`` or ``(None, None)`` when a reply was already sent.
+        """
+        ctx = await self.bot.get_context(inter)
+        srv_data = await load_server(self.bot, inter)
+        if srv_data is None:
+            return None, None
+        if admin_only and not srv_data.is_admin(inter.user):
+            await inter.response.send_message(ctx.t("ubahdata.admin_only"), ephemeral=True)
+            return None, None
+        project, error = await resolve_project(self.bot, srv_data, judul)
+        if project is None:
+            await inter.response.send_message(error, ephemeral=True)
+            return None, None
+        return srv_data, project
+
+    async def _project_auto(self, inter: discord.Interaction, current: str):
+        return await project_autocomplete(self.bot, inter, current)
+
+    # ------------------------------------------------------------------ delay
+    async def _set_delay(self, inter: discord.Interaction, judul: str, reason: str | None):
+        ctx = await self.bot.get_context(inter)
+        srv_data = await load_server(self.bot, inter)
         if srv_data is None:
             return
-        self.logger.info(f"{server_id}: found a showtimes match")
+        server_id = str(srv_data.id)
+        project, error = await resolve_project(self.bot, srv_data, judul)
+        if project is None:
+            return await inter.response.send_message(error, ephemeral=True)
 
-        if not srv_data.is_admin(ctx.author):
-            self.logger.error(f"{server_id}: not the server owner...")
-            return await ctx.send("Hanya admin yang bisa menambah utang baru!")
+        current_episode = project.get_current()
+        if current_episode is None:
+            return await inter.response.send_message(ctx.t("errors.anime_finished"), ephemeral=True)
+        if not project.assignment.can_release(inter.user) and not srv_data.is_admin(inter.user):
+            return await inter.response.send_message(ctx.t("delay.admin_only"), ephemeral=True)
 
-        self.logger.info(f"{server_id}: creating initial data...")
-        embed = disnake.Embed(title="Menambah Utang", color=0x56ACF3)
-        embed.add_field(name="Memulai Proses!", value="Mempersiapkan...", inline=False)
-        embed.set_footer(
-            text="Dibawakan oleh naoTimes™",
-            icon_url="https://p.n4o.xyz/i/nao250px.png",
+        reason_text = ctx.t("delay.reason_set", reason=reason) if reason else ctx.t("delay.reason_removed")
+        check = ctx.t("delay.confirm", title=project.title, episode=current_episode.episode, reason=reason_text)
+        if not await ctx.confirm(check):
+            return await ctx.send(ctx.t("errors.cancelled"))
+
+        current_episode.delay_reason = reason
+        project.status = current_episode
+        srv_data.update_project(project)
+
+        update_queue: list[Showtimes] = [srv_data]
+        for osrv_srv in await self._collaborators(project, server_id):
+            osrv_project = osrv_srv.get_project(project)
+            if osrv_project is None:
+                continue
+            osrv_project.status = current_episode
+            osrv_srv.update_project(osrv_project)
+            update_queue.append(osrv_srv)
+
+        await ctx.send(ctx.t("delay.updated") if reason else ctx.t("delay.removed"))
+        await self._commit(server_id, update_queue)
+
+    @app_commands.command(
+        name="delay",
+        description=app_commands.locale_str(
+            "Tambah alasan delay untuk episode yang sedang digarap", key="showtimes.delay.description"
+        ),
+    )
+    @app_commands.guild_only()
+    @app_commands.describe(
+        judul=app_commands.locale_str("Judul proyek", key="showtimes.options.judul"),
+        alasan=app_commands.locale_str("Alasan delay", key="showtimes.delay.option_alasan"),
+    )
+    async def _showadmin_alasandelay(self, inter: discord.Interaction, judul: str, alasan: str):
+        await self._set_delay(inter, judul, alasan)
+
+    @app_commands.command(
+        name="hapusdelay",
+        description=app_commands.locale_str(
+            "Hapus alasan delay episode yang sedang digarap", key="showtimes.hapusdelay.description"
+        ),
+    )
+    @app_commands.guild_only()
+    @app_commands.describe(judul=app_commands.locale_str("Judul proyek", key="showtimes.options.judul"))
+    async def _showadmin_hapusalasandelay(self, inter: discord.Interaction, judul: str):
+        await self._set_delay(inter, judul, None)
+
+    _showadmin_alasandelay.autocomplete("judul")(_project_auto)
+    _showadmin_hapusalasandelay.autocomplete("judul")(_project_auto)
+
+    # ------------------------------------------------------------------ ubahdata: staff
+    @ubah_staff.command(
+        name="set",
+        description=app_commands.locale_str(
+            "Ganti orang yang mengerjakan sebuah posisi", key="showtimes.ubahdata.staff_set"
+        ),
+    )
+    @app_commands.describe(
+        judul=app_commands.locale_str("Judul proyek", key="showtimes.options.judul"),
+        posisi=app_commands.locale_str("Posisi staff", key="showtimes.ubahdata.option_posisi"),
+        orang=app_commands.locale_str("Orang yang menggantikan", key="showtimes.ubahdata.option_orang"),
+    )
+    async def _ubah_staff_set(self, inter: discord.Interaction, judul: str, posisi: str, orang: discord.Member):
+        ctx = await self.bot.get_context(inter)
+        srv_data, project = await self._admin_project(inter, judul)
+        if srv_data is None or project is None:
+            return
+        keys = {k for k, _ in project.assignment}
+        if posisi not in keys:
+            return await inter.response.send_message(ctx.t("ubahdata.unknown_position"), ephemeral=True)
+
+        project.update_assignment(posisi, orang)
+        srv_data.update_project(project)
+        await inter.response.send_message(
+            ctx.t(
+                "ubahdata.staff_replaced",
+                role=self._role_name(project, posisi),
+                title=project.title,
+                mention=orang.mention,
+            ),
+            allowed_mentions=discord.AllowedMentions.none(),
         )
-        base_message = await ctx.send(embed=embed)
-        server_pre = self.bot.prefixes(guild)
-        anilist_cmd = f"{server_pre}anime"
-        project_data = ShowtimesProject.factory()
+        await self._save_with_collaborators(inter, srv_data, project)
 
-        def check_if_author(m: disnake.Message):
-            return m.author.id == ctx.author.id
+    @ubah_staff.command(
+        name="list",
+        description=app_commands.locale_str("Lihat staff saat ini", key="showtimes.ubahdata.staff_list"),
+    )
+    @app_commands.describe(judul=app_commands.locale_str("Judul proyek", key="showtimes.options.judul"))
+    async def _ubah_staff_list(self, inter: discord.Interaction, judul: str):
+        ctx = await self.bot.get_context(inter)
+        _, project = await self._admin_project(inter, judul)
+        if project is None:
+            return
+        embed = discord.Embed(
+            title=ctx.t("ubahdata.staff_embed_title"),
+            description=ctx.t("ubahdata.staff_embed_description", title=project.title),
+            color=0xEBA279,
+        )
+        for role, staffer in project.assignment:
+            name = self._user_name(staffer.id, ctx.t("ubahdata.unknown_user"))
+            embed.add_field(name=self._role_name(project, role), value=name, inline=False)
+        await inter.response.send_message(embed=embed, ephemeral=True)
 
-        async def _process_anilist_episode(ani_id: str):
-            self.logger.info(f"{server_id}: processing total episodes...")
-            prompt_msg: disnake.Message = None
-            real_msg: str = None
-            real_episode: int = None
-            while True:
-                [real_msg, prompt_msg, _] = await ctx.wait_content(
-                    "Mohon masukan perkiraan jumlah episode!",
-                    delete_answer=True,
-                    pass_message=prompt_msg,
-                    allow_cancel=False,
-                    return_all=True,
-                )
-                if real_msg.isdigit():
-                    real_episode = int(real_msg)
-                    break
-                else:
-                    await ctx.send_timed("Mohon masukan angka!", 2)
+    @_ubah_staff_set.autocomplete("posisi")
+    async def _ubah_staff_set_posisi_auto(self, inter: discord.Interaction, current: str):
+        judul = getattr(inter.namespace, "judul", None)
+        server = await self.queue.fetch_database(str(inter.guild.id)) if inter.guild else None
+        if server is None or not judul:
+            return []
+        project = server.get_project(judul) or server.exact_match(judul)
+        if project is None:
+            return []
+        choices = [
+            app_commands.Choice(name=self._role_name(project, role), value=role) for role, _ in project.assignment
+        ]
+        return [c for c in choices if current.lower() in c.name.lower()][:25]
 
-            if prompt_msg:
-                await prompt_msg.delete()
+    def _role_name(self, project: ShowtimesProject, role: str) -> str:
+        return project.assignment.get_custom_name(role) or self.base.normalize_role_name(role, True)
 
-            anilist_data = await self.base.fetch_anilist(ani_id, 1, real_episode)
-            time_data = anilist_data["time_data"]
-            all_episodes = []
-            for episode, time_info in enumerate(time_data, 1):
-                episode_info = ShowtimesEpisodeStatus.from_dict(
-                    {
-                        "episode": episode,
-                        "airtime": time_info,
-                    }
-                )
-                all_episodes.append(episode_info)
-            project_data.status = all_episodes
-            return True
+    def _user_name(self, user_id, fallback: str) -> str:
+        if not user_id:
+            return fallback
+        try:
+            user = self.bot.get_user(int(user_id))
+        except (TypeError, ValueError):
+            return fallback
+        return str(user) if user is not None else fallback
 
-        async def _process_anilist():
-            self.logger.info(f"{server_id}: processing anime data...")
-            embed = disnake.Embed(title="Menambah utang", color=0x96DF6A)
-            embed.add_field(
-                name="Anilist ID",
-                value="Ketik ID Anilist untuk anime yang diinginkan\n\n"
-                "Bisa gunakan `!anime <judul>` dan melihat bagian footer "
-                "untuk IDnya\n\nKetik *cancel* untuk membatalkan!",
-            )
-            embed.set_footer(
-                text="Dibawakan oleh naoTimes™",
-                icon_url="https://p.n4o.xyz/i/nao250px.png",
-            )
-            await base_message.edit(embed=embed)
+    async def _save_with_collaborators(
+        self, inter: discord.Interaction, srv_data: Showtimes, project: ShowtimesProject
+    ):
+        update_cache: list[Showtimes] = [srv_data]
+        for osrv_data in await self._collaborators(project, srv_data.id):
+            if osrv_data.get_project(project) is None:
+                continue
+            osrv_data.update_project(project, False)
+            update_cache.append(osrv_data)
+        await self._commit(str(srv_data.id), update_cache)
 
-            prompt_msg: disnake.Message = None
-            answered: disnake.Message = None
-            real_content: str = None
-            while True:
-                [real_content, prompt_msg, answered] = await ctx.wait_content(
-                    "Masukan ID Anilist", timeout=None, pass_message=prompt_msg, return_all=True
-                )
-                if not real_content.startswith(anilist_cmd):
-                    await answered.delete(no_log=True)
-                    if real_content == "cancel":
-                        return None, "Dibatalkan oleh user"
-                    if real_content.isdigit():
-                        if srv_data.get_project(real_content):
-                            await ctx.send_timed("Proyek tersebut sudah terdaftar!", 2)
-                        else:
-                            break
-                    else:
-                        await ctx.send_timed("Mohon masukan angka!", 2)
-
-            if prompt_msg:
-                await prompt_msg.delete()
-            if not real_content:
-                return None, "Tidak diberikan ID anilist!"
-
+    # ------------------------------------------------------------------ ubahdata: role
+    @ubahdata.command(
+        name="rolediscord",
+        description=app_commands.locale_str(
+            "Ganti role Discord yang dipakai garapan", key="showtimes.ubahdata.rolediscord"
+        ),
+    )
+    @app_commands.describe(
+        judul=app_commands.locale_str("Judul proyek", key="showtimes.options.judul"),
+        role=app_commands.locale_str("Role Discord yang dipakai", key="showtimes.ubahdata.option_role"),
+        buat_otomatis=app_commands.locale_str(
+            "Buat role baru otomatis (abaikan pilihan role)", key="showtimes.ubahdata.option_buat_otomatis"
+        ),
+    )
+    async def _ubah_role_discord(
+        self,
+        inter: discord.Interaction,
+        judul: str,
+        role: discord.Role | None = None,
+        buat_otomatis: bool = False,
+    ):
+        ctx = await self.bot.get_context(inter)
+        srv_data, project = await self._admin_project(inter, judul)
+        if srv_data is None or project is None:
+            return
+        if role is None and not buat_otomatis:
+            return await inter.response.send_message(ctx.t("ubahdata.role_required"), ephemeral=True)
+        await inter.response.defer()
+        guild = inter.guild
+        if guild is None:
+            return await inter.followup.send(ctx.t("errors.guild_only_bang"))
+        if buat_otomatis:
             try:
-                anilist_data = await self.base.fetch_anilist(
-                    real_content,
-                    1,
-                    1,
-                )
-            except Exception:
-                self.logger.warning(f"{server_id}: failed to fetch air start, please try again later.")
-                return (
-                    None,
-                    "Gagal mendapatkan waktu mulai tayang, silakan coba lagi ketika sudah "
-                    "ada kepastian kapan animenya mulai.",
-                )
-
-            if isinstance(anilist_data, str):
-                self.logger.warning(f"{server_id}: failed to get data, unknown ID?")
-                return None, "Tidak dapat menemukan hasil untuk ID tersebut, mohon coba lagi"
-
-            poster_data, title = anilist_data["poster_data"], anilist_data["title"]
-            time_data, episodes_total = anilist_data["time_data"], anilist_data["total_episodes"]
-            poster_image, poster_color = poster_data["image"], poster_data["color"]
-            anilist_id, mal_id = anilist_data["id"], anilist_data["idMal"]
-            air_start = anilist_data["airing_start"]
-
-            embed = disnake.Embed(title="Menambah utang", color=0x96DF6A)
-            embed.set_thumbnail(url=poster_image)
-            embed.add_field(name="Apakah benar?", value=f"Judul: **{title}**", inline=False)
-            embed.set_footer(
-                text="Dibawakan oleh naoTimes™",
-                icon_url="https://p.n4o.xyz/i/nao250px.png",
-            )
-            await base_message.edit(embed=embed)
-            is_confirmed = await ctx.confirm(base_message, True)
-            if not is_confirmed:
-                return False, "Dibatalkan oleh user"
-
-            self.logger.info(f"{server_id}: processing time data...")
-            poster_info = ShowtimesPoster(poster_image, poster_color)
-            project_data.id = anilist_id
-            project_data.title = title
-            project_data.mal_id = mal_id
-            project_data.start_time = air_start
-            project_data.poster = poster_info
-            if episodes_total == 1:
-                success = await _process_anilist_episode(anilist_id)
-                return success, None if success else "Terjadi kesalahan ketika menanyakan jumlah episode!"
-            else:
-                all_episodes = []
-                for episode, time_info in enumerate(time_data, 1):
-                    episode_info = ShowtimesEpisodeStatus.from_dict(
-                        {
-                            "episode": episode,
-                            "airtime": time_info,
-                        }
-                    )
-                    all_episodes.append(episode_info)
-
-                project_data.status = all_episodes
-                return True, None
-
-        async def _process_role():
-            self.logger.info(f"{server_id}: processing roles")
-            embed = disnake.Embed(title="Menambah utang", color=0x96DF6A)
-            embed.set_thumbnail(url=project_data.poster.url)
-            embed.add_field(
-                name="Role ID",
-                value="Ketik ID Role atau mention rolenya\nAtau ketik `auto` untuk membuatnya otomatis",
-                inline=False,
-            )
-            embed.set_footer(
-                text="Dibawakan oleh naoTimes™®",
-                icon_url="https://p.n4o.xyz/i/nao250px.png",
-            )
-            await base_message.edit(embed=embed)
-
-            awaited: disnake.Message
-            while True:
-                awaited = await self.bot.wait_for("message", check=check_if_author)
-                mentions = awaited.role_mentions
-                if not mentions:
-                    if awaited.content.isdigit():
-                        project_data.role = int(awaited.content)
-                        await awaited.delete(no_log=True)
-                    elif awaited.content.startswith("auto"):
-                        self.logger.info(f"{server_id}: auto-generating role...")
-                        await awaited.delete(no_log=True)
-                        try:
-                            gen_role = await guild.create_role(
-                                name=project_data.title,
-                                colour=disnake.Colour.random(),
-                            )
-                            project_data.role = gen_role
-                            break
-                        except disnake.Forbidden:
-                            await ctx.send_timed(
-                                "Tidak dapat membuat role karena bot tidak ada akses `Manage Roles`", 3
-                            )
-                        except disnake.HTTPException:
-                            await ctx.send_timed(
-                                "Terjadi kesalahan ketika menghubungi Discord, mohon coba lagi!", 3
-                            )
-                else:
-                    project_data.role = mentions[0]
-                    await awaited.delete(no_log=True)
-                    break
-            return True
-
-        def _get_user_from_id(id: int, fallback: Fallback = "[Rahasia]") -> Union[str, Fallback]:
-            if not isinstance(id, int):
-                return fallback
-            user_data = self.bot.get_user(id)
-            if not user_data:
-                return fallback
-            return str(user_data)
-
-        async def _process_staff(staff_role: str):
-            pretty_name = self.base.normalize_role_name(staff_role, True)
-            embed = disnake.Embed(title="Menambah Utang", color=0x96DF6A)
-            embed.set_thumbnail(url=project_data.poster.url)
-            embed.add_field(
-                name=f"{pretty_name} (ID)",
-                value=f"Ketik ID Discord {pretty_name} atau mention orangnya",
-                inline=False,
-            )
-            embed.set_footer(
-                text="Dibawakan oleh naoTimes™",
-                icon_url="https://p.n4o.xyz/i/nao250px.png",
-            )
-            await base_message.edit(embed=embed)
-
-            while True:
-                await_msg: disnake.Message = await self.bot.wait_for("message", check=check_if_author)
-                mentions = await_msg.mentions
-                await await_msg.delete(no_log=True)
-                if not mentions:
-                    if await_msg.content.isdigit():
-                        staff_id = int(await_msg.content)
-                        staff_name = _get_user_from_id(staff_id, None)
-                        if staff_name is not None:
-                            staff_name_split = staff_name.rsplit("#", 1)
-                            staff_name = staff_name_split[0]
-                        project_data.update_assignment(
-                            staff_role,
-                            ShowtimesAssignee.from_dict(
-                                {
-                                    "id": staff_id,
-                                    "name": staff_name,
-                                }
-                            ),
-                        )
-                        break
-                    else:
-                        await ctx.send_timed("Mohon masukan angka atau mention orangnya!")
-                else:
-                    project_data.update_assignment(
-                        staff_role,
-                        ShowtimesAssignee.from_dict(
-                            {
-                                "id": mentions[0].id,
-                                "name": mentions[0].name,
-                            }
-                        ),
-                    )
-                    break
-
-            return True
-
-        is_valid, err_msg = await _process_anilist()
-        if not is_valid:
-            self.logger.warning(f"{server_id}: process cancelled")
-            return await ctx.send(err_msg)
-
-        if srv_data.get_project(project_data.id) is not None:
-            self.logger.warning(f"{server_id}: anime already registered on database.")
-            return await ctx.send("Proyek sudah didaftarkan di database.")
-
-        await _process_role()
-        await _process_staff("tl")
-        await _process_staff("tlc")
-        await _process_staff("enc")
-        await _process_staff("ed")
-        await _process_staff("tm")
-        await _process_staff("ts")
-        await _process_staff("qc")
-
-        def _get_role_name(id: int):
-            if not isinstance(id, int):
-                return "[Tidak diketahui]"
-            role_data = guild.get_role(id)
-            if not role_data:
-                return "[Tidak diketahui]"
-            return role_data.name
-
-        self.logger.info(f"{server_id}: Checkpoint before comitting!")
-        first_time = True
-        is_cancelled = False
-        while True:
-            TL_NAME = _get_user_from_id(project_data.assignment.tlor.id)
-            TLC_NAME = _get_user_from_id(project_data.assignment.tlcer.id)
-            ENC_NAME = _get_user_from_id(project_data.assignment.encoder.id)
-            ED_NAME = _get_user_from_id(project_data.assignment.editor.id)
-            TM_NAME = _get_user_from_id(project_data.assignment.timer.id)
-            TS_NAME = _get_user_from_id(project_data.assignment.tser.id)
-            QC_NAME = _get_user_from_id(project_data.assignment.qcer.id)
-
-            embed = disnake.Embed(
-                title="Menambah Utang",
-                description="Periksa data!\nReact jika ingin diubah.",
-                color=0xE7E363,
-            )
-            embed.set_thumbnail(url=project_data.poster.url)
-            embed.add_field(
-                name="1⃣ Judul",
-                value=f"{project_data.title} ({project_data.id})",
-                inline=False,
-            )
-            embed.add_field(
-                name="2⃣ Episode",
-                value=f"{project_data.total_episodes} episodes",
-                inline=False,
-            )
-            embed.add_field(
-                name="3⃣ Role",
-                value=_get_role_name(project_data.role),
-                inline=False,
-            )
-            embed.add_field(name="4⃣ Translator", value=TL_NAME, inline=True)
-            embed.add_field(name="5⃣ TLCer", value=TLC_NAME, inline=True)
-            embed.add_field(name="6⃣ Encoder", value=ENC_NAME, inline=True)
-            embed.add_field(name="7⃣ Editor", value=ED_NAME, inline=True)
-            embed.add_field(name="8⃣ Timer", value=TM_NAME, inline=True)
-            embed.add_field(name="9⃣ Typesetter", value=TS_NAME, inline=True)
-            embed.add_field(name="0⃣ Quality Checker", value=QC_NAME, inline=True)
-            embed.add_field(
-                name="Lain-Lain",
-                value="✅ Tambahkan!\n❌ Batalkan!",
-                inline=False,
-            )
-            embed.set_footer(
-                text="Dibawakan oleh naoTimes™",
-                icon_url="https://p.n4o.xyz/i/nao250px.png",
-            )
-            if first_time:
-                await base_message.delete()
-                base_message = await ctx.send(embed=embed)
-                first_time = False
-            else:
-                await base_message.edit(embed=embed)
-
-            REACT_ANDYS = [
-                "1⃣",
-                "2⃣",
-                "3⃣",
-                "4⃣",
-                "5⃣",
-                "6⃣",
-                "7⃣",
-                "8⃣",
-                "9⃣",
-                "0⃣",
-                "✅",
-                "❌",
-            ]
-            for reaction in REACT_ANDYS:
-                await base_message.add_reaction(reaction)
-
-            def reaction_check(reaction: disnake.Reaction, user: disnake.Member):
-                return (
-                    reaction.message.id == base_message.id
-                    and user.id != self.bot.user.id
-                    and reaction.emoji in REACT_ANDYS
-                )
-
-            res: disnake.Reaction
-            user: disnake.Member
-            res, user = await self.bot.wait_for("reaction_add", check=reaction_check)
-            if user != ctx.author:
-                continue
-            await base_message.clear_reactions()
-            if res.emoji == REACT_ANDYS[0]:
-                await _process_anilist()
-            elif res.emoji == REACT_ANDYS[1]:
-                await _process_anilist_episode(project_data.id)
-            elif res.emoji == REACT_ANDYS[2]:
-                await _process_role()
-            elif res.emoji == REACT_ANDYS[3]:
-                await _process_staff("tl")
-            elif res.emoji == REACT_ANDYS[4]:
-                await _process_staff("tlc")
-            elif res.emoji == REACT_ANDYS[5]:
-                await _process_staff("enc")
-            elif res.emoji == REACT_ANDYS[6]:
-                await _process_staff("ed")
-            elif res.emoji == REACT_ANDYS[7]:
-                await _process_staff("tm")
-            elif res.emoji == REACT_ANDYS[8]:
-                await _process_staff("ts")
-            elif res.emoji == REACT_ANDYS[9]:
-                await _process_staff("qc")
-            elif res.emoji == "✅":
-                break
-            elif res.emoji == "❌":
-                is_cancelled = True
-                break
-
-        if is_cancelled:
-            return await ctx.send("Dibatalkan!")
-
-        self.logger.info(f"{server_id}: commiting data to database...")
-        embed = disnake.Embed(title="Menambah Utang", color=0x56ACF3)
-        embed.add_field(name="Memproses!", value="Membuat data...", inline=True)
-        embed.set_footer(
-            text="Dibawakan oleh naoTimes™®",
-            icon_url="https://p.n4o.xyz/i/nao250px.png",
+                role = await guild.create_role(name=project.title, colour=discord.Colour.random(), mentionable=True)
+            except (discord.Forbidden, discord.HTTPException):
+                return await inter.followup.send(ctx.t("ubahdata.role_create_failed"))
+        if role is None:
+            return await inter.followup.send(ctx.t("ubahdata.role_not_found"))
+        project.role = role
+        srv_data.update_project(project)
+        await inter.followup.send(
+            ctx.t("ubahdata.role_updated", title=project.title, mention=role.mention),
+            allowed_mentions=discord.AllowedMentions.none(),
         )
-        await base_message.edit(embed=embed)
+        await self._save_with_collaborators(inter, srv_data, project)
 
-        self.logger.info(f"{server_id}: Checking valid member...")
-        all_members: List[Tuple[str, disnake.Member]] = []
-        for role, role_staff in project_data.assignment:
-            if not role_staff.id:
-                continue
-            if isinstance(role_staff.id, int):
-                user_info = guild.get_member(role_staff.id)
-                if user_info is not None:
-                    all_members.append((role, user_info))
-            elif isinstance(role_staff.id, str):
-                id_quick = role_staff.id
-                if id_quick.isdigit():
-                    id_quick = int(id_quick)
-                    user_info = guild.get_member(id_quick)
-                    if user_info is not None:
-                        all_members.append((role, user_info))
+    # ------------------------------------------------------------------ ubahdata: episode
+    @ubah_episode.command(
+        name="tambah",
+        description=app_commands.locale_str("Tambah jumlah episode", key="showtimes.ubahdata.episode_tambah"),
+    )
+    @app_commands.describe(
+        judul=app_commands.locale_str("Judul proyek", key="showtimes.options.judul"),
+        jumlah=app_commands.locale_str("Jumlah episode yang ditambahkan", key="showtimes.ubahdata.option_jumlah"),
+    )
+    async def _ubah_episode_tambah(
+        self, inter: discord.Interaction, judul: str, jumlah: app_commands.Range[int, 1, 100]
+    ):
+        ctx = await self.bot.get_context(inter)
+        srv_data, project = await self._admin_project(inter, judul)
+        if srv_data is None or project is None:
+            return
+        await inter.response.defer()
+        last_episode = project.status[-1]
+        anilist_data = await self.base.fetch_anilist(project.id, 1, last_episode.episode)
+        if isinstance(anilist_data, str):
+            return await inter.followup.send(ctx.t("ubahdata.anilist_error", error=anilist_data))
+        time_data = anilist_data["time_data"]
 
-        for member in all_members:
-            project_data.update_assignment(member[0], member[1])
+        fsdb_anime = project.fsdb
+        fsdb = self.bot.fsdb
+        if last_episode.finished and fsdb_anime is not None and fsdb is not None and fsdb_anime.id:
+            self.logger.info("Updating FSDB Project to on progress again.")
+            await fsdb.update_project(fsdb_anime.id, "status", "Jalan")
 
-        self.logger.info(f"{server_id}: giving the member roles...")
-        role_given_success = True
-        role_id = project_data.role
-        if isinstance(role_id, int):
-            role_info = guild.get_role(role_id)
-            if role_info is not None:
-                for member in all_members:
-                    member_role = member[1].get_role(role_info.id)
-                    if member_role is None:
-                        self.logger.info(f"{server_id}: giving {member[1]} the {role_info} role!")
-                        try:
-                            await member[1].add_roles(role_info)
-                        except (disnake.Forbidden, disnake.HTTPException):
-                            role_given_success = False
-                            self.logger.error(f"Gagal menambah role ke user {member[1]}")
-
-        mal_id = project_data.mal_id
-        if srv_data.fsdb_id is not None and self.bot.fsdb is not None and mal_id is not None:
-            self.logger.info(f"{server_id}: updating FansubDB data...")
-            embed = disnake.Embed(title="Menambah Utang", color=0x56ACF3)
-            embed.add_field(name="Memproses!", value="Membuat data fansubdb...", inline=True)
-            embed.set_footer(
-                text="Dibawakan oleh naoTimes™®",
-                icon_url="https://p.n4o.xyz/i/nao250px.png",
+        for episode in range(last_episode.episode + 1, last_episode.episode + jumlah + 1):
+            airtime_value = time_data[episode - 1] if episode - 1 < len(time_data) else None
+            airtime = (
+                airtime_value
+                if isinstance(airtime_value, (int, float)) and not isinstance(airtime_value, bool)
+                else None
             )
-            await base_message.edit(embed=embed)
-            fansubs_projects, _ = await self.bot.fsdb.fetch_fansub_projects(srv_data.fsdb_id)
-            existing_projects = {str(data.anime.mal_id): data.id for data in fansubs_projects}
-
-            fsani_data = await self.bot.fsdb.fetch_anime_by_mal(mal_id)
-            if fsani_data is None:
-                _, fsani_id = await self.bot.fsdb.import_mal(int(mal_id))
-                _, fsproject_id = await self.bot.fsdb.add_new_project(fsani_id, srv_data.fsdb_id)
-                project_data.fsdb = ShowtimesFSDB(fsproject_id, fsani_id)
-            else:
-                fsani_id = fsani_data.id
-                if str(mal_id) in existing_projects:
-                    project_data.fsdb = ShowtimesFSDB(existing_projects[str(mal_id)], fsani_id)
-                else:
-                    _, fsproject_id = await self.bot.fsdb.add_new_project(fsani_id, srv_data.fsdb_id)
-                    project_data.fsdb = ShowtimesFSDB(fsproject_id, fsani_id)
-
-        self.logger.info(f"{server_id}: updating database...")
-        srv_data += project_data
-        embed = disnake.Embed(title="Menambah Utang", color=0x56ACF3)
-        embed.add_field(name="Memproses!", value="Mengirim data...", inline=True)
-        embed.set_footer(
-            text="Dibawakan oleh naoTimes™®",
-            icon_url="https://p.n4o.xyz/i/nao250px.png",
+            ep_child = ShowtimesEpisodeStatus(
+                episode,
+                ShowtimesEpisodeStatusChild.factory_from_other(last_episode.progress),
+                airtime,
+            )
+            project.add_episode(ep_child)
+        project.update_time()
+        srv_data.update_project(project)
+        await inter.followup.send(
+            ctx.t("ubahdata.episodes_added", amount=jumlah, title=project.title, total=project.total_episodes)
         )
-        await base_message.edit(embed=embed)
+        await self._save_with_collaborators(inter, srv_data, project)
 
-        await self.bot.showqueue.add_job(srv_data)
+    @ubah_episode.command(
+        name="hapus",
+        description=app_commands.locale_str(
+            "Hapus episode dengan range tertentu", key="showtimes.ubahdata.episode_hapus"
+        ),
+    )
+    @app_commands.describe(
+        judul=app_commands.locale_str("Judul proyek", key="showtimes.options.judul"),
+        rentang=app_commands.locale_str("Satu episode (4) atau rentang (4-6)", key="showtimes.ubahdata.option_rentang"),
+    )
+    async def _ubah_episode_hapus(self, inter: discord.Interaction, judul: str, rentang: str):
+        ctx = await self.bot.get_context(inter)
+        srv_data, project = await self._admin_project(inter, judul)
+        if srv_data is None or project is None:
+            return
+        last_episode = project.status[-1].episode
+        parts = [p.strip() for p in rentang.split("-")]
+        if len(parts) > 2 or not all(p.isdigit() for p in parts):
+            return await inter.response.send_message(
+                ctx.t("ubahdata.invalid_number") + "\n" + ctx.t("ubahdata.remove_episode_hint"), ephemeral=True
+            )
+        first = int(parts[0])
+        last = int(parts[-1])
+        if first < 1 or first > last_episode or last > last_episode:
+            return await inter.response.send_message(
+                ctx.t("ubahdata.number_exceeds_max", maximum=last_episode), ephemeral=True
+            )
+        if first > last:
+            return await inter.response.send_message(
+                ctx.t("ubahdata.start_after_end", first=first, last=last), ephemeral=True
+            )
 
-        self.logger.info(f"{server_id}: Updating main database...")
-        success, msg = await self.bot.ntdb.update_server(srv_data)
-        await base_message.delete()
+        label = str(first) if first == last else f"{first}-{last}"
+        if not await ctx.confirm(ctx.t("ubahdata.episode_delete_confirm", label=label, title=project.title)):
+            return await ctx.send(ctx.t("errors.cancelled"))
 
-        if not success:
-            self.logger.error(f"{server_id}: failed to update, reason: {msg}")
-            if server_id not in self.bot.showtimes_resync:
-                self.bot.showtimes_resync.append(server_id)
+        for ep in range(first, last + 1):
+            project.remove_episode(ep)
+        if project.status:
+            new_maximum_episode = project.status[-1]
+            fsdb_anime = project.fsdb
+            fsdb = self.bot.fsdb
+            if new_maximum_episode.finished and fsdb_anime is not None and fsdb is not None and fsdb_anime.id:
+                self.logger.info("Updating FSDB Project to finished.")
+                await fsdb.update_project(fsdb_anime.id, "status", "Tamat")
+        project.update_time()
+        srv_data.update_project(project)
+        await ctx.send(ctx.t("ubahdata.episodes_deleted", label=label, title=project.title))
+        await self._save_with_collaborators(inter, srv_data, project)
 
-        self.logger.info(f"{server_id}: done processing!")
-        await ctx.send(f"Berhasil menambahkan `{project_data.title}` ke database utama naoTimes!")
-        if role_given_success:
-            await ctx.send("Bot telah otomatis menambah role ke member garapan, mohon cek!")
-
-    @commands.command(name="ubahdata")
-    @commands.guild_only()
-    async def _showadmin_ubahdata(self, ctx: naoTimesContext, *, judul: str = None):
-        guild: disnake.Guild = ctx.guild
+    # ------------------------------------------------------------------ ubahdata: drop
+    @ubahdata.command(
+        name="drop",
+        description=app_commands.locale_str(
+            "Hapus garapan ini dari daftar utang selamanya", key="showtimes.ubahdata.drop"
+        ),
+    )
+    @app_commands.describe(judul=app_commands.locale_str("Judul proyek", key="showtimes.options.judul"))
+    async def _ubah_drop(self, inter: discord.Interaction, judul: str):
+        ctx = await self.bot.get_context(inter)
+        srv_data, project = await self._admin_project(inter, judul)
+        if srv_data is None or project is None:
+            return
+        guild = inter.guild
+        if guild is None:
+            return await inter.response.send_message(ctx.t("errors.guild_only_bang"), ephemeral=True)
         server_id = str(guild.id)
-        self.logger.info(f"Requested !ubahdata at {server_id}")
+        if not await ctx.confirm(ctx.t("ubahdata.drop_confirm", title=project.title)):
+            return await ctx.send(ctx.t("errors.cancelled"))
 
-        srv_data = await self.queue.fetch_database(server_id)
-        if srv_data is None:
-            return
-        self.logger.info(f"{server_id}: server found proceeding...")
+        self.logger.warning(f"{project.title}: nuking project...")
+        other_roles = {p.role for p in srv_data.projects if p.id != project.id and isinstance(p.role, int)}
+        fsdb_data = project.fsdb
+        fsdb = self.bot.fsdb
+        if fsdb_data is not None and fsdb is not None and fsdb_data.id:
+            self.logger.warning("Updating FSDB Project to dropped.")
+            await fsdb.update_project(fsdb_data.id, "status", "Drop")
 
-        if not srv_data.is_admin(ctx.author):
-            self.logger.error(f"{server_id}: not the server owner...")
-            return await ctx.send("Hanya admin yang bisa menambah utang baru!")
+        current = project.get_current()
+        announce_it = current is not None and current.finished
 
-        if not judul:
-            return await self.base.send_all_projects(ctx, srv_data)
+        role_id = project.role
+        # Delete the role, but not if another project is still using it.
+        if isinstance(role_id, int) and role_id not in other_roles:
+            role_real = guild.get_role(role_id)
+            if role_real is not None:
+                try:
+                    await role_real.delete()
+                    self.logger.warning(f"{project.title}:{role_id}: role removed!")
+                except (discord.Forbidden, discord.HTTPException):
+                    self.logger.error(f"{project.title}:{role_id}: failed to remove role!")
 
-        self.logger.info(f"{server_id}: getting close matches...")
-        all_matches = srv_data.find_projects(judul)
-        if len(all_matches) < 1:
-            self.logger.warning(f"{server_id}: no matches.")
-            return await ctx.send("Tidak dapat menemukan judul tersebut di database")
-        if len(all_matches) > 1:
-            self.logger.info(f"{server_id}: found multiple matches!")
-            selected_anime = await ctx.select_simple(all_matches, lambda x: x.title)
-            if selected_anime is None:
-                return await ctx.send("**Dibatalkan!**")
-            all_matches = [selected_anime]
-
-        matched_anime = all_matches[0]
-        self.logger.info(f"{server_id}: matched {matched_anime.title}")
-
-        all_stupid_role_used = map(
-            lambda x: x.role, filter(lambda x: x.id != matched_anime.id, srv_data.projects)
-        )
-        all_stupid_role_used = list(filter(lambda x: isinstance(x, int), all_stupid_role_used))
-        embed = disnake.Embed(title="Mengubah data", color=0xEB79B9)
-        embed.description = "Mempersiapkan proses..."
-        embed.set_footer(
-            text="Dibawakan oleh naoTimes™®",
-            icon_url="https://p.n4o.xyz/i/nao250px.png",
-        )
-        base_message = await ctx.send(embed=embed)
-
-        def _is_original_author(m: disnake.Message):
-            return m.author.id == ctx.author.id
-
-        def _get_user_name(user: int, fallback: str = "[Tidak diketahui]"):
-            if not user:
-                return fallback
-            user_data = self.bot.get_user(user)
-            if user_data is None:
-                return fallback
-            return str(user_data)
-
-        async def _internal_change_staff(role: str):
-            self.logger.info(f"{matched_anime.title}: changing staff {role}")
-            embed = disnake.Embed(title="Mengubah Staff", color=0xEB79B9)
-            norm_role = self.base.normalize_role_name(role, True)
-            embed.add_field(
-                name=f"{norm_role} (ID)",
-                value=f"Ketik ID {norm_role} atau mention orangnya!",
-            )
-            embed.set_footer(
-                text="Dibawakan oleh naoTimes™",
-                icon_url="https://p.n4o.xyz/i/nao250px.png",
-            )
-            await base_message.edit(embed=embed)
-
-            await_msg: disnake.Message
-            while True:
-                await_msg = await self.bot.wait_for("message", check=_is_original_author)
-                mentions = await_msg.mentions
-
-                if not mentions:
-                    if await_msg.content.isdigit():
-                        user_name = _get_user_name(int(await_msg.content), None)
-                        if user_name is not None:
-                            user_split = user_name.split("#")
-                            user_name = "#".join(user_split[:-1])
-                        matched_anime.update_assignment(
-                            role,
-                            ShowtimesAssignee.from_dict(
-                                {
-                                    "id": str(await_msg.content),
-                                    "name": user_name,
-                                }
-                            ),
-                        )
-                        await await_msg.delete(no_log=True)
-                        break
-                else:
-                    first_user = mentions[0]
-                    matched_anime.update_assignment(
-                        role,
-                        first_user,
-                    )
-                    await await_msg.delete(no_log=True)
-                    break
-            return True
-
-        async def _change_staff():
-            self.logger.info(f"{matched_anime.title}: Processing staff...")
-            REACT_ANYDS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣"]
-            while True:
-                STAFF_LIST: Dict[str, str] = {}
-                staff_list = matched_anime.assignment.copy()
-                STAFF_KEYS = list(staff_list.serialize().keys())
-
-                for role, staffers in staff_list:
-                    user_name = _get_user_name(staffers.id)
-                    STAFF_LIST[role] = user_name
-
-                embed = disnake.Embed(
-                    title="Mengubah Staff", description=f"Anime: {matched_anime.title}", color=0xEBA279
-                )
-                for n, (role, user_name) in enumerate(STAFF_LIST.items()):
-                    embed.add_field(
-                        name=f"{REACT_ANYDS[n]} {self.base.normalize_role_name(role, True)}",
-                        value=user_name,
-                        inline=False,
-                    )
-                embed.add_field(name="Lain-Lain", value="✅ Selesai!", inline=False)
-                embed.set_footer(
-                    text="Dibawakan oleh naoTimes™",
-                    icon_url="https://p.n4o.xyz/i/nao250px.png",
-                )
-                await base_message.edit(embed=embed)
-
-                EXTENDED_ANDYS = REACT_ANYDS[:]
-                EXTENDED_ANDYS.append("✅")
-
-                for REACT in EXTENDED_ANDYS:
-                    await base_message.add_reaction(REACT)
-
-                def _check_reaction(reaction: disnake.Reaction, user: disnake.Member):
-                    return (
-                        reaction.message.id == base_message.id
-                        and user.id == ctx.author.id
-                        and str(reaction.emoji) in EXTENDED_ANDYS
-                    )
-
-                res: disnake.Reaction
-                user: disnake.Member
-                res, user = await self.bot.wait_for("reaction_add", check=_check_reaction)
-                if user != ctx.author:
-                    continue
-                await base_message.clear_reactions()
-                if res.emoji == "✅":
-                    break
-                else:
-                    react_pos = REACT_ANYDS.index(str(res.emoji))
-                    await _internal_change_staff(STAFF_KEYS[react_pos].lower())
-
-        async def _change_role():
-            self.logger.info(f"{matched_anime.title}: Processing role...")
-            embed = disnake.Embed(title="Mengubah Role", color=0xEBA279)
-            embed.add_field(
-                name="Role ID",
-                value="Ketik ID Role atau mention rolenya\nAtau ketik `auto` untuk membuatnya otomatis",
-            )
-            embed.set_footer(
-                text="Dibawahkan oleh naoTimes™",
-                icon_url="https://p.n4o.xyz/i/nao250px.png",
-            )
-            await base_message.edit(embed=embed)
-
-            await_msg: disnake.Message
-            while True:
-                await_msg = await self.bot.wait_for("message", check=_is_original_author)
-                mentions = await_msg.role_mentions
-                if not mentions:
-                    if await_msg.content.isdigit():
-                        matched_anime.role = int(await_msg.content)
-                        await await_msg.delete(no_log=True)
-                        break
-                    elif await_msg.content.startswith("auto"):
-                        try:
-                            content_role = await guild.create_role(
-                                name=matched_anime.title, colour=disnake.Colour.random(), mentionable=True
-                            )
-                            await await_msg.delete(no_log=True)
-                            matched_anime.role = content_role
-                        except (disnake.Forbidden, disnake.HTTPException):
-                            await ctx.send_timed("Gagal membuat role baru, mohon periksa permission!")
-                            await await_msg.delete(no_log=True)
-                else:
-                    matched_anime.role = mentions[0]
-                    await await_msg.delete(no_log=True)
-                    break
-            return True
-
-        async def _tambah_episode():
-            self.logger.info(f"{matched_anime.title}: Processing to add new episode...")
-            last_episode = matched_anime.status[-1]
-            anilist_data = await self.base.fetch_anilist(matched_anime.id, 1, last_episode.episode)
-            time_data = anilist_data["time_data"]
-
-            embed = disnake.Embed(
-                title="Menambah Episode",
-                description=f"Jumlah Episode Sekarang: {last_episode.episode}",
-                color=0xEBA279,
-            )
-            embed.add_field(
-                name="Masukan jumlah episode yang diinginkan.",
-                value=ADD_EPISODE,
-            )
-            embed.set_footer(
-                text="Dibawakan oleh naoTimes™",
-                icon_url="https://p.n4o.xyz/i/nao250px.png",
-            )
-            await base_message.edit(embed=embed)
-
-            jumlah_tambahan = None
-            await_msg: disnake.Message
-            while True:
-                await_msg = await self.bot.wait_for("message", check=_is_original_author)
-                if await_msg.content.isdigit():
-                    jumlah_tambahan = int(await_msg.content)
-                    await await_msg.delete(no_log=True)
-                    break
-                else:
-                    await ctx.send_timed("Mohon masukan jumlah episode yang benar!")
-                    await await_msg.delete(no_log=True)
-
-            fsdb_anime = matched_anime.fsdb
-            if last_episode.finished and fsdb_anime is not None and self.bot.fsdb is not None:
-                self.logger.info("Updating FSDB Project to on progress again.")
-                if fsdb_anime.id:
-                    await self.bot.fsdb.update_project(fsdb_anime.id, "status", "Jalan")
-
-            for episode in range(last_episode.episode + 1, last_episode.episode + jumlah_tambahan + 1):
-                ep_child = ShowtimesEpisodeStatus.from_dict(
-                    {"episode": episode, "airtime": time_data[episode - 1]}
-                )
-                matched_anime.add_episode(ep_child)
-            await ctx.send_timed(f"Berhasil menambah {jumlah_tambahan} episode baru", 2)
-            matched_anime.update_time()
-            return True
-
-        async def _hapus_episode():
-            self.logger.info(f"{matched_anime.title}: Processing to remove episode...")
-            last_episode = matched_anime.status[-1].episode
-            embed = disnake.Embed(
-                title="Menambah Episode",
-                description=f"Jumlah Episode Sekarang: {last_episode}",
-                color=0xEBA279,
-            )
-            embed.add_field(
-                name="Masukan range episode yang ingin dihapus.",
-                value=REMOVE_EPISODE,
-            )
-            embed.set_footer(
-                text="Dibawakan oleh naoTimes™",
-                icon_url="https://p.n4o.xyz/i/nao250px.png",
-            )
-            await base_message.edit(embed=embed)
-
-            hapus_range = None
-            prompt_msg: disnake.Message = None
-            while True:
-                [hapus_range, prompt_msg, _] = await ctx.wait_content(
-                    "Mohon masukan range episode!",
-                    delete_answer=True,
-                    return_all=True,
-                    timeout=None,
-                    pass_message=prompt_msg,
-                    allow_cancel=False,
-                )
-
-                confirmation = await ctx.confirm(
-                    f"Apakah anda yakin untuk range episode ini **{hapus_range}**?"
-                )
-                if confirmation:
-                    await prompt_msg.delete()
-                    break
-
-            total_episode = hapus_range.split("-")
-            if len(total_episode) < 2:
-                current = total_episode[0]
-                total = total_episode[0]
-            else:
-                current = total_episode[0]
-                total = total_episode[1]
-
-            if current.isdigit() and total.isdigit():
-                current = int(current)
-                total = int(total)
-                if current > last_episode:
-                    await ctx.send_timed(
-                        f"Angka tidak bisa lebih dari episode maksimum ({current} > {last_episode})", 2
-                    )
-                    return True
-                if total > last_episode:
-                    await ctx.send_timed(
-                        f"Angka akhir tidak bisa lebih dari episode maksimum ({current} > {last_episode})", 2
-                    )
-                    return True
-                if current > total:
-                    await ctx.send_timed(
-                        f"Angka awal tidak bisa lebih dari angka akhir ({current} > {total})", 2
-                    )
-                    return True
-                self.logger.info(f"{matched_anime.title}: removing a total of {total} episodes...")
-                for ep in range(current, total + 1):
-                    matched_anime.remove_episode(ep)
-
-                new_maximum_episode = matched_anime.status[-1]
-                fsdb_anime = matched_anime.fsdb
-                if new_maximum_episode.finished and fsdb_anime is not None and self.bot.fsdb is not None:
-                    self.logger.info("Updating FSDB Project to finished.")
-                    if fsdb_anime.id:
-                        await self.bot.fsdb.update_project(fsdb_anime.id, "status", "Tamat")
-                await ctx.send_timed(f"Berhasil menghapus episode {current} ke {total}", 2)
-                matched_anime.update_time()
-            else:
-                await ctx.send_timed("Mohon masukan angka!")
-
-        async def _hapus_utang_confirmation():
-            self.logger.info(f"{matched_anime.title}: preparing to nuke project...")
-            embed = disnake.Embed(
-                title="Menghapus Utang",
-                description=f"Anime: {matched_anime.title}",
-                color=0xCC1C20,
-            )
-            embed.add_field(
-                name="Peringatan!",
-                value="Utang akan dihapus selama-lamanya dan tidak bisa " "dikembalikan!\nLanjutkan proses?",
-                inline=False,
-            )
-            embed.set_footer(
-                text="Dibawakan oleh naoTimes™®",
-                icon_url="https://p.n4o.xyz/i/nao250px.png",
-            )
-            await base_message.edit(embed=embed)
-            do_delete = await ctx.confirm(base_message, True)
-            return do_delete
-
-        hapus_utang = False
-        exit_command = False
-        while True:
-            total_episode = matched_anime.total_episodes
-            real_role = "*Tidak diketahui*"
-            if matched_anime.role is not None:
-                role_check = guild.get_role(matched_anime.role)
-                if role_check is not None:
-                    real_role = role_check.name
-            embed = disnake.Embed(
-                title="Mengubah Data",
-                description=f"Anime: {matched_anime.title}",
-                color=0xE7E363,
-            )
-            embed.add_field(
-                name="1️⃣ Ubah Staff",
-                value="Ubah staff yang mengerjakan anime ini.",
-                inline=False,
-            )
-            embed.add_field(
-                name="2️⃣ Ubah Role",
-                value="Ubah role discord yang digunakan:\n" f"Role sekarang: {real_role}",
-                inline=False,
-            )
-            embed.add_field(
-                name="3️⃣ Tambah Episode",
-                value=f"Tambah jumlah episode\nTotal Episode sekarang: {total_episode}",
-                inline=False,
-            )
-            embed.add_field(
-                name="4️⃣ Hapus Episode",
-                value="Hapus episode dengan range tertentu.",
-                inline=False,
-            )
-            embed.add_field(
-                name="5️⃣ Drop Garapan",
-                value="Menghapus garapan ini dari daftar utang untuk selama-lamanya...",
-                inline=False,
-            )
-            embed.add_field(name="Lain-Lain", value="✅ Selesai!\n❌ Batalkan!", inline=False)
-            embed.set_footer(
-                text="Dibawakan oleh naoTimes™",
-                icon_url="https://p.n4o.xyz/i/nao250px.png",
-            )
-            await base_message.edit(embed=embed)
-
-            REACT_ANDYS = [
-                "1️⃣",
-                "2️⃣",
-                "3️⃣",
-                "4️⃣",
-                "5️⃣",
-                "✅",
-                "❌",
-            ]
-
-            for REACT in REACT_ANDYS:
-                await base_message.add_reaction(REACT)
-
-            def _check_reaction(reaction: disnake.Reaction, user: disnake.Member):
-                return (
-                    reaction.message.id == base_message.id
-                    and user.id == ctx.author.id
-                    and reaction.emoji in REACT_ANDYS
-                )
-
-            res: disnake.Reaction
-            user: disnake.Member
-            res, user = await self.bot.wait_for("reaction_add", check=_check_reaction)
-            if user != ctx.author:
-                continue
-            await base_message.clear_reactions()
-            if res.emoji == "1️⃣":
-                await _change_staff()
-            elif res.emoji == "2️⃣":
-                await _change_role()
-            elif res.emoji == "3️⃣":
-                await _tambah_episode()
-            elif res.emoji == "4️⃣":
-                await _hapus_episode()
-            elif res.emoji == "5️⃣":
-                result = await _hapus_utang_confirmation()
-                if result:
-                    hapus_utang = result
-                    break
-            elif res.emoji == "✅":
-                break
-            elif res.emoji == "❌":
-                exit_command = True
-                break
-
-        await base_message.delete()
-        if exit_command:
-            self.logger.warning(f"{matched_anime.title}: cancelling...")
-            return await ctx.send("**Dibatalkan!**")
-        if hapus_utang:
-            self.logger.warning(f"{matched_anime.title}: nuking project...")
-            fsdb_data = matched_anime.fsdb
-            if fsdb_data is not None and self.bot.fsdb is not None:
-                self.logger.warning("Updating FSDB Project to dropped.")
-                if fsdb_data.id:
-                    await self.bot.fsdb.update_project(fsdb_data.id, "status", "Drop")
-
-            current = matched_anime.get_current()
-            announce_it = False
-            if current is not None and current.finished:
-                announce_it = True
-
-            role_id = matched_anime.role
-            # Delete role, but dont delete it if it being used by another project.
-            if isinstance(role_id, int) and role_id not in all_stupid_role_used:
-                self.logger.info(f"{matched_anime.title}: Trying to remove role ID {role_id}")
-                role_real = guild.get_role(role_id)
-                if role_real is not None:
-                    try:
-                        await role_real.delete()
-                        self.logger.warning(f"{matched_anime.title}:{role_id}: role removed!")
-                    except (disnake.Forbidden, disnake.HTTPException):
-                        self.logger.error(f"{matched_anime.title}:{role_id}: failed to remove role!")
-
-            srv_data -= matched_anime
-            update_cache: List[Showtimes] = []
-            update_cache.append(srv_data)
-            for osrv in matched_anime.kolaborasi:
-                osrv_data = await self.queue.fetch_database(osrv)
-                if osrv_data is None:
-                    continue
-                osrv_anime = osrv_data.get_project(matched_anime)
-                if osrv_anime is None:
-                    continue
-                removed = osrv_anime.remove_kolaborator(guild.id)
-                if removed is not None:
-                    osrv_data.update_project(osrv_anime)
-                    update_cache.append(osrv_data)
-
-            for update in update_cache:
-                await self.queue.add_job(update)
-            await ctx.send(f"Berhasil menghapus **{matched_anime.title}** dari daftar utang!")
-
-            self.logger.info(f"{server_id}: Updating main database...")
-            for update in update_cache:
-                ures, umsg = await self.bot.ntdb.update_server(update)
-                if not ures:
-                    if update.id not in self.bot.showtimes_resync:
-                        self.bot.showtimes_resync.append(update.id)
-                    self.logger.error(
-                        f"{server_id}: Failed to update showtimes data for {update.id}, reason: {umsg}"
-                    )
-
-            if announce_it and srv_data.announcer is not None:
-                embed = disnake.Embed(title=matched_anime.title, color=0xB51E1E)
-                embed.add_field(
-                    name="Dropped...",
-                    value=f"{matched_anime.title} telah di drop dari fansub ini :(",
-                    inline=False,
-                )
-                embed.set_footer(text=f"Pada: {get_current_time()}")
-                await self.base.announce_embed(self.bot, srv_data.announcer, embed)
-            return
-
-        self.logger.warning(f"{matched_anime.title}: saving new data...")
-        update_cache: List[Showtimes] = []
-        update_cache.append(srv_data)
-        for osrv in matched_anime.kolaborasi:
-            osrv_data = await self.queue.fetch_database(osrv)
-            if osrv_data is None:
-                continue
-            osrv_anime = osrv_data.get_project(matched_anime)
+        srv_data -= project
+        update_cache: list[Showtimes] = [srv_data]
+        for osrv_data in await self._collaborators(project, server_id):
+            osrv_anime = osrv_data.get_project(project)
             if osrv_anime is None:
                 continue
-            osrv_data.update_project(matched_anime, False)
-            update_cache.append(osrv_data)
+            if osrv_anime.remove_kolaborator(guild.id) is not None:
+                osrv_data.update_project(osrv_anime)
+                update_cache.append(osrv_data)
 
-        for update in update_cache:
-            await self.queue.add_job(update)
+        await ctx.send(ctx.t("ubahdata.dropped", title=project.title))
+        await self._commit(server_id, update_cache)
 
-        self.logger.info(f"{server_id}: Updating main database...")
-        for update in update_cache:
-            ures, umsg = await self.bot.ntdb.update_server(update)
-            if not ures:
-                if update.id not in self.bot.showtimes_resync:
-                    self.bot.showtimes_resync.append(update.id)
-                self.logger.error(
-                    f"{server_id}: Failed to update showtimes data for {update.id}, reason: {umsg}"
-                )
+        if announce_it and srv_data.announcer is not None:
+            embed = discord.Embed(title=project.title, color=0xB51E1E)
+            embed.add_field(
+                name=ctx.t("ubahdata.drop_embed_title"),
+                value=ctx.t("ubahdata.drop_embed_value", title=project.title),
+                inline=False,
+            )
+            embed.set_footer(text=ctx.t("footer.at", time=get_current_time(ctx.locale)))
+            await self.base.announce_embed(self.bot, srv_data.announcer, embed)
 
-        await ctx.send(f"Berhasil menyimpan data baru untuk garapan **{matched_anime.title}**")
+    # ------------------------------------------------------------------ custom roles
+    @ubah_role.command(
+        name="tambah",
+        description=app_commands.locale_str(
+            "Tambah posisi/role custom (maksimal 5)", key="showtimes.ubahdata.role_tambah"
+        ),
+    )
+    @app_commands.describe(
+        judul=app_commands.locale_str("Judul proyek", key="showtimes.options.judul"),
+        kode=app_commands.locale_str("Kode role, contoh: TS (tanpa spasi)", key="showtimes.ubahdata.option_kode"),
+        nama=app_commands.locale_str("Nama lengkap role", key="showtimes.ubahdata.option_nama"),
+    )
+    async def _ubah_customrole_tambah(
+        self,
+        inter: discord.Interaction,
+        judul: str,
+        kode: app_commands.Range[str, 1, 10],
+        nama: app_commands.Range[str, 1, 50],
+    ):
+        ctx = await self.bot.get_context(inter)
+        srv_data, project = await self._admin_project(inter, judul)
+        if srv_data is None or project is None:
+            return
+        key = kode.upper()
+        if " " in key:
+            return await inter.response.send_message(ctx.t("ubahdata.no_spaces"), ephemeral=True)
+        if key in BASE_ROLE_KEYS:
+            return await inter.response.send_message(ctx.t("ubahdata.reserved_code"), ephemeral=True)
+        existing = project.assignment.custom
+        if any(r.key == key for r in existing):
+            return await inter.response.send_message(ctx.t("ubahdata.code_taken"), ephemeral=True)
+        if len(existing) >= MAX_CUSTOM_ROLES:
+            return await inter.response.send_message(ctx.t("ubahdata.max_custom_roles"), ephemeral=True)
+
+        new_role = ShowtimesAssigneeCustom(key, nama)
+        await self._apply_custom_roles(inter, srv_data, project, [new_role], [])
+
+    @ubah_role.command(
+        name="hapus",
+        description=app_commands.locale_str("Hapus posisi/role custom", key="showtimes.ubahdata.role_hapus"),
+    )
+    @app_commands.describe(
+        judul=app_commands.locale_str("Judul proyek", key="showtimes.options.judul"),
+        kode=app_commands.locale_str("Kode role yang dihapus", key="showtimes.ubahdata.option_kode_hapus"),
+    )
+    async def _ubah_customrole_hapus(self, inter: discord.Interaction, judul: str, kode: str):
+        ctx = await self.bot.get_context(inter)
+        srv_data, project = await self._admin_project(inter, judul)
+        if srv_data is None or project is None:
+            return
+        key = kode.upper()
+        if not any(r.key == key for r in project.assignment.custom):
+            return await inter.response.send_message(ctx.t("ubahdata.custom_code_not_found"), ephemeral=True)
+        await self._apply_custom_roles(inter, srv_data, project, [], [key])
+
+    @ubah_role.command(
+        name="list",
+        description=app_commands.locale_str("Lihat posisi/role custom", key="showtimes.ubahdata.role_list"),
+    )
+    @app_commands.describe(judul=app_commands.locale_str("Judul proyek", key="showtimes.options.judul"))
+    async def _ubah_customrole_list(self, inter: discord.Interaction, judul: str):
+        ctx = await self.bot.get_context(inter)
+        _, project = await self._admin_project(inter, judul)
+        if project is None:
+            return
+        custom_roles = project.assignment.custom
+        value = ctx.t("ubahdata.none")
+        if custom_roles:
+            value = "- " + "\n- ".join(f"**{x.key}** - {x.name}" for x in custom_roles)
+        embed = discord.Embed(title=project.title, color=0x1E1EB5)
+        embed.add_field(name=ctx.t("ubahdata.custom_role_embed"), value=value, inline=False)
+        await inter.response.send_message(embed=embed, ephemeral=True)
+
+    @_ubah_customrole_hapus.autocomplete("kode")
+    async def _ubah_customrole_hapus_kode_auto(self, inter: discord.Interaction, current: str):
+        judul = getattr(inter.namespace, "judul", None)
+        server = await self.queue.fetch_database(str(inter.guild.id)) if inter.guild else None
+        if server is None or not judul:
+            return []
+        project = server.get_project(judul) or server.exact_match(judul)
+        if project is None:
+            return []
+        choices = [
+            app_commands.Choice(name=f"{r.key} — {r.name}"[:100], value=r.key) for r in project.assignment.custom
+        ]
+        return [c for c in choices if current.lower() in c.name.lower()]
+
+    async def _apply_custom_roles(
+        self,
+        inter: discord.Interaction,
+        srv_data: Showtimes,
+        project: ShowtimesProject,
+        to_add: list[ShowtimesAssigneeCustom],
+        to_delete: list[str],
+    ):
+        server_id = str(srv_data.id)
+        ctx = await self.bot.get_context(inter)
+        await inter.response.defer()
+
+        def _apply(target: ShowtimesProject):
+            for role in to_add:
+                target.assignment.create_custom(role.key, role.name, role.person)
+                for status in target.status:
+                    status.progress.create_custom(role.key, role.name, False)
+            for key in to_delete:
+                target.assignment.remove_custom(key)
+                for status in target.status:
+                    status.progress.remove_custom(key)
+
+        _apply(project)
+        srv_data.update_project(project)
+        save_queue: list[Showtimes] = [srv_data]
+        for osrv in await self._collaborators(project, server_id):
+            osrv_project = osrv.get_project(project)
+            if osrv_project is None:
+                continue
+            _apply(osrv_project)
+            osrv.update_project(osrv_project)
+            save_queue.append(osrv)
+
+        await inter.followup.send(ctx.t("ubahdata.saved"))
+        await self._commit(server_id, save_queue)
+
+    # ------------------------------------------------------------------ autocomplete wiring
+    for _cmd in (
+        _ubah_staff_set,
+        _ubah_staff_list,
+        _ubah_role_discord,
+        _ubah_episode_tambah,
+        _ubah_episode_hapus,
+        _ubah_drop,
+        _ubah_customrole_tambah,
+        _ubah_customrole_hapus,
+        _ubah_customrole_list,
+    ):
+        _cmd.autocomplete("judul")(_project_auto)
+    del _cmd
 
 
-def setup(bot: naoTimesBot):
-    if bot.ntdb is None:
-        bot.logger.warning("Owner hasn't enabled naoTimesDB yet, will not load this cogs")
+async def setup(bot: naoTimesBot):
+    ntdb = bot.ntdb
+    if ntdb is None or bot.showqueue is None or bot.showcogs is None:
+        bot.logger.warning("Showtimes services are unavailable; not loading this admin cog")
         return
-    bot.add_cog(ShowtimesAdmin(bot))
+    await bot.add_cog(ShowtimesAdmin(bot))

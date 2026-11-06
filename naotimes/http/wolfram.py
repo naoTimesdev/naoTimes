@@ -8,7 +8,7 @@ Made specifically for naoTimes
 
 MIT License
 
-Copyright (c) 2019-2021 naoTimesdev
+Copyright (c) 2019-2022 naoTimesdev
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -30,7 +30,9 @@ SOFTWARE.
 """
 
 import asyncio
-from typing import Any, Dict, List, Mapping, NamedTuple, Union
+from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import Any
 
 import aiohttp
 import orjson
@@ -40,28 +42,29 @@ from ..version import __version__
 __all__ = ("WolframAPI", "WolframPod", "WolframSubPod")
 
 
-class WolframSubPod(NamedTuple):
+@dataclass
+class WolframSubPod:
     id: str
     title: str
-    image: Union[str, None]
+    image: str | None
     plaintext: str
 
 
 class WolframPod:
-    def __init__(self, raw_data: Dict[str, Any]) -> None:
+    def __init__(self, raw_data: dict[str, Any]) -> None:
         self._RAW_DATA = raw_data
         self._parse_pod()
 
     def _parse_pod(self):
         if not hasattr(self, "_RAW_DATA"):
             return
-        setattr(self, "_title", self._RAW_DATA.get("title"))
+        self._title = self._RAW_DATA.get("title")
         id_type = self._RAW_DATA.get("id", "Unknown")
-        setattr(self, "_scanner", self._RAW_DATA.get("scanner"))
-        setattr(self, "_type", id_type)
-        setattr(self, "_position", self._RAW_DATA.get("position"))
+        self._scanner = self._RAW_DATA.get("scanner")
+        self._type = id_type
+        self._position = self._RAW_DATA.get("position")
         subpods = self._RAW_DATA.get("subpods", [])
-        collected_pods: List[WolframSubPod] = []
+        collected_pods: list[WolframSubPod] = []
         for sub in subpods:
             img_data = sub.get("img", {})
             image_src = img_data.get("src")
@@ -70,14 +73,14 @@ class WolframPod:
                 title = img_data.get("alt", "")
             plaintext = sub.get("plaintext", "")
             collected_pods.append(WolframSubPod(id_type, title, image_src, plaintext))
-        setattr(self, "_subpods", collected_pods)
+        self._subpods = collected_pods
 
     @property
-    def title(self) -> Union[str, None]:
+    def title(self) -> str | None:
         return getattr(self, "_title", None)
 
     @property
-    def scanner(self) -> Union[str, None]:
+    def scanner(self) -> str | None:
         return getattr(self, "_scanner", None)
 
     @property
@@ -85,14 +88,14 @@ class WolframPod:
         return getattr(self, "_type", "Unknon")
 
     @property
-    def pods(self) -> List[WolframSubPod]:
+    def pods(self) -> list[WolframSubPod]:
         return getattr(self, "_subpods", [])
 
 
 class WolframPods:
-    def __init__(self, pods: List[Dict[str, Any]]) -> None:
+    def __init__(self, pods: list[dict[str, Any]]) -> None:
         self._raw_data = pods
-        self._pods: List[WolframPod] = []
+        self._pods: list[WolframPod] = []
         for pod in pods:
             self._pods.append(WolframPod(pod))
 
@@ -110,7 +113,7 @@ class WolframPods:
         return first_pod
 
     @property
-    def pods(self) -> List[WolframPod]:
+    def pods(self) -> list[WolframPod]:
         return self._pods
 
 
@@ -155,7 +158,7 @@ class WolframAPI:
         except aiohttp.ClientError:
             return {"error": "Terjadi kesalahan internal ketika menghubungi API"}
 
-    async def query(self, query_txt: str) -> Union[WolframPods, str]:
+    async def query(self, query_txt: str) -> WolframPods | str:
         requested = await self._request(query_txt)
         if "error" in requested:
             return requested["error"]

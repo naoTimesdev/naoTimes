@@ -1,236 +1,296 @@
-import ctypes
+import json
 import logging
+import re
 from dataclasses import dataclass, field
 from html import unescape
-from typing import Literal, Optional, Tuple, Union
-from urllib.parse import urlencode
+from typing import ClassVar, Literal
 from uuid import uuid4
 
 import aiohttp
-import disnake
-import orjson
-from disnake.ext import commands
+import discord
+from discord import app_commands
+from discord.ext import commands
 
 from naotimes.bot import naoTimesBot
-from naotimes.context import naoTimesAppContext, naoTimesContext
+from naotimes.utils import FIREFOX_USER_AGENT
 
 LANGUAGES_LIST = [
+    ("auto", "Deteksi Otomatis"),
+    ("ab", "Abkhaz"),
+    ("ace", "Aceh"),
+    ("ach", "Acoli"),
     ("aa", "Afar"),
-    ("ab", "Abkhazian"),
-    ("af", "Afrika"),
-    ("ak", "Akan"),
+    ("af", "Afrikaans"),
     ("sq", "Albania"),
-    ("am", "Amharic"),
+    ("alz", "Alur"),
+    ("am", "Amharik"),
     ("ar", "Arab"),
-    ("an", "Aragonese"),
     ("hy", "Armenia"),
-    ("as", "Assamese"),
-    ("av", "Avaric"),
-    ("ae", "Avestan"),
+    ("as", "Assam"),
+    ("av", "Avar"),
+    ("awa", "Awadhi"),
     ("ay", "Aymara"),
-    ("az", "Azerbaijani"),
-    ("ba", "Bashkir"),
+    ("az", "Azerbaijan"),
+    ("ban", "Bali"),
+    ("bal", "Baluchi"),
     ("bm", "Bambara"),
-    ("eu", "Basque"),
+    ("bci", "Baoulé"),
+    ("ba", "Bashkir"),
+    ("eu", "Bask"),
+    ("btx", "Batak Karo"),
+    ("bts", "Batak Simalungun"),
+    ("bbc", "Batak Toba"),
+    ("nl", "Belanda"),
     ("be", "Belarusia"),
+    ("bem", "Bemba"),
     ("bn", "Bengali"),
-    ("bh", "Bihari languages"),
-    ("bi", "Bislama"),
-    ("bo", "Tibet"),
+    ("bew", "Betawi"),
+    ("bho", "Bhojpuri"),
+    ("bik", "Bikol"),
     ("bs", "Bosnia"),
     ("br", "Breton"),
     ("bg", "Bulgaria"),
-    ("my", "Burmese"),
-    ("ca", "Catalan"),
-    ("cs", "Czech"),
+    ("bua", "Buriat"),
+    ("cs", "Ceko"),
     ("ch", "Chamorro"),
     ("ce", "Chechen"),
-    ("zh", "China"),
-    ("cu", "Church Slavic"),
+    ("ny", "Chichewa"),
+    ("zh-CN", "China"),
+    ("zh-TW", "China (Aks. Tradisional)"),
+    ("chk", "Chuuke"),
     ("cv", "Chuvash"),
-    ("kw", "Cornish"),
-    ("co", "Corsica"),
-    ("cr", "Cree"),
-    ("cy", "Welsh"),
-    ("cs", "Czech"),
+    ("fa-AF", "Dari"),
     ("da", "Denmark"),
-    ("de", "Jerman"),
+    ("din", "Dinka"),
     ("dv", "Divehi"),
-    ("nl", "Belanda"),
+    ("doi", "Dogri"),
+    ("dov", "Dombe"),
+    ("dyu", "Dyula"),
     ("dz", "Dzongkha"),
-    ("el", "Yunani"),
-    ("en", "Inggris"),
     ("eo", "Esperanto"),
     ("et", "Estonia"),
-    ("eu", "Basque"),
     ("ee", "Ewe"),
-    ("fo", "Faroese"),
-    ("fa", "Persia"),
-    ("fj", "Fijian"),
+    ("fo", "Faroe"),
+    ("fa", "Farsi"),
+    ("fj", "Fiji"),
     ("fi", "Finlandia"),
-    ("fr", "Perancis"),
-    ("fy", "Frisia Barat"),
-    ("ff", "Fulah"),
-    ("Ga", "Georgia"),
-    ("gd", "Gaelic"),
-    ("ga", "Irlandia"),
-    ("gl", "Galicia"),
-    ("gv", "Manx"),
+    ("fon", "Fon"),
+    ("fy", "Frisia"),
+    ("fur", "Friuli"),
+    ("ff", "Fulani"),
+    ("gaa", "Ga"),
+    ("gd", "Gaelik Skotlandia"),
+    ("gl", "Galisia"),
+    ("ka", "Georgia"),
     ("gn", "Guarani"),
     ("gu", "Gujarati"),
-    ("ht", "Haiti"),
+    ("cnh", "Hakha Chin"),
     ("ha", "Hausa"),
-    ("he", "Yahudi"),
-    ("hz", "Herero"),
+    ("haw", "Hawaii"),
+    ("hil", "Hiligaynon"),
     ("hi", "Hindi"),
-    ("ho", "Hiri Motu"),
-    ("hr", "Kroatia"),
+    ("hmn", "Hmong"),
     ("hu", "Hungaria"),
-    ("hy", "Armenia"),
+    ("hrx", "Hunsrik"),
+    ("iba", "Iban"),
+    ("iw", "Ibrani"),
     ("ig", "Igbo"),
-    ("is", "Islandia"),
-    ("io", "Ido"),
-    ("ii", "Sichuan Yi"),
-    ("iu", "Inuktitut"),
-    ("ie", "Interlingue Occidental"),
-    ("ia", "Interlingua"),
+    ("ilo", "Iloko"),
     ("id", "Indonesia"),
-    ("ik", "Inupiaq"),
+    ("en", "Inggris"),
+    ("iu-Latn", "Inuktut (Latin)"),
+    ("iu", "Inuktut (Silabis)"),
+    ("ga", "Irlandia"),
+    ("is", "Islandia"),
     ("it", "Italia"),
-    ("jv", "Jawa"),
+    ("jw", "Jawa"),
     ("ja", "Jepang"),
-    ("jp", ["ja", "Jepang"]),
+    ("de", "Jerman"),
+    ("kac", "Jingpo"),
     ("kl", "Kalaallisut"),
     ("kn", "Kannada"),
-    ("ks", "Kashmiri"),
-    ("ka", "Georgia"),
     ("kr", "Kanuri"),
+    ("ca", "Katalan"),
     ("kk", "Kazakh"),
-    ("km", "Khmer Tengah"),
-    ("ki", "Kikuyu"),
+    ("kek", "Kekchi"),
+    ("kha", "Khasi"),
+    ("km", "Khmer"),
+    ("cgg", "Kiga"),
     ("rw", "Kinyarwanda"),
-    ("ky", "Kyrgyz"),
+    ("ky", "Kirgiz"),
+    ("ktu", "Kituba"),
+    ("trp", "Kokborok"),
     ("kv", "Komi"),
     ("kg", "Kongo"),
+    ("gom", "Konkani"),
     ("ko", "Korea"),
-    ("kj", "Kuanyama"),
-    ("ku", "Kurdish"),
+    ("co", "Korsika"),
+    ("ht", "Kreol Haiti"),
+    ("mfe", "Kreol Mauritius"),
+    ("crs", "Kreol Seselwa"),
+    ("kri", "Krio"),
+    ("hr", "Kroasia"),
+    ("ku", "Kurdi (Kurmanji)"),
+    ("ckb", "Kurdi (Sorani)"),
     ("lo", "Lao"),
+    ("ltg", "Latgalia"),
     ("la", "Latin"),
-    ("lv", "Latvian"),
-    ("li", "Limburgan"),
+    ("lv", "Latvia"),
+    ("lij", "Liguria"),
+    ("li", "Limburgia"),
     ("ln", "Lingala"),
-    ("lt", "Lithuania"),
-    ("lb", "Luxembourgish"),
-    ("lu", "Luba-Katanga"),
-    ("lg", "Ganda"),
-    ("mk", "Macedonia"),
-    ("mh", "Marshallese"),
+    ("lt", "Lituania"),
+    ("lmo", "Lombard"),
+    ("lg", "Luganda"),
+    ("lb", "Luksemburg"),
+    ("luo", "Luo"),
+    ("mad", "Madura"),
+    ("mai", "Maithili"),
+    ("mak", "Makassar"),
+    ("mk", "Makedonia"),
+    ("mg", "Malagasi"),
     ("ml", "Malayalam"),
+    ("mt", "Malta"),
+    ("mam", "Mam"),
+    ("gv", "Manx"),
     ("mi", "Maori"),
     ("mr", "Marathi"),
+    ("mh", "Marshall"),
+    ("mwr", "Marwari"),
+    ("yua", "Maya Yukatek"),
+    ("chm", "Meadow Mari"),
+    ("mni-Mtei", "Meitei (Manipuri)"),
     ("ms", "Melayu"),
-    ("Mi", "Micmac"),
-    ("mg", "Malagasy"),
-    ("mt", "Maltese"),
+    ("ms-Arab", "Melayu (Jawi)"),
+    ("min", "Minangkabau"),
+    ("lus", "Mizo"),
     ("mn", "Mongolia"),
-    ("mi", "Maori"),
-    ("my", "Burmese"),
-    ("na", "Nauru"),
-    ("nv", "Navaho"),
-    ("nr", "Ndebele Selatan"),
-    ("nd", "Ndebele Utara"),
-    ("ng", "Ndonga"),
-    ("ne", "Nepali"),
-    ("nn", "Norwegia Nynorsk"),
-    ("nb", "Norwegia Bokmål"),
+    ("my", "Myanmar"),
+    ("bm-Nkoo", "N'Ko"),
+    ("nhe", "Nahuatl (Huasteca Timur)"),
+    ("ndc-ZW", "Ndau"),
+    ("nr", "Ndebele (Selatan)"),
+    ("ne", "Nepal"),
+    ("new", "Nepal Bhasa (Newari)"),
     ("no", "Norwegia"),
-    ("oc", "Occitan (post 1500)"),
-    ("oj", "Ojibwa"),
-    ("or", "Oriya"),
+    ("nus", "Nuer"),
+    ("or", "Odia (Oriya)"),
     ("om", "Oromo"),
+    ("oc", "Ositania"),
     ("os", "Ossetia"),
-    ("pa", "Panjabi"),
-    ("fa", "Persia"),
-    ("pi", "Pali"),
+    ("pam", "Pampanga"),
+    ("pag", "Pangasina"),
+    ("pap", "Papiamento"),
+    ("ps", "Pashto"),
+    ("jam", "Patois Jamaika"),
     ("pl", "Polandia"),
-    ("pt", "Portugal"),
-    ("ps", "Pushto"),
+    ("pt", "Portugis (Brasil)"),
+    ("pt-PT", "Portugis (Portugal)"),
+    ("fr", "Prancis"),
+    ("fr-CA", "Prancis (Kanada)"),
+    ("pa", "Punjabi (Gurmukhi)"),
+    ("pa-Arab", "Punjabi (Shahmukhi)"),
     ("qu", "Quechua"),
-    ("rm", "Romansh"),
-    ("ro", "Romania"),
+    ("rom", "Romani"),
+    ("ro", "Rumania"),
     ("rn", "Rundi"),
     ("ru", "Rusia"),
-    ("sg", "Sango"),
-    ("sa", "Sanskrit"),
-    ("si", "Sinhala"),
-    ("sk", "Slovak"),
-    ("sk", "Slovak"),
-    ("sl", "Slovenia"),
-    ("se", "Sami Utara"),
+    ("se", "Sami (Utara)"),
     ("sm", "Samoa"),
+    ("sg", "Sango"),
+    ("sa", "Sanskerta"),
+    ("sat", "Santali (Chiki Lama)"),
+    ("sat-Latn", "Santali (Latin)"),
+    ("ceb", "Sebuano"),
+    ("nso", "Sepedi"),
+    ("sr", "Serb"),
+    ("st", "Sesotho"),
+    ("shn", "Shan"),
     ("sn", "Shona"),
+    ("szl", "Silesia"),
     ("sd", "Sindhi"),
+    ("si", "Sinhala"),
+    ("scn", "Sisilia"),
+    ("sk", "Slovakia"),
+    ("sl", "Slovenia"),
     ("so", "Somali"),
-    ("st", "Sotho, Southern"),
     ("es", "Spanyol"),
-    ("sq", "Albania"),
-    ("sc", "Sardinia"),
-    ("sr", "Serbia"),
-    ("ss", "Swati"),
     ("su", "Sunda"),
+    ("sus", "Susu"),
     ("sw", "Swahili"),
+    ("ss", "Swati"),
     ("sv", "Swedia"),
+    ("tl", "Tagalog"),
     ("ty", "Tahiti"),
+    ("tg", "Tajik"),
+    ("ber-Latn", "Tamazight"),
+    ("ber", "Tamazight (Tifinagh)"),
     ("ta", "Tamil"),
     ("tt", "Tatar"),
+    ("crh-Latn", "Tatar Krimea (Latin)"),
+    ("crh", "Tatar Krimea (Sirilik)"),
     ("te", "Telugu"),
-    ("tg", "Tajik"),
-    ("tl", "Tagalog"),
-    ("th", "Thailand"),
-    ("bo", "Tibetan"),
+    ("tet", "Tetun"),
+    ("th", "Thai"),
+    ("bo", "Tibet"),
     ("ti", "Tigrinya"),
+    ("tiv", "Tiv"),
+    ("tpi", "Tok Pisin"),
     ("to", "Tonga"),
-    ("tn", "Tswana"),
+    ("lua", "Tshiluba"),
     ("ts", "Tsonga"),
+    ("tn", "Tswana"),
+    ("tcy", "Tulu"),
+    ("tum", "Tumbuka"),
+    ("tr", "Turkiye"),
     ("tk", "Turkmen"),
-    ("tr", "Turki"),
-    ("tw", "Twi"),
-    ("ug", "Uighur"),
-    ("uk", "Ukrania"),
+    ("tyv", "Tuvinia"),
+    ("ak", "Twi"),
+    ("udm", "Udmurt"),
+    ("uk", "Ukraina"),
     ("ur", "Urdu"),
+    ("ug", "Uyghur"),
     ("uz", "Uzbek"),
     ("ve", "Venda"),
+    ("vec", "Venesia"),
     ("vi", "Vietnam"),
-    ("vo", "Volapük"),
+    ("war", "Warai"),
     ("cy", "Welsh"),
-    ("wa", "Walloon"),
     ("wo", "Wolof"),
     ("xh", "Xhosa"),
-    ("yi", "Yiddish"),
+    ("sah", "Yakut"),
+    ("yi", "Yiddi"),
     ("yo", "Yoruba"),
-    ("za", "Zhuang"),
+    ("el", "Yunani"),
+    ("zap", "Zapotek"),
     ("zu", "Zulu"),
+    ("jp", ["ja", "Jepang"]),
+    ("zh", ["zh-CN", "China"]),
+    ("zh-HK", ["yue", "Kanton"]),
+    ("he", ["iw", "Ibrani"]),
+    ("jv", ["jw", "Jawa"]),
 ]
-_IKON = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d7/Google_Translate_logo.svg/480px-Google_Translate_logo.svg.png"  # noqa: E501
+_LANGUAGE_CANONICAL: dict[str, str] = {code.lower(): code for code, _ in LANGUAGES_LIST}
+
+_IKON = "https://p.ihateani.me/gvhombft.png"
 
 
 @dataclass
 class TLRequest:
     input: str
-    output: Optional[str] = None
+    output: str | None = None
 
     source: str = "auto"
-    target: Optional[str] = None
+    target: str | None = None
 
     translator: Literal["gtl"] = "gtl"
 
-    id: str = field(default_factory=uuid4)
+    id: str = field(default_factory=lambda: str(uuid4()))
 
     def __post_init__(self):
-        self.source = self.source.lower()
+        self.source = _LANGUAGE_CANONICAL.get(self.source.lower(), self.source.lower())
         if self.target:
-            self.target = self.target.lower()
+            self.target = _LANGUAGE_CANONICAL.get(self.target.lower(), self.target.lower())
         self.id = str(self.id)
 
         self.output = None
@@ -249,101 +309,109 @@ class SameTranslatedMessage(TranslationFailed):
         super().__init__(f"Translasi dari {engine} menghasilkan output yang sama seperti input")
 
 
-class AsyncTranslatorV2:
-    URL = "http://translate.google.com/translate_a/t?client=webapp&dt=bd&dt=ex&dt=ld&dt=md&dt=qca&dt=rw&dt=rm&dt=ss&dt=t&dt=at&ie=UTF-8&oe=UTF-8&otf=2&ssel=0&tsel=0&kc=1"  # noqa: E501
+class GoogleFreeTranslation:
+    URL_EXT = "https://translate-pa.googleapis.com/v1/translateHtml"
+    API_KEY = "AIzaSyATBXajvzQLTDHEQbcpq0Ihe0vWDHmO520"
 
-    def __init__(self, session: aiohttp.ClientSession = None):
+    _REFERER = "https://translate.google.com/"
+    _LANGUAGE_CONVERSION: ClassVar[dict[str, str]] = {"zh-hk": "yue"}
+
+    # `_translateNew` keeps Google's inline markup and drops non printable characters.
+    _MULTI_GROUP_RE = re.compile(r"(?:<i>.*?</i> ?<b>(.*?)</b>)")
+    _NON_PRINTABLE_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
+
+    def __init__(self, session: aiohttp.ClientSession | None = None):
         self.logger = logging.getLogger("AsyncTranslator")
-
         self._DEFAULT_HEADERS = {
-            "Accept": "*/*",
-            "Connection": "keep-alive",
-            "User-Agent": (
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_8) "
-                "AppleWebKit/535.19 (KHTML, like Gecko) Chrome/18.0.1025.168 Safari/535.19"  # noqa: E501
-            ),
+            "Referer": self._REFERER,
+            "Origin": self._REFERER,
+            "Content-Type": "application/json+protobuf",
+            "x-goog-api-key": self.API_KEY,
+            "User-Agent": FIREFOX_USER_AGENT,
         }
 
-        self.session: aiohttp.ClientSession = session
         if session is None:
             self.logger.info("Spawning in new session...")
             self.session = aiohttp.ClientSession(headers=self._DEFAULT_HEADERS)
+        else:
+            self.session = session
 
-    @staticmethod
-    def _calculate_tk(source: str) -> str:
-        """Reverse engineered cross-site request protection."""
-        # Source: http://www.liuxiatool.com/t.php
+    @classmethod
+    def _extract_translation(cls, raw_translation: str) -> str:
+        translation = ""
+        for match in cls._MULTI_GROUP_RE.finditer(raw_translation):
+            translation += match.group(1) + " "
 
-        tkk = [406398, 561666268 + 1526272306]
-        b = tkk[0]
+        if translation == "":
+            # Single return translation
+            translation = raw_translation
 
-        d = source.encode("utf-8")
+        # Remove non printable characters
+        return cls._NON_PRINTABLE_RE.sub("", translation)
 
-        def RL(a: int, b: str):
-            for c in range(0, len(b) - 2, 3):
-                d = b[c + 2]
-                d = ord(d) - 87 if d >= "a" else int(d)
-                xa = ctypes.c_uint32(a).value
-                d = xa >> d if b[c + 1] == "+" else xa << d
-                a = a + d & 4294967295 if b[c] == "+" else a ^ d
-            return ctypes.c_int32(a).value
+    @classmethod
+    def _parse_response(cls, result: list[object]) -> str:
+        # `translateHtml` returns `[["translated text"]]`, the JS port flattens
+        # the payload once before reading the first item.
+        flattened: list[object] = []
+        for item in result:
+            if isinstance(item, list):
+                flattened.extend(item)
+            else:
+                flattened.append(item)
 
-        a = b
+        if not flattened:
+            return ""
 
-        for di in d:
-            a = RL(a + di, "+-a^+6")
+        translation = flattened[0]
+        if isinstance(translation, list):
+            translation = translation[0] if translation else ""
+        if not isinstance(translation, str):
+            return ""
+        return translation
 
-        a = RL(a, "+-3^+b+-f")
-        a ^= tkk[1]
-        a = a if a >= 0 else ((a & 2147483647) + 2147483648)
-        a %= pow(10, 6)
+    async def translate(self, request: TLRequest) -> tuple[TLRequest | None, str | None]:
+        default_error = "Gagal memproses hasil translasi dari Google, mohon coba lagi!"
+        target = self._LANGUAGE_CONVERSION.get(request.target or "id", request.target or "id")
+        source = request.source or "auto"
 
-        tk = "{0:d}.{1:d}".format(a, a ^ b)
-        return tk
-
-    def _build_url(self, request: TLRequest) -> str:
-        query_data = {"q": request.input}
-        url = self.URL
-        url += f"&sl={request.source}&tl={request.target}&hl={request.target}"
-        url += f"&tk={self._calculate_tk(request.input)}&{urlencode(query_data)}"
-        url += "&client=te&format=html"
-        return url
-
-    async def translate(self, request: TLRequest) -> Tuple[Optional[TLRequest], Optional[str]]:
-        if request.source is None:
-            request.source = await self._detect_auto_language(request)
-        build_url = self._build_url(request)
-
-        self.logger.info(f"Translating<{request.id}>: {request.input} ({request.source} => {request.target})")
-        real_result = None
+        body = json.dumps([[[request.input], source, target], "te_lib"], ensure_ascii=False)
+        self.logger.info("Translating<%s>: %s (%s => %s)", request.id, request.input, source, target)
         try:
-            async with self.session.get(build_url, headers=self._DEFAULT_HEADERS) as response:
-                text_res = await response.text()
-                try:
-                    real_result = orjson.loads(text_res)
-                except orjson.JSONDecodeError as jde:
-                    self.logger.error(f"Failed to decode response: {text_res}", exc_info=jde)
-                    return None, "Gagal memproses hasil translasi dari Google, mohon coba lagi!"
-        except aiohttp.ClientResponseError as cre:
-            self.logger.error(f"Failed to get response: {cre}", exc_info=cre)
-            return None, f"{cre.message} ({cre.status})"
+            async with self.session.post(self.URL_EXT, headers=self._DEFAULT_HEADERS, data=body) as response:
+                if response.status != 200:
+                    error_body = await response.text()
+                    self.logger.error("Google Translate returned HTTP %s: %s", response.status, error_body)
+                    return None, f"{default_error} ({response.status})"
+                raw_result = await response.text()
+        except TimeoutError:
+            self.logger.error("Google Translate request timed out")
+            return None, default_error
+        except aiohttp.ClientError as error:
+            self.logger.error("Failed to contact Google Translate: %s", error)
+            return None, default_error
 
-        self.logger.info(f"Translated<{request.id}>: {real_result}")
-        if isinstance(real_result, list):
-            tl_output: str
-            tl_source: str
-            try:
-                tl_output, tl_source = real_result
-                tl_output = unescape(tl_output.strip())
-                if tl_output == request.input:
-                    raise SameTranslatedMessage(request.translator, request)
-                request.output = tl_output
-                request.source = tl_source
-                return request, None
-            except (IndexError, ValueError) as cvv:
-                self.logger.error(f"Failed to get output: {cvv}", exc_info=cvv)
-                return None, str(cvv)
-        return None, "Gagal memproses hasil translasi dari Google, mohon coba lagi!"
+        try:
+            result = json.loads(raw_result)
+        except json.JSONDecodeError as error:
+            self.logger.error("Failed to decode Google Translate response", exc_info=error)
+            return None, default_error
+
+        if not isinstance(result, list):
+            self.logger.error("Google Translate response was not a JSON array")
+            return None, default_error
+
+        raw_translation = self._parse_response(result)
+        if not raw_translation.strip():
+            self.logger.error("Google Translate response did not contain translated text")
+            return None, default_error
+
+        translation = self._extract_translation(raw_translation)
+        tl_output = unescape(translation).strip()
+        if tl_output == request.input:
+            raise SameTranslatedMessage(request.translator, request)
+        request.output = tl_output
+        return request, None
 
 
 class KutubukuTranslator(commands.Cog):
@@ -353,89 +421,79 @@ class KutubukuTranslator(commands.Cog):
         self.bot = bot
         self.logger = logging.getLogger("Kutubuku.Translator")
         self.DICT_LANG = dict(LANGUAGES_LIST)
+        self.DICT_LANG_CASEFOLD = {code.casefold(): code for code in self.DICT_LANG}
 
-        self.gtl = AsyncTranslatorV2(session=self.bot.aiosession)
+        self.gtl = GoogleFreeTranslation(session=self.bot.aiosession)
+
+    def resolve_lang(self, lang: str) -> str | None:
+        if not lang:
+            return None
+        return self.DICT_LANG_CASEFOLD.get(lang.strip().casefold())
 
     def pick_lang(self, lang: str) -> str:
-        if lang in self.DICT_LANG:
-            data_lang = self.DICT_LANG[lang]
+        code = self.resolve_lang(lang)
+        if code is not None:
+            data_lang = self.DICT_LANG[code]
             if isinstance(data_lang, str):
                 return data_lang
             return data_lang[1]
         return lang.upper()
 
-    async def _actually_translate(self, request: TLRequest) -> Union[str, disnake.Embed]:
+    async def _actually_translate(self, request: TLRequest) -> str | discord.Embed:
         try:
-            request, error_msg = await self.gtl.translate(request)
+            translated_request, error_msg = await self.gtl.translate(request)
         except SameTranslatedMessage:
             return "Translasi yang didapatkan sama dengan request input anda!"
         except Exception as e:
             self.logger.error(f"Translasi<{request.id}>: Exception occured", exc_info=e)
             return self._BASE_ERROR
+        if error_msg is not None:
+            return error_msg
+        if translated_request is None:
+            return self._BASE_ERROR
+        request = translated_request
         if error_msg is None:
-            embed = disnake.Embed(
-                title="Translasi", color=disnake.Colour.random(), timestamp=self.bot.now().datetime
-            )
+            embed = discord.Embed(title="Translasi", color=discord.Colour.random(), timestamp=self.bot.now().datetime)
             description_sec = f"**Masukan (`{self.pick_lang(request.source)}`)**\n{request.input}"
-            description_sec += f"\n\n**Hasil (`{self.pick_lang(request.target)}`)**\n{request.output}"
+            description_sec += f"\n\n**Hasil (`{self.pick_lang(request.target or 'auto')}`)**\n{request.output or ''}"
             embed.description = description_sec
             embed.set_footer(text="Diprakasai oleh Google Translate", icon_url=_IKON)
             embed.set_thumbnail(url=_IKON)
             return embed
         return error_msg
 
-    @commands.command(name="translasi", aliases=["tl", "alihbahasa"])
-    async def _kutubuku_translasi(self, ctx: naoTimesContext, *, full_query: str):
-        DEFAULT_TARGET = "id"
-
-        split_query = full_query.split(" ", 1)
-        lang = DEFAULT_TARGET
-        if len(split_query) > 1:
-            lang = split_query[0]
-            if lang not in self.DICT_LANG:
-                lang = DEFAULT_TARGET
-                full_query = full_query
-            else:
-                internal_lang = self.DICT_LANG[lang]
-                if isinstance(internal_lang, list):
-                    lang = internal_lang[0]
-                full_query = split_query[1]
-
-        if len(full_query) > 1000:
-            self.logger.warning(f"Translasi<{ctx.message.id}>: Text input is way too long")
-            return await ctx.send("Teks terlalu panjang, maksimal adalah 1000 karakter!")
-
-        tl_request = TLRequest(full_query, target=lang)
-        self.logger.info(f"Translating: {tl_request}")
-        embed_or_string = await self._actually_translate(tl_request)
-        if isinstance(embed_or_string, str):
-            return await ctx.send(embed_or_string)
-        await ctx.send(embed=embed_or_string)
-
-    @commands.slash_command(name="translasi")
-    async def _kutubuku_translasi_slash(self, ctx: naoTimesAppContext, kalimat: str, target: str = "id"):
-        """Translasi dari satu bahasa ke bahasa lainnya!
-
-        Parameters
-        ----------
-        kalimat: Kalimat/kata yang ingin di alih bahasakan
-        target: Target bahasa translasi
-        """
+    @app_commands.command(name="translasi")
+    @app_commands.describe(
+        kalimat="Kalimat/kata yang ingin di alih bahasakan",
+        target="Target bahasa translasi",
+        awal="Bahasa awal kalimat",
+    )
+    async def _kutubuku_translasi_slash(
+        self, inter: discord.Interaction, kalimat: str, target: str = "id", awal: str = "auto"
+    ):
+        """Translasi dari satu bahasa ke bahasa lainnya!"""
+        ctx = await self.bot.get_context(inter)
         if not target:
             target = "id"
-        if target not in self.DICT_LANG:
+        target_code = self.resolve_lang(target)
+        if target_code is None:
             return await ctx.send("Target bahasa tidak dapat dimengerti!")
+        target = target_code
+        awal = self.resolve_lang(awal) or "auto"
+        source_data = self.DICT_LANG[awal]
+        if isinstance(source_data, list):
+            awal = source_data[0]
         target_data = self.DICT_LANG[target]
         if isinstance(target_data, list):
             target = target_data[0]
-        self.logger.info(f"Trying to translate: {kalimat} (=> {target})")
+        self.logger.info(f"Trying to translate: {kalimat} ({awal} => {target})")
 
         if len(kalimat) > 1000:
             self.logger.warning(f"Translasi<{ctx.id}>: Text input is way too long")
             return await ctx.send("Teks terlalu panjang, maksimal adalah 1000 karakter!")
 
         await ctx.defer()
-        tl_request = TLRequest(kalimat, target=target)
+        tl_request = TLRequest(kalimat, target=target, source=awal)
         self.logger.info(f"Translating(Slash): {tl_request}")
         embed_or_string = await self._actually_translate(tl_request)
         if isinstance(embed_or_string, str):
@@ -443,5 +501,5 @@ class KutubukuTranslator(commands.Cog):
         await ctx.send(embed=embed_or_string)
 
 
-def setup(bot: naoTimesBot):
-    bot.add_cog(KutubukuTranslator(bot))
+async def setup(bot: naoTimesBot):
+    await bot.add_cog(KutubukuTranslator(bot))

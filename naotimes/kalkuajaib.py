@@ -7,7 +7,7 @@ https://github.com/pyparsing/pyparsing/blob/master/examples/fourFn.py
 
 MIT License
 
-Copyright (c) 2019-2021 naoTimesdev
+Copyright (c) 2019-2022 naoTimesdev
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -30,7 +30,7 @@ SOFTWARE.
 
 import math
 import operator
-import typing as t
+from typing import Any, Callable, ClassVar
 
 import pyparsing as pp
 
@@ -58,19 +58,23 @@ class KalkulatorAjaib:
     ```
     """
 
-    e = pp.CaselessKeyword("E")
-    pi = pp.CaselessKeyword("PI")
+    e: ClassVar[pp.ParserElement] = pp.CaselessKeyword("E")
+    pi: ClassVar[pp.ParserElement] = pp.CaselessKeyword("PI")
 
-    fnumber = pp.Regex(r"[+-]?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?")
-    ident = pp.Word(pp.alphas, pp.alphanums + "_$")
+    fnumber: ClassVar[pp.ParserElement] = pp.Regex(r"[+-]?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?")
+    ident: ClassVar[pp.ParserElement] = pp.Word(pp.alphas, pp.alphanums + "_$")
 
+    plus: ClassVar[pp.ParserElement]
+    minus: ClassVar[pp.ParserElement]
+    mul: ClassVar[pp.ParserElement]
+    div: ClassVar[pp.ParserElement]
     plus, minus, mul, div = map(pp.Literal, "+-*/")
     lpar, rpar = map(pp.Suppress, "()")
-    addop = plus | minus
-    mulop = mul | div
-    expop = pp.Literal("^")
+    addop: ClassVar[pp.ParserElement] = plus | minus
+    mulop: ClassVar[pp.ParserElement] = mul | div
+    expop: ClassVar[pp.ParserElement] = pp.Literal("^")
 
-    opn = {
+    opn: ClassVar[dict[str, Callable[..., Any]]] = {
         "+": operator.add,
         "-": operator.sub,
         "*": operator.mul,
@@ -78,7 +82,7 @@ class KalkulatorAjaib:
         "^": operator.pow,
     }
 
-    fn = {
+    fn: ClassVar[dict[str, Callable[..., Any]]] = {
         "sin": math.sin,
         "cos": math.cos,
         "tan": math.tan,
@@ -112,9 +116,7 @@ class KalkulatorAjaib:
             num_args = len(t[0])
             t.insert(0, (fn, num_args))
 
-        fn_call = (self.ident + self.lpar - pp.Group(expr_list) + self.rpar).setParseAction(
-            insert_fn_argcount_tuple
-        )
+        fn_call = (self.ident + self.lpar - pp.Group(expr_list) + self.rpar).setParseAction(insert_fn_argcount_tuple)
 
         atom = (
             self.addop[...]
@@ -155,7 +157,7 @@ class KalkulatorAjaib:
             except ValueError:
                 return float(op)
 
-    def hitung(self, kalkulasikan: str) -> t.Union[int, float]:
+    def hitung(self, kalkulasikan: str) -> int | float:
         """Melakukan kalkulasi terhadap string input
 
         :param kalkulasikan: string untuk dikalkulasikan
@@ -175,7 +177,7 @@ class KalkulatorAjaib:
         return results
 
     @classmethod
-    def kalkulasi(cls, kalkulasikan: str) -> t.Union[int, float]:
+    def kalkulasi(cls, kalkulasikan: str) -> int | float:
         """Melakukan kalkulasi terhadap string input
 
         :param kalkulasikan: string untuk dikalkulasikan

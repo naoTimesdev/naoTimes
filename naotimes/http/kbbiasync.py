@@ -6,7 +6,7 @@ Based on kbbi-python 0.4.2
 
 MIT License
 
-Copyright (c) 2019-2021 naoTimesdev
+Copyright (c) 2019-2022 naoTimesdev
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -34,12 +34,13 @@ import aiohttp
 import arrow
 import kbbi
 from bs4 import BeautifulSoup
-from kbbi import BatasSehari, GagalAutentikasi, Galat, TerjadiKesalahan, TidakDitemukan  # noqa: F401
+from kbbi import BatasSehari, GagalAutentikasi, Galat, TerjadiKesalahan, TidakDitemukan
+from yarl import URL
 
 from ..utils import sync_wrap
 from ..version import __version__
 
-__all__ = ("AutentikasiKBBI", "KBBI", "GagalKoneksi")
+__all__ = ("KBBI", "AutentikasiKBBI", "GagalKoneksi")
 __NT_UA__ = f"naoTimes/{__version__} (https://github.com/noaione/naoTimes)"
 
 
@@ -51,7 +52,7 @@ class GagalKoneksi(kbbi.Galat):
 
 
 class AutentikasiKBBI:
-    host = "https://kbbi.kemdikbud.go.id"
+    host = "https://kbbi.kemendikdasmen.go.id"
     lokasi = "Account/Login"
 
     def __init__(self, posel=None, sandi=None):
@@ -60,7 +61,7 @@ class AutentikasiKBBI:
         self.sandi = sandi
 
     async def ambil_cookies(self) -> str:
-        cookie = self.sesi.cookie_jar.filter_cookies("https://kbbi.kemdikbud.go.id/")
+        cookie = self.sesi.cookie_jar.filter_cookies(URL("https://kbbi.kemendikdasmen.go.id/"))
         final_cookie = cookie[".AspNet.ApplicationCookie"].value
         await self.sesi.close()
         return final_cookie
@@ -103,7 +104,7 @@ class AutentikasiKBBI:
 class KBBI:
     """Sebuah laman dalam KBBI daring."""
 
-    host = "https://kbbi.kemdikbud.go.id"
+    host = "https://kbbi.kemendikdasmen.go.id"
 
     def __init__(self, asp_cookies=None):
         """Membuat objek KBBI baru berdasarkan kueri yang diberikan.

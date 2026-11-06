@@ -7,7 +7,7 @@ formatting. Can be customized!
 
 MIT License
 
-Copyright (c) 2019-2021 naoTimesdev
+Copyright (c) 2019-2022 naoTimesdev
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -29,64 +29,62 @@ SOFTWARE.
 """
 
 import re
-import typing as T
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 
 import aiohttp
 
-from ..utils import complex_walk, get_indexed, list_or_none, str_or_none
+from ..utils import WalkValue, complex_walk, get_indexed
 
 __all__ = (
     "MerriamWebsterClient",
-    "WebsterTokenParser",
-    "WebsterDefinedWord",
-    "WebsterWordThesaurus",
     "ParserReplacer",
+    "WebsterDefinedWord",
+    "WebsterTokenParser",
+    "WebsterWordThesaurus",
 )
 
 # https://github.com/lukebui/mw-collegiate/blob/main/src/types/entry.ts
-ParserReplacer = T.Dict[
-    str,
-    T.Union[
-        # Subtitute with string
-        T.AnyStr,
-        # A lambda function with single text parameter and return a string
-        T.Callable[[T.Match[T.AnyStr]], T.AnyStr],
-    ],
-]
+ParserReplacer = dict[str, str | Callable[[re.Match[str]], str]]
 _TOKEN_BASE = r"\g<content>"
 
 
-class ParsedWordMeaning(T.NamedTuple):
+@dataclass
+class ParsedWordMeaning:
     numbering: str
     content: str
 
 
-class ParsedWordMeaningGrouped(T.NamedTuple):
-    meanings: T.Union[ParsedWordMeaning, T.List[ParsedWordMeaning]]
-    divider: T.Optional[str] = None
+@dataclass
+class ParsedWordMeaningGrouped:
+    meanings: ParsedWordMeaning | list[ParsedWordMeaning]
+    divider: str | None = None
 
 
-class WebsterDefinedWord(T.NamedTuple):
+@dataclass
+class WebsterDefinedWord:
     word: str
     title: str
     type: str
-    meanings: T.List[ParsedWordMeaningGrouped]
-    examples: T.List[ParsedWordMeaning]
-    suggested: T.List[ParsedWordMeaning]
-    etymology: T.Optional[str] = None
-    pronounciation: T.Optional[str] = None
+    meanings: list[ParsedWordMeaningGrouped]
+    examples: list[ParsedWordMeaning]
+    suggested: list[ParsedWordMeaning]
+    etymology: str | None = None
+    pronounciation: str | None = None
 
 
-class ThesaurizeThis(T.NamedTuple):
+@dataclass
+class ThesaurizeThis:
     meaning: str
-    synonyms: T.List[str] = []
-    antonyms: T.List[str] = []
+    synonyms: list[str] = field(default_factory=list)
+    antonyms: list[str] = field(default_factory=list)
 
 
-class WebsterWordThesaurus(T.NamedTuple):
+@dataclass
+class WebsterWordThesaurus:
     word: str
     type: str
-    thesaurus: T.List[ThesaurizeThis]
+    thesaurus: list[ThesaurizeThis]
 
 
 def to_superscript(text: str) -> str:
@@ -110,10 +108,51 @@ def to_smallcaps(text: str) -> str:
     return text.translate(transltable)
 
 
-def parse_grouping_default(
-    matched: T.Match[T.AnyStr], is_moreat: bool = False, is_dxdef: bool = False
-) -> T.AnyStr:
-    content = str_or_none(matched.group("content")).rstrip()
+def _string_or_default(value: WalkValue | None, default: str = "") -> str:
+    return value if isinstance(value, str) else default
+
+
+def _optional_string(value: WalkValue | None) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _as_list(value: WalkValue | None) -> list[WalkValue]:
+    return value if isinstance(value, list) else []
+
+
+def _mapping_list(value: WalkValue | None) -> list[Mapping[str | int, WalkValue]]:
+    return [item for item in _as_list(value) if isinstance(item, Mapping)]
+
+
+def _text_fragments(value: WalkValue | None) -> list[str]:
+    fragments: list[str] = []
+    for item in _as_list(value):
+        if not isinstance(item, (list, tuple)) or len(item) < 2:
+            continue
+        if item[0] == "text" and isinstance(item[1], str):
+            fragments.append(item[1])
+    return fragments
+
+
+def _string_list(value: WalkValue | None) -> list[str]:
+    return [item for item in _as_list(value) if isinstance(item, str)]
+
+
+def _string_lists(value: WalkValue | None) -> list[list[str]]:
+    return [_string_list(item) for item in _as_list(value) if isinstance(item, list)]
+
+
+def _tagged_pairs(value: WalkValue | None) -> list[tuple[str, WalkValue]]:
+    tagged: list[tuple[str, WalkValue]] = []
+    for item in _as_list(value):
+        if isinstance(item, (list, tuple)) and len(item) >= 2 and isinstance(item[0], str):
+            tagged.append((item[0], item[1]))
+    return tagged
+
+
+def parse_grouping_default(matched: re.Match[str], is_moreat: bool = False, is_dxdef: bool = False) -> str:
+    content = matched.group("content") or ""
+    content = content.rstrip()
     if is_dxdef:
         return f"({content})"
     pre = " - "
@@ -123,34 +162,34 @@ def parse_grouping_default(
     return pre
 
 
-def parse_link_default(matched: T.Match[T.AnyStr], is_alink: bool = False) -> T.AnyStr:
+def parse_link_default(matched: re.Match[str], is_alink: bool = False) -> str:
     if is_alink:
-        return matched.group("id")
+        return matched.group("id") or ""
 
-    content = str_or_none(matched.group("text")).split(":")
+    content = (matched.group("text") or "").split(":")
     pre_joined = content[0]
     if len(content) > 1:
         pre_joined += f"[{content[1]}]"
     return pre_joined
 
 
-def parse_xref_link_default(matched: T.Match[T.AnyStr]) -> T.AnyStr:
-    text_contents = str_or_none(matched.group("text")).split(":")
+def parse_xref_link_default(matched: re.Match[str]) -> str:
+    text_contents = (matched.group("text") or "").split(":")
     text_data = text_contents[0]
     if len(text_contents) > 1:
         text_data += f" entry {text_contents[1]}"
-    fields_data = str_or_none(matched.group("fields"))
+    fields_data = matched.group("fields") or ""
 
     if fields_data and fields_data not in ["illustration", "table"]:
         text_data += f" sense {fields_data}"
     return text_data
 
 
-def parse_date_ref_default(matched: T.Match[T.AnyStr]):
-    verbdiv = str_or_none(matched.group("verbdiv"))
-    senseno = str_or_none(matched.group("senseno"))
-    sensealpha = str_or_none(matched.group("sense"))
-    psenseno = str_or_none(matched.group("psenseno"))
+def parse_date_ref_default(matched: re.Match[str]) -> str:
+    verbdiv = matched.group("verbdiv") or ""
+    senseno = matched.group("senseno") or ""
+    sensealpha = matched.group("sense") or ""
+    psenseno = matched.group("psenseno") or ""
     pre = ", in the meaning defined at "
     if verbdiv == "t":
         pre += "transitive "
@@ -223,8 +262,7 @@ class WebsterTokenParser:
             # i means intransitive, if none remove that.
             [
                 re.compile(
-                    r"{ds\|(?P<verbdiv>[it])?\|(?P<senseno>[\d]+?)?\|"
-                    + r"(?P<sense>[a-z])?\|(?P<psenseno>[\d]+?)?}"
+                    r"{ds\|(?P<verbdiv>[it])?\|(?P<senseno>[\d]+?)?\|" + r"(?P<sense>[a-z])?\|(?P<psenseno>[\d]+?)?}"
                 ),
                 "date-ref",
             ],
@@ -263,7 +301,7 @@ class WebsterTokenParser:
         }
         self._replacer: ParserReplacer = self._original_replacer
 
-    def _get_replacer(self, token_name: str):
+    def _get_replacer(self, token_name: str) -> str | Callable[[re.Match[str]], str]:
         try:
             return self._replacer[token_name]
         except KeyError:
@@ -285,14 +323,14 @@ class WebsterTokenParser:
         return parsed_text
 
     @classmethod
-    def parse(cls, text: str, replacer: ParserReplacer = None):
+    def parse(cls, text: str, replacer: ParserReplacer | None = None):
         init = cls()
         if replacer is not None:
             init.replacer = replacer
         return init._internal_parse(text)
 
     @classmethod
-    def parse_date(cls, text: str, replacer: ParserReplacer = None):
+    def parse_date(cls, text: str, replacer: ParserReplacer | None = None):
         init = cls()
         if replacer is not None:
             init.replacer = replacer
@@ -310,45 +348,36 @@ class WebsterTokenParser:
                 self._replacer[original_key] = original_value
 
 
-def parse_sense_data(complex_data: T.Mapping[str, T.Union[T.List[T.List[str]], str, dict]]):
-    format_text = str_or_none(complex_walk(complex_data, "sn"))
-    all_lists_fmt = list_or_none(complex_walk(complex_data, "dt"))
-    texts_only = list(map(lambda x: x[1], (filter(lambda x: x[0] == "text", all_lists_fmt))))
+def parse_sense_data(complex_data: Mapping[str | int, WalkValue]) -> ParsedWordMeaning:
+    format_text = _string_or_default(complex_walk(complex_data, "sn"))
+    texts_only = _text_fragments(complex_walk(complex_data, "dt"))
     joined_text = " ".join(texts_only)
     return ParsedWordMeaning(format_text, joined_text)
 
 
-def parse_pseq_data(
-    complex_lists: T.List[
-        T.Union[
-            T.Tuple[T.Literal["sense"], T.Mapping[str, T.Union[T.List[T.List[str]], str, dict]]],
-            T.Tuple[
-                T.Literal["bs"],
-                T.Mapping[T.Literal["sense"], T.Mapping[str, T.Union[T.List[T.List[str]], str, dict]]],
-            ],
-        ],
-    ],
-):
-    collected_senses: T.List[ParsedWordMeaning] = []
-    first_sn = None
-    for n, complex in enumerate(complex_lists):
-        if complex[0] == "sense":
-            format_text = str_or_none(complex_walk(complex, "1.sn"))
+def parse_pseq_data(complex_lists: list[tuple[str, WalkValue]]) -> list[ParsedWordMeaning]:
+    collected_senses: list[ParsedWordMeaning] = []
+    first_sn: str | None = None
+    for n, (kind, raw_payload) in enumerate(complex_lists):
+        if not isinstance(raw_payload, Mapping):
+            continue
+        payload = raw_payload
+        if kind == "sense":
+            # A sense entry's tuple payload is the mapping containing sn/dt.
+            format_text = _string_or_default(complex_walk(payload, "sn"))
             if first_sn is None and format_text and not format_text.startswith("(") and n == 0:
                 first_sn = format_text
-            all_lists_fmt = list_or_none(complex_walk(complex, "1.dt"))
-            texts_only = list(map(lambda x: x[1], (filter(lambda x: x[0] == "text", all_lists_fmt))))
+            texts_only = _text_fragments(complex_walk(payload, "dt"))
             joined_text = " ".join(texts_only)
             if first_sn and n > 0:
                 format_text = f"{first_sn} {format_text}"
             wm = ParsedWordMeaning(format_text, joined_text)
             collected_senses.append(wm)
-        elif complex[0] == "bs":
-            format_text = complex_walk(complex, "1.sense.sn")
+        elif kind == "bs":
+            format_text = _string_or_default(complex_walk(payload, "sense.sn"))
             if first_sn is None and format_text and not format_text.startswith("(") and n == 0:
                 first_sn = format_text
-            all_lists_fmt = list_or_none(complex_walk(complex, "1.sense.dt"))
-            texts_only = list(map(lambda x: x[1], (filter(lambda x: x[0] == "text", all_lists_fmt))))
+            texts_only = _text_fragments(complex_walk(payload, "sense.dt"))
             joined_text = " ".join(texts_only)
             wm = ParsedWordMeaning(format_text, joined_text)
             collected_senses.append(wm)
@@ -359,7 +388,7 @@ class MerriamWebsterClient:
     ROUTE_WORDS = "https://dictionaryapi.com/api/v3/references/collegiate/json/"
     ROUTE_THESAURUS = "https://dictionaryapi.com/api/v3/references/thesaurus/json/"
 
-    def __init__(self, api_keys: T.Dict[str, str]) -> None:
+    def __init__(self, api_keys: dict[str, str]) -> None:
         self._api_key = api_keys["words"]
         self._api_key_the = api_keys["thesaurus"]
         self._tokenizer: ParserReplacer = {}
@@ -372,53 +401,53 @@ class MerriamWebsterClient:
     def can_define(self) -> bool:
         return self._api_key is not None
 
-    def _parse_define_results(self, api_results: T.List[dict], word_fallback: str):
-        collected_words: T.List[WebsterDefinedWord] = []
-        for words in api_results:
-            headword = str_or_none(complex_walk(words, "hwi.hw"), word_fallback)
-            just_headword = str_or_none(complex_walk(words, "hwi.hw"), word_fallback)
+    def _parse_define_results(self, api_results: list[WalkValue], word_fallback: str):
+        collected_words: list[WebsterDefinedWord] = []
+        for result in api_results:
+            if not isinstance(result, Mapping):
+                continue
+            words = result
+            headword = _string_or_default(complex_walk(words, "hwi.hw"), word_fallback)
+            just_headword = _string_or_default(complex_walk(words, "hwi.hw"), word_fallback)
             word_no = complex_walk(words, "hom")
             if word_no is not None:
                 headword = f"{headword} ({word_no})"
-            prononciations = str_or_none(complex_walk(words, "hwi.prs.0.mw"), None)
-            word_type = complex_walk(words, "fl")
-            etimology = list_or_none(complex_walk(words, "et"))
-            etimology_texts = list(filter(lambda x: isinstance(x[0], str) and x[0] == "text", etimology))
+            prononciations = _optional_string(complex_walk(words, "hwi.prs.0.mw"))
+            word_type = _string_or_default(complex_walk(words, "fl"))
+            etimology_texts = _text_fragments(complex_walk(words, "et"))
             full_etimology_text = None
-            if len(etimology_texts) > 0:
-                mapped_eti = list(map(lambda x: x[1], etimology_texts))
-                full_etimology_text = " ".join(mapped_eti)
-            word_definitions = list_or_none(complex_walk(words, "def"))
-            list_makna = []
+            if etimology_texts:
+                full_etimology_text = " ".join(etimology_texts)
+            word_definitions = _mapping_list(complex_walk(words, "def"))
+            list_makna: list[ParsedWordMeaningGrouped] = []
             for makna_wrapper in word_definitions:
-                makna_sense_sequences = list_or_none(complex_walk(makna_wrapper, "sseq"))
-                makna_verb_divider = complex_walk(makna_wrapper, "vd")
-                for makna_sequnces in makna_sense_sequences:
-                    for makna_konten in makna_sequnces:
-                        makna_type = makna_konten[0]
+                makna_sense_sequences = _as_list(complex_walk(makna_wrapper, "sseq"))
+                makna_verb_divider = _optional_string(complex_walk(makna_wrapper, "vd"))
+                for makna_sequence in makna_sense_sequences:
+                    for makna_type, payload in _tagged_pairs(makna_sequence):
                         if makna_type == "pseq":
-                            meanings_multi = parse_pseq_data(makna_konten[1])
+                            meanings_multi = parse_pseq_data(_tagged_pairs(payload))
                             list_makna.append(ParsedWordMeaningGrouped(meanings_multi, makna_verb_divider))
-                        elif makna_type == "sense":
-                            meaning_simple = parse_sense_data(makna_konten[1])
+                        elif makna_type == "sense" and isinstance(payload, Mapping):
+                            meaning_simple = parse_sense_data(payload)
                             list_makna.append(ParsedWordMeaningGrouped(meaning_simple, makna_verb_divider))
 
-            examples_data = []
-            examples_dros = list_or_none(complex_walk(words, "dros"))
+            examples_data: list[ParsedWordMeaning] = []
+            examples_dros = _mapping_list(complex_walk(words, "dros"))
             for n, example in enumerate(examples_dros, 1):
-                exmp_head = complex_walk(example, "drp")
-                exmp_definition = str_or_none(
+                exmp_head = _string_or_default(complex_walk(example, "drp"))
+                exmp_definition = _string_or_default(
                     complex_walk(example, "def.0.sseq.0.0.1.dt.0.1"), "No example definition"
                 )
                 wmex = ParsedWordMeaning(str(n), r"{b}" + exmp_head + r"{\/b}" + f" {exmp_definition}")
                 examples_data.append(wmex)
 
-            other_words = []
-            uros_data = list_or_none(complex_walk(words, "uros"))
+            other_words: list[ParsedWordMeaning] = []
+            uros_data = _mapping_list(complex_walk(words, "uros"))
             for n, uros_data in enumerate(uros_data, 1):
-                text_fmt = str_or_none(complex_walk(uros_data, "ure")).replace("*", "")
-                uros_pron = str_or_none(complex_walk(uros_data, "prs.0.mw"))
-                fl_uros = str_or_none(complex_walk(uros_data, "fl"))
+                text_fmt = _string_or_default(complex_walk(uros_data, "ure")).replace("*", "")
+                uros_pron = _string_or_default(complex_walk(uros_data, "prs.0.mw"))
+                fl_uros = _string_or_default(complex_walk(uros_data, "fl"))
                 uros_mean = ""
                 if fl_uros:
                     uros_mean += r"({it}" + fl_uros + r"{\/it}) "
@@ -440,19 +469,22 @@ class MerriamWebsterClient:
             collected_words.append(mw_word)
         return collected_words
 
-    def _parse_thesaurus_results(self, api_results: T.List[dict], word_fallback: str):
-        collected_thesaurus: T.List[WebsterWordThesaurus] = []
-        for words in api_results:
-            synonyms = list_or_none(complex_walk(words, "meta.syns"))
-            antonyms = list_or_none(complex_walk(words, "meta.ants"))
-            headword = str_or_none(complex_walk(words, "hwi.hw"), word_fallback)
-            function_label = str_or_none(complex_walk(words, "fl"))
-            shortdef = list_or_none(complex_walk(words, "shortdef"))
+    def _parse_thesaurus_results(self, api_results: list[WalkValue], word_fallback: str):
+        collected_thesaurus: list[WebsterWordThesaurus] = []
+        for result in api_results:
+            if not isinstance(result, Mapping):
+                continue
+            words = result
+            synonyms = _string_lists(complex_walk(words, "meta.syns"))
+            antonyms = _string_lists(complex_walk(words, "meta.ants"))
+            headword = _string_or_default(complex_walk(words, "hwi.hw"), word_fallback)
+            function_label = _string_or_default(complex_walk(words, "fl"))
+            shortdef = _string_list(complex_walk(words, "shortdef"))
 
-            collected_meanings: T.List[ThesaurizeThis] = []
+            collected_meanings: list[ThesaurizeThis] = []
             for n, defs in enumerate(shortdef):
-                defant = list_or_none(get_indexed(antonyms, n))
-                defsyn = get_indexed(synonyms, n)
+                defant = get_indexed(antonyms, n) or []
+                defsyn = get_indexed(synonyms, n) or []
                 collected_meanings.append(ThesaurizeThis(defs, defsyn, defant))
             mwt_word = WebsterWordThesaurus(headword, function_label, collected_meanings)
             collected_thesaurus.append(mwt_word)
@@ -465,10 +497,12 @@ class MerriamWebsterClient:
             async with sesi.get(self.ROUTE_WORDS + word, params={"key": self._api_key}) as resp:
                 if resp.status >= 400:
                     return []
-                content_type = resp.content_type
+                content_type = resp.content_type or ""
                 if "application/json" not in content_type:
                     return []
                 api_results = await resp.json()
+                if not isinstance(api_results, list):
+                    return []
 
         return self._parse_define_results(api_results, word)
 
@@ -479,9 +513,11 @@ class MerriamWebsterClient:
             async with sesi.get(self.ROUTE_THESAURUS + word, params={"key": self._api_key_the}) as resp:
                 if resp.status >= 400:
                     return []
-                content_type = resp.content_type
+                content_type = resp.content_type or ""
                 if "application/json" not in content_type:
                     return []
                 api_results = await resp.json()
+                if not isinstance(api_results, list):
+                    return []
 
         return self._parse_thesaurus_results(api_results, word)

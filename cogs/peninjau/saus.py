@@ -1,20 +1,22 @@
 import logging
-from typing import List
+from collections.abc import Callable
+from typing import cast
 
-import disnake
+import discord
 import magic
-from disnake.ext import commands
+from discord import app_commands
+from discord.ext import commands
 
 from naotimes.bot import naoTimesBot
-from naotimes.context import naoTimesContext
 from naotimes.models import saus as sausmodel
 from naotimes.paginator import DiscordPaginatorUI
 from naotimes.utils import complex_walk, cutoff_text, quote
+from naotimes.views import ConfirmView
 
 SAUS_QUERY = """
-query ($url:String!) {
+query ($url:String!,$snsim:Float=57.5,$iqsim:Float=52.5) {
     sauce {
-        saucenao(url:$url,minsim:57.5) {
+        saucenao(url:$url,minsim:$snsim) {
             _total
             items {
                 title
@@ -25,7 +27,7 @@ query ($url:String!) {
                 extra_info
             }
         }
-        iqdb(url:$url,minsim:52.5) {
+        iqdb(url:$url,minsim:$iqsim) {
             _total
             items {
                 title
@@ -48,9 +50,13 @@ class PeninjauSausGambar(commands.Cog):
 
         self.magic = magic.Magic(mime=True)
 
-    async def _request_sauce(self, image_url: str) -> List[sausmodel.SausResultItem]:
+    async def _request_sauce(
+        self, t: Callable[..., str], image_url: str, sim_saucenao: float = 57.5, sim_iqdb: float = 52.5
+    ) -> list[sausmodel.SausResultItem] | str:
         self.logger.info(f"Invoking GQL API for image: {image_url}")
-        result = await self.bot.ihaapi.query(SAUS_QUERY, {"url": image_url})
+        if self.bot.ihaapi is None:
+            return t("saus.graphql_unavailable")
+        result = await self.bot.ihaapi.query(SAUS_QUERY, {"url": image_url, "snsim": sim_saucenao, "iqsim": sim_iqdb})
         if result.errors is not None and len(result.errors) > 0:
             self.logger.warning(f"Error invoking GQL API: {result.errors}")
             joined_error = []
@@ -59,110 +65,97 @@ class PeninjauSausGambar(commands.Cog):
             return "\n".join(joined_error)
 
         data = result.data
+        if data is None:
+            return t("saus.graphql_no_data")
         saucenao_results = complex_walk(data, "sauce.saucenao.items")
         iqdb_results = complex_walk(data, "sauce.iqdb.items")
-        merged_results = [*saucenao_results, *iqdb_results]
+        merged_results: list[sausmodel.SausResultItem] = []
+        for value in (saucenao_results, iqdb_results):
+            if isinstance(value, list):
+                merged_results.extend(cast(list[sausmodel.SausResultItem], value))
         if len(merged_results) < 1:
-            return "Tidak dapat menemukan hasil yang yakin untuk gambar tersebut."
+            return []
         return merged_results
 
-    def _generate_embed_result(self, data: sausmodel.SausResultItem) -> disnake.Embed:
-        embed = disnake.Embed(title=cutoff_text(data["title"], 256), color=0x19212D)
+    def _generate_embed_result(self, data: sausmodel.SausResultItem, t: Callable[..., str]) -> discord.Embed:
+        embed = discord.Embed(title=cutoff_text(data["title"], 256), color=0x19212D)
         description = ""
         if data["extra_info"]:
             for key, value in data["extra_info"].items():
                 description += f"**{key.capitalize()}**: {value}\n"
         if data["source"]:
-            description += f"[Source]({data['source']})"
+            description += t("saus.source_link", url=data["source"])
         else:
-            description += "Unknown Source"
+            description += t("saus.unknown_source")
         embed.description = description
 
         embed.set_image(url=data["thumbnail"])
         confidence = data["confidence"]
         indexer = data["indexer"]
-        embed.set_footer(text=f"Confidence: {confidence}% | {indexer}")
+        embed.set_footer(text=t("saus.footer", confidence=confidence, indexer=indexer))
         return embed
 
-    @commands.command(name="saus", aliases=["sauce", "sausnao", "sauce-nao"])
-    async def _peninjau_saus(self, ctx: naoTimesContext, *, image_url: str = ""):
-        self.logger.info("Invoking saus command, checking attachments...")
-        attachments: List[disnake.Attachment] = ctx.message.attachments
-        if len(attachments) > 0:
-            first_attach = attachments[0]
-            if not first_attach.content_type.startswith("image"):
-                return await ctx.send("File yang dicantumkan bukanlah gambar!")
-            url = attachments[0].url
+    @app_commands.command(
+        name="saus",
+        description=app_commands.locale_str(
+            "Cari sumber (saus) sebuah gambar via SauceNAO + IQDB", key="peninjau.saus.description"
+        ),
+    )
+    @app_commands.describe(
+        gambar=app_commands.locale_str("Gambar yang ingin dicari sausnya", key="peninjau.saus.option_image"),
+        url=app_commands.locale_str("Atau URL gambar", key="peninjau.saus.option_url"),
+    )
+    async def _peninjau_saus(
+        self,
+        inter: discord.Interaction,
+        gambar: discord.Attachment | None = None,
+        url: str | None = None,
+    ):
+        """Cari sumber (saus) sebuah gambar via SauceNAO + IQDB"""
+        self.logger.info("Invoking saus command...")
+        ctx = await self.bot.get_context(inter)
+        image_url: str
+        if gambar is not None:
+            if not (gambar.content_type or "").startswith("image"):
+                return await ctx.send(ctx.t("saus.not_image"), ephemeral=True)
+            image_url = gambar.url
+        elif url:
+            image_url = url.strip().lstrip("<").rstrip(">")
         else:
-            self.logger.info("No attachment found, checking message")
-            if not image_url:
-                self.logger.info("No URL found in message too, returning")
-                return await ctx.send("Mohon cantumkan attachment gambar atau ketik urlnya")
+            return await ctx.send(ctx.t("saus.no_input"), ephemeral=True)
 
-            if image_url.startswith("<"):
-                if image_url.endswith(">"):
-                    image_url = image_url[1:-1]
-                else:
-                    image_url = image_url[1:]
-            if image_url.endswith(">"):
-                image_url = image_url[:-1]
-            url = image_url
-
-        temp_msg = await ctx.send("Memproses, mohon tunggu...")
-        result = await self._request_sauce(url)
+        await ctx.defer()
+        temp_msg = await ctx.send(ctx.t("saus.processing"))
+        result = await self._request_sauce(ctx.t, image_url)
         if isinstance(result, str):
             self.logger.info(f"Received error when contacting API, message: {result}")
-            await temp_msg.delete()
-            return await ctx.send(f"Tidak dapat mencari saus untuk gambar tersebut\n{quote(result, True)}")
+            await getattr(temp_msg, "delete")(no_log=True)
+            view = ConfirmView(ctx, timeout=None)
+            base_msg = ctx.t("saus.search_failed", error=quote(result, True))
+            base_msg += ctx.t("saus.retry_offer")
+            old_nsg = await ctx.send(base_msg, view=view)
+            await view.wait()
+            if not view.value:
+                return await ctx.send(ctx.t("saus.cancelled"))
+            else:
+                self.logger.info("Retrying with lower threshold (30.0 for SauceNAO, 28.5 for IQDB)")
+                await getattr(old_nsg, "delete")(no_log=True)
+                temp_msg = await ctx.send(ctx.t("saus.processing_retry"))
+                result = await self._request_sauce(ctx.t, image_url, 30.0, 28.5)
+                if isinstance(result, str):
+                    self.logger.info(f"Received error (again) when contacting API, message: {result}")
+                    await getattr(temp_msg, "delete")(no_log=True)
+                    return await ctx.send(ctx.t("saus.search_failed", error=quote(result, True)))
 
-        if result:
-            result.sort(key=lambda x: x.get("confidence", -1), reverse=True)
+        if not result:
+            return await ctx.send(ctx.t("saus.no_results"))
+        result.sort(key=lambda x: x.get("confidence", -1), reverse=True)
 
         self.logger.info(f"Total match: {len(result)}")
         paginator = DiscordPaginatorUI(ctx, result, 30.0)
-        paginator.attach(self._generate_embed_result)
+        paginator.attach(lambda data: self._generate_embed_result(data, ctx.t))
         await paginator.interact()
 
-    @commands.command(name="sausl", aliases=["saucel", "saucenaol", "sausnaol"])
-    async def _peninjau_saus_last(self, ctx: naoTimesContext, img_pos: int = 1):
-        self.logger.info("Initiated saucenao last 75 message mechanism")
-        if img_pos > 75:
-            img_pos = 1
-        channel: disnake.TextChannel = ctx.channel
 
-        match_count = 0
-        final_url = None
-        reference = None
-        async for msg in channel.history(limit=75, oldest_first=False):
-            if len(msg.attachments) > 0:
-                first_attach = msg.attachments[0]
-                if first_attach.content_type.startswith("image/"):
-                    match_count += 1
-                    if match_count >= img_pos:
-                        final_url = first_attach.url
-                        reference = msg
-                        break
-
-        if not final_url:
-            return await ctx.send("Tidak dapat menemukan gambar di 75 pesan terakhir.")
-
-        temp_msg: disnake.Message = await ctx.send("Memproses gambar berikut...", reference=reference)
-        result = await self._request_sauce(final_url)
-        if isinstance(result, str):
-            self.logger.info(f"Received error when contacting API, message: {result}")
-            await temp_msg.delete()
-            return await ctx.send(
-                f"Tidak dapat mencari saus untuk gambar tersebut\n{quote(result, True)}", reference=reference
-            )
-
-        if result:
-            result.sort(key=lambda x: x.get("confidence", -1), reverse=True)
-
-        self.logger.info(f"Total match: {len(result)}")
-        paginator = DiscordPaginatorUI(ctx, result)
-        paginator.attach(self._generate_embed_result)
-        await paginator.interact(30.0)
-
-
-def setup(bot: naoTimesBot):
-    bot.add_cog(PeninjauSausGambar(bot))
+async def setup(bot: naoTimesBot):
+    await bot.add_cog(PeninjauSausGambar(bot))

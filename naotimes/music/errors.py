@@ -1,7 +1,7 @@
 """
 MIT License
 
-Copyright (c) 2019-2021 naoTimesdev
+Copyright (c) 2019-2022 naoTimesdev
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -24,21 +24,22 @@ SOFTWARE.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional, Tuple
+from typing import TYPE_CHECKING
 
-from disnake.ext.commands.errors import CommandError
+from discord.ext.commands.errors import CommandError
 
 if TYPE_CHECKING:
     from naotimes.context import naoTimesContext
 
 __all__ = (
-    "naoTimesMusicException",
-    "UnsupportedURLFormat",
-    "SpotifyUnavailable",
-    "TidalUnavailable",
-    "EnsureVoiceChannel",
+    "EnsureBotHasQueue",
     "EnsureBotVoiceChannel",
     "EnsureHaveRequirement",
+    "EnsureVoiceChannel",
+    "SpotifyNoTrackFound",
+    "SpotifyUnavailable",
+    "UnsupportedURLFormat",
+    "naoTimesMusicException",
 )
 
 
@@ -47,23 +48,30 @@ class naoTimesMusicException(Exception):
 
 
 class UnsupportedURLFormat(naoTimesMusicException):
-    def __init__(self, url: str, *reason: Tuple[str, ...]) -> None:
+    def __init__(self, url: str, *reason: str) -> None:
         self.url: str = url
         merge_reason = None
         if reason:
             merge_reason = " ".join(reason)
-        print(reason)
-        self.reason: Optional[str] = merge_reason
+        self.reason: str | None = merge_reason
 
         super().__init__(f"URL {url} tidak disupport oleh naoTimes\n{self.reason}")
 
 
 class SpotifyUnavailable(naoTimesMusicException):
-    pass
+    """Spotify was requested but no Spotify bridge is configured."""
+
+    def __init__(self, query: str = "") -> None:
+        self.query = query
+        super().__init__(f"Spotify tidak diaktifkan: {query}")
 
 
-class TidalUnavailable(SpotifyUnavailable):
-    pass
+class SpotifyNoTrackFound(naoTimesMusicException):
+    """The Spotify bridge could not load the requested track/playlist."""
+
+    def __init__(self, query: str = "") -> None:
+        self.query = query
+        super().__init__(f"Spotify tidak dapat memuat: {query}")
 
 
 class EnsureVoiceChannel(CommandError):
@@ -83,17 +91,27 @@ class EnsureBotVoiceChannel(CommandError):
         super().__init__("Bot tidak terhubung dengan VC!")
 
 
+class EnsureBotHasQueue(CommandError):
+    """
+    Ensure that our music queue is currently not empty!
+    """
+
+    def __init__(self, ctx: naoTimesContext) -> None:
+        self.ctx: naoTimesContext = ctx
+        super().__init__("Tidak ada lagu di daftar putar!")
+
+
 class EnsureHaveRequirement(CommandError):
     """
     Ensure that the command was ran in a voice channel
     """
 
-    def __init__(self, ctx: naoTimesContext, *reason: Tuple[str, ...]) -> None:
+    def __init__(self, ctx: naoTimesContext, *reason: str) -> None:
         self.ctx: naoTimesContext = ctx
         merge_reason = None
         if reason:
             merge_reason = " ".join(reason)
-        self.reason: Optional[str] = merge_reason
+        self.reason: str | None = merge_reason
         super().__init__(f"{self.reason}")
 
 
@@ -101,5 +119,3 @@ class WavelinkNoNodes(CommandError):
     """
     Ensure that the command was ran with any lavalink nodes available.
     """
-
-    pass

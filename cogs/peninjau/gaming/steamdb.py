@@ -1,41 +1,14 @@
 import logging
+from collections.abc import Callable
+from types import SimpleNamespace
 from typing import Any
 
-import disnake
-from disnake.ext import commands
+import discord
+from discord import app_commands
+from discord.ext import commands
 
 from naotimes.bot import naoTimesBot
-from naotimes.context import naoTimesContext
-from naotimes.converters import Arguments, CommandArgParse
 from naotimes.paginator import DiscordPaginatorUI
-
-steamdb_args = Arguments("steamdb")
-steamdb_args.add_args("kueri", help="game/app/dlc yang ingin dicari.")
-steamdb_args.add_args(
-    "--dengan-dlc",
-    "-dlc",
-    required=False,
-    dest="add_dlc",
-    action="store_true",
-    help="Tambahkan DLC ke kueri pencarian",
-)
-steamdb_args.add_args(
-    "--dengan-app",
-    "-app",
-    required=False,
-    dest="add_app",
-    action="store_true",
-    help="Tambahkan Applications ke kueri pencarian",
-)
-steamdb_args.add_args(
-    "--dengan-musik",
-    "-musik",
-    required=False,
-    dest="add_music",
-    action="store_true",
-    help="Tambahkan Music ke kueri pencarian",
-)
-steamdb_converter = CommandArgParse(steamdb_args)
 
 
 class PeninjauGamingSteamDB(commands.Cog):
@@ -43,10 +16,10 @@ class PeninjauGamingSteamDB(commands.Cog):
         self.bot = bot
         self.logger = logging.getLogger("Peninjau.Game.SteamDB")
 
-    async def _quick_request(self, params: dict):
-        async with self.bot.aiosession.get(
-            "https://api.ihateani.me/games/steamdb/search", params=params
-        ) as response:
+    async def _quick_request(self, params: dict, t: Callable[..., str]):
+        if self.bot.aiosession is None:
+            return None, t("steamdb.http_unavailable")
+        async with self.bot.aiosession.get("https://api.ihateani.me/games/steamdb/search", params=params) as response:
             res = await response.json()
             if response.status != 200:
                 err_msg = res["error"]
@@ -55,16 +28,30 @@ class PeninjauGamingSteamDB(commands.Cog):
                 return None, res["error"]
             return res, "Success"
 
-    @commands.command(name="steamdb")
+    @app_commands.command(
+        name="steamdb",
+        description=app_commands.locale_str("Cari game/app di SteamDB", key="peninjau.steamdb.description"),
+    )
+    @app_commands.describe(
+        kueri=app_commands.locale_str("Game/app/DLC yang ingin dicari", key="peninjau.steamdb.option_query"),
+        dengan_dlc=app_commands.locale_str("Tambahkan DLC ke pencarian", key="peninjau.steamdb.option_dlc"),
+        dengan_app=app_commands.locale_str("Tambahkan Applications ke pencarian", key="peninjau.steamdb.option_app"),
+        dengan_musik=app_commands.locale_str("Tambahkan Music ke pencarian", key="peninjau.steamdb.option_music"),
+    )
     async def _peninjau_gaming_steamdb(
-        self, ctx: naoTimesContext, *, args: steamdb_converter = steamdb_converter.show_help()
+        self,
+        inter: discord.Interaction,
+        kueri: str,
+        dengan_dlc: bool = False,
+        dengan_app: bool = False,
+        dengan_musik: bool = False,
     ):
+        """Cari game/app di SteamDB"""
         STORE_APP = "https://store.steampowered.com/app/{}/"
         THUMB = "https://cdn.cloudflare.steamstatic.com/steam/apps/{}/header.jpg"
-
-        if isinstance(args, str):
-            args = f"```py\n{args}\n```"
-            return await ctx.send(args)
+        args = SimpleNamespace(kueri=kueri, add_dlc=dengan_dlc, add_app=dengan_app, add_music=dengan_musik)
+        ctx = await self.bot.get_context(inter)
+        await ctx.defer()
 
         def _true_false(arg: Any):
             if arg:
@@ -79,27 +66,25 @@ class PeninjauGamingSteamDB(commands.Cog):
         }
         self.logger.info(f"searching: {args.kueri}")
         self.logger.info(
-            f"{args.kueri}: with opts:\n"
-            f">> DLC: {args.add_dlc}\n>> App: {args.add_app}"
-            f"\n>> Musik: {args.add_music}"
+            f"{args.kueri}: with opts:\n>> DLC: {args.add_dlc}\n>> App: {args.add_app}\n>> Musik: {args.add_music}"
         )
 
-        results, msg = await self._quick_request(params)
+        results, msg = await self._quick_request(params, ctx.t)
         if not results:
             self.logger.warning(f"{args.kueri}: error\n{msg}")
             return await ctx.send(msg)
         sdb_results = results["results"]
         if not sdb_results:
             self.logger.warning(f"{args.kueri}: not found")
-            return await ctx.send("Tidak ada hasil yang cocok")
+            return await ctx.send(ctx.t("steamdb.no_results"))
 
         def _generate_embed(sdb_data: dict):
-            embed = disnake.Embed(title=sdb_data["title"], url=STORE_APP.format(sdb_data["id"]))
+            embed = discord.Embed(title=sdb_data["title"], url=STORE_APP.format(sdb_data["id"]))
             description = []
             if "price" in sdb_data:
-                description.append("Harga: {}".format(sdb_data["price"]))
+                description.append(ctx.t("steamdb.price", price=sdb_data["price"]))
             if "user_score" in sdb_data:
-                description.append("Skor: {}".format(sdb_data["user_score"]))
+                description.append(ctx.t("steamdb.score", score=sdb_data["user_score"]))
             platform = sdb_data["platforms"]
             platforms = []
             if platform["windows"]:
@@ -111,24 +96,25 @@ class PeninjauGamingSteamDB(commands.Cog):
             description.append(" | ".join(platforms))
             embed.set_thumbnail(url=THUMB.format(sdb_data["id"]))
             embed.description = "\n".join(description)
-            developer = ", ".join(sdb_data["developer"]) or "*Tidak ada*"
-            publisher = ", ".join(sdb_data["publisher"]) or "*Tidak ada*"
+            developer = ", ".join(sdb_data["developer"]) or ctx.t("steamdb.none")
+            publisher = ", ".join(sdb_data["publisher"]) or ctx.t("steamdb.none")
             embed.add_field(
-                name="Developer",
+                name=ctx.t("steamdb.field_developer"),
                 value=f"**Developer**: {developer}\n**Publisher**: {publisher}",
                 inline=False,
             )
             embed.add_field(
-                name="Kategori",
+                name=ctx.t("steamdb.field_category"),
                 value=", ".join(sdb_data["categories"]),
                 inline=False,
             )
-            embed.add_field(name="Label", value=", ".join(sdb_data["tags"]), inline=False)
+            embed.add_field(name=ctx.t("steamdb.field_tags"), value=", ".join(sdb_data["tags"]), inline=False)
             embed.set_footer(
-                text="Rilis: {} | {}-{} | Diprakasai oleh SteamDB".format(
-                    sdb_data["released"],
-                    sdb_data["type"].capitalize(),
-                    sdb_data["id"],
+                text=ctx.t(
+                    "steamdb.footer",
+                    released=sdb_data["released"],
+                    type=sdb_data["type"].capitalize(),
+                    id=sdb_data["id"],
                 ),
                 icon_url="https://steamdb.info/static/logos/512px.png",
             )
@@ -140,5 +126,5 @@ class PeninjauGamingSteamDB(commands.Cog):
         await ui_gen.interact()
 
 
-def setup(bot: naoTimesBot):
-    bot.add_cog(PeninjauGamingSteamDB(bot))
+async def setup(bot: naoTimesBot):
+    await bot.add_cog(PeninjauGamingSteamDB(bot))

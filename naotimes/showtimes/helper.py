@@ -1,7 +1,7 @@
 """
 MIT License
 
-Copyright (c) 2019-2021 naoTimesdev
+Copyright (c) 2019-2022 naoTimesdev
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -26,14 +26,20 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import TYPE_CHECKING, Dict, List, Union
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 from motor.motor_asyncio import AsyncIOMotorClient
 from odmantic import AIOEngine
+from odmantic.bson import ObjectId
 from odmantic.exceptions import DocumentNotFoundError
 from pymongo.errors import PyMongoError
 
-from ..models import ShowAdminSchema, ShowtimesSchema, ShowtimesUISchema, ShowUIPrivilege
+from ..models import (
+    ShowAdminSchema,
+    ShowtimesSchema,
+    ShowtimesUISchema,
+    ShowUIPrivilege,
+)
 from ..utils import generate_custom_code
 from .models import Showtimes, ShowtimesAdmin, ShowtimesLock
 
@@ -49,14 +55,14 @@ class naoTimesDB:
     Digunakan untuk komunikasi dengan fungsi khusus dan sebagainya!
     """
 
-    _EmptySet = set()
+    _EmptySet: ClassVar[set] = set()
 
     def __init__(
         self,
         ip_hostname: str,
         port: int,
         dbname: str = "naotimesdb",
-        auth_string: str = None,
+        auth_string: str | None = None,
         tls: bool = False,
         developer_mode: bool = False,
     ):
@@ -78,7 +84,7 @@ class naoTimesDB:
         self._engine = AIOEngine(self._client, self._dbname)
 
         self.srv_re = {"name": {"$regex": r"^srv"}}
-        self._lock_collection: Dict[str, ShowtimesLock] = {}
+        self._lock_collection: dict[str, ShowtimesLock] = {}
 
     def generate_url(self):
         self._url = "mongodb"
@@ -91,7 +97,7 @@ class naoTimesDB:
         if not self._tls:
             self._url += f":{self._port}"
         self._url += "/"
-        self._url += "?authSource=admin"
+        self._url += "?authSource=admin&readPreference=primary&directConnection=true"
         if self._tls:
             self._url += "&retryWrites=true&w=majority"
 
@@ -101,10 +107,10 @@ class naoTimesDB:
 
     @property
     def url(self):
-        _url = "mongodb"
+        url = "mongodb"
         if self._tls:
-            _url += "+srv"
-        _url += "://"
+            url += "+srv"
+        url += "://"
         if self._auth_string:
             try:
                 user, pass_ = self._auth_string.split(":")
@@ -112,12 +118,12 @@ class naoTimesDB:
                 secured_auth = f"{user}:{pass_}"
             except ValueError:
                 secured_auth = self._auth_string
-            _url += secured_auth + "@"
-        _url += f"{self._ip_hostname}"
+            url += secured_auth + "@"
+        url += f"{self._ip_hostname}"
         if not self._tls:
-            _url += f":{self._port}"
-        _url += "/"
-        return _url
+            url += f":{self._port}"
+        url += "/"
+        return url
 
     @property
     def ip_hostname(self) -> str:
@@ -156,7 +162,7 @@ class naoTimesDB:
         except (ValueError, PyMongoError):
             return False, 99999
 
-    async def fetch_available_servers(self) -> List[str]:
+    async def fetch_available_servers(self) -> list[str]:
         """Fetch available servers from database"""
         self.logger.info("Fetching available keys...")
         cursor = self._db["showtimesdatas"].find({}, {"id": 1})
@@ -166,7 +172,7 @@ class naoTimesDB:
             finalized_data.append(key["id"])
         return finalized_data
 
-    async def fetch_data(self, server_id: Union[str, int]):
+    async def fetch_data(self, server_id: str | int):
         """Fetch showtimes data from database"""
         self.logger.info(f"Fetching server {server_id} data...")
         server_id = str(server_id)
@@ -190,37 +196,43 @@ class naoTimesDB:
     async def insert_new(self, data: dict):
         return await self.update_data(data)
 
-    async def get_top_admin(self) -> List[dict]:
+    async def get_top_admin(self) -> list[dict]:
         self.logger.info("Fetching top administrator...")
         all_admins = await self._engine.find(ShowAdminSchema)
-        return [a.dict() for a in all_admins]
+        return [a.model_dump() for a in all_admins]
 
-    async def fetch_all_as_json(self) -> List[dict]:
+    async def fetch_all_as_json(self) -> dict[str, Any]:
         self.logger.info("Fetching all showtimes...")
         all_data = await self._engine.find(ShowtimesSchema)
-        json_data = {}
+        json_data: dict[str, Any] = {}
         as_json = []
         for data in all_data:
-            as_json.append(data.dict())
+            if data is None:
+                continue
+            as_json.append(data.model_dump())
         json_data["servers"] = as_json
         json_data["supermod"] = await self.get_top_admin()
         self.logger.info("dumping data...")
         return json_data
 
-    async def get_server(self, server: str):
+    async def get_server(self, server: str) -> Showtimes | None:
         server = str(server)
         real_data, _ = await self.fetch_data(server)
-        return Showtimes.from_dict(real_data.dict())
+        if real_data is None:
+            return None
+        return Showtimes.from_dict(cast(Any, real_data.model_dump()))
 
     async def update_server(self, data: Showtimes):
         show_dict = data.serialize()
-        return await self.update_data(show_dict)
+        return await self.update_data(cast(dict, show_dict))
 
-    async def get_admin(self, user_id: str):
+    async def get_admin(self, user_id: str) -> ShowtimesAdmin | None:
         user_id = str(user_id)
         async with self._get_lock("admin_" + user_id):
             database_result = await self._engine.find_one(ShowAdminSchema, ShowAdminSchema.id == user_id)
-            return ShowtimesAdmin.from_dict(database_result.dict())
+            if database_result is None:
+                return None
+            return ShowtimesAdmin.from_dict(database_result.model_dump())
 
     update_data_server = update_server
 
@@ -233,7 +245,7 @@ class naoTimesDB:
             return True
 
         show_dict = data.serialize()
-        parsed_model = ShowtimesSchema.parse_doc(show_dict)
+        parsed_model = ShowtimesSchema.parse_doc(cast(dict, show_dict))
 
         try:
             await self._engine.delete(parsed_model)
@@ -255,8 +267,10 @@ class naoTimesDB:
         privilege = "owner" if is_owner else "server"
         new_data = ShowtimesUISchema(
             id=server_id,
+            name=None,
             secret=secret_gen,
             privilege=ShowUIPrivilege(privilege),
+            mongo_id=ObjectId(),
         )
         result = await self._engine.save(new_data)
         if not result:

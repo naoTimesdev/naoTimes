@@ -1,926 +1,879 @@
-from __future__ import annotations
-
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from functools import partial
-from typing import TYPE_CHECKING, Callable, List, Optional, Union
+from typing import Any, Union
 
-import disnake
+import discord
 import wavelink
-from disnake.ext import commands
-from wavelink.errors import ZeroConnectedNodes
-from wavelink.utils import MISSING
+from discord import app_commands
+from discord.ext import commands
 
 from naotimes.bot import naoTimesBot
 from naotimes.context import naoTimesContext
-from naotimes.helpgenerator import HelpField, HelpOption
-from naotimes.music import UnsupportedURLFormat, format_duration
 from naotimes.music.errors import (
+    EnsureBotHasQueue,
     EnsureBotVoiceChannel,
     EnsureHaveRequirement,
     EnsureVoiceChannel,
+    SpotifyNoTrackFound,
     SpotifyUnavailable,
+    UnsupportedURLFormat,
     WavelinkNoNodes,
 )
-from naotimes.music.genius import GeniusLyricHit
+from naotimes.music.lyrics.client import LyricSource, naoTimesLyricsResult
+from naotimes.music.player import MISSING, MissingValue, format_duration, naoTimesPlayer
 from naotimes.music.queue import GuildMusicInstance, TrackEntry, TrackRepeat
-from naotimes.music.tracks import SpotifyDirectTrack, TwitchDirectLink
 from naotimes.paginator import DiscordPaginatorUI
 from naotimes.timeparse import TimeString
 from naotimes.utils import cutoff_text
-
-if TYPE_CHECKING:
-    from wavelink.pool import Node
+from naotimes.views.multi_view import Selection
 
 GENIUS_ICON = "https://assets.genius.com/images/apple-touch-icon.png"
 MXM_ICON = "https://s.mxmcdn.net/site/images/mxm_icn_114.png"
+NETEASE_ICON = "https://p.ihateani.me/kdrbldgu.png"
+
+VocalChannel = Union[discord.VoiceChannel, discord.StageChannel]
+Requirement = Callable[[discord.Member, wavelink.Player, GuildMusicInstance], str | None]
+Translator = Callable[..., str]
+
+REPEAT_KEYS = {
+    TrackRepeat.disable: "repeat.mode_disable",
+    TrackRepeat.single: "repeat.mode_single",
+    TrackRepeat.all: "repeat.mode_all",
+}
+
+# Requirement callables return i18n keys; `_enforce` localises them for the user.
 
 
-def is_in_voice():
-    async def predicate(ctx: naoTimesContext):
-        if not ctx.voice_client:
-            raise EnsureBotVoiceChannel(ctx)
-        return True
-
-    return commands.check(predicate)
+def _bot(inter: discord.Interaction) -> naoTimesBot:
+    return inter.client  # type: ignore[return-value]
 
 
-def ensure_voice():
-    async def predicate(ctx: naoTimesContext):
-        author = ctx.author
-        if not ctx.voice_client:
-            if author.voice is None:
-                raise EnsureVoiceChannel(ctx)
-            vc_channel = author.voice.channel
-            player = await vc_channel.connect(cls=wavelink.Player)
-            ctx.bot.ntplayer.create(player)
-            ctx.bot.ntplayer.change_dj(player, author)
-            ctx.bot.ntplayer.set_channel(player, vc_channel)
-            ctx.bot.loop.create_task(
-                ctx.bot.ntplayer.play_next(player),
-                name=f"naotimes-player-instance-creation-{player.guild.id}-init",
-            )
-        return True
-
-    return commands.check(predicate)
+def _player_manager(bot: naoTimesBot) -> naoTimesPlayer:
+    manager = bot.ntplayer
+    if manager is None:
+        raise RuntimeError("Music player is not initialized")
+    return manager
 
 
-def user_in_vc():
-    async def predicate(ctx: naoTimesContext):
-        author = ctx.author
-        if author.voice is None:
-            return EnsureVoiceChannel(ctx, False)
-        return True
-
-    return commands.check(predicate)
+async def _ctx(inter: discord.Interaction) -> naoTimesContext:
+    return await _bot(inter).get_context(inter)
 
 
-def is_god(ctx: naoTimesContext, _p: wavelink.Player, _i: GuildMusicInstance):
-    perms = ctx.author.guild_permissions
-    if perms.administrator:
+def _player(inter: discord.Interaction) -> wavelink.Player | None:
+    vc = inter.guild.voice_client if inter.guild else None
+    return vc if isinstance(vc, wavelink.Player) else None
+
+
+async def _require_player(inter: discord.Interaction) -> wavelink.Player:
+    if inter.guild is None:
+        raise app_commands.NoPrivateMessage()
+    player = _player(inter)
+    if player is None:
+        raise EnsureBotVoiceChannel(await _ctx(inter))
+    return player
+
+
+async def _require_member(inter: discord.Interaction) -> discord.Member:
+    if not isinstance(inter.user, discord.Member):
+        raise app_commands.NoPrivateMessage()
+    return inter.user
+
+
+async def _require_voice_member(inter: discord.Interaction) -> tuple[discord.Member, VocalChannel]:
+    member = await _require_member(inter)
+    voice_state = member.voice
+    if voice_state is None or not isinstance(voice_state.channel, (discord.VoiceChannel, discord.StageChannel)):
+        raise EnsureVoiceChannel(await _ctx(inter), False)
+    return member, voice_state.channel
+
+
+def _bot_avatar_url(bot: naoTimesBot) -> str | None:
+    return bot.user.display_avatar.url if bot.user is not None else None
+
+
+# ---- checks
+def check_node_available(inter: discord.Interaction) -> bool:
+    manager = _bot(inter).ntplayer
+    if manager is None or not manager.tracked_nodes:
+        raise WavelinkNoNodes
+
+    nodes = wavelink.Pool.nodes
+    if not any(
+        identifier in manager.tracked_nodes and node.status is wavelink.NodeStatus.CONNECTED
+        for identifier, node in nodes.items()
+    ):
+        raise WavelinkNoNodes
+    return True
+
+
+async def check_in_voice(inter: discord.Interaction) -> bool:
+    if _player(inter) is None:
+        raise EnsureBotVoiceChannel(await _ctx(inter))
+    return True
+
+
+async def check_user_in_vc(inter: discord.Interaction) -> bool:
+    await _require_voice_member(inter)
+    return True
+
+
+async def check_has_queue(inter: discord.Interaction) -> bool:
+    player = _player(inter)
+    if player is None:
+        raise EnsureBotVoiceChannel(await _ctx(inter))
+    if _player_manager(_bot(inter)).get(player).queue.empty():
+        raise EnsureBotHasQueue(await _ctx(inter))
+    return True
+
+
+def is_god(member: discord.Member, _p, _i) -> str | None:
+    perms = member.guild_permissions
+    if perms.administrator or perms.manage_guild or perms.manage_channels:
         return None
-    if perms.manage_guild:
+    return "requirement.god"
+
+
+def is_host(member: discord.Member, _p, instance: GuildMusicInstance) -> str | None:
+    if instance.host and member == instance.host:
         return None
-    if perms.manage_channels:
-        return None
-    return "Bukan orang yang memiliki hak cukup di Rolenya"
+    return "requirement.host"
 
 
-def is_host(ctx: naoTimesContext, _p, instance: GuildMusicInstance):
-    if instance.host and ctx.author == instance.host:
-        return None
-    return "Bukan host atau DJ utama"
+async def _enforce(inter: discord.Interaction, *requirements: Requirement) -> None:
+    vc = await _require_player(inter)
+    instance = _player_manager(_bot(inter)).get(vc)
+    member = await _require_member(inter)
+    reasons = [req(member, vc, instance) for req in requirements]
+    failed_reasons = [reason for reason in reasons if reason is not None]
+    if failed_reasons and len(failed_reasons) == len(requirements):
+        ctx = await _ctx(inter)
+        raise EnsureHaveRequirement(ctx, *(ctx.t(reason) for reason in failed_reasons))
 
 
-def check_requirements(
-    *requirements: List[Callable[[naoTimesContext, wavelink.Player, GuildMusicInstance], Optional[str]]]
-):
-    async def predicate(ctx: naoTimesContext):
-        vc: wavelink.Player = ctx.voice_client
-        if not vc:
-            raise EnsureBotVoiceChannel(ctx)
-        instance = ctx.bot.ntplayer.get(vc)
-        reason = []
-        for requirement in requirements:
-            check = requirement(ctx, vc, instance)
-            if asyncio.iscoroutinefunction(check):
-                check = await check
-            reason.append(check)
-        has_none = any(r is None for r in reason)
-        if not has_none:
-            merged_reason = " atau ".join(reason)
-            raise EnsureHaveRequirement(ctx, merged_reason)
+def check_requirements(*requirements: Requirement):
+    async def predicate(inter: discord.Interaction) -> bool:
+        await _enforce(inter, *requirements)
         return True
 
-    return commands.check(predicate)
-
-
-def node_available():
-    async def predicate(ctx: naoTimesContext):
-        try:
-            wavelink.NodePool.get_node()
-        except ZeroConnectedNodes:
-            raise WavelinkNoNodes
-        return True
-
-    return commands.check(predicate)
+    return app_commands.check(predicate)
 
 
 def clean_escapes(argument: str) -> str:
-    if "http://" in argument or "https://" in argument:
-        if argument.startswith("<") and argument.endswith(">"):
-            return argument[1:-1]
-        elif argument.startswith("<"):
-            return argument[1:]
-        elif argument.endswith(">"):
-            return argument[:-1]
+    if argument.startswith("<") and argument.endswith(">"):
+        return argument[1:-1]
     return argument
 
 
+def can_manage(permission: discord.Permissions) -> bool:
+    return permission.administrator or permission.manage_guild or permission.manage_channels
+
+
 class MusikPlayerCommand(commands.Cog):
+    musik = app_commands.Group(
+        name="musik",
+        description=app_commands.locale_str("Fitur musik naoTimes", key="musik.group.musik"),
+        guild_only=True,
+    )
+    queue = app_commands.Group(
+        name="queue",
+        description=app_commands.locale_str("Sistem daftar putar", key="musik.group.queue"),
+        parent=musik,
+    )
+
     def __init__(self, bot: naoTimesBot):
         self.bot = bot
         self.logger = logging.getLogger("MusicP.Main")
 
-    def _generate_help_embed(self, ctx: naoTimesContext):
-        playback = ctx.create_help("musik", "Fitur musik naoTimes")
-        _query_help = "`<query>` merupakan URL ataupun kueri pencarian\nKami support: "
-        supported_client = ["Youtube", "Twitch", "Bandcamp", "Soundcloud"]
-        if self.bot.ntplayer._spotify:
-            spoti_client = self.bot.ntplayer._spotify
-            is_native = hasattr(spoti_client, "_url_host")
-            if is_native:
-                supported_client.append("Spotify (Native)")
+    async def _run_player_action(
+        self,
+        inter: discord.Interaction,
+        action: Callable[[], Awaitable[Any]],
+        action_name: str,
+        success_message: str | discord.Embed,
+    ) -> bool:
+        ctx = await _ctx(inter)
+        await inter.response.defer()
+        try:
+            await asyncio.wait_for(action(), timeout=20.0)
+        except TimeoutError:
+            self.logger.warning("Player action '%s' timed out in guild %s", action_name, inter.guild_id)
+            await inter.followup.send(ctx.t("error.node_timeout"), ephemeral=True)
+            return False
+        except Exception as exc:
+            self.logger.error("Player action '%s' failed in guild %s", action_name, inter.guild_id, exc_info=exc)
+            await inter.followup.send(ctx.t("error.action_failed"), ephemeral=True)
+            return False
+
+        if isinstance(success_message, discord.Embed):
+            await inter.followup.send(embed=success_message)
+        else:
+            await inter.followup.send(success_message)
+        return True
+
+    @property
+    def player_manager(self) -> naoTimesPlayer:
+        return _player_manager(self.bot)
+
+    @musik.command(
+        name="admin",
+        description=app_commands.locale_str(
+            "Lihat peladen dengan pemutar musik aktif (owner)", key="musik.admin.description"
+        ),
+    )
+    @app_commands.default_permissions(administrator=True)
+    async def musik_admin_active(self, inter: discord.Interaction):
+        ctx = await _ctx(inter)
+        if not await self.bot.is_owner(inter.user):
+            return await inter.response.send_message(ctx.t("admin.owner_only"), ephemeral=True)
+        active_players = list(self.player_manager.actives.keys())
+
+        guild_named: list[str] = [ctx.t("admin.header")]
+        for n, player in enumerate(active_players, 1):
+            guild = self.bot.get_guild(player)
+            if guild is None:
+                guild_named.append(ctx.t("admin.entry_unknown", n=n, id=player))
             else:
-                supported_client.append("Spotify (via Youtube)")
-        _query_help += ", ".join(supported_client)
-        playback.add_fields(
-            [
-                HelpField(
-                    "musik play",
-                    "Memutar musik, alias lain: `musik p`",
-                    HelpOption("query", _query_help, True),
-                ),
-                HelpField(
-                    "musik join",
-                    "Buat bot gabung ke kanal tertentu atau join ke VC anda",
-                    HelpOption(
-                        "kanal", "Mention kanal atau ketik IDnya, jika tidak diberikan akan pake VC anda!"
-                    ),
-                ),
-                HelpField(
-                    "musik stop",
-                    "Hentikan semua lagu dan hapus semua queue, "
-                    "hanya admin/host yang bisa menggunakan perintah ini",
-                ),
-                HelpField(
-                    "musik leave",
-                    "Keluar dari VC dan menghapus semua queue, "
-                    "hanya admin/host yang bisa menggunakan perintah ini",
-                ),
-                HelpField(
-                    "musik np",
-                    "Melihat lagu yang sedang diputar",
-                ),
-                HelpField("musik info", "Melihat informasi pemutar musik untuk peladen anda."),
-            ]
-        )
-        playback.add_aliases(["m", "music"])
+                guild_named.append(ctx.t("admin.entry", n=n, name=guild.name, id=player))
 
-        _mode_TEXT = "Matikan: `off`, `no`, `matikan`, `mati`\n"
-        _mode_TEXT += "Single (Satu lagu): `single`, `satu`, `ini`\n"
-        _mode_TEXT += "Semua (Semua lagu): `all`, `semua`"
-
-        queue = ctx.create_help("musik", "Sistem queue musik naoTimes")
-        queue.add_fields(
-            [
-                HelpField(
-                    "musik queue",
-                    "Melihat queue musik yang sedang diputar, alias lain: `musik q`",
-                ),
-                HelpField(
-                    "musik queue remove",
-                    "Menghapus salah satu lagu dari queue, alias lain: `musik q remove`",
-                    HelpOption(
-                        "indeks",
-                        "Posisi lagu yang ingin dihapus, bisa diliat via `!musik q`",
-                        True,
-                    ),
-                ),
-                HelpField(
-                    "musik queue clear",
-                    "Membersihkan queue, hanya admin/host yang bisa menggunakan perintah ini!",
-                ),
-                HelpField(
-                    "musik repeat",
-                    "Mengatur sistem repeat untuk pemutar musik peladen anda",
-                    HelpOption("mode", f"`<mode>` merupakan mode repeat yang diinginkan\n{_mode_TEXT}", True),
-                ),
-            ]
-        )
-        queue.add_aliases(["m", "music"])
-
-        others = ctx.create_help("musik", "Fitur lain-lain musik")
-        others.add_fields(
-            [
-                HelpField(
-                    "musik delegasi",
-                    "Mengubah host utama ke member lain",
-                    HelpOption(
-                        "member",
-                        "Mention member, nama member, atau ID member",
-                        True,
-                    ),
-                ),
-                HelpField(
-                    "musik volume",
-                    "Mengatur volume pemutar musik",
-                    HelpOption(
-                        "volume",
-                        "Angka dari 1 sampai 100, jika tidak diberikan akan dikasih tau volume sekarang",
-                    ),
-                ),
-                HelpField(
-                    "musik lirik",
-                    "Mencari lirik lagu yang sedang diputar",
-                    HelpOption(
-                        "kueri",
-                        "Kueri pencarian, ini dapat diabaikan dan bot akan menggunakan judul musik.",
-                    ),
-                ),
-            ]
-        )
-        others.add_aliases(["m", "music"])
-        return [playback.get(), queue.get(), others.get()]
-
-    @commands.group(name="musik", aliases=["m", "music"])
-    @commands.guild_only()
-    @node_available()
-    async def musik_player(self, ctx: naoTimesContext):
-        if ctx.invoked_subcommand is None:
-            if not ctx.empty_subcommand(2):
-                return
-            help_collect = self._generate_help_embed(ctx)
-            paginator = DiscordPaginatorUI(ctx, help_collect)
-            await paginator.interact(30.0)
-
-    @musik_player.command(name="help", aliases=["h", "bantu"])
-    async def musik_player_help(self, ctx: naoTimesContext):
-        help_collect = self._generate_help_embed(ctx)
-        paginator = DiscordPaginatorUI(ctx, help_collect)
-        await paginator.interact(30.0)
-
-    def _check_perms(self, permission: disnake.Permissions):
-        if permission.administrator:
-            return True
-        if permission.manage_guild:
-            return True
-        if permission.manage_channels:
-            return True
-        return False
+        await inter.response.send_message("\n".join(guild_named), ephemeral=True)
 
     async def _create_player_instance(
-        self, channel: Union[disnake.VoiceChannel, disnake.StageChannel], author: disnake.Member
-    ):
-        player = await channel.connect(cls=wavelink.Player)
-        self.bot.ntplayer.create(player)
-        self.bot.ntplayer.change_dj(player, author)
-        self.bot.ntplayer.set_channel(player, channel)
-        self.bot.loop.create_task(
-            self.bot.ntplayer.play_next(player),
-            name=f"naotimes-track-end-{player.guild.id}_init",
-        )
+        self, inter: discord.Interaction, channel: VocalChannel, author: discord.Member
+    ) -> wavelink.Player | None:
+        ctx = await _ctx(inter)
+        player: wavelink.Player | None = None
+        try:
+            player = await channel.connect(cls=wavelink.Player, self_deaf=True)
+            self.player_manager.create(player)
+            self.player_manager.change_dj(player, author)
+            self.player_manager.set_channel(player, channel)
+            self.bot.loop.create_task(
+                self.player_manager.play_next(player),
+                name=f"naotimes-track-end-{channel.guild.id}_init",
+            )
+        except Exception as exc:
+            self.logger.error("Failed to create music player in guild %s", channel.guild.id, exc_info=exc)
+            if player is None:
+                pending_player = channel.guild.voice_client
+                if (
+                    isinstance(pending_player, wavelink.Player)
+                    and pending_player.channel == channel
+                    and not pending_player.connected
+                ):
+                    player = pending_player
+            if player is not None:
+                self.player_manager.delete(player)
+                try:
+                    await player.disconnect()
+                except Exception as cleanup_error:
+                    self.logger.warning("Failed to clean up voice connection", exc_info=cleanup_error)
+            await inter.followup.send(
+                ctx.t("error.connect_failed", channel=channel.mention),
+                ephemeral=True,
+            )
+            return None
         return player
 
-    async def select_track(self, ctx: naoTimesContext, all_tracks: List[wavelink.Track]):
-        """Select a track"""
-
-        messages = []
-        messages.append("**Mohon ketik angka yang ingin anda tambahkan ke Bot!**")
+    async def select_track(
+        self, ctx: naoTimesContext, all_tracks: list[wavelink.Playable]
+    ) -> wavelink.Playable | MissingValue | None:
         max_tracks = all_tracks[:7]
+        messages = [ctx.t("select.prompt")]
         for ix, track in enumerate(max_tracks, 1):
-            messages.append(f"**{ix}**. `{track.title}` [{format_duration(track.duration)}]")
-        messages.append("\nKetik `cancel` untuk membatalkan!")
-
-        await ctx.send("\n".join(messages), reference=ctx.message)
-        _CANCEL_MSG = ["cancel", "batal", "batalkan"]
-
-        def check(m: disnake.Message):
-            return (
-                m.author == ctx.author
-                and m.channel == ctx.channel
-                and (
-                    (m.content.isdigit() and int(m.content) <= len(max_tracks))
-                    or m.content.lower() in _CANCEL_MSG
-                )
+            messages.append(
+                ctx.t("select.entry", n=ix, title=track.title, duration=format_duration(track.length / 1000))
             )
+        selections = [Selection(str(ix), f"ntplayer-{t.identifier}", t.title) for ix, t in enumerate(max_tracks, 1)]
 
-        res: disnake.Message
-        self.logger.info(f"Now waiting for {ctx.author} to select one of the tracks")
-        try:
-            res = await self.bot.wait_for("message", check=check, timeout=30.0)
-        except (asyncio.CancelledError, asyncio.TimeoutError):
-            self.logger.warning("Message timeout, cancelling...")
+        selected = await ctx.select_single_button("\n".join(messages), selections, timeout=30.0)
+        if selected is None:
             return MISSING
-        content = res.content
-        if content.lower() in _CANCEL_MSG:
-            self.logger.info(f"{ctx.author} cancelled selection")
+        if selected is False:
             return None
-        selected = max_tracks[int(content) - 1]
-        self.logger.info(f"Selected track #{content} -- {selected}")
-        return selected
+        found = [t for t in all_tracks if f"ntplayer-{t.identifier}" == selected.name]
+        return found[0] if found else MISSING
 
-    @musik_player.command(name="join", aliases=["j", "gabung", "g"])
-    async def musik_player_join(self, ctx: naoTimesContext, channel: commands.VoiceChannelConverter = None):
-        if ctx.voice_client:
-            return await ctx.send(
-                f"Bot telah join VC lain ({ctx.voice_client.channel.mention}), "
-                "mohon putuskan terlebih dahulu!"
+    # ---- commands
+    @musik.command(
+        name="join",
+        description=app_commands.locale_str("Buat bot gabung ke VC", key="musik.join.description"),
+    )
+    @app_commands.describe(
+        kanal=app_commands.locale_str("Kanal suara tujuan (default: VC kamu)", key="musik.join.option")
+    )
+    @app_commands.check(check_node_available)
+    async def musik_join(
+        self,
+        inter: discord.Interaction,
+        kanal: discord.VoiceChannel | discord.StageChannel | None = None,
+    ):
+        guild = inter.guild
+        if guild is None:
+            raise app_commands.NoPrivateMessage()
+        author = await _require_member(inter)
+        ctx = await _ctx(inter)
+        if guild.voice_client:
+            return await inter.response.send_message(
+                ctx.t("join.already_connected", channel=guild.voice_client.channel),
+                ephemeral=True,
             )
+        target = kanal
+        if target is None:
+            _, target = await _require_voice_member(inter)
+        if target is None:
+            return await inter.response.send_message(ctx.t("join.no_voice"), ephemeral=True)
+        await inter.response.defer()
+        player = await self._create_player_instance(inter, target, author)
+        if player is None:
+            return
+        await inter.followup.send(ctx.t("join.success", channel=target.mention))
 
-        author = ctx.author
-        vc_channel: Union[disnake.VoiceChannel, disnake.StageChannel] = None
-        if not isinstance(channel, (disnake.VoiceChannel, disnake.StageChannel)):
-            vc_me = author.voice
-            if vc_me is None:
-                return await ctx.send("Mohon join VC atau mention VC yang anda mau!")
+    @musik.command(
+        name="play",
+        description=app_commands.locale_str("Putar musik dari URL atau kueri pencarian", key="musik.play.description"),
+    )
+    @app_commands.describe(
+        query=app_commands.locale_str(
+            "URL atau kueri pencarian (YouTube, SoundCloud, Spotify, dll)", key="musik.play.option"
+        )
+    )
+    @app_commands.check(check_node_available)
+    @app_commands.check(check_user_in_vc)
+    async def musik_play(self, inter: discord.Interaction, query: str):
+        await inter.response.defer()
+        ctx = await _ctx(inter)
+        author, user_channel = await _require_voice_member(inter)
+        vc = _player(inter)
+        if vc is None:
+            vc = await self._create_player_instance(inter, user_channel, author)
+            if vc is None:
+                return
 
-            vc_channel = vc_me.channel
-        else:
-            vc_channel = channel
+        if user_channel != vc.channel:
+            return await inter.followup.send(ctx.t("play.join_first", channel=vc.channel.mention))
 
-        self.logger.info(f"PlayerVoice: Joining VC: {vc_channel}")
-        await self._create_player_instance(vc_channel, author)
-        await ctx.message.add_reaction("🎵")
-
-    @musik_player.command(name="play", aliases=["p", "setel"])
-    @ensure_voice()
-    @user_in_vc()
-    async def musik_player_play(self, ctx: naoTimesContext, *, query: str = None):
-        if not query:
-            return await ctx.send("Mohon masukkan query musik yang ingin anda putar!")
-        # Clean URL if possible
         query = clean_escapes(query)
-        author = ctx.author
-        vc: wavelink.Player = ctx.voice_client
-
-        if not author.voice:
-            return await ctx.send(f"Mohon join voice chat {vc.channel.mention} untuk menyetel lagu!")
-
-        self.logger.info(f"PlayerVoice: <{ctx.guild.id}> Searching for {query}...")
+        self.logger.info(f"PlayerVoice: <{inter.guild_id}> Searching for {query}...")
         should_pick = not query.startswith("http")
         try:
-            await ctx.send("Mencoba memuat lagu...", reference=ctx.message)
-            all_results = await self.bot.ntplayer.search_track(query, vc.node)
+            results = await asyncio.wait_for(self.player_manager.search_track(query, vc.node), timeout=30.0)
+        except TimeoutError:
+            self.logger.warning(f"PlayerVoice: <{inter.guild_id}> Searching for {query} timed out")
+            return await inter.followup.send(ctx.t("play.search_timeout"), ephemeral=True)
         except UnsupportedURLFormat as se:
-            return await ctx.send(f"URL tidak didukung: <{se.url}>\n{se.reason}", reference=ctx.message)
+            return await inter.followup.send(ctx.t("play.unsupported_url", url=se.url, reason=se.reason))
         except SpotifyUnavailable:
-            return await ctx.send(
-                "Anda mencoba menyetel URL Spotify tetapi owner bot tidak mengaktifkan fitur Spotify!",
-                reference=ctx.message,
-            )
+            return await inter.followup.send(ctx.t("play.spotify_disabled"))
+        except SpotifyNoTrackFound:
+            return await inter.followup.send(ctx.t("play.spotify_no_track"))
         except Exception:
-            self.logger.exception(f"PlayerVoice: <{ctx.guild.id}> Searching for {query} failed")
-            return await ctx.send(
-                "Terjadi kesalahan saat mencari lagu, mohon coba lagi!", reference=ctx.message
+            self.logger.exception(f"PlayerVoice: <{inter.guild_id}> Searching for {query} failed")
+            return await inter.followup.send(ctx.t("play.search_error"))
+
+        if not results:
+            return await inter.followup.send(ctx.t("play.not_found"))
+
+        if not results:
+            return await inter.followup.send(ctx.t("play.not_found"))
+
+        if len(results) > 1 and should_pick:
+            picked = await self.select_track(ctx, results)
+            if isinstance(picked, MissingValue):
+                return await inter.followup.send(ctx.t("play.none_selected"))
+            if picked is None:
+                return await inter.followup.send(ctx.t("play.cancelled"))
+            results = [picked]
+
+        channel = inter.channel
+        if not isinstance(channel, discord.TextChannel):
+            return await inter.followup.send(ctx.t("play.text_channel_only"))
+        entries = [TrackEntry(track, author, channel) for track in results]
+        await self.player_manager.enqueue(vc, entries)
+        if len(entries) == 1:
+            instance = self.player_manager.get(vc)
+            return await inter.followup.send(
+                ctx.t("play.added_one", title=entries[0].track.title, position=instance.queue.qsize())
             )
+        await inter.followup.send(ctx.t("play.added_many", count=len(entries)))
 
-        if not all_results:
-            return await ctx.send("Tidak dapat menemukan lagu yang anda inginkan!", reference=ctx.message)
-
-        if isinstance(all_results, list):
-            if len(all_results) == 1:
-                select_track = all_results[0]
-                wrap_in_entry = TrackEntry(select_track, author, ctx.channel)
-                await self.bot.ntplayer.enqueue(vc, wrap_in_entry)
-                instance = self.bot.ntplayer.get(vc)
-                await ctx.send(
-                    f"Menambahkan `{select_track.title}` ke pemutar musik! (Posisi {instance.queue.qsize()})",
-                    reference=ctx.message,
-                )
-            elif should_pick:
-                select_track = await self.select_track(ctx, all_results)
-                if select_track is MISSING:
-                    return await ctx.send("Tidak ada lagu yang dipilih!", reference=ctx.message)
-                if select_track is None:
-                    return await ctx.send("Dibatalkan", reference=ctx.message)
-                await self.bot.ntplayer.enqueue(vc, TrackEntry(select_track, author, ctx.channel))
-                instance = self.bot.ntplayer.get(vc)
-                await ctx.send(
-                    f"Menambahkan `{select_track.title}` ke pemutar musik! (Posisi {instance.queue.qsize()})",
-                    reference=ctx.message,
-                )
-            else:
-                # Queue all tracks
-                self.logger.info(f"PlayerQueue: <{ctx.guild.id}> detected results as playlist, loading...")
-                wrapped_tracks: List[TrackEntry] = []
-                for track in all_results:
-                    wrapped_tracks.append(TrackEntry(track, author, ctx.channel))
-                await self.bot.ntplayer.enqueue(vc, wrapped_tracks)
-
-                self.logger.info(f"PlayerQueue: <{ctx.guild.id}> loaded {len(wrapped_tracks)} tracks")
-                await ctx.send(
-                    f"Menambahkan playlist ke pemutar musik! Total ada: {len(wrapped_tracks)}",
-                    reference=ctx.message,
-                )
-        else:
-            # Single track:
-            await self.bot.ntplayer.enqueue(vc, TrackEntry(all_results, author, ctx.channel))
-            instance = self.bot.ntplayer.get(vc)
-            await ctx.send(
-                f"Menambahkan `{all_results.title}` ke pemutar musik! (Posisi {instance.queue.qsize()})",
-                reference=ctx.message,
-            )
-
-    @musik_player.command(name="nowplaying", aliases=["np", "lagu"])
-    @is_in_voice()
-    async def musik_player_nowplaying(self, ctx: naoTimesContext):
-        vc: wavelink.Player = ctx.voice_client
-        instance = self.bot.ntplayer.get(vc)
+    @musik.command(
+        name="nowplaying",
+        description=app_commands.locale_str("Lihat lagu yang sedang diputar", key="musik.nowplaying.description"),
+    )
+    @app_commands.check(check_in_voice)
+    async def musik_nowplaying(self, inter: discord.Interaction):
+        vc = await _require_player(inter)
+        ctx = await _ctx(inter)
+        instance = self.player_manager.get(vc)
         if instance.current is None:
-            return await ctx.send("Tidak ada lagu yang diputar saat ini!")
+            return await inter.response.send_message(ctx.t("error.no_track_playing"), ephemeral=True)
+        embed = self.player_manager.generate_track_embed(instance.current, vc.position)
+        await inter.response.send_message(embed=embed)
 
-        current_position = vc.position
-        embed = self.bot.ntplayer.generate_track_embed(instance.current, current_position)
-        await ctx.send(embed=embed)
-
-    @musik_player.command(name="stop", aliases=["hentikan"])
-    @is_in_voice()
+    @musik.command(
+        name="stop",
+        description=app_commands.locale_str("Hentikan lagu dan hapus daftar putar", key="musik.stop.description"),
+    )
+    @app_commands.check(check_in_voice)
     @check_requirements(is_god, is_host)
-    async def musik_player_stop(self, ctx: naoTimesContext):
-        vc: wavelink.Player = ctx.voice_client
-        self.bot.ntplayer.clear(vc)
-        await vc.stop()
-        await ctx.message.add_reaction("👍")
+    async def musik_stop(self, inter: discord.Interaction):
+        ctx = await _ctx(inter)
+        vc = await _require_player(inter)
+        self.player_manager.clear(vc)
+        await self._run_player_action(inter, partial(vc.skip, force=True), "stop", ctx.t("stop.success"))
 
-    @musik_player.command(name="leave", aliases=["dc", "disconnect"])
-    @is_in_voice()
+    @musik.command(
+        name="leave",
+        description=app_commands.locale_str("Keluar dari VC dan hapus daftar putar", key="musik.leave.description"),
+    )
+    @app_commands.check(check_in_voice)
     @check_requirements(is_god, is_host)
-    async def musik_player_leave(self, ctx: naoTimesContext):
-        vc: wavelink.Player = ctx.voice_client
-        self.bot.ntplayer.delete(vc)
-        await vc.stop()
-        await vc.disconnect(force=True)
-        await ctx.message.add_reaction("👍")
+    async def musik_leave(self, inter: discord.Interaction):
+        ctx = await _ctx(inter)
+        vc = await _require_player(inter)
+        if await self._run_player_action(inter, vc.disconnect, "leave", ctx.t("leave.success")):
+            self.player_manager.delete(vc)
 
-    @musik_player.command(name="skip", aliases=["lewat"])
-    @is_in_voice()
-    @user_in_vc()
-    async def musik_player_skip(self, ctx: naoTimesContext):
-        author = ctx.author
-        vc: wavelink.Player = ctx.voice_client
-        instance = self.bot.ntplayer.get(vc)
+    @musik.command(
+        name="skip",
+        description=app_commands.locale_str("Lewati lagu yang sedang diputar", key="musik.skip.description"),
+    )
+    @app_commands.check(check_in_voice)
+    @app_commands.check(check_user_in_vc)
+    async def musik_skip(self, inter: discord.Interaction):
+        ctx = await _ctx(inter)
+        author, user_channel = await _require_voice_member(inter)
+        vc = await _require_player(inter)
+        instance = self.player_manager.get(vc)
+        send = inter.response.send_message
 
-        if instance.current is None and instance.queue.empty():
-            return await ctx.send("Tidak ada lagu yang diputar saat ini!", reference=ctx.message)
+        if instance.current is None:
+            return await send(ctx.t("error.no_track_playing"), ephemeral=True)
+        if instance.queue.qsize() < 1:
+            return await send(ctx.t("skip.no_next"), ephemeral=True)
         if instance.host and instance.host == author:
-            await vc.stop()
-            return await ctx.send("DJ melewati lagu ini!", reference=ctx.message)
-        if self._check_perms(author.guild_permissions):
-            await vc.stop()
-            return await ctx.send("Admin atau moderator melewati lagu ini!", reference=ctx.message)
+            return await self._run_player_action(inter, partial(vc.skip, force=True), "skip", ctx.t("skip.dj"))
+        if can_manage(author.guild_permissions):
+            return await self._run_player_action(inter, partial(vc.skip, force=True), "skip", ctx.t("skip.admin"))
         if instance.current.requester == author:
-            await vc.stop()
-            return await ctx.send("Pemutar lagu ini melewati lagu ini!", reference=ctx.message)
-
-        if not author.voice:
-            return await ctx.send(
-                f"Mohon join voice chat {vc.channel.mention} untuk melewati lagu!", reference=ctx.message
-            )
-
+            return await self._run_player_action(inter, partial(vc.skip, force=True), "skip", ctx.t("skip.requester"))
+        if user_channel != vc.channel:
+            return await send(ctx.t("skip.join_first", channel=vc.channel.mention), ephemeral=True)
         if author.id in instance.skip_votes:
-            return await ctx.send("Anda sudah voting untuk melewati lagu!", reference=ctx.message)
+            return await send(ctx.t("skip.already_voted"), ephemeral=True)
 
-        self.bot.ntplayer.add_vote(vc, author.id)
+        self.player_manager.add_vote(vc, author)
         current_vote = len(instance.skip_votes)
-
-        required = self.bot.ntplayer.get_requirements(vc)
+        required = self.player_manager.get_requirements(vc)
         if required <= current_vote:
-            await vc.stop()
-            await ctx.send(f"Lagu di skip dikarenakan {current_vote} dari {required} orang vote untuk skip")
+            return await self._run_player_action(
+                inter,
+                partial(vc.skip, force=True),
+                "skip",
+                ctx.t("skip.voted", current=current_vote, required=required),
+            )
         else:
-            await ctx.send(f"Dibutuhkan {required} untuk nge-skip lagu ({current_vote}/{required} orang)")
+            await send(ctx.t("skip.vote_needed", required=required, current=current_vote))
 
-    def _vol_emote(self, volume: int):
+    @staticmethod
+    def _vol_emote(volume: int) -> str:
         if volume < 1:
             return "🔇"
-        elif volume < 25:
+        if volume < 25:
             return "🔈"
-        elif volume < 70:
+        if volume < 70:
             return "🔉"
         return "🔊"
 
-    @musik_player.command(name="volume", aliases=["vol", "v"])
-    @is_in_voice()
-    @user_in_vc()
-    @check_requirements(is_god, is_host)
-    async def musik_player_volume(self, ctx: naoTimesContext, volume: int = None):
-        vc: wavelink.Player = ctx.voice_client
-        if not volume:
-            vol_real = int(vc.volume)
-            embed = disnake.Embed(colour=disnake.Color.from_rgb(98, 66, 225))
-            embed.description = f"{self._vol_emote(vol_real)} Volume sekarang adalah {vol_real}%"
-            return await ctx.send(embed=embed)
+    @musik.command(
+        name="volume",
+        description=app_commands.locale_str("Lihat atau atur volume", key="musik.volume.description"),
+    )
+    @app_commands.describe(
+        volume=app_commands.locale_str(
+            "Angka 1-100, kosongkan untuk melihat volume sekarang", key="musik.volume.option"
+        )
+    )
+    @app_commands.check(check_in_voice)
+    async def musik_volume(self, inter: discord.Interaction, volume: app_commands.Range[int, 1, 100] | None = None):
+        vc = await _require_player(inter)
+        ctx = await _ctx(inter)
+        embed = discord.Embed(colour=discord.Color.from_rgb(98, 66, 225))
+        if volume is None:
+            vol = int(vc.volume)
+            embed.description = ctx.t("volume.current", emote=self._vol_emote(vol), volume=vol)
+            return await inter.response.send_message(embed=embed)
 
-        if volume < 1 or volume > 100:
-            return await ctx.send("Volume harus antara 1-100!")
-
-        await vc.set_volume(volume)
-        embed = disnake.Embed(colour=disnake.Color.from_rgb(98, 66, 225))
-        embed.description = f"{self._vol_emote(volume)} Volume diatur ke {volume}%"
-        return await ctx.send(embed=embed)
-
-    def _loop_emote(self, mode: TrackRepeat):
-        if mode == TrackRepeat.all:
-            return "🔁"
-        elif mode == TrackRepeat.single:
-            return "🔂"
-        return "🚫"
-
-    @musik_player.command(name="repeat", aliases=["ulang", "ulangi", "loop"])
-    @is_in_voice()
-    @user_in_vc()
-    @check_requirements(is_god, is_host)
-    async def musik_player_repeat(self, ctx: naoTimesContext, mode: str = ""):
-        vc: wavelink.Player = ctx.voice_client
-        _mode_off = ["off", "no", "matikan", "mati"]
-        _mode_single = ["single", "satu", "ini"]
-        _mode_all = ["all", "semua"]
-        _mode_repeat = [*_mode_off, *_mode_single, *_mode_all]
-        instance = self.bot.ntplayer.get(vc)
-        if not mode:
-            embed = disnake.Embed(colour=disnake.Color.from_rgb(98, 66, 225))
-            embed.description = f"{self._loop_emote(instance.repeat)} {instance.repeat.nice}"
-            return await ctx.send(embed=embed)
-
-        mode = mode.lower()
-        if mode not in _mode_repeat:
-            return await ctx.send("Mode tidak diketahui!")
-
-        mode_change = TrackRepeat.disable
-        if mode in _mode_single:
-            mode_change = TrackRepeat.single
-        elif mode in _mode_all:
-            mode_change = TrackRepeat.all
-        emote_change = self._loop_emote(mode_change)
-
-        change_res = self.bot.ntplayer.change_repeat_mode(vc, mode_change)
-        if change_res is None:
-            return await ctx.send("Sudah dalam mode repeat yang anda berikan!")
-        if change_res is MISSING:
-            return await ctx.send("Mode repeat tidak diketahui!")
-
-        if mode_change == TrackRepeat.single:
-            if change_res.current is not None:
-                change_res.queue._queue = [change_res.current]
-        elif mode_change == TrackRepeat.all:
-            if change_res.current is not None:
-                change_res.queue.put_nowait(change_res.current)
-
-        embed = disnake.Embed(colour=disnake.Color.from_rgb(98, 66, 225))
-        embed.description = f"{emote_change} {change_res.repeat.nice}"
-        await ctx.send(embed=embed)
-
-    @musik_player.command(name="info")
-    @is_in_voice()
-    async def musik_player_info(self, ctx: naoTimesContext):
-        vc: wavelink.Player = ctx.voice_client
-        instance = self.bot.ntplayer.get(vc)
-
-        is_playing = "Tidak"
-        if vc.is_playing():
-            is_playing = "Ya"
-
-        embed = disnake.Embed(colour=disnake.Color.from_rgb(227, 150, 64))
-        embed.set_author(name="🎶 Pemutar Musik", icon_url=self.bot.user.avatar)
-
-        spoti_emote = "<:ntSpotifyX:903302923474337802>"
-        via_yt = "<:vtBYT:843473930348920832>"
-        if not ctx.me.guild_permissions.use_external_emojis:
-            spoti_emote = "🎶 **Spotify**"
-            via_yt = "YouTube"
-
-        host_name = "*Tidak ada host, mohon join VC*"
-        if instance.host is not None:
-            host_name = instance.host.mention
-
-        description = []
-        description.append(f"🪧 **Peladen**: {ctx.guild.name}")
-        description.append(f"🧑‍🦱 **Host**: {host_name}")
-        description.append(f"🎵 **Aktif**? `{is_playing}`")
-        volume = int(vc.volume)
-        description.append(f"{self._vol_emote(volume)} {volume}%")
-        description.append(f"🔁 {instance.repeat.nice}")
-        description.append(f"🔢 {instance.queue.qsize()} lagu lagi")
-        description.append(f"📍 **Node**: `{vc.node.identifier} - {vc.node.region.name}`")
-        spoti_mode = "Tidak"
-        spoti_test = vc.node._spotify
-        if spoti_test:
-            spoti_mode = f"Ya (via {via_yt})"
-            if getattr(vc.node, "_url_host", True):
-                spoti_mode = "Ya (Native)"
-        description.append(f"{spoti_emote} {spoti_mode}")
-        embed.description = "\n".join(description)
-        await ctx.send(embed=embed)
-
-    @musik_player.command(name="delegasi", aliases=["delegate", "gantidj"])
-    @is_in_voice()
-    @user_in_vc()
-    @check_requirements(is_god, is_host)
-    async def musik_player_delegasi(self, ctx: naoTimesContext, member: commands.MemberConverter = None):
-        vc: wavelink.Player = ctx.voice_client
-        if not isinstance(member, disnake.Member):
-            return await ctx.send("Tidak dapat menemukan member tersebut!")
-
-        if member.guild != ctx.guild:
-            return await ctx.send("Member tersebut bukan member peladen ini!")
-
-        if member.bot:
-            return await ctx.send("Member adalah bot, tidak bisa mengubah DJ/host ke bot.")
-
-        self.bot.ntplayer.change_dj(vc, member)
-        await ctx.send(f"{member.mention} sekarang menjadi DJ utama!", reference=ctx.message)
+        await _enforce(inter, is_god, is_host)
+        embed.description = ctx.t("volume.set", emote=self._vol_emote(volume), volume=volume)
+        await self._run_player_action(inter, partial(vc.set_volume, volume), "volume", embed)
 
     @staticmethod
-    def _clean_url(url: str, append: str) -> str:
-        if url.endswith("/"):
-            url = url[:-1]
-        if append.startswith("/"):
-            append = append[1:]
-        return f"{url}/{append}"
+    def _loop_emote(mode: TrackRepeat) -> str:
+        return {TrackRepeat.all: "🔁", TrackRepeat.single: "🔂"}.get(mode, "🚫")
 
-    async def _spotify_lyrics_version(self, track: SpotifyDirectTrack, node: Node):
-        # Check if actual spotify and not faux spotify
-        if not track.direct_spotify:
-            return None
-
-        track_id = track.internal_id
-        spotify = node._spotify
-        spotify_url = getattr(spotify, "_url_host", None)
-        if not spotify_url:
-            self.logger.warning(f"SpotifyLyrics<{track_id}>: Internal Spotify URL cannot be found!")
-            return None
-
-        fetch_url = self._clean_url(spotify_url, f"{track_id}/lyrics")
-        async with self.bot.aiosession.get(fetch_url) as resp:
-            if resp.status != 200:
-                self.logger.warning(
-                    f"SpotifyLyrics<{track_id}>: Cannot fetch lyrics from Spotify! ({resp.status})"
-                )
-                return None
-            data = await resp.json()
-
-        split_lyrics = data["data"]
-        # Split lyrics by line, merged together if it's still in 2000 char limit
-        joined_lyrics = []
-        temp_lyrics = []
-        for line in split_lyrics:
-            temp_join = "\n".join(temp_lyrics)
-            if len(temp_join) >= 2000:
-                joined_lyrics.append(temp_join)
-                temp_lyrics = []
-            temp_lyrics.append(line)
-            temp_join = "\n".join(temp_lyrics)
-            if len(temp_join) >= 2000:
-                temp_lyrics.pop(-1)
-                joined_lyrics.append("\n".join(temp_lyrics))
-                temp_lyrics = []
-
-        if temp_lyrics:
-            joined_lyrics.append("\n".join(temp_lyrics))
-
-        embed_sets: List[disnake.Embed] = []
-        for number, lyrics_part in enumerate(joined_lyrics, 1):
-            embed = disnake.Embed(colour=disnake.Color.from_rgb(251, 48, 62))
-            add_numbering = f" ({number}/{len(joined_lyrics)})"
-            if len(joined_lyrics) < 2:
-                add_numbering = ""
-            embed.set_author(
-                name=cutoff_text(f"{track.title}{add_numbering}", 250),
-                url=f"https://open.spotify.com/track/{track_id}",
-                icon_url=self.bot.user.avatar,
-            )
-            embed.description = lyrics_part
-            embed.set_footer(text="Lirik diambil dari Spotify/MusixMatch", icon_url=MXM_ICON)
-            embed_sets.append(embed)
-        return embed_sets
-
-    @musik_player.command(name="lirik", aliases=["lyrics", "lyric"])
-    @is_in_voice()
-    async def musik_player_lyric(self, ctx: naoTimesContext, *, override_query: str = None):
-        if not self.bot.genius:
-            return await ctx.send("Fitur lirik tidak diaktifkan oleh Owner bot!")
-        vc: wavelink.Player = ctx.voice_client
-        instance = self.bot.ntplayer.get(vc)
-        if not instance.current:
-            return await ctx.send("Tidak ada lagu yang sedang disetel untuk diliat liriknya!")
-
-        current = instance.current.track
-        if isinstance(current, TwitchDirectLink):
-            return await ctx.send("Twitch stream tidak support untuk pencarian lirik!")
-        if isinstance(current, SpotifyDirectTrack):
-            embed_sets = await self._spotify_lyrics_version(current, vc.node)
-            if embed_sets is not None:
-                self.logger.info(f"SpotifyLyrics<{vc.guild}>: Sending lyric <{current.title}>")
-                paginator = DiscordPaginatorUI(ctx, embed_sets)
-                await paginator.interact()
-                return
-        search_query = f"{current.author} - {current.title}"
-        if getattr(current, "source", None) == "youtube":
-            search_query = f"{current.title}"
-        if override_query:
-            search_query = override_query
-        message_temp = await ctx.send(f"Mencari lirik untuk `{current.title}`...")
-        self.logger.info(
-            f"GeniusLyric<{vc.guild}>: Searching for track <{current.title}> with query: {search_query}"
+    @musik.command(
+        name="repeat",
+        description=app_commands.locale_str("Atur mode pengulangan", key="musik.repeat.description"),
+    )
+    @app_commands.describe(
+        mode=app_commands.locale_str(
+            "Mode pengulangan, kosongkan untuk melihat mode sekarang", key="musik.repeat.option"
         )
-        matching_lyrics, error = await self.bot.genius.find_lyrics(search_query)
-        if not matching_lyrics:
-            self.logger.warning(
-                f"GeniusLyric<{vc.guild}>: No match for <{current.title}> with query: {search_query}"
-            )
-            return await ctx.send(error)
+    )
+    @app_commands.choices(
+        mode=[
+            app_commands.Choice(name=app_commands.locale_str("Mati", key="musik.repeat.choice_off"), value="off"),
+            app_commands.Choice(
+                name=app_commands.locale_str("Satu lagu", key="musik.repeat.choice_single"), value="single"
+            ),
+            app_commands.Choice(name=app_commands.locale_str("Semua lagu", key="musik.repeat.choice_all"), value="all"),
+        ]
+    )
+    @app_commands.check(check_in_voice)
+    async def musik_repeat(self, inter: discord.Interaction, mode: app_commands.Choice[str] | None = None):
+        vc = await _require_player(inter)
+        ctx = await _ctx(inter)
+        instance = self.player_manager.get(vc)
+        embed = discord.Embed(colour=discord.Color.from_rgb(98, 66, 225))
+        if mode is None:
+            embed.description = f"{self._loop_emote(instance.repeat)} {ctx.t(REPEAT_KEYS[instance.repeat])}"
+            return await inter.response.send_message(embed=embed)
 
-        embed = disnake.Embed(colour=disnake.Color.from_rgb(227, 150, 64))
-        embed.set_author(name="🎶 Lirik Lagu", icon_url=self.bot.user.avatar)
-        description_data = []
-        for nn, matches in enumerate(matching_lyrics, 1):
-            description_data.append(f"**{nn}**. `{matches.title}`")
-        embed.description = "\n".join(description_data)
+        await _enforce(inter, is_god, is_host)
+        mode_change = {"off": TrackRepeat.disable, "single": TrackRepeat.single, "all": TrackRepeat.all}[mode.value]
+        change_res = self.player_manager.change_repeat_mode(vc, mode_change)
+        if change_res is None:
+            return await inter.response.send_message(ctx.t("repeat.already"), ephemeral=True)
 
-        await message_temp.edit(embed=embed)
-        selected: Optional[GeniusLyricHit] = None
-        while True:
-            temp = await ctx.wait_content(
-                "Mohon ketik angka yang anda inginkan",
-                delete_prompt=False,
-                delete_answer=False,
-                timeout=None,
-                pass_message=message_temp,
-            )
-            if temp is False:
-                break
-            if temp.isdigit():
-                number_real = int(temp)
-                if number_real > 0 and number_real <= len(matching_lyrics):
-                    selected = matching_lyrics[number_real - 1]
-                    break
-                await ctx.send_timed(f"Mohon masukan angka yang valid! (1-{len(matching_lyrics)})")
-            else:
-                await ctx.send_timed("Mohon masukan angka yang valid!")
+        if mode_change == TrackRepeat.single and change_res.current is not None:
+            change_res.queue.clear()
+            change_res.queue.put_nowait(change_res.current)
+        elif mode_change == TrackRepeat.all and change_res.current is not None:
+            change_res.queue.put_nowait(change_res.current)
+
+        embed.description = f"{self._loop_emote(mode_change)} {ctx.t(REPEAT_KEYS[change_res.repeat])}"
+        await inter.response.send_message(embed=embed)
+
+    @musik.command(
+        name="info",
+        description=app_commands.locale_str("Informasi pemutar musik peladen ini", key="musik.info.description"),
+    )
+    @app_commands.check(check_in_voice)
+    async def musik_info(self, inter: discord.Interaction):
+        vc = await _require_player(inter)
+        ctx = await _ctx(inter)
+        instance = self.player_manager.get(vc)
+        host_name = instance.host.mention if instance.host else ctx.t("info.no_host")
+        volume = int(vc.volume)
+
+        embed = discord.Embed(colour=discord.Color.from_rgb(227, 150, 64))
+        embed.set_author(name=ctx.t("player.author"), icon_url=_bot_avatar_url(self.bot))
+        guild = inter.guild
+        if guild is None:
+            raise app_commands.NoPrivateMessage()
+        embed.description = "\n".join([
+            ctx.t("info.guild", guild=guild.name),
+            ctx.t("info.host", host=host_name),
+            ctx.t("info.active", active=ctx.t("info.active_yes") if vc.playing else ctx.t("info.active_no")),
+            ctx.t("info.volume", emote=self._vol_emote(volume), volume=volume),
+            ctx.t("info.repeat", repeat=ctx.t(REPEAT_KEYS[instance.repeat])),
+            ctx.t("info.queue_count", count=instance.queue.qsize()),
+            ctx.t("info.node", node=vc.node.identifier),
+        ])
+        await inter.response.send_message(embed=embed)
+
+    @musik.command(
+        name="delegasi",
+        description=app_commands.locale_str("Ubah host/DJ utama ke member lain", key="musik.delegasi.description"),
+    )
+    @app_commands.describe(member=app_commands.locale_str("Member yang menjadi DJ baru", key="musik.delegasi.option"))
+    @app_commands.check(check_in_voice)
+    @app_commands.check(check_user_in_vc)
+    @check_requirements(is_god, is_host)
+    async def musik_delegasi(self, inter: discord.Interaction, member: discord.Member):
+        ctx = await _ctx(inter)
+        if member.bot:
+            return await inter.response.send_message(ctx.t("delegasi.is_bot"), ephemeral=True)
+        self.player_manager.change_dj(await _require_player(inter), member)
+        await inter.response.send_message(ctx.t("delegasi.success", member=member.mention))
+
+    @musik.command(
+        name="jeda",
+        description=app_commands.locale_str("Jeda lagu", key="musik.jeda.description"),
+    )
+    @app_commands.check(check_in_voice)
+    @app_commands.check(check_user_in_vc)
+    @check_requirements(is_god, is_host)
+    async def musik_pause(self, inter: discord.Interaction):
+        ctx = await _ctx(inter)
+        vc = await _require_player(inter)
+        if vc.paused:
+            return await inter.response.send_message(ctx.t("jeda.already_paused"), ephemeral=True)
+        if not vc.playing:
+            return await inter.response.send_message(ctx.t("jeda.no_track"), ephemeral=True)
+        await self._run_player_action(inter, partial(vc.pause, True), "pause", ctx.t("jeda.success"))
+
+    @musik.command(
+        name="lanjut",
+        description=app_commands.locale_str("Lanjutkan lagu yang dijeda", key="musik.lanjut.description"),
+    )
+    @app_commands.check(check_in_voice)
+    @app_commands.check(check_user_in_vc)
+    @check_requirements(is_god, is_host)
+    async def musik_resume(self, inter: discord.Interaction):
+        ctx = await _ctx(inter)
+        vc = await _require_player(inter)
+        if not vc.paused:
+            return await inter.response.send_message(ctx.t("lanjut.not_paused"), ephemeral=True)
+        await self._run_player_action(inter, partial(vc.pause, False), "resume", ctx.t("lanjut.success"))
+
+    @musik.command(
+        name="lirik",
+        description=app_commands.locale_str("Cari lirik lagu yang sedang diputar", key="musik.lirik.description"),
+    )
+    @app_commands.describe(
+        kueri=app_commands.locale_str("Kueri pencarian lirik (default: judul lagu)", key="musik.lirik.option")
+    )
+    @app_commands.check(check_in_voice)
+    async def musik_lyric(self, inter: discord.Interaction, kueri: str | None = None):
+        ctx = await _ctx(inter)
+        vc = await _require_player(inter)
+        instance = self.player_manager.get(vc)
+        if not instance.current:
+            return await inter.response.send_message(ctx.t("lirik.no_track"), ephemeral=True)
+        if self.bot.ntlyrics is None:
+            return await inter.response.send_message(ctx.t("lirik.disabled"), ephemeral=True)
+
+        await inter.response.defer()
+        current = instance.current.track
+        message_temp = await inter.followup.send(ctx.t("lirik.searching", title=current.title), wait=True)
+        try:
+            matching, error = await asyncio.wait_for(self.bot.ntlyrics.find_lyrics(current, kueri), timeout=30.0)
+        except TimeoutError:
+            self.logger.warning("Lyrics search timed out for %s", current.title)
+            return await message_temp.edit(content=ctx.t("lirik.search_timeout"), embed=None)
+        except Exception as exc:
+            self.logger.error("Lyrics search failed for %s", current.title, exc_info=exc)
+            return await message_temp.edit(content=ctx.t("lirik.search_error"), embed=None)
+        if not matching:
+            return await message_temp.edit(content=error.to_string())
+
+        selected: naoTimesLyricsResult | None = None
+        if len(matching) == 1:
+            selected = matching[0]
+        else:
+            embed = discord.Embed(colour=discord.Color.from_rgb(227, 150, 64))
+            embed.set_author(name=ctx.t("lirik.author"), icon_url=_bot_avatar_url(self.bot))
+            embed.description = "\n".join(f"**{n}**. `{m.title}`" for n, m in enumerate(matching, 1))
+            await message_temp.edit(content=None, embed=embed)
+            ctx = await _ctx(inter)
+            selections = [Selection(str(n), f"lyric-{n}", m.title) for n, m in enumerate(matching[:10], 1)]
+            picked = await ctx.select_single_button(ctx.t("lirik.select_prompt"), selections, timeout=60.0)
+            if picked:
+                picked_name = picked.name
+                if picked_name is not None:
+                    _, _, index = picked_name.partition("-")
+                    if index.isdecimal():
+                        selected = matching[int(index) - 1]
 
         if selected is None:
-            return await ctx.send("Dibatalkan!")
+            return await message_temp.edit(content=ctx.t("lirik.cancelled"), embed=None)
 
         song_title = selected.title
-        self.logger.info(f"GeniusLyric<{vc.guild}>: Requesting lyric <{current.title}>: {selected.path}")
-        await message_temp.edit(content=f"Mengambil lirik: {song_title}", embed=None)
-        lyrics = await self.bot.genius.get_lyrics(selected.path)
+        await message_temp.edit(content=ctx.t("lirik.fetching", title=song_title), embed=None)
+        try:
+            lyrics = await asyncio.wait_for(self.bot.ntlyrics.lookup_lyrics(selected.lyrics), timeout=30.0)
+        except TimeoutError:
+            self.logger.warning("Lyrics retrieval timed out for %s", song_title)
+            return await message_temp.edit(content=ctx.t("lirik.fetch_timeout"), embed=None)
+        except Exception as exc:
+            self.logger.error("Lyrics retrieval failed for %s", song_title, exc_info=exc)
+            return await message_temp.edit(content=ctx.t("lirik.fetch_error"), embed=None)
+        split_lyrics = lyrics.split("\n") if isinstance(lyrics, str) else lyrics
 
-        split_lyrics = lyrics.split("\n")
-        # Split lyrics by line, merged together if it's still in 2000 char limit
-        joined_lyrics = []
-        temp_lyrics = []
+        joined: list[str] = []
+        buffer: list[str] = []
         for line in split_lyrics:
-            temp_join = "\n".join(temp_lyrics)
-            if len(temp_join) >= 2000:
-                joined_lyrics.append(temp_join)
-                temp_lyrics = []
-            temp_lyrics.append(line)
-            temp_join = "\n".join(temp_lyrics)
-            if len(temp_join) >= 2000:
-                temp_lyrics.pop(-1)
-                joined_lyrics.append("\n".join(temp_lyrics))
-                temp_lyrics = []
+            buffer.append(line)
+            if len("\n".join(buffer)) >= 2000:
+                buffer.pop()
+                joined.append("\n".join(buffer))
+                buffer = [line]
+        if buffer:
+            joined.append("\n".join(buffer))
 
-        if temp_lyrics:
-            joined_lyrics.append("\n".join(temp_lyrics))
-
-        embed_sets: List[disnake.Embed] = []
-        for number, lyrics_part in enumerate(joined_lyrics, 1):
-            embed = disnake.Embed(colour=disnake.Color.from_rgb(227, 150, 64))
-            add_numbering = f" ({number}/{len(joined_lyrics)})"
-            if len(joined_lyrics) < 2:
-                add_numbering = ""
-            embed.set_author(
-                name=cutoff_text(f"{song_title}{add_numbering}", 250),
-                url=f"https://genius.com{selected.path}",
-                icon_url=self.bot.user.avatar,
-            )
-            embed.description = lyrics_part
-            embed.set_footer(text="Lirik diambil dari Genius", icon_url=GENIUS_ICON)
-            embed_sets.append(embed)
+        icon, source = {
+            LyricSource.GENIUS: (GENIUS_ICON, "Genius"),
+            LyricSource.NETEASE: (NETEASE_ICON, "NetEase"),
+        }.get(selected.source, (MXM_ICON, "Musixmatch"))
+        embeds: list[discord.Embed] = []
+        for number, part in enumerate(joined, 1):
+            embed = discord.Embed(colour=discord.Color.from_rgb(227, 150, 64), description=part)
+            numbering = f" ({number}/{len(joined)})" if len(joined) > 1 else ""
+            embed.set_author(name=cutoff_text(f"{song_title}{numbering}", 250), icon_url=_bot_avatar_url(self.bot))
+            embed.set_footer(text=ctx.t("lirik.footer", source=source), icon_url=icon)
+            embeds.append(embed)
 
         try:
             await message_temp.delete()
-        except (disnake.HTTPException, disnake.Forbidden, disnake.NotFound):
+        except (discord.HTTPException, discord.Forbidden, discord.NotFound):
             pass
-        self.logger.info(f"GeniusLyric<{vc.guild}>: Sending lyric <{current.title}>: {selected.path}")
-        paginator = DiscordPaginatorUI(ctx, embed_sets)
+        paginator = DiscordPaginatorUI(await _ctx(inter), embeds)
         await paginator.interact()
 
+    # ---- queue
     def _generate_simple_queue_embed(
         self,
-        dataset: List[TrackEntry],
+        dataset: list[TrackEntry],
         current: int,
         maximum: int,
         real_total: int,
         total_duration: float,
+        tr: Translator,
     ):
-        embed = disnake.Embed(colour=disnake.Colour.random())
-        embed.set_author(name="🎶 Pemutar Musik", icon_url=self.bot.user.avatar)
-
-        starting_track = ((current + 1) * 5) - 5
+        embed = discord.Embed(colour=discord.Colour.random())
+        embed.set_author(name=tr("player.author"), icon_url=_bot_avatar_url(self.bot))
+        start = ((current + 1) * 5) - 5
         total_durasi = TimeString.from_seconds(total_duration).to_string()
-
-        description_fmt = []
-        for n, track in enumerate(dataset, starting_track + 1):
-            description_fmt.append(
-                f"**{n}**. `{track.track.title}` [{format_duration(track.track.duration)}] (Diputar oleh: `{track.requester}`)"  # noqa: E501
+        embed.description = "\n".join(
+            tr(
+                "queue.list.entry",
+                n=n,
+                title=t.track.title,
+                duration=format_duration(t.track.length / 1000),
+                requester=t.requester,
             )
-
-        embed.description = "\n".join(description_fmt)
-        embed.set_footer(text=f"Tersisa {real_total} lagu ({current + 1}/{maximum}) | {total_durasi}")
+            for n, t in enumerate(dataset, start + 1)
+        )
+        embed.set_footer(
+            text=tr(
+                "queue.list.footer",
+                total=real_total,
+                current=current + 1,
+                maximum=maximum,
+                duration=total_durasi,
+            )
+        )
         return embed
 
-    @musik_player.group(name="queue", aliases=["q"])
-    @is_in_voice()
-    async def musik_player_queue(self, ctx: naoTimesContext):
-        if not ctx.invoked_subcommand:
-            if not ctx.empty_subcommand(3):
-                return
+    @queue.command(
+        name="list",
+        description=app_commands.locale_str("Lihat daftar putar", key="musik.queue.list.description"),
+    )
+    @app_commands.check(check_in_voice)
+    async def queue_list(self, inter: discord.Interaction):
+        instance = self.player_manager.get(await _require_player(inter))
+        ctx = await _ctx(inter)
+        if instance.queue.empty():
+            return await inter.response.send_message(ctx.t("queue.list.empty"), ephemeral=True)
 
-            instance = self.bot.ntplayer.get(ctx.voice_client)
-            if instance.queue.empty():
-                return await ctx.send("Tidak ada lagu di daftar putar!")
+        tracks = list(instance.queue._queue)
+        total_duration = sum(t.track.length for t in tracks) / 1000
+        chunks = [tracks[i : i + 5] for i in range(0, len(tracks), 5)]
+        embed_fn = partial(
+            self._generate_simple_queue_embed,
+            maximum=len(chunks),
+            real_total=len(tracks),
+            total_duration=total_duration,
+            tr=ctx.t,
+        )
+        view = DiscordPaginatorUI(await _ctx(inter), chunks)
+        view.attach(embed_fn)
+        await view.interact()
 
-            all_queued_tracks = [d for d in instance.queue._queue]
-            total_duration = sum(track.track.duration for track in all_queued_tracks)
-
-            # Split into chunks
-            chunked_tracks = [all_queued_tracks[i : i + 5] for i in range(0, len(all_queued_tracks), 5)]
-
-            partial_embed = partial(
-                self._generate_simple_queue_embed,
-                maximum=len(chunked_tracks),
-                real_total=len(all_queued_tracks),
-                total_duration=total_duration,
-            )
-
-            view = DiscordPaginatorUI(ctx, chunked_tracks)
-            view.attach(partial_embed)
-            await view.interact()
-
-    @musik_player_queue.command(name="remove", aliases=["hapus"])
-    @user_in_vc()
-    async def musik_player_queue_remove(self, ctx: naoTimesContext, index: int):
-        vc: wavelink.Player = ctx.voice_client
-        instance = self.bot.ntplayer.get(vc)
-        if instance.queue.qsize() < 1:
-            return await ctx.send("Tidak ada lagu di daftar putar!")
-
-        if index < 1:
-            return await ctx.send("Posisi harus lebih dari satu!", reference=ctx.message)
-        if index > instance.queue.qsize():
-            return await ctx.send(
-                "Posisi tidak boleh lebih dari jumlah lagu di daftar putar!", reference=ctx.message
-            )
-
-        index -= 1
+    @queue.command(
+        name="remove",
+        description=app_commands.locale_str("Hapus lagu dari daftar putar", key="musik.queue.remove.description"),
+    )
+    @app_commands.describe(
+        posisi=app_commands.locale_str("Posisi lagu (lihat di /musik queue list)", key="musik.queue.remove.option")
+    )
+    @app_commands.check(check_user_in_vc)
+    @app_commands.check(check_has_queue)
+    async def queue_remove(self, inter: discord.Interaction, posisi: app_commands.Range[int, 1]):
+        ctx = await _ctx(inter)
+        vc = await _require_player(inter)
+        author = await _require_member(inter)
+        instance = self.player_manager.get(vc)
+        if posisi > instance.queue.qsize():
+            return await inter.response.send_message(ctx.t("queue.position_too_high"), ephemeral=True)
+        index = posisi - 1
         track = instance.queue._queue[index]
-        success = False
-        if track.requester == ctx.author:
-            success = self.bot.ntplayer.delete_track(vc, index)
-        elif instance.host and instance.host == ctx.author:
-            success = self.bot.ntplayer.delete_track(vc, index)
-        elif self._check_perms(ctx.author.guild_permissions):
-            success = self.bot.ntplayer.delete_track(vc, index)
-        else:
-            return await ctx.send(
-                f"Anda tidak memiliki hak untuk menghapus lagu `{track.track.title}` dari daftar putar!",
-                reference=ctx.message,
+        allowed = (
+            track.requester == author
+            or (instance.host and instance.host == author)
+            or can_manage(author.guild_permissions)
+        )
+        if not allowed:
+            return await inter.response.send_message(
+                ctx.t("queue.remove.no_permission", title=track.track.title),
+                ephemeral=True,
             )
+        if self.player_manager.delete_track(vc, index):
+            return await inter.response.send_message(ctx.t("queue.remove.success", title=track.track.title))
+        await inter.response.send_message(ctx.t("queue.remove.failed"), ephemeral=True)
 
-        if success:
-            return await ctx.send(
-                f"Lagu `{track.track.title}` berhasil dihapus dari daftar putar!", reference=ctx.message
-            )
-        await ctx.send("Tidak dapat menghapus lagu dari daftar putar!", reference=ctx.message)
-
-    @musik_player_queue.command(name="clear", aliases=["bersihkan"])
-    @user_in_vc()
+    @queue.command(
+        name="clear",
+        description=app_commands.locale_str("Bersihkan daftar putar", key="musik.queue.clear.description"),
+    )
+    @app_commands.check(check_user_in_vc)
+    @app_commands.check(check_has_queue)
     @check_requirements(is_god, is_host)
-    async def musik_player_queue_clear(self, ctx: naoTimesContext):
-        instance = self.bot.ntplayer.get(ctx.voice_client)
-        if instance.queue.qsize() < 1:
-            return await ctx.send("Tidak ada lagu di daftar putar!")
+    async def queue_clear(self, inter: discord.Interaction):
+        ctx = await _ctx(inter)
+        vc = await _require_player(inter)
+        if self.player_manager.get(vc).repeat == TrackRepeat.single:
+            return await inter.response.send_message(ctx.t("queue.clear.repeat_single"), ephemeral=True)
+        self.player_manager.clear(vc)
+        await inter.response.send_message(ctx.t("queue.clear.success"))
 
-        if instance.repeat == TrackRepeat.single:
-            return await ctx.send("Tidak dapat menghapus daftar putar jika mode repeat adalah single!")
+    @queue.command(
+        name="move",
+        description=app_commands.locale_str(
+            "Pindahkan posisi lagu di daftar putar", key="musik.queue.move.description"
+        ),
+    )
+    @app_commands.describe(
+        dari=app_commands.locale_str("Posisi awal", key="musik.queue.move.option_from"),
+        ke=app_commands.locale_str("Posisi tujuan", key="musik.queue.move.option_to"),
+    )
+    @app_commands.check(check_user_in_vc)
+    @app_commands.check(check_has_queue)
+    @check_requirements(is_god, is_host)
+    async def queue_move(
+        self, inter: discord.Interaction, dari: app_commands.Range[int, 1], ke: app_commands.Range[int, 1]
+    ):
+        ctx = await _ctx(inter)
+        vc = await _require_player(inter)
+        instance = self.player_manager.get(vc)
+        size = instance.queue.qsize()
+        if dari > size or ke > size:
+            return await inter.response.send_message(ctx.t("queue.position_too_high"), ephemeral=True)
+        if instance.repeat != TrackRepeat.disable:
+            return await inter.response.send_message(ctx.t("queue.move.repeat_active"), ephemeral=True)
+        instance.freeze()
+        try:
+            qcopy = instance.queue._queue.copy()
+            qcopy.rotate(-(dari - 1))
+            track = qcopy.popleft()
+            qcopy.rotate(dari - 1)
+            qcopy.insert(ke - 1, track)
+            instance.queue._queue = qcopy
+            self.player_manager.set(vc, instance)
+        except Exception as e:
+            self.logger.error("An error occured while trying to move track from queue!", exc_info=e)
+            return await inter.response.send_message(ctx.t("queue.move.error"), ephemeral=True)
+        finally:
+            instance.unfreeze()
+        await inter.response.send_message(ctx.t("queue.move.success"))
 
-        self.bot.ntplayer.clear(ctx.voice_client)
-        await ctx.send("Daftar putar dibersihkan!", reference=ctx.message)
 
-
-def setup(bot: naoTimesBot):
-    bot.add_cog(MusikPlayerCommand(bot))
+async def setup(bot: naoTimesBot):
+    if bot.ntplayer is None:
+        bot.logger.warning("Music is not configured; not loading the music command cog")
+        return
+    await bot.add_cog(MusikPlayerCommand(bot))

@@ -1,7 +1,7 @@
 """
 MIT License
 
-Copyright (c) 2019-2021 naoTimesdev
+Copyright (c) 2019-2022 naoTimesdev
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -25,7 +25,7 @@ SOFTWARE.
 import asyncio
 import logging
 import re
-from typing import Any, AnyStr, List, Optional, Tuple, Union
+from typing import cast
 
 import aiohttp
 import arrow
@@ -38,8 +38,31 @@ from ..version import __version__ as bot_version
 __all__ = ("FansubDBBridge",)
 
 
+def _as_mapping(value: object) -> dict[str, object] | None:
+    if not isinstance(value, dict):
+        return None
+    return cast(dict[str, object], value)
+
+
+def _as_mapping_list(value: object) -> list[dict[str, object]] | None:
+    if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
+        return None
+    return cast(list[dict[str, object]], value)
+
+
+def _integer_value(value: object) -> int:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return 0
+    return 0
+
+
 class FSDBAPIError(Exception):
-    def __init__(self, code: int, message: AnyStr) -> None:
+    def __init__(self, code: int, message: str) -> None:
         self.code = code
         self.message = message
         super().__init__(f"{code}: {message}")
@@ -51,7 +74,7 @@ class FansubDBBridge:
         username: str,
         password: str,
         session: aiohttp.ClientSession,
-        loop: asyncio.AbstractEventLoop = None,
+        loop: asyncio.AbstractEventLoop | None = None,
     ):
         self.logger = logging.getLogger("naoTimes.FansubDB")
         self._outside_session = False
@@ -67,9 +90,7 @@ class FansubDBBridge:
 
         self._user = username
         self._pass = password
-        self._loop: asyncio.AbstractEventLoop = loop
-        if loop is None:
-            self._loop = asyncio.get_event_loop()
+        self._loop = loop if loop is not None else asyncio.get_event_loop()
         self.BASE_URL = "https://db.silveryasha.web.id"
         self.BASE_API = f"{self.BASE_URL}/api"
         self._method_map = {
@@ -79,7 +100,7 @@ class FansubDBBridge:
             "delete": self.session.delete,
         }
 
-        self._token = ""  # noqa: E501
+        self._token = ""
         self._expire = None
 
         # self._loop.run_until_complete(self.authorize())
@@ -88,7 +109,7 @@ class FansubDBBridge:
     def token_data(self):
         return {"token": self._token, "expires": self._expire}
 
-    def set_token(self, token: str, expires: Optional[Union[int, float]]):
+    def set_token(self, token: str, expires: float | None):
         self._token = token
         self._expire = expires
 
@@ -98,7 +119,7 @@ class FansubDBBridge:
         Find close matches from input target
         Sort everything if there's more than 2 results
         """
-        target_compiler = re.compile("({})".format(target), re.IGNORECASE)
+        target_compiler = re.compile(f"({target})", re.IGNORECASE)
         return [fres for fres in lists if target_compiler.search(fres["name"])]
 
     async def close(self):
@@ -106,7 +127,7 @@ class FansubDBBridge:
         if not self._outside_session:
             await self.session.close()
 
-    async def request_db(self, method: str, url: str, **kwargs) -> Tuple[AnyStr, int]:
+    async def request_db(self, method: str, url: str, **kwargs) -> tuple[str, int]:
         """Request a webpage to the FansubDB website.
         Might be the API or just normal page.
 
@@ -118,6 +139,8 @@ class FansubDBBridge:
         :rtype: AnyStr
         """
         methods = self._method_map.get(method.lower())
+        if methods is None:
+            raise ValueError(f"Unsupported HTTP method: {method}")
         main_headers = kwargs.pop("headers", {})
         all_headers = {"Content-Type": "application/json", "X-Requested-With": "naoTimes-FansubDB"}
         if self._token:
@@ -129,9 +152,7 @@ class FansubDBBridge:
             code = resp.status
         return res, code
 
-    async def request_api(
-        self, method: str, endpoint: str, **kwargs
-    ) -> Union[List[AttributeDict], AttributeDict, Any]:
+    async def request_api(self, method: str, endpoint: str, **kwargs) -> list[AttributeDict] | AttributeDict:
         url = f"{self.BASE_API}/{endpoint}"
         json_data = kwargs.get("json", kwargs.get("data", None))
         self.logger.info(f"{method}: request to /api/{endpoint}: {json_data}")
@@ -143,22 +164,20 @@ class FansubDBBridge:
             data = orjson.loads(res)
         except orjson.JSONEncodeError as e:
             self.logger.error(f"Failed to decode JSON response: {e}")
-            raise FSDBAPIError(ret_code, f"Failed to decode JSON response: {str(e)}")
+            raise FSDBAPIError(ret_code, f"Failed to decode JSON response: {e!s}")
         except aiohttp.ClientResponseError as e:
-            self.logger.error(f"Failed to request {url}: {str(e)}")
-            raise FSDBAPIError(e.status, f"Failed to request {url}: {str(e)}")
+            self.logger.error(f"Failed to request {url}: {e!s}")
+            raise FSDBAPIError(e.status, f"Failed to request {url}: {e!s}")
         if isinstance(data, list):
-            as_attr_dict = []
+            as_attr_dict: list[AttributeDict] = []
             for item in data:
-                try:
-                    as_attr_dict.append(AttributeDict(item))
-                except Exception:
-                    as_attr_dict.append(item)
+                if not isinstance(item, dict):
+                    raise FSDBAPIError(ret_code, "Expected an object in the JSON response list")
+                as_attr_dict.append(AttributeDict(item))
             return as_attr_dict
-        try:
+        if isinstance(data, dict):
             return AttributeDict(data)
-        except Exception:
-            return data
+        raise FSDBAPIError(ret_code, "Expected an object or list in the JSON response")
 
     async def authorize(self):
         """
@@ -167,12 +186,17 @@ class FansubDBBridge:
         body = {"username": self._user, "password": self._pass}
         self.logger.info(f"Authenticating FansubDB with user {self._user}")
         res = await self.request_api("post", "pintusorga", json=body)
-        if res["type"] == "success":
+        response = _as_mapping(res)
+        if response is not None and response.get("type") == "success":
             self.logger.info("Successfully logged in.")
-            self._token = res["token"]
+            token = response.get("token")
+            if isinstance(token, str):
+                self._token = token
+                return
+            self.logger.error("FansubDB login response did not include a token")
         else:
             self.logger.error("Failed to authenticate account, disabling fansubdb...")
-            self._token = None
+        self._token = ""
 
     async def check_expires(self):
         if self._expire is None:
@@ -185,7 +209,9 @@ class FansubDBBridge:
             self.logger.info("Reauthorizing since token expired...")
             await self.authorize()
 
-    async def find_id_from_mal(self, mal_id: int, dataset: list) -> int:
+    async def find_id_from_mal(self, mal_id: int, dataset: list[fsdbmodel.FSDBAnimeData]) -> int:
+        if not dataset:
+            return 0
         mid_num = len(dataset) // 2
         mid_data = dataset[mid_num]
         if mid_data["mal_id"] == mal_id:
@@ -200,7 +226,9 @@ class FansubDBBridge:
                     return data["id"]
         return 0
 
-    async def find_project_id(self, anime_id: int, dataset: list) -> int:
+    async def find_project_id(self, anime_id: int, dataset: list[fsdbmodel.FSDBProjectData]) -> int:
+        if not dataset:
+            return 0
         dataset.sort(key=lambda x: x["anime"]["id"])
         mid_num = len(dataset) // 2
         mid_data = dataset[mid_num]
@@ -216,71 +244,77 @@ class FansubDBBridge:
                     return data["id"]
         return 0
 
-    async def fetch_animes(self) -> List[fsdbmodel.FSDBAnimeData]:
+    async def fetch_animes(self) -> list[fsdbmodel.FSDBAnimeData]:
         await self.check_expires()
         headers = {"Authorization": f"Bearer {self._token}"}
         try:
-            anime_list: List[dict] = await self.request_api("get", "anime/list", headers=headers)
-            if isinstance(anime_list, list):
-                anime_list.sort(key=lambda x: x["id"])
-                return anime_list
-            else:
-                self.logger.error(f"Failed to get Anime list, {anime_list!r}")
+            response = await self.request_api("get", "anime/list", headers=headers)
+            anime_list = _as_mapping_list(response)
+            if anime_list is None:
+                self.logger.error(f"Failed to get Anime list, {response!r}")
                 return []
+            anime_list.sort(key=lambda x: _integer_value(x.get("id")))
+            return cast(list[fsdbmodel.FSDBAnimeData], anime_list)
         except FSDBAPIError as e:
-            self.logger.error(f"Failed to fetch anime list: {str(e)}")
+            self.logger.error(f"Failed to fetch anime list: {e!s}")
             return []
 
-    async def fetch_anime(self, anime_id: Union[int, str]) -> Optional[fsdbmodel.FSDBAnimeData]:
+    async def fetch_anime(self, anime_id: int | str) -> fsdbmodel.FSDBAnimeData | None:
         await self.check_expires()
         headers = {"Authorization": f"Bearer {self._token}"}
         try:
-            anime_info: dict = await self.request_api("get", f"anime/list/{anime_id}", headers=headers)
-            if "type" in anime_info and anime_info["type"] == "error":
+            response = await self.request_api("get", f"anime/list/{anime_id}", headers=headers)
+            anime_info = _as_mapping(response)
+            if anime_info is None or anime_info.get("type") == "error":
                 return None
-            return anime_info
+            return cast(fsdbmodel.FSDBAnimeData, anime_info)
         except FSDBAPIError as e:
             if e.code == 404:
                 return None
             raise
 
-    async def fetch_anime_by_mal(self, mal_id: Union[int, str]) -> Optional[fsdbmodel.FSDBAnimeData]:
+    async def fetch_anime_by_mal(self, mal_id: int | str) -> fsdbmodel.FSDBAnimeData | None:
         await self.check_expires()
         headers = {"Authorization": f"Bearer {self._token}"}
         try:
-            anime_info = await self.request_api("get", f"anime/mal/{mal_id}", headers=headers)
-            if "type" in anime_info and anime_info["type"] == "error":
+            response = await self.request_api("get", f"anime/mal/{mal_id}", headers=headers)
+            anime_info = _as_mapping(response)
+            if anime_info is None or anime_info.get("type") == "error":
                 return None
-            return anime_info
+            return cast(fsdbmodel.FSDBAnimeData, anime_info)
         except FSDBAPIError as err:
             # Error, assume that it got 404'd
             if err.code == 404:
                 return None
             raise
 
-    async def import_mal(self, mal_id: int) -> Tuple[bool, Union[int, str]]:
+    async def import_mal(self, mal_id: int) -> tuple[bool, int | str]:
         await self.check_expires()
         headers = {"Authorization": f"Bearer {self._token}"}
         body_json = {"mal_id": mal_id}
-        result = await self.request_api("post", "anime/list", json=body_json, headers=headers)
-        if result["type"] == "success":
+        response = await self.request_api("post", "anime/list", json=body_json, headers=headers)
+        result = _as_mapping(response)
+        if result is not None and result.get("type") == "success":
             anime_lists = await self.fetch_animes()
             anime_lists.sort(key=lambda x: x["mal_id"])
             fs_id = await self.find_id_from_mal(mal_id, anime_lists)
             return True, fs_id
-        return False, result["message"]
+        message = result.get("message") if result is not None else None
+        return False, message if isinstance(message, str) else "FansubDB anime import failed"
 
-    async def fetch_fansubs(self, search_query: str = "") -> List[fsdbmodel.FSDBFansubData]:
+    async def fetch_fansubs(self, search_query: str = "") -> list[fsdbmodel.FSDBFansubData]:
         await self.check_expires()
         headers = {"Authorization": f"Bearer {self._token}"}
-        fansubs_list: list = await self.request_api("get", "fansub/list", headers=headers)
+        response = await self.request_api("get", "fansub/list", headers=headers)
+        fansubs_list = _as_mapping_list(response)
+        if fansubs_list is None:
+            self.logger.error("FansubDB returned an invalid fansub list")
+            return []
         if search_query.rstrip() != "":
             fansubs_list = self.get_close_matches(search_query, fansubs_list)
-        return fansubs_list
+        return cast(list[fsdbmodel.FSDBFansubData], fansubs_list)
 
-    async def fetch_anime_fansubs(
-        self, anime_id: Union[int, str]
-    ) -> Tuple[List[fsdbmodel.FSDBProjectData], str]:
+    async def fetch_anime_fansubs(self, anime_id: int | str) -> tuple[list[fsdbmodel.FSDBProjectData], str]:
         if isinstance(anime_id, str):
             try:
                 anime_id = int(anime_id)
@@ -288,12 +322,13 @@ class FansubDBBridge:
                 return [], "Anime ID is not a valid number."
         await self.check_expires()
         headers = {"Authorization": f"Bearer {self._token}"}
-        fansubs_list: list = await self.request_api("get", f"projek/anime/{anime_id}", headers=headers)
-        return fansubs_list, "Success"
+        response = await self.request_api("get", f"projek/anime/{anime_id}", headers=headers)
+        fansubs_list = _as_mapping_list(response)
+        if fansubs_list is None:
+            return [], "FansubDB returned an invalid project list"
+        return cast(list[fsdbmodel.FSDBProjectData], fansubs_list), "Success"
 
-    async def fetch_fansub_projects(
-        self, fansub_id: Union[int, str]
-    ) -> Tuple[List[fsdbmodel.FSDBProjectData], str]:
+    async def fetch_fansub_projects(self, fansub_id: int | str) -> tuple[list[fsdbmodel.FSDBProjectData], str]:
         if isinstance(fansub_id, str):
             try:
                 fansub_id = int(fansub_id)
@@ -302,52 +337,44 @@ class FansubDBBridge:
         await self.check_expires()
         headers = {"Authorization": f"Bearer {self._token}"}
         try:
-            project_lists: list = await self.request_api("get", f"projek/fansub/{fansub_id}", headers=headers)
-            if (
-                isinstance(project_lists, dict)
-                and "type" in project_lists
-                and project_lists["type"] == "error"
-            ):
-                return [], project_lists["message"]
-            return project_lists, "Success"
+            response = await self.request_api("get", f"projek/fansub/{fansub_id}", headers=headers)
+            project_data = _as_mapping_list(response)
+            if project_data is not None:
+                return cast(list[fsdbmodel.FSDBProjectData], project_data), "Success"
+            error_data = _as_mapping(response)
+            message = error_data.get("message") if error_data is not None else None
+            if error_data is not None and error_data.get("type") == "error":
+                return [], message if isinstance(message, str) else "FansubDB returned an error"
+            return [], "FansubDB returned an invalid project list"
         except FSDBAPIError as err:
             if err.code == 404:
                 return [], "Fansub ini belum ada garapan"
             return [], err.message
 
     async def add_new_project(
-        self, anime_id: Union[int, str], fansub_id: Union[int, str, list], status: str = "Tentatif"
-    ) -> Tuple[bool, Union[int, str]]:
+        self, anime_id: int | str, fansub_id: int | str | list[int | str], status: str = "Tentatif"
+    ) -> tuple[bool, int | str]:
         if isinstance(anime_id, str):
             try:
                 anime_id = int(anime_id)
             except ValueError:
                 return False, "Anime ID is not a valid number."
-        if isinstance(fansub_id, str):
+        raw_fansub_ids = fansub_id if isinstance(fansub_id, list) else [fansub_id]
+        normalized_fansub_ids: list[int] = []
+        for fs_id in raw_fansub_ids:
             try:
-                fansub_id = int(fansub_id)
-            except ValueError:
+                normalized_fansub_ids.append(int(fs_id))
+            except (TypeError, ValueError):
                 return False, "Fansub ID is not a valid number."
-        if isinstance(fansub_id, list):
-            try:
-                new_fs_id = []
-                for fs_id in fansub_id:
-                    if isinstance(fansub_id, str):
-                        try:
-                            fs_id = int(fs_id)
-                        except ValueError:
-                            return False, "Fansub ID is not a valid number."
-                    new_fs_id.append(fs_id)
-                fansub_id = new_fs_id
-            except ValueError:
-                return False, "Fansub ID is not a valid number."
+        if not normalized_fansub_ids:
+            return False, "At least one Fansub ID is required."
         if status not in ["Tentatif", "Jalan", "Tamat", "Drop"]:
             return False, "Invalid status."
         await self.check_expires()
         headers = {"Authorization": f"Bearer {self._token}"}
         json_body = {
             "anime_id": anime_id,
-            "fansub": [fansub_id] if not isinstance(fansub_id, list) else fansub_id,
+            "fansub": normalized_fansub_ids,
             "flag": None,
             "type": "TV",
             "subtitle": "Softsub",
@@ -355,32 +382,35 @@ class FansubDBBridge:
             "url": None,
             "misc": None,
         }
-        fisrt_fs_id = fansub_id if not isinstance(fansub_id, list) else fansub_id[0]
-        results: dict = await self.request_api("post", "projek/list", json=json_body, headers=headers)
-        if results["type"] == "success":
+        first_fs_id = normalized_fansub_ids[0]
+        response = await self.request_api("post", "projek/list", json=json_body, headers=headers)
+        results = _as_mapping(response)
+        if results is not None and results.get("type") == "success":
             retry_count = 0
             await asyncio.sleep(0.25)
             while retry_count < 5:
-                fansub_project, _ = await self.fetch_fansub_projects(fisrt_fs_id)
+                fansub_project, _ = await self.fetch_fansub_projects(first_fs_id)
                 project_id = await self.find_project_id(anime_id, fansub_project)
                 if project_id != 0:
                     return True, project_id
                 retry_count += 1
                 await asyncio.sleep(1)
             return False, "Failed to fetch FansubDB Project ID, please contact N4O or mention him."
-        return False, results["message"]
+        message = results.get("message") if results is not None else None
+        return False, message if isinstance(message, str) else "FansubDB project creation failed"
 
-    async def get_project(self, project_id: Union[int, str]) -> Tuple[dict, str]:
+    async def get_project(self, project_id: int | str) -> dict[str, object] | None:
         if isinstance(project_id, str):
             try:
                 project_id = int(project_id)
             except ValueError:
-                return {}, "Project ID is not a valid number."
+                return None
         await self.check_expires()
         headers = {"Authorization": f"Bearer {self._token}"}
         try:
-            results: dict = await self.request_api("get", f"projek/list/{project_id}", headers=headers)
-            if results["type"] == "error":
+            response = await self.request_api("get", f"projek/list/{project_id}", headers=headers)
+            results = _as_mapping(response)
+            if results is None or results.get("type") == "error":
                 return None
             return results
         except FSDBAPIError as err:
@@ -389,31 +419,31 @@ class FansubDBBridge:
             raise
 
     async def _internal_update_project(
-        self, project_id: Union[int, str], to_update: str, update_data: Optional[Union[int, str, List[int]]]
+        self, project_id: int | str, to_update: str, update_data: int | str | list[int] | None
     ):
         res = await self.get_project(project_id)
         if not res:
             return False, "Project not found."
         headers = {"Authorization": f"Bearer {self._token}"}
-        json_body = {to_update: update_data}
+        json_body: dict[str, object] = {to_update: update_data}
         if to_update == "status":
             json_body["url"] = "https://naoti.me/fsdb-landing/"
             if res.get("url") is not None:
                 json_body["url"] = res["url"]
-        results: dict = await self.request_api(
-            "put", f"projek/list/{project_id}", json=json_body, headers=headers
-        )
-        if results["type"] == "success":
+        response = await self.request_api("put", f"projek/list/{project_id}", json=json_body, headers=headers)
+        results = _as_mapping(response)
+        if results is not None and results.get("type") == "success":
             return True, "Success"
-        return False, results["message"]
+        message = results.get("message") if results is not None else None
+        return False, message if isinstance(message, str) else "FansubDB project update failed"
 
     async def update_project(
         self,
-        project_id: Union[int, str],
+        project_id: int | str,
         to_update: str,
-        update_data: Optional[Union[int, str, List[int]]],
+        update_data: int | str | list[int] | None,
         task_mode=True,
-    ) -> Tuple[bool, str]:
+    ) -> tuple[bool, str]:
         if isinstance(project_id, str):
             try:
                 project_id = int(project_id)
@@ -423,13 +453,11 @@ class FansubDBBridge:
         if task_mode:
             ctime = arrow.utcnow().int_timestamp
             task_name = f"FSDB-Update-Project-{project_id}_{ctime}"
-            self._loop.create_task(
-                self._internal_update_project(project_id, to_update, update_data), name=task_name
-            )
+            self._loop.create_task(self._internal_update_project(project_id, to_update, update_data), name=task_name)
             return True, "Task created"
         return await self._internal_update_project(project_id, to_update, update_data)
 
-    async def delete_project(self, project_id: Union[int, str]) -> Tuple[bool, str]:
+    async def delete_project(self, project_id: int | str) -> tuple[bool, str]:
         if isinstance(project_id, str):
             try:
                 project_id = int(project_id)
@@ -437,7 +465,9 @@ class FansubDBBridge:
                 return False, "Project ID is not a valid number."
         await self.check_expires()
         headers = {"Authorization": f"Bearer {self._token}"}
-        results: dict = await self.request_api("delete", f"projek/list/{project_id}", headers=headers)
-        if results["type"] == "success":
+        response = await self.request_api("delete", f"projek/list/{project_id}", headers=headers)
+        results = _as_mapping(response)
+        if results is not None and results.get("type") == "success":
             return True, "Success"
-        return False, results["message"]
+        message = results.get("message") if results is not None else None
+        return False, message if isinstance(message, str) else "FansubDB project deletion failed"

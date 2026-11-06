@@ -1,15 +1,16 @@
 import logging
-from typing import Any, List, Union
+from typing import Any
 from urllib.parse import urlparse
 
-import disnake
+import discord
 import feedparser
-from disnake.ext import commands
+from discord import app_commands
+from discord.ext import commands
 from schema import SchemaError
 
 from naotimes.bot import naoTimesBot
-from naotimes.context import naoTimesContext
-from naotimes.showtimes import FansubRSS, FansubRSSEmbed, FansubRSSFeed, Showtimes
+from naotimes.showtimes import FansubRSS, FansubRSSFeed, Showtimes
+from naotimes.showtimes.slash import load_server
 from naotimes.socket import ntsocket
 from naotimes.utils import generate_custom_code, get_current_time
 
@@ -19,27 +20,36 @@ from .fansubrss import fansubRSSSchemas, normalize_rss_data
 class ShowtimesUIBridge(commands.Cog):
     def __init__(self, bot: naoTimesBot) -> None:
         self.bot = bot
+        ntdb = bot.ntdb
+        redisdb = bot.redisdb
+        showqueue = bot.showqueue
+        if ntdb is None or redisdb is None or showqueue is None:
+            raise RuntimeError("Showtimes database, Redis, and queue must be initialized before loading this cog")
+        self.ntdb = ntdb
+        self.redisdb = redisdb
+        self.showqueue = showqueue
         self.logger = logging.getLogger("Showtimes.nTUIBridge")
 
     # pull data
     @ntsocket("pull data")
     async def on_pull_data(self, sid: str, data: str):
         self.logger.info(f"{sid}: requested pull data for {data}")
-        remote_data = await self.bot.ntdb.get_server(data)
+        remote_data = await self.ntdb.get_server(data)
         if remote_data is None:
             self.logger.error(f"{sid}:{data}: unknown server, ignoring!")
             return {"message": "Unknown server", "success": 0}
-        await self.bot.redisdb.set(f"showtimes_{remote_data.id}", remote_data.serialize())
+        await self.redisdb.set(f"showtimes_{remote_data.id}", remote_data.serialize())
+        return "ok"
 
     # pull admin
     @ntsocket("pull admin")
     async def on_pull_admin_data(self, sid: str, data: str):
         self.logger.info(f"{sid}: requested pull admin data for {data}")
-        remote_data = await self.bot.ntdb.get_admin(data)
+        remote_data = await self.ntdb.get_admin(data)
         if remote_data is None:
             self.logger.error(f"{sid}:{data}: unknown admin, ignoring!")
             return {"message": "Unknown admin", "success": 0}
-        await self.bot.redisdb.set(f"showadmin_{remote_data.id}", remote_data.serialize())
+        await self.redisdb.set(f"showadmin_{remote_data.id}", remote_data.serialize())
         return "ok"
 
     # get server
@@ -76,17 +86,15 @@ class ShowtimesUIBridge(commands.Cog):
     @ntsocket("get servers")
     async def on_showtimes_server_request(self, sid: str):
         self.logger.info(f"{sid}: requested all server info")
-        showtimes_server = await self.bot.redisdb.getall("showtimes_*")
+        showtimes_server = await self.redisdb.getall("showtimes_*")
         all_server = []
         for server in showtimes_server:
             if not server:
                 continue
-            all_server.append(
-                {
-                    "id": server.get("id"),
-                    "name": server.get("name"),
-                }
-            )
+            all_server.append({
+                "id": server.get("id"),
+                "name": server.get("name"),
+            })
         return all_server
 
     # get user
@@ -135,7 +143,7 @@ class ShowtimesUIBridge(commands.Cog):
         for perm_name, perm_val in perms_sets:
             if perm_val:
                 user_perms.append(perm_name)
-        if isinstance(guild_info.owner, disnake.Member):
+        if isinstance(guild_info.owner, discord.Member):
             if guild_info.owner == member_info:
                 user_perms.append("owner")
         return {"message": user_perms, "success": 1}
@@ -155,7 +163,7 @@ class ShowtimesUIBridge(commands.Cog):
         channel_info = guild_info.get_channel(channel_id)
         if channel_info is None:
             return {"message": "Kanal tidak dapat ditemukan", "success": 0}
-        if not isinstance(channel_info, disnake.TextChannel):
+        if not isinstance(channel_info, discord.TextChannel):
             return {"message": "Kanal yang dipilih bukanlah kanal teks", "success": 0}
         channel_parsed = {}
         channel_parsed["id"] = str(channel_info.id)
@@ -175,9 +183,69 @@ class ShowtimesUIBridge(commands.Cog):
             return {"message": "Guild tidak dapat ditemukan", "success": 0}
         text_channels = []
         for kanal in guild_info.channels:
-            if isinstance(kanal, disnake.TextChannel):
+            if isinstance(kanal, discord.TextChannel):
                 text_channels.append({"id": str(kanal.id), "name": kanal.name})
         return {"message": text_channels, "success": 1}
+
+    # get user servers and return that have valid access
+    @ntsocket("get user privileged")
+    async def on_user_privileged_servers(self, sid: str, data: dict):
+        self.logger.info(f"{sid}: requested user privileged servers for {data}")
+        try:
+            user_id = int(data["id"])
+        except (KeyError, ValueError, IndexError):
+            return {"message": "ID bukanlah angka", "success": 0}
+        try:
+            server_selected = data["servers"]
+        except (KeyError, ValueError, IndexError):
+            return {"message": "Gagal unpack data dari server", "success": 0}
+
+        if not isinstance(server_selected, list):
+            return {"message": "Data server yang dipilih bukan list", "success": 0}
+
+        unregistered_servers = []
+        registered_servers = []
+        for server in server_selected:
+            try:
+                server_id = int(server)
+            except (KeyError, ValueError, IndexError):
+                continue
+            guild_info = self.bot.get_guild(server_id)
+            if guild_info is None:
+                continue
+            member_info = guild_info.get_member(user_id)
+            if member_info is None:
+                continue
+            showtimes_info = await self.showqueue.fetch_database(str(server_id))
+            if showtimes_info is None:
+                perms_sets = member_info.guild_permissions
+                if isinstance(guild_info.owner, discord.Member):
+                    if guild_info.owner == member_info:
+                        unregistered_servers.append({
+                            "id": str(server_id),
+                            "name": guild_info.name,
+                            "avatar": str(guild_info.icon),
+                        })
+                        continue
+                user_perms = []
+                for perm_name, perm_val in perms_sets:
+                    if perm_val:
+                        user_perms.append(perm_name)
+                if "manage_guild" in user_perms or "manage_server" in user_perms or "administrator" in user_perms:
+                    unregistered_servers.append({
+                        "id": str(server_id),
+                        "name": guild_info.name,
+                        "avatar": str(guild_info.icon),
+                    })
+            else:
+                if showtimes_info.is_admin(user_id):
+                    registered_servers.append({
+                        "id": str(server_id),
+                        "name": guild_info.name,
+                        "avatar": str(guild_info.icon),
+                    })
+
+        return {"message": {"r": registered_servers, "u": unregistered_servers}, "success": 1}
 
     # create role
     @ntsocket("create role")
@@ -215,14 +283,14 @@ class ShowtimesUIBridge(commands.Cog):
         # Role not found, let's create it
         try:
             new_guild_role = await guild_info.create_role(
-                name=role_name, mentionable=True, colour=disnake.Color.random()
+                name=role_name, mentionable=True, colour=discord.Color.random()
             )
-        except disnake.Forbidden:
+        except discord.Forbidden:
             return {
                 "message": "Bot naoTimes tidak memiliki akses untuk membuat role di server anda.",
                 "success": 0,
             }
-        except disnake.HTTPException:
+        except discord.HTTPException:
             return {
                 "message": "Bot naoTimes tidak dapat membuat role tersebut, mohon coba sesaat lagi.",
                 "success": 0,
@@ -260,18 +328,19 @@ class ShowtimesUIBridge(commands.Cog):
         if guild_info is None:
             return {"message": "Guild tidak dapat ditemukan", "success": 0}
         channel_info = guild_info.get_channel(kanal_id)
-        if channel_info is None:
-            return {"message": "Kanal tidak dapat ditemukan", "success": 0}
-        embed = disnake.Embed(title=anime_title, color=0xB51E1E)
+        if not isinstance(channel_info, discord.TextChannel):
+            return {"message": "Kanal teks tidak dapat ditemukan", "success": 0}
+        mod = self.bot.i18n_for(guild_info, "showtimes")
+        embed = discord.Embed(title=anime_title, color=0xB51E1E)
         embed.add_field(
-            name="Dropped...",
-            value=f"{anime_title} telah di drop dari Fansub ini :(",
+            name=mod.t("ntui.dropped_title"),
+            value=mod.t("ntui.dropped_value", title=anime_title),
             inline=False,
         )
-        embed.set_footer(text=f"Pada: {get_current_time()}")
+        embed.set_footer(text=mod.t("footer.at", time=get_current_time(mod.language)))
         try:
             await channel_info.send(embed=embed)
-        except (disnake.Forbidden, disnake.HTTPException):
+        except (discord.Forbidden, discord.HTTPException):
             pass
         return "ok"
 
@@ -279,14 +348,14 @@ class ShowtimesUIBridge(commands.Cog):
     @ntsocket("delete server")
     async def on_delete_server_request(self, sid: str, data: str):
         self.logger.info(f"{sid}: requested server deletion for {data}")
-        await self.bot.redisdb.rm(f"showtimes_{data}")
+        await self.redisdb.rm(f"showtimes_{data}")
         return "ok"
 
     # delete admin (showtimes)
     @ntsocket("delete admin")
     async def on_delete_server_admin_request(self, sid: str, data: str):
         self.logger.info(f"{sid}: requested supermod removal for {data}")
-        await self.bot.redisdb.rm(f"showadmin_{data}")
+        await self.redisdb.rm(f"showadmin_{data}")
         return "ok"
 
     # delete role, delete roles (showtimes)
@@ -317,7 +386,7 @@ class ShowtimesUIBridge(commands.Cog):
             if role_info is not None:
                 try:
                     await role_info.delete(reason="Showtimes project got deleted")
-                except (disnake.Forbidden, disnake.HTTPException):
+                except (discord.Forbidden, discord.HTTPException):
                     pass
         return "ok"
 
@@ -334,7 +403,7 @@ class ShowtimesUIBridge(commands.Cog):
         except (KeyError, ValueError, IndexError):
             hash_id = None
 
-        rss_metadata = await self.bot.redisdb.get(f"ntfsrss_{server_id}")
+        rss_metadata = await self.redisdb.get(f"ntfsrss_{server_id}")
         if rss_metadata is None:
             return {"message": None, "success": 1}
         parsed_rss = FansubRSS.from_dict(server_id, rss_metadata)
@@ -412,10 +481,10 @@ class ShowtimesUIBridge(commands.Cog):
         if server is None:
             return {"message": "Tidak dapat menemukan server, mohon invite Bot!", "success": 0}
         channel = server.get_channel(kanal_id)
-        if not isinstance(channel, disnake.TextChannel):
+        if not isinstance(channel, discord.TextChannel):
             return {"message": "Kanal tersebut bukan merupakan kanal teks", "success": 0}
 
-        rss_metadata = await self.bot.redisdb.get(f"ntfsrss_{server_id}")
+        rss_metadata = await self.redisdb.get(f"ntfsrss_{server_id}")
         if rss_metadata is None:
             rss_metadata = {"feeds": [], "premium": []}
         parsed_metadata = FansubRSS.from_dict(server_id, rss_metadata)
@@ -441,8 +510,8 @@ class ShowtimesUIBridge(commands.Cog):
                 "message": "Gagal memvalidasi hasil perubahan baru, kemungkinan ada yang salah",
                 "success": 0,
             }
-        await self.bot.redisdb.set(f"ntfsrss_{server_id}", parsed_metadata.serialize())
-        await self.bot.redisdb.set(f"ntfsrssd_{server_id}_{registered_hash}", {"fetchedURL": valid_parsed})
+        await self.redisdb.set(f"ntfsrss_{server_id}", parsed_metadata.serialize())
+        await self.redisdb.set(f"ntfsrssd_{server_id}_{registered_hash}", {"fetchedURL": valid_parsed})
 
         return {"message": {"id": registered_hash}, "success": 1}
 
@@ -465,7 +534,7 @@ class ShowtimesUIBridge(commands.Cog):
         except (KeyError, ValueError, IndexError):
             return {"message": "missing `changes` data", "success": 0}
 
-        rss_metadata = await self.bot.redisdb.get(f"ntfsrss_{server_id}")
+        rss_metadata = await self.redisdb.get(f"ntfsrss_{server_id}")
         if rss_metadata is None:
             return {"message": "Tidak dapat menemukan server tersebut", "success": 0}
 
@@ -489,7 +558,7 @@ class ShowtimesUIBridge(commands.Cog):
                     return {"message": f"Data `{change_key}` memiliki value yang salah", "success": 0}
                 hash_serialized[change_key] = change_value
 
-        hash_feeds = FansubRSSEmbed.from_dict(hash_serialized)
+        hash_feeds = FansubRSSFeed.from_dict(hash_serialized)
         parsed_metadata.feeds = hash_feeds
         try:
             fansubRSSSchemas.validate(parsed_metadata.serialize())
@@ -499,7 +568,7 @@ class ShowtimesUIBridge(commands.Cog):
                 "message": "Gagal memvalidasi hasil perubahan baru, kemungkinan ada yang salah",
                 "success": 0,
             }
-        await self.bot.redisdb.set(f"ntfsrss_{server_id}", parsed_metadata.serialize())
+        await self.redisdb.set(f"ntfsrss_{server_id}", parsed_metadata.serialize())
         return "ok"
 
     # fsrss delete (fansubrss)
@@ -511,7 +580,7 @@ class ShowtimesUIBridge(commands.Cog):
             server_id = data["id"]
         except (KeyError, ValueError, IndexError):
             return {"message": "Missing data", "success": 0}
-        rss_metadata = await self.bot.redisdb.get(f"ntfsrss_{server_id}")
+        rss_metadata = await self.redisdb.get(f"ntfsrss_{server_id}")
         if rss_metadata is None:
             return {"message": "Tidak dapat menemukan server tersebut", "success": 0}
 
@@ -527,8 +596,8 @@ class ShowtimesUIBridge(commands.Cog):
                 "success": 0,
             }
 
-        await self.bot.redisdb.rm(f"ntfsrssd_{server_id}_{hash_id}")
-        await self.bot.redisdb.set(f"ntfsrss_{server_id}", parsed_metadata.serialize())
+        await self.redisdb.rm(f"ntfsrssd_{server_id}_{hash_id}")
+        await self.redisdb.set(f"ntfsrss_{server_id}", parsed_metadata.serialize())
         return "ok"
 
     # collab create (showtimes)
@@ -541,7 +610,7 @@ class ShowtimesUIBridge(commands.Cog):
         except (KeyError, ValueError, IndexError):
             return {"message": "Missing data", "success": 0}
 
-        target_srvdis: Union[disnake.Guild, None] = None
+        target_srvdis: discord.Guild | None = None
         try:
             server_id = int(server_id)
             target_srvdis = self.bot.get_guild(server_id)
@@ -551,7 +620,7 @@ class ShowtimesUIBridge(commands.Cog):
         if target_srvdis is None:
             return {"message": "Peladen target tidak dapat ditemukan!", "success": 0}
 
-        srv_data = await self.bot.showqueue.fetch_database(server_id)
+        srv_data = await self.showqueue.fetch_database(str(server_id))
         if srv_data is None:
             return {"message": "Tidak dapat menemukan peladen target", "success": 0}
 
@@ -562,7 +631,7 @@ class ShowtimesUIBridge(commands.Cog):
         if confirm_data is None:
             return {"message": "Tidak dapat menemukan kolaborasi tersebut", "success": 0}
 
-        source_srv = await self.bot.showqueue.fetch_database(confirm_data.server)
+        source_srv = await self.showqueue.fetch_database(str(confirm_data.server))
         if source_srv is None:
             return {"message": "Tidak bisa menemukan peladen source?", "success": 0}
 
@@ -583,9 +652,9 @@ class ShowtimesUIBridge(commands.Cog):
             self.logger.info(f"{sid}: no role, creating roles...")
             col = selected_anime.poster.color
             if col is None:
-                real_color = disnake.Color.random()
+                real_color = discord.Color.random()
             else:
-                real_color = disnake.Color(col)
+                real_color = discord.Color(col)
             c_role = await target_srvdis.create_role(
                 name=selected_anime.title,
                 color=real_color,
@@ -594,6 +663,8 @@ class ShowtimesUIBridge(commands.Cog):
             anime_server_role = c_role.id
 
         mirror_data = selected_anime.copy()
+        if anime_server_role is None:
+            return {"message": "Tidak dapat menentukan role anime", "success": 0}
         mirror_data.role = anime_server_role
 
         collab_data = [confirm_data.server, server_id]
@@ -608,12 +679,12 @@ class ShowtimesUIBridge(commands.Cog):
         mirror_data.kolaborasi = collab_data
         srv_data.update_project(mirror_data)
 
-        full_update: List[Showtimes] = []
+        full_update: list[Showtimes] = []
         full_update.append(source_srv)
         for osrv in collab_data:
             if osrv in (confirm_data.server, server_id):
                 continue
-            osrv_data = await self.bot.showqueue.fetch_database(f"showtimes_{osrv}")
+            osrv_data = await self.showqueue.fetch_database(str(osrv))
             if osrv_data is None:
                 continue
             osrv_anime = osrv_data.get_project(mirror_data.id)
@@ -628,15 +699,15 @@ class ShowtimesUIBridge(commands.Cog):
 
         self.logger.info(f"{sid}: collab accepted, updating all showtimes...")
         for update in full_update:
-            await self.bot.redisdb.set(f"showtimes_{update.id}", update.serialize())
+            await self.redisdb.set(f"showtimes_{update.id}", update.serialize())
 
         self.logger.info(f"{sid}: updating showtimes main database...")
         for peladen in full_update:
             self.logger.info(f"{sid}:{peladen.id}: Updating database...")
-            success, msg = await self.bot.ntdb.update_server(peladen)
+            success, msg = await self.ntdb.update_server(peladen)
             if not success:
                 if peladen.id not in self.bot.showtimes_resync:
-                    self.bot.showtimes_resync.append(peladen.id)
+                    self.bot.showtimes_resync.append(str(peladen.id))
                 self.logger.warning(f"{sid}:{peladen.id}: Failed to update database: {msg}")
 
         return "Kolaborasi sukses"
@@ -659,7 +730,7 @@ class ShowtimesUIBridge(commands.Cog):
         except (AttributeError, ValueError, TypeError):
             return {"message": "Peladen target tidak dapat ditemukan!", "success": 0}
 
-        srv_data = await self.bot.showqueue.fetch_database(server_id)
+        srv_data = await self.showqueue.fetch_database(str(server_id))
         if srv_data is None:
             return {"message": "Peladen tidak dapat ditemukan!", "success": 0}
 
@@ -671,11 +742,11 @@ class ShowtimesUIBridge(commands.Cog):
             return {"message": "Tidak ada kolaborasi sama sekali pada judul ini!", "success": 0}
 
         self.logger.info(f"{sid}: start removing server from other server...")
-        update_queue: List[Showtimes] = []
+        update_queue: list[Showtimes] = []
         for osrv in program_info.kolaborasi:
             if osrv == server_id:
                 continue
-            osrv_data = await self.bot.showqueue.fetch_database(osrv)
+            osrv_data = await self.showqueue.fetch_database(str(osrv))
             if osrv_data is None:
                 continue
             osrv_anime = osrv_data.get_project(anime_id)
@@ -699,61 +770,47 @@ class ShowtimesUIBridge(commands.Cog):
 
         self.logger.info(f"{sid}: storing new data to database...")
         for peladen in update_queue:
-            await self.bot.redisdb.set(f"showtimes_{peladen.id}", peladen.serialize())
+            await self.redisdb.set(f"showtimes_{peladen.id}", peladen.serialize())
 
         self.logger.info(f"{sid}: updating showtimes main database...")
         for peladen in update_queue:
             self.logger.info(f"{sid}:{peladen.id}: Updating database...")
-            success, msg = await self.bot.ntdb.update_server(peladen)
+            success, msg = await self.ntdb.update_server(peladen)
             if not success:
                 if peladen.id not in self.bot.showtimes_resync:
-                    self.bot.showtimes_resync.append(peladen.id)
+                    self.bot.showtimes_resync.append(str(peladen.id))
                 self.logger.warning(f"{sid}:{peladen.id}: Failed to update database: {msg}")
         return "Kolaborasi diputuskan!"
 
-    @commands.command(name="showui", aliases=["ntui"])
-    async def _showntui_ntui(self, ctx: naoTimesContext, guild: commands.GuildConverter = None):
-        if self.bot.ntdb is None:
-            self.logger.info("owner hasn't enabled naoTimesDB yet.")
-            return
-
-        server_id = None
-        is_guild_id = False
-        if guild is not None:
-            server_id = guild.id
-            is_guild_id = True
-        if ctx.guild is not None:
-            server_id = ctx.guild.id
-            is_guild_id = False
-        if server_id is None:
-            return await ctx.send(
-                "Mohon jalankan di server, atau berikan ID server!\n"
-                f"Contoh: `{self.bot.prefixes(ctx)}showui xxxxxxxxxxx`"
-            )
-
-        self.logger.info(f"{ctx.author} requested showui for {server_id}")
-        srv_data = await self.bot.showqueue.fetch_database(server_id)
+    @app_commands.command(
+        name="showui",
+        description=app_commands.locale_str(
+            "Lihat kode rahasia untuk login di naoTimesUI (admin)", key="showtimes.ntui.showui_description"
+        ),
+    )
+    @app_commands.guild_only()
+    async def _showntui_ntui(self, inter: discord.Interaction):
+        ctx = await self.bot.get_context(inter)
+        if inter.guild is None:
+            return await inter.response.send_message(ctx.t("errors.guild_only"), ephemeral=True)
+        server_id = inter.guild.id
+        self.logger.info(f"{inter.user} requested showui for {server_id}")
+        srv_data = await load_server(self.bot, inter)
         if srv_data is None:
-            self.logger.warning("cannot find the server in database")
-            if is_guild_id:
-                await ctx.send(f"Tidak dapat menemukan ID `{server_id}` di database Showtimes")
             return
+        if not srv_data.is_admin(inter.user.id):
+            self.logger.warning(f"{inter.user} is not admin of {server_id}")
+            return await inter.response.send_message(ctx.t("ntui.not_authorized"), ephemeral=True)
 
-        author_id = ctx.author.id
-        if not srv_data.is_admin(author_id):
-            self.logger.warning(f"{ctx.author} is not admin of {server_id}")
-            return await ctx.send("Anda tidak berhak untuk menggunakan perintah ini!")
-
+        # The secret is only ever shown privately (ephemeral), so no extra confirmation is needed.
+        await inter.response.defer(ephemeral=True)
         self.logger.info("Making new login info!")
-        do_continue = await ctx.confirm(
-            "Perintah ini akan memperlihatkan kode rahasia untuk login di WebUI, lanjutkan?"
-        )
-        if not do_continue:
-            return await ctx.send("*Dibatalkan*")
-
-        _, return_msg = await self.bot.ntdb.generate_login_info(server_id)
-        await ctx.send(return_msg)
+        _, return_msg = await self.ntdb.generate_login_info(str(server_id))
+        await inter.followup.send(return_msg, ephemeral=True)
 
 
-def setup(bot: naoTimesBot):
-    bot.add_cog(ShowtimesUIBridge(bot))
+async def setup(bot: naoTimesBot):
+    if bot.ntdb is None or bot.redisdb is None or bot.showqueue is None:
+        bot.logger.warning("Showtimes services are unavailable; not loading the Showtimes UI cog")
+        return
+    await bot.add_cog(ShowtimesUIBridge(bot))

@@ -1,30 +1,30 @@
 import logging
 from functools import partial
-from typing import List, Optional
+from typing import Callable
 
 import arrow
-import disnake
-from disnake.ext import commands, tasks
+import discord
+from discord import app_commands
+from discord.ext import commands, tasks
 from kbbi.kbbi import BatasSehari, TerjadiKesalahan, TidakDitemukan
 
 from naotimes.bot import naoTimesBot
-from naotimes.context import naoTimesAppContext, naoTimesContext
 from naotimes.http import GagalKoneksi
 from naotimes.paginator import DiscordPaginatorUI
 from naotimes.utils import cutoff_text
 
 
-class KBBIDictBase(object):
+class KBBIDictBase:
     def __getitem__(self, key: str):
-        _name = type(self).__name__
+        name = type(self).__name__
         attr = getattr(self, key, None)
         if attr is None:
-            raise KeyError(f"`{key}` not found in this `{_name}` class")
+            raise KeyError(f"`{key}` not found in this `{name}` class")
         return attr
 
     def __repr__(self):
-        _name = type(self).__name__
-        base_data = "<" + _name
+        name = type(self).__name__
+        base_data = "<" + name
         for key in self.__dict__:
             value = getattr(self, key, None)
             if not value:
@@ -54,15 +54,16 @@ class KBBIKelas(KBBIDictBase):
 
 class KBBIEtimologi(KBBIDictBase):
     bahasa: str
-    kelas: List[str] = []
+    kelas: list[str]
     asal_kata: str
     pelafalan: str
-    arti: List[str] = []
+    arti: list[str]
 
     def __init__(self, etimologi: dict):
+        self.kelas = []
+        self.arti = []
         for key, value in etimologi.items():
-            if value:
-                setattr(self, key, value)
+            setattr(self, key, value)
 
     def __str__(self):
         base = f"[{self.bahasa}]"
@@ -78,27 +79,30 @@ class KBBIEtimologi(KBBIDictBase):
 
 
 class KBBIMakna(KBBIDictBase):
-    kelas: List[KBBIKelas] = []
-    submakna: List[str] = []
-    info: Optional[str] = None
-    contoh: List[str] = []
+    kelas: list[KBBIKelas]
+    submakna: list[str]
+    info: str | None = None
+    contoh: list[str]
 
     def __init__(self, makna: dict):
-        _SPECIAL_KEY = {
+        self.kelas = []
+        self.submakna = []
+        self.contoh = []
+        SPECIAL_KEY = {
             "kelas": [KBBIKelas],
         }
         for key, value in makna.items():
-            if key in _SPECIAL_KEY and value:
-                _SP = _SPECIAL_KEY[key]
-                if isinstance(_SP, list):
+            if key in SPECIAL_KEY and value:
+                SP = SPECIAL_KEY[key]
+                if isinstance(SP, list):
                     concat = []
                     for val in value:
                         if value:
-                            concat.append(_SP[0](val))
+                            concat.append(SP[0](val))
                     setattr(self, key, concat)
                 else:
                     if value:
-                        setattr(self, key, _SP(value))
+                        setattr(self, key, SP(value))
                 continue
             if value:
                 setattr(self, key, value)
@@ -118,37 +122,45 @@ class KBBIMakna(KBBIDictBase):
 
 class KBBIEntri(KBBIDictBase):
     nama: str
-    nomor: Optional[str] = None
-    kata_dasar: List[str] = []
-    pelafalan: Optional[str] = None
-    bentuk_tidak_baku: List[str] = []
-    varian: List[str] = []
-    makna: List[KBBIMakna] = []
-    etimologi: Optional[KBBIEtimologi] = None
+    nomor: str | None = None
+    kata_dasar: list[str]
+    pelafalan: str | None = None
+    bentuk_tidak_baku: list[str]
+    varian: list[str]
+    makna: list[KBBIMakna]
+    etimologi: KBBIEtimologi | None = None
 
     # Terkait
-    kata_turunan: List[str] = []
-    gabungan_kata: List[str] = []
-    peribahasa: List[str] = []
-    idiom: List[str] = []
+    kata_turunan: list[str]
+    gabungan_kata: list[str]
+    peribahasa: list[str]
+    idiom: list[str]
 
     def __init__(self, makna: dict):
-        _SPECIAL_KEY = {
+        self.kata_dasar = []
+        self.bentuk_tidak_baku = []
+        self.varian = []
+        self.makna = []
+        self.kata_turunan = []
+        self.gabungan_kata = []
+        self.peribahasa = []
+        self.idiom = []
+        SPECIAL_KEY = {
             "makna": [KBBIMakna],
             "etimologi": KBBIEtimologi,
         }
         for key, value in makna.items():
-            if key in _SPECIAL_KEY and value:
-                _SP = _SPECIAL_KEY[key]
-                if isinstance(_SP, list):
+            if key in SPECIAL_KEY and value:
+                SP = SPECIAL_KEY[key]
+                if isinstance(SP, list):
                     concat = []
                     for val in value:
                         if value:
-                            concat.append(_SP[0](val))
+                            concat.append(SP[0](val))
                     setattr(self, key, concat)
                 else:
                     if value:
-                        setattr(self, key, _SP(value))
+                        setattr(self, key, SP(value))
                 continue
             if value:
                 setattr(self, key, value)
@@ -167,16 +179,16 @@ class KBBIHasil:
 
     kueri: str
     pranala: str
-    entri: List[KBBIEntri]
+    entri: list[KBBIEntri]
 
-    def __init__(self, kueri: str, pranala: str, entries: List[dict]):
+    def __init__(self, kueri: str, pranala: str, entries: list[dict]):
         self.kueri = kueri
         self.pranala = pranala
-        _entri_parsed: List[KBBIEntri] = []
+        entri_parsed: list[KBBIEntri] = []
         for entri in entries:
-            _entri = KBBIEntri(entri)
-            _entri_parsed.append(_entri)
-        self.entri = _entri_parsed
+            entri_ = KBBIEntri(entri)
+            entri_parsed.append(entri_)
+        self.entri = entri_parsed
 
     def __repr__(self):
         text_base = f'<KBBIHasil Kueri="{self.kueri}" Entri=['
@@ -207,12 +219,15 @@ class KutubukuKBBIv2(commands.Cog):
     def __init__(self, bot: naoTimesBot):
         self.bot = bot
         self.logger = logging.getLogger("Kutubuku.KBBIv2")
-        self._use_auth = self.bot.kbbi.terautentikasi
+        if bot.kbbi is None:
+            raise RuntimeError("KBBI client is unavailable")
+        self.kbbi = bot.kbbi
+        self._use_auth = self.kbbi.terautentikasi
         self._first_run = True
 
         self._kutubuku_kbbi_check_auth.start()
 
-    def cog_unload(self):
+    async def cog_unload(self):
         self.logger.info("Unloading cog, cancelling tasks...")
         self._kutubuku_kbbi_check_auth.cancel()
 
@@ -233,22 +248,23 @@ class KutubukuKBBIv2(commands.Cog):
                     tokenized[index] = f"***{word}***"
         return " ".join(tokenized)
 
-    async def _query_kbbi(self, kata_pencarian: str):
+    async def _query_kbbi(self, kata_pencarian: str, t: Callable[..., str]):
         try:
-            await self.bot.kbbi.cari(kata_pencarian)
+            await self.kbbi.cari(kata_pencarian)
         except TidakDitemukan as te:
-            return None, "Tidak dapat menemukan kata tersebut di KBBI.", te.objek.saran_entri
+            suggestions = te.objek.saran_entri if te.objek is not None else []
+            return None, t("kbbi.not_found"), suggestions
         except TerjadiKesalahan:
-            return None, "Terjadi kesalahan komunikasi dengan server KBBI.", []
+            return None, t("kbbi.communication_error"), []
         except BatasSehari:
-            return None, "Bot telah mencapai batas pencarian harian, mohon coba esok hari lagi.", []
+            return None, t("kbbi.daily_limit"), []
         except GagalKoneksi:
-            return None, "Tidak dapat terhubung dengan KBBI, kemungkinan KBBI daring sedang down.", []
+            return None, t("kbbi.connection_error"), []
         except Exception as error:
             self.bot.echo_error(error)
-            return None, "Terjadi kesalahan ketika memparsing hasil dari KBBI, mohon kontak N4O.", []
+            return None, t("kbbi.parse_error"), []
 
-        hasil_kbbi = self.bot.kbbi.serialisasi()
+        hasil_kbbi = self.kbbi.serialisasi()
         pranala = hasil_kbbi["pranala"]
         semua_entri = hasil_kbbi["entri"]
         saran_entri = []
@@ -256,8 +272,8 @@ class KutubukuKBBIv2(commands.Cog):
             saran_entri = hasil_kbbi["saran_entri"]
         return KBBIHasil(kata_pencarian, pranala, semua_entri), None, saran_entri
 
-    def _design_embed(self, entri: KBBIEntri, pranala: str, kueri: str):
-        embed = disnake.Embed(color=0x110063)
+    def _design_embed(self, entri: KBBIEntri, pranala: str, kueri: str, t: Callable[..., str]):
+        embed = discord.Embed(color=0x110063)
         embed.set_author(
             name=str(entri),
             url=pranala,
@@ -266,31 +282,31 @@ class KutubukuKBBIv2(commands.Cog):
         all_desc = []
         btb_varian = []
         if entri.pelafalan:
-            all_desc.append("**Pelafalan**: " + entri.pelafalan)
+            all_desc.append(t("kbbi.embed.pronunciation", value=entri.pelafalan))
         if entri.etimologi:
-            all_desc.append("**Etimologi**: " + str(entri.etimologi))
+            all_desc.append(t("kbbi.embed.etymology", value=str(entri.etimologi)))
         if entri.kata_dasar:
-            all_desc.append("**Kata dasar**: " + "; ".join(entri.kata_dasar))
+            all_desc.append(t("kbbi.embed.base_word", value="; ".join(entri.kata_dasar)))
         if entri.bentuk_tidak_baku:
-            btb_varian.append("**Bentuk tak baku**: " + "; ".join(entri.bentuk_tidak_baku))
+            btb_varian.append(t("kbbi.embed.nonstandard_form", value="; ".join(entri.bentuk_tidak_baku)))
         if entri.varian:
-            btb_varian.append("**Varian**: " + "; ".join(entri.varian))
+            btb_varian.append(t("kbbi.embed.variant", value="; ".join(entri.varian)))
         if all_desc:
             embed.description = cutoff_text("\n".join(all_desc), 2048)
 
         entri_terkait = []
         if entri.kata_turunan:
-            entri_terkait.append("**Kata Turunan**: " + "; ".join(entri.kata_turunan))
+            entri_terkait.append(t("kbbi.embed.derived_words", value="; ".join(entri.kata_turunan)))
         if entri.gabungan_kata:
-            entri_terkait.append("**Gabungan Kata**: " + "; ".join(entri.gabungan_kata))
+            entri_terkait.append(t("kbbi.embed.compound_words", value="; ".join(entri.gabungan_kata)))
         if entri.peribahasa:
             peri_ha = "; ".join(entri.peribahasa)
             peri_ha = self._highlight_specific(peri_ha, kueri)
-            entri_terkait.append("**Peribahasa**: " + peri_ha)
+            entri_terkait.append(t("kbbi.embed.proverb", value=peri_ha))
         if entri.idiom:
             idiom_ha = "; ".join(entri.idiom)
             idiom_ha = self._highlight_specific(idiom_ha, kueri)
-            entri_terkait.append("**Idiom**: " + idiom_ha)
+            entri_terkait.append(t("kbbi.embed.idiom", value=idiom_ha))
 
         makna_table = []
         contoh_table = []
@@ -300,20 +316,24 @@ class KutubukuKBBIv2(commands.Cog):
             if makna.contoh:
                 contoh_text += "; ".join(makna.contoh)
             else:
-                contoh_text += "*Tidak ada*"
+                contoh_text += t("kbbi.embed.no_example")
             contoh_table.append(contoh_text)
 
-        embed.add_field(name="Makna", value=cutoff_text("\n".join(makna_table), 1024), inline=False)
-        embed.add_field(name="Contoh", value=cutoff_text("\n".join(contoh_table), 1024), inline=False)
+        embed.add_field(name=t("kbbi.embed.meanings"), value=cutoff_text("\n".join(makna_table), 1024), inline=False)
+        embed.add_field(name=t("kbbi.embed.examples"), value=cutoff_text("\n".join(contoh_table), 1024), inline=False)
         if entri_terkait:
             embed.add_field(
-                name="Entri Terkait", value=cutoff_text("\n".join(entri_terkait), 1024), inline=False
+                name=t("kbbi.embed.related_entries"),
+                value=cutoff_text("\n".join(entri_terkait), 1024),
+                inline=False,
             )
         if btb_varian:
             embed.add_field(
-                name="Bentuk tak baku/Varian", value=cutoff_text("\n".join(btb_varian), 1024), inline=False
+                name=t("kbbi.embed.nonstandard_variant"),
+                value=cutoff_text("\n".join(btb_varian), 1024),
+                inline=False,
             )
-        embed.set_footer(text="Diprakasai oleh KBBI Daring versi 3.6.0")
+        embed.set_footer(text=t("kbbi.embed.footer"))
         return embed
 
     @tasks.loop(hours=24)
@@ -326,94 +346,74 @@ class KutubukuKBBIv2(commands.Cog):
 
         current_time = arrow.utcnow().int_timestamp
         do_reauth = False
-        kbbi_data = self.bot.kbbi.get_cookies
+        kbbi_data = self.kbbi.get_cookies
         self.logger.info("auth_check: checking kbbi cookie expiry...")
         if current_time >= kbbi_data["expires"]:
             self.logger.warning("auth_check: Cookie expired!")
             do_reauth = True
         if not do_reauth:
             self.logger.info("auth_check: checking directly to KBBI...")
-            do_reauth = await self.bot.kbbi.cek_auth()
+            do_reauth = await self.kbbi.cek_auth()
             self.logger.info(f"auth_check: test results if it needs reauth: {do_reauth}")
         if not do_reauth:
             self.logger.warning("auth_check: cookie is not expired yet, skipping run...")
             return
 
         self.logger.info("auth_check: re-authenticating...")
-        await self.bot.kbbi.reautentikasi()
+        await self.kbbi.reautentikasi()
         self.logger.info("auth_check: authenticated, saving cache...")
-        await self.bot.redisdb.set("ntconfig_kbbiauth", self.bot.kbbi.get_cookies)
+        if self.bot.redisdb is None:
+            self.logger.error("auth_check: Redis is unavailable; cannot save KBBI authentication")
+            return
+        await self.bot.redisdb.set("ntconfig_kbbiauth", self.kbbi.get_cookies)
         self.logger.info("auth_check: done")
 
-    @commands.command(name="kbbi")
-    async def _kutubuku_kbbi(self, ctx: naoTimesContext, *, kata_pencarian: str):
-        kata_pencarian = kata_pencarian.lower()
-        self.logger.info(f"Querying: {kata_pencarian}")
+    @app_commands.command(
+        name="kbbi",
+        description=app_commands.locale_str(
+            "Cari definisi sebuah kata di KBBI Daring",
+            key="kutubuku.kbbi.description",
+        ),
+    )
+    @app_commands.describe(
+        kata=app_commands.locale_str("Kata yang ingin dicari", key="kutubuku.kbbi.option_kata"),
+    )
+    async def _kutubuku_kbbi_slash(self, inter: discord.Interaction, kata: str):
+        """Cari definisi sebuah kata di KBBI Daring"""
+        ctx = await self.bot.get_context(inter)
+        kata_pencarian: str = kata.lower()
+        self.logger.info(f"Querying for: {kata_pencarian}")
+        await ctx.defer()
 
-        hasil_data, error_msg, saran_entri = await self._query_kbbi(kata_pencarian)
+        hasil_data, error_msg, saran_entri = await self._query_kbbi(kata_pencarian, t=ctx.t)
         if hasil_data is None:
             self.logger.error(f"{kata_pencarian}: error\n{error_msg}")
             if len(saran_entri) > 0:
                 saran = ", ".join(saran_entri)
-                return await ctx.send(
-                    f"Tidak dapat menemukan kata tersebut.\n**Mungkin maksud anda**: {saran}"
-                )
+                return await ctx.send(ctx.t("kbbi.not_found_suggestions", suggestions=saran))
             return await ctx.send(error_msg)
 
         if not hasil_data.entri:
             self.logger.warning(f"{kata_pencarian}: no results...")
             if len(saran_entri) > 0:
                 saran = ", ".join(saran_entri)
-                return await ctx.send(
-                    f"Tidak dapat menemukan kata tersebut.\n**Mungkin maksud anda**: {saran}"
-                )
-            return await ctx.send("Tidak dapat menemukan kata tersebut di KBBI")
+                return await ctx.send(ctx.t("kbbi.not_found_suggestions", suggestions=saran))
+            return await ctx.send(ctx.t("kbbi.not_found_plain"))
 
         self.logger.info("Sending result...")
         embed_gen = partial(
             self._design_embed,
             pranala=hasil_data.pranala,
             kueri=kata_pencarian,
+            t=ctx.t,
         )
         ui_paginate = DiscordPaginatorUI(ctx, hasil_data.entri, 20.0)
         ui_paginate.attach(embed_gen)
         await ui_paginate.interact()
 
-    @commands.slash_command(name="kbbi")
-    async def _kutubuku_kbbi_slash(self, ctx: naoTimesAppContext, kata: str):
-        """Cari definisi sebuah kata di KBBI Daring
 
-        Parameters
-        ----------
-        kata: Kata yang ingin dicari
-        """
-        kata_pencarian: str = kata.lower()
-        self.logger.info(f"Querying for: {kata_pencarian}")
-        await ctx.defer()
-
-        hasil_data, error_msg, saran_entri = await self._query_kbbi(kata_pencarian)
-        if hasil_data is None:
-            self.logger.error(f"{kata_pencarian}: error\n{error_msg}")
-            if len(saran_entri) > 0:
-                saran = ", ".join(saran_entri)
-                return await ctx.send(
-                    f"Tidak dapat menemukan kata tersebut.\n**Mungkin maksud anda**: {saran}"
-                )
-            return await ctx.send(error_msg)
-
-        if not hasil_data.entri:
-            self.logger.warning(f"{kata_pencarian}: no results...")
-            if len(saran_entri) > 0:
-                saran = ", ".join(saran_entri)
-                return await ctx.send(
-                    f"Tidak dapat menemukan kata tersebut.\n**Mungkin maksud anda**: {saran}"
-                )
-            return await ctx.send("Tidak dapat menemukan kata tersebut di KBBI")
-
-        self.logger.info("Sending result...")
-        first_data = hasil_data.entri[0]
-        await ctx.send(embed=self._design_embed(first_data, hasil_data.pranala, kata_pencarian))
-
-
-def setup(bot: naoTimesBot):
-    bot.add_cog(KutubukuKBBIv2(bot))
+async def setup(bot: naoTimesBot):
+    if bot.kbbi is None:
+        bot.logger.warning("KBBI client is unavailable; skipping KBBI cog")
+        return
+    await bot.add_cog(KutubukuKBBIv2(bot))

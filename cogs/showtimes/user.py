@@ -1,13 +1,16 @@
 import asyncio
 import logging
-from typing import Any, Dict, List
+from typing import Any
 
-import disnake
-from disnake.ext import commands
+import discord
+from discord import app_commands
+from discord.ext import commands
 
-from naotimes.bot import naoTimesBot, naoTimesContext
-from naotimes.context import naoTimesAppContext
+from naotimes.bot import naoTimesBot
+from naotimes.context import naoTimesContext
 from naotimes.showtimes import ShowtimesEpisodeStatus, ShowtimesProject
+from naotimes.showtimes.cogbase import utctime_to_timeleft
+from naotimes.showtimes.slash import load_server, project_autocomplete, resolve_project
 
 
 class ShowtimesUser(commands.Cog):
@@ -19,7 +22,9 @@ class ShowtimesUser(commands.Cog):
         self.logger = logging.getLogger("Showtimes.User")
 
     async def _showtimes_render_tagih(self, ctx: naoTimesContext, matched_anime: ShowtimesProject):
-        if isinstance(ctx, naoTimesAppContext):
+        if ctx.guild is None:
+            return await ctx.send(ctx.t("errors.guild_only"))
+        if ctx.is_interaction():
             self.logger.info("Deferring result...")
             await ctx.defer()
         server_id = str(ctx.guild.id)
@@ -29,200 +34,174 @@ class ShowtimesUser(commands.Cog):
         log_pre = f"{server_id}-{matched_anime.title}"
         if active_episode is None:
             self.logger.warning(f"{log_pre}: no active episode left")
-            return await ctx.send("**Sudah selesai digarap!**")
+            return await ctx.send(ctx.t("errors.already_finished"))
 
         poster_image, poster_color = matched_anime.poster.url, matched_anime.poster.color
+        last_episode = matched_anime.status[-1]
         if not bool(active_episode.progress):
-            anilist_data = await self.base.fetch_anilist(matched_anime.id, active_episode.episode)
-            if isinstance(anilist_data, str):
-                last_status = "Tidak diketahui..."
+            if self.base is None:
+                return await ctx.send(ctx.t("errors.service_unavailable"))
+            schedules_data = await self.base.anilist_get_schedules(matched_anime.id, last_episode.episode)
+            if not isinstance(schedules_data, list):
+                last_status = ctx.t("tagih.unknown")
             else:
-                last_status = anilist_data["episode_status"]
-            last_text = "Tayang"
+                selected_ep = list(filter(lambda x: x.episode == active_episode.episode, schedules_data))
+                if not selected_ep:
+                    last_status = ctx.t("tagih.unknown")
+                else:
+                    last_status = utctime_to_timeleft(selected_ep[0].airing_at, ctx.locale)
+            last_text = ctx.t("tagih.status_aired")
         else:
-            last_status = matched_anime.formatted_last_update
-            last_text = "Update Terakhir"
+            last_status = matched_anime.format_last_update(ctx.locale)
+            last_text = ctx.t("embed.last_update")
 
         self.logger.info(f"{log_pre}: sending current episode progress...")
-        embed = disnake.Embed(title=f"{matched_anime.title} - #{active_episode.episode}", color=poster_color)
+        embed = discord.Embed(
+            title=ctx.t("tagih.embed_title", title=matched_anime.title, episode=active_episode.episode),
+            color=poster_color,
+        )
         embed.set_thumbnail(url=poster_image)
-        embed.add_field(name="Status", value=self.base.parse_status(active_episode.progress), inline=False)
+        if self.base is None:
+            return await ctx.send(ctx.t("errors.service_unavailable"))
+        embed.add_field(name=ctx.t("embed.status"), value=self.base.parse_status(active_episode.progress), inline=False)
         embed.add_field(name=last_text, value=last_status, inline=False)
-        embed.set_footer(text="Dibawakan oleh naoTimes™", icon_url="https://naoti.me/assets/img/nt192.png")
+        if active_episode.delay_reason is not None:
+            embed.add_field(name=ctx.t("tagih.delay_reason"), value=active_episode.delay_reason, inline=False)
+        if len(active_episode.progress.Custom) > 0:
+            custom_notes = []
+            for custom in active_episode.progress.Custom:
+                custom_notes.append(ctx.t("tagih.custom_note", key=custom.key, name=custom.name))
+            embed.add_field(name=ctx.t("tagih.notes"), value="\n".join(custom_notes), inline=False)
+        embed.set_footer(text=ctx.t("footer.credit"), icon_url="https://naoti.me/assets/img/nt192.png")
         await ctx.send(embed=embed)
 
-    @commands.command(name="tagih", aliases=["blame", "mana"])
-    @commands.guild_only()
-    async def _showuser_tagih(self, ctx: naoTimesContext, *, judul: str = None):
-        """Menagih utang fansub tukang diley
-        Lihat progress garapan sudah sampai mana
-        ---
-        judul: Judul anime/garapan
-        """
-        server_id = str(ctx.guild.id)
-        self.logger.info(f"Requested at: {server_id}")
-        srv_data = await self.queue.fetch_database(server_id)
-
+    @app_commands.command(
+        name="tagih",
+        description=app_commands.locale_str(
+            "Melihat status progres sebuah proyek garapan", key="showtimes.tagih.description"
+        ),
+    )
+    @app_commands.guild_only()
+    @app_commands.describe(
+        judul=app_commands.locale_str("Judul yang ingin dilihat informasinya", key="showtimes.tagih.option_judul")
+    )
+    async def _showuser_tagih_slash(self, inter: discord.Interaction, judul: str):
+        ctx = await self.bot.get_context(inter)
+        if inter.guild is None:
+            return await inter.response.send_message(ctx.t("errors.guild_only"), ephemeral=True)
+        self.logger.info(f"Requested at: {inter.guild.id}")
+        srv_data = await load_server(self.bot, inter)
         if srv_data is None:
             return
-        self.logger.info(f"{server_id}: found a showtimes match")
-
-        if not judul:
-            return await self.base.send_all_projects(ctx, srv_data)
-
-        self.logger.info(f"{server_id}: getting close matches...")
-        all_matches = srv_data.find_projects(judul)
-        if len(all_matches) < 1:
-            self.logger.warning(f"{server_id}: no matches.")
-            return await ctx.send("Tidak dapat menemukan judul tersebut di database")
-        if len(all_matches) > 1:
-            self.logger.info(f"{server_id}: found multiple matches!")
-            selected_anime = await ctx.select_simple(all_matches, lambda x: x.title)
-            if selected_anime is None:
-                return await ctx.send("**Dibatalkan!**")
-            all_matches = [selected_anime]
-
-        matched_anime = all_matches[0]
-        await self._showtimes_render_tagih(ctx, matched_anime)
-
-    @commands.slash_command(name="tagih", description="Melihat status progres sebuah proyek garapan")
-    async def _showuser_tagih_slash(self, ctx: naoTimesAppContext, judul: str):
-        # @app.option("judul", str, autocomplete=True, description="Judul anime yang ingin dilihat")
-        server_id = str(ctx.guild.id)
-        self.logger.info(f"Requested at: {server_id}")
-        srv_data = await self.queue.fetch_database(server_id)
-
-        if srv_data is None:
-            return await ctx.send("Peladen tidak terdaftar di Showtimes")
-
-        self.logger.info(f"{server_id}: getting close matches, with title/ID: {judul}")
-        match_project = srv_data.get_project(judul)
-        if match_project is None:
-            match_project = srv_data.exact_match(judul)
-            if match_project is None:
-                self.logger.warning(f"{server_id}: no matches.")
-                return await ctx.send("Tidak dapat menemukan judul tersebut di database")
-
-        await self._showtimes_render_tagih(ctx, match_project)
+        project, error = await resolve_project(self.bot, srv_data, judul)
+        if project is None:
+            return await inter.response.send_message(error, ephemeral=True)
+        await self._showtimes_render_tagih(ctx, project)
 
     @_showuser_tagih_slash.autocomplete("judul")
-    async def _showuser_tagih_slash_judul_auto(self, inter: disnake.CommandInteraction, judul: str):
+    async def _showuser_tagih_slash_judul_auto(self, inter: discord.Interaction, current: str):
+        return await project_autocomplete(self.bot, inter, current, only_unfinished=True)
+
+    @app_commands.command(
+        name="staff",
+        description=app_commands.locale_str(
+            "Melihat siapa saja yang mengerjakan sebuah proyek", key="showtimes.staff.description"
+        ),
+    )
+    @app_commands.guild_only()
+    @app_commands.describe(judul=app_commands.locale_str("Judul proyek", key="showtimes.options.judul"))
+    async def _showuser_staff(self, inter: discord.Interaction, judul: str):
+        ctx = await self.bot.get_context(inter)
+        if inter.guild is None:
+            return await inter.response.send_message(ctx.t("errors.guild_only"), ephemeral=True)
         server_id = str(inter.guild.id)
         self.logger.info(f"Requested at: {server_id}")
-        srv_data = await self.queue.fetch_database(server_id)
-        if srv_data is None:
-            self.logger.info("Autocompleting without showtimes being resgistered...")
-            return ["Peladen tidak terdaftar di Showtimes"]
-
-        parsed_objects: Dict[str, str] = {}
-        if not judul:
-            self.logger.info(f"{server_id}: autocompleting with all projects...")
-            match_unfinished_project: List[ShowtimesProject] = []
-            for project in srv_data:
-                if project.get_current() is not None:
-                    match_unfinished_project.append(project)
-            match_unfinished_project.sort(key=lambda x: x.title)
-            parsed_objects = {project.title: str(project.id) for project in match_unfinished_project}
-        else:
-            self.logger.info(f"{server_id}: Trying to autocomplete with: {judul}")
-            all_matches = srv_data.find_projects(judul)
-            all_matches.sort(key=lambda x: x.title)
-            parsed_objects = {project.title: str(project.id) for project in all_matches}
-        if not parsed_objects:
-            return []
-
-        key_sort = sorted(parsed_objects)[:20]
-        final_objects: Dict[str, str] = {}
-        for key in key_sort:
-            final_objects[key] = parsed_objects[key]
-        return final_objects
-
-    @commands.command(name="staff", aliases=["tukangdelay", "pendelay", "staf"])
-    @commands.guild_only()
-    async def _showuser_staff(self, ctx: naoTimesContext, *, judul: str = None):
-        """Melihatkan siapa yang ngebuat sebuah proyek delay"""
-        server_id = str(ctx.guild.id)
-        self.logger.info(f"Requested at: {server_id}")
-        srv_data = await self.queue.fetch_database(server_id)
-
+        srv_data = await load_server(self.bot, inter)
         if srv_data is None:
             return
-        self.logger.info(f"{server_id}: found a showtimes match")
-
-        if not judul:
-            return await self.base.send_all_projects(ctx, srv_data)
-
-        self.logger.info(f"{server_id}: getting close matches...")
-        all_matches = srv_data.find_projects(judul)
-        if len(all_matches) < 1:
-            self.logger.warning(f"{server_id}: no matches.")
-            return await ctx.send("Tidak dapat menemukan judul tersebut di database")
-        if len(all_matches) > 1:
-            self.logger.info(f"{server_id}: found multiple matches!")
-            selected_anime = await ctx.select_simple(all_matches, lambda x: x.title)
-            if selected_anime is None:
-                return await ctx.send("**Dibatalkan!**")
-            all_matches = [selected_anime]
-
-        matched_anime = all_matches[0]
+        matched_anime, error = await resolve_project(self.bot, srv_data, judul)
+        if matched_anime is None:
+            return await inter.response.send_message(error, ephemeral=True)
         self.logger.info(f"{server_id}: matched {matched_anime.title}")
+        if ctx.guild is None:
+            return await ctx.send(ctx.t("errors.guild_only"))
 
-        rtext = f"Staff yang mengerjakan **{matched_anime.title}**\n"
-        rtext += "**Admin**: "
+        rtext = ctx.t("staff.header", title=matched_anime.title) + "\n"
+        rtext += ctx.t("staff.admin_label")
 
-        def get_user_info(user_id: int):
+        def get_user_info(user_id: int | None):
+            if user_id is None:
+                return ctx.t("staff.secret")
             user = self.bot.get_user(user_id)
             if user is None:
-                return "[Rahasia]"
+                return ctx.t("staff.secret")
             return str(user)
 
         rtext += ", ".join(map(get_user_info, srv_data.admins))
 
-        guild: disnake.Guild = ctx.guild
-        role_name = "Tidak diketahui"
+        guild = ctx.guild
+        role_name = ctx.t("staff.unknown_role")
         if matched_anime.role is not None:
             role_info = guild.get_role(matched_anime.role)
             if role_info is not None:
                 role_name = role_info.name
-        rtext += f"\n**Role**: {role_name}"
+        rtext += ctx.t("staff.role_line", role=role_name)
 
         if len(matched_anime.kolaborasi) > 0:
             only_non_server = list(filter(lambda x: x != guild.id, matched_anime.kolaborasi))
             koleb_list = []
             for koleb in only_non_server:
-                server_koleb: disnake.Guild = self.bot.get_guild(koleb)
+                server_koleb = self.bot.get_guild(koleb)
                 if server_koleb is not None:
                     koleb_list.append(server_koleb.name)
             if len(koleb_list) > 0:
-                rtext += "\n**Kolaborasi dengan**: " + ", ".join(koleb_list)
+                rtext += ctx.t("staff.collaboration", servers=", ".join(koleb_list))
         rtext += "\n\n"
 
         for role, staff in matched_anime.assignment:
-            rtext += f"**{role}**: {get_user_info(staff.id)}\n"
+            rtext += ctx.t("staff.staff_line", role=role, user=get_user_info(staff.id))
 
-        rtext += "\n**Jika ada yang Unknown, admin dapat menggantikannya**"
+        if len(matched_anime.assignment.custom) > 0:
+            rtext += ctx.t("staff.info_header")
+            custom_lines = [ctx.t("staff.custom_line", key=x.key, name=x.name) for x in matched_anime.assignment.custom]
+            rtext += "\n".join(custom_lines)
+
+        rtext += ctx.t("staff.footer_note")
         self.logger.info(f"{server_id}-{matched_anime.id}: Sending staff information...")
         await ctx.send(rtext)
 
-    @commands.command(name="jadwal", aliases=["airing"])
-    @commands.guild_only()
-    async def _showuser_jadwal(self, ctx: naoTimesContext):
-        """Melihat jadwal untuk garapan yang sedang berlangsung"""
-        server_id = str(ctx.guild.id)
-        self.logger.info(f"Requested at: {server_id}")
-        srv_data = await self.queue.fetch_database(server_id)
+    @_showuser_staff.autocomplete("judul")
+    async def _showuser_staff_judul_auto(self, inter: discord.Interaction, current: str):
+        return await project_autocomplete(self.bot, inter, current)
 
+    @app_commands.command(
+        name="jadwal",
+        description=app_commands.locale_str(
+            "Melihat jadwal tayang garapan yang sedang berlangsung", key="showtimes.jadwal.description"
+        ),
+    )
+    @app_commands.guild_only()
+    async def _showuser_jadwal(self, inter: discord.Interaction):
+        ctx = await self.bot.get_context(inter)
+        if inter.guild is None:
+            return await inter.response.send_message(ctx.t("errors.guild_only"), ephemeral=True)
+        if self.base is None:
+            return await inter.response.send_message(ctx.t("errors.service_unavailable"), ephemeral=True)
+        server_id = str(inter.guild.id)
+        self.logger.info(f"Requested at: {server_id}")
+        srv_data = await load_server(self.bot, inter)
         if srv_data is None:
             return
+        await ctx.defer()
         self.logger.info(f"{server_id}: found a showtimes match")
 
         time_data_list = {}
 
-        def calculate_needed(status_list: List[ShowtimesEpisodeStatus]):
+        def calculate_needed(status_list: list[ShowtimesEpisodeStatus]):
             final_episode = status_list[-1]
             return 7 * final_episode.episode * 24 * 60 * 60
 
-        simple_queue = asyncio.Queue[Dict[str, Any]]()
+        simple_queue = asyncio.Queue[dict[str, Any]]()
         fetch_jobs = []
         current_date = self.bot.now().timestamp()
         for anime in srv_data.projects:
@@ -273,19 +252,19 @@ class ShowtimesUser(commands.Cog):
         self.logger.info(f"{server_id}: generating result...")
         for s in sorted_data:
             animay, time_data, episode = time_data_list[s]
-            appendtxt += f"**{animay}** - #{episode}\n"
+            appendtxt += ctx.t("jadwal.entry", title=animay, episode=episode)
             appendtxt += time_data + "\n\n"
 
         self.logger.info(f"{server_id}: sending result...")
         if appendtxt != "":
             return await ctx.send(appendtxt.strip())
-        await ctx.send("**Tidak ada utang pada musim ini yang terdaftar**")
+        await ctx.send(ctx.t("jadwal.empty"))
         if is_error:
-            await ctx.send("Ada kemungkinan Anilist gagal dihubungi, mohon coba lagi nanti.")
+            await ctx.send(ctx.t("jadwal.anilist_error"))
 
 
-def setup(bot: naoTimesBot):
+async def setup(bot: naoTimesBot):
     if bot.ntdb is None:
         bot.logger.warning("Owner hasn't enabled naoTimesDB yet, will not load this cogs")
         return
-    bot.add_cog(ShowtimesUser(bot))
+    await bot.add_cog(ShowtimesUser(bot))

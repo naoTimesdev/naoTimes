@@ -1,7 +1,7 @@
 """
 MIT License
 
-Copyright (c) 2019-2021 naoTimesdev
+Copyright (c) 2019-2022 naoTimesdev
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -25,14 +25,21 @@ SOFTWARE.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Union, cast
 
 import arrow
-import disnake
-from disnake.ext import commands
+import discord
+from discord.ext import commands
 
 from ..http import AnilistBucket
-from ..utils import complex_walk
+from ..models import showtimes as showmodel
+from ._types import (
+    AnilistAiringScheduleNode,
+    AnilistAnimeFormat,
+    AnilistAnimeInfoResult,
+    AnilistAnimeScheduleResult,
+)
 from .models import Showtimes, ShowtimesEpisodeStatusChild
 
 if TYPE_CHECKING:
@@ -43,16 +50,44 @@ __all__ = ("ShowtimesCogsBases",)
 StrInt = Union[str, int]
 
 anifetch_query = """
-query ($id: Int!) {
-    Media(id: $id, type: ANIME) {
+query AnimeSchedule($id:Int!) {
+    Media(id:$id,type:ANIME) {
+        id
+        format
+        startDate {
+            year
+            month
+            day
+        }
+        episodes
+        airingSchedule {
+            nodes {
+                id
+                episode
+                airingAt
+            }
+        }
+        nextAiringEpisode {
+            timeUntilAiring
+            episode
+            airingAt
+        }
+    }
+}
+
+query AnimeInfo($id:Int) {
+    Media(id:$id,type:ANIME) {
         id
         idMal
         title {
             romaji
             english
+            native
         }
         coverImage {
+            medium
             large
+            extraLarge
             color
         }
         format
@@ -71,20 +106,20 @@ query ($id: Int!) {
         }
         nextAiringEpisode {
             timeUntilAiring
-            airingAt
             episode
+            airingAt
         }
     }
 }
 """
 
 
-def is_minus(x: Union[int, float]) -> bool:
+def is_minus(x: float) -> bool:
     """Essentials for quick testing"""
     return x < 0
 
 
-def rgbhex_to_rgbint(hex_str: str, fallback: int = 0x1EB5A6) -> int:
+def rgbhex_to_rgbint(hex_str: str | None, fallback: int = 0x1EB5A6) -> int:
     """Used for anilist color to convert to discord.py friendly color"""
     if not hex_str:
         return fallback
@@ -95,7 +130,7 @@ def rgbhex_to_rgbint(hex_str: str, fallback: int = 0x1EB5A6) -> int:
     return (256 * 256 * r) + (256 * g) + b
 
 
-def parse_anilist_date(start_date: dict) -> int:
+def parse_anilist_date(start_date: object) -> int:
     """Parse anilist date or normal date into timestamp.
 
     :param start_date: I'm bad at naming things
@@ -104,67 +139,80 @@ def parse_anilist_date(start_date: dict) -> int:
     :return: UTC Timestamp
     :rtype: int
     """
-    ext_dt = []
-    date_dt = []
-    try:
-        yyyy = start_date["year"]
-        if yyyy is not None:
-            ext_dt.append("%Y")
-            date_dt.append(str(yyyy))
-    except KeyError:
-        pass
-    try:
-        mm = start_date["month"]
-        if mm is not None:
-            ext_dt.append("%m")
-            date_dt.append(str(mm))
-    except KeyError:
-        pass
-    try:
-        dd = start_date["day"]
-        if dd is not None:
-            ext_dt.append("%d")
-            date_dt.append(str(dd))
-    except KeyError:
-        pass
-    if not ext_dt or len(date_dt) < 2:
+    if not isinstance(start_date, dict):
+        raise ValueError("Start date is not an object.")
+    date_parts: list[tuple[str, int | None]] = [
+        ("%Y", start_date.get("year")),
+        ("%m", start_date.get("month")),
+        ("%d", start_date.get("day")),
+    ]
+    present_parts = [(fmt, value) for fmt, value in date_parts if isinstance(value, int)]
+    if len(present_parts) < 2:
         raise ValueError("Not enough data.")
-    parsed_date = arrow.Arrow.strptime("-".join(date_dt), "-".join(ext_dt))
+    parsed_date = arrow.Arrow.strptime(
+        "-".join(str(value) for _, value in present_parts), "-".join(fmt for fmt, _ in present_parts)
+    )
     return parsed_date.int_timestamp
 
 
-def get_episode_airing(nodes: dict, episode: str) -> tuple:
+def get_episode_airing(nodes: list[AnilistAiringScheduleNode], episode: int) -> tuple[int | None, int | None]:
     """Get total episode of airing anime (using anilist data)"""
     if not nodes:
         return None, 1  # No data
     if len(nodes) == 1:
-        return (
-            nodes[0]["airingAt"],
-            nodes[-1]["episode"],
-        )  # get the only airing data
-    for i in nodes:
-        if i["episode"] == int(episode):
-            return i["airingAt"], i["episode"]  # return episodic data
+        return nodes[0].airingAt, nodes[0].episode
+    for node in nodes:
+        if node.episode == episode:
+            return node.airingAt, node.episode
     return (
-        nodes[-1]["airingAt"],
-        nodes[-1]["episode"],
+        nodes[-1].airingAt,
+        nodes[-1].episode,
     )  # get latest airing data
 
 
-def utctime_to_timeleft(x: int) -> str:
+def utctime_to_timeleft(x: int, language: str = "id") -> str:
     """parse anilist time to time-left format"""
     # Nasty hack to port old style in arrow.Arrow format
     timedata = arrow.get(x)
-    year_human = int(timedata.humanize(locale="id", only_distance=True, granularity=["year"]).split()[0])
-    day_human = int(timedata.humanize(locale="id", only_distance=True, granularity=["day"]).split()[0])
-    hour_human = int(timedata.humanize(locale="id", only_distance=True, granularity=["hour"]).split()[0])
+
+    # Extract the units numerically so the parsing does not depend on the locale's wording.
+    delta_seconds = abs(round((timedata - arrow.utcnow()).total_seconds()))
+    year_human = delta_seconds // 31536000
+    day_human = delta_seconds // 86400
+    hour_human = delta_seconds // 3600
     if year_human > 0:
-        return timedata.humanize(locale="id", granularity=["year"])
+        return timedata.humanize(locale=language, granularity=["year"])
     elif day_human > 0:
         if hour_human > 0:
-            return timedata.humanize(locale="id", granularity=["day", "hour"])
-        return timedata.humanize(locale="id", granularity=["day"])
-    return timedata.humanize(locale="id")
+            return timedata.humanize(locale=language, granularity=["day", "hour"])
+        return timedata.humanize(locale=language, granularity=["day"])
+    return timedata.humanize(locale=language)
+
+
+@dataclass
+class AnilistFailure:
+    error: str | None = None
+
+
+@dataclass
+class AnilistSchedule:
+    airing_at: int
+    episode: int
+
+
+AnilistSchedules = list[AnilistSchedule]
+
+
+@dataclass
+class AnilistInfo:
+    id: int
+    mal_id: int | None
+    title: str
+    cover_image: str
+    cover_color: int
+    format: AnilistAnimeFormat
+    schedules: AnilistSchedules
+    start_time: int
 
 
 class ShowtimesCogsBases:
@@ -172,13 +220,133 @@ class ShowtimesCogsBases:
         self.anibucket = anibucket
         self.logger = logging.getLogger("Showtimes.CogsBase")
 
+    def _parse_schedules_data(
+        self,
+        entries: AnilistAnimeScheduleResult | AnilistAnimeInfoResult,
+        expected_episodes: int | None = None,
+    ) -> AnilistSchedules | AnilistFailure:
+        """Parse anilist data to anilist schedules"""
+        ani_id = entries.id
+
+        start_date = entries.startDate
+        try:
+            start_timestamp = parse_anilist_date(start_date)
+        except ValueError:
+            self.logger.error(f"Failed to parse start date for {ani_id}")
+            return AnilistFailure(
+                error="Waktu mulai tidak diketahui, dibutuhkan minimal tahun dan bulan untuk menambah proyek!"
+            )
+
+        airing_nodes = entries.airingSchedule.nodes
+        episodes = entries.episodes or 0
+
+        if not airing_nodes:
+            self.logger.warning(f"No airing data for {ani_id}")
+            airing_nodes = []
+            airing_nodes.append(AnilistAiringScheduleNode(id=-1, airingAt=start_timestamp, episode=1))
+
+        show_format = entries.format.lower()
+        if expected_episodes is not None and expected_episodes < episodes:
+            expected_episodes = episodes
+
+        schedules: AnilistSchedules = []
+        if expected_episodes is not None:
+            for ep_num in range(1, expected_episodes + 1):
+                if show_format in ["tv", "tv_short", "ona"]:
+                    node = airing_nodes[ep_num - 1] if ep_num <= len(airing_nodes) else None
+                    if node is None:
+                        calc = 24 * 3600 * 7 * (ep_num - 1)
+                        airing_at = start_timestamp + calc
+                    else:
+                        airing_at = node.airingAt
+                    schedules.append(AnilistSchedule(airing_at=airing_at, episode=ep_num))
+            if episodes > 0 and (not schedules or schedules[-1].episode != episodes):
+                calc = start_timestamp + (24 * 3600 * 7 * (episodes - 1))
+                schedules.append(AnilistSchedule(airing_at=calc, episode=episodes))
+
+        return schedules
+
+    async def anilist_get_schedules(self, ani_id: StrInt, expected_episodes: int | None = None):
+        if isinstance(ani_id, str):
+            ani_id = int(ani_id)
+
+        self.logger.info(f"Fetching schedules for {ani_id}")
+        full_data = await self.anibucket.handle(anifetch_query, {"id": ani_id}, "AnimeSchedule")
+        if len(full_data.errors) > 0:
+            self.logger.error("Error fetching anilist data")
+            self.logger.error(full_data.errors)
+            return AnilistFailure(error="Terjadi kesalahan ketika menghubungi Anilist")
+
+        self.logger.info(f"Parsing schedule result for {ani_id}")
+        if full_data.data is None:
+            return AnilistFailure(error="Anilist tidak mengembalikan data jadwal")
+        media_data = full_data.data.get("Media")
+        if not isinstance(media_data, dict):
+            return AnilistFailure(error="Anilist tidak mengembalikan data jadwal")
+        return self._parse_schedules_data(cast(AnilistAnimeScheduleResult, media_data), expected_episodes)
+
+    async def anilist_get_information(self, ani_id: StrInt):
+        if isinstance(ani_id, str):
+            ani_id = int(ani_id)
+
+        self.logger.info(f"Fetching anime information for {ani_id}")
+        full_data = await self.anibucket.handle(anifetch_query, {"id": ani_id}, "AnimeInfo")
+        if len(full_data.errors) > 0:
+            self.logger.error("Error fetching anilist data")
+            self.logger.error(full_data.errors)
+            return AnilistFailure(error="Terjadi kesalahan ketika menghubungi Anilist")
+
+        self.logger.info(f"Parsing anime information for {ani_id}")
+        if full_data.data is None:
+            return AnilistFailure(error="Anilist tidak mengembalikan data anime")
+        media_data = full_data.data.get("Media")
+        if not isinstance(media_data, dict):
+            return AnilistFailure(error="Anilist tidak mengembalikan data anime")
+        entries = cast(AnilistAnimeInfoResult, media_data)
+
+        selected_title = entries.title.romaji or entries.title.english or entries.title.native
+        if not selected_title:
+            return AnilistFailure(error="Judul gagal didapatkan, mohon coba lagi lain waktu!")
+
+        selected_cover = entries.coverImage.extraLarge or entries.coverImage.large or entries.coverImage.medium
+        if not selected_cover:
+            return AnilistFailure(error="Cover gagal didapatkan, mohon coba lagi lain waktu!")
+        cover_color = rgbhex_to_rgbint(entries.coverImage.color)
+
+        start_date = entries.startDate
+        try:
+            start_timestamp = parse_anilist_date(start_date)
+        except ValueError:
+            self.logger.error(f"Failed to parse start date for {ani_id}")
+            return AnilistFailure(
+                error="Waktu mulai tidak diketahui, dibutuhkan minimal tahun dan bulan untuk menambah proyek!"
+            )
+
+        self.logger.info(f"Parsing schedule result for {ani_id}")
+        schedules = self._parse_schedules_data(entries, 1)
+        if isinstance(schedules, AnilistFailure):
+            return schedules
+
+        ani_info = AnilistInfo(
+            entries.id,
+            entries.get("idMal"),
+            selected_title,
+            selected_cover,
+            cover_color,
+            entries.format,
+            schedules,
+            start_timestamp,
+        )
+        return ani_info
+
     async def fetch_anilist(
         self,
         ani_id: StrInt,
-        current_episode: Optional[StrInt] = None,
-        total_episode: Optional[StrInt] = None,
+        current_episode: StrInt | None = None,
+        total_episode: StrInt | None = None,
         jadwal_only=False,
         return_only_time=False,
+        language: str = "id",
     ):
         """A version 2.5 of the Anilist fetching function
         Used on most Showtimes command
@@ -210,46 +378,48 @@ class ShowtimesCogsBases:
             self.logger.error(full_data.errors)
             return "Terjadi kesalahan ketika menghubungi Anilist"
 
-        raw_data = full_data.data
-        if raw_data is None:
+        raw_payload = full_data.data
+        if raw_payload is None:
             return "Tidak ada hasil"
 
-        entries = raw_data["Media"]
+        media_data = raw_payload.get("Media")
+        if not isinstance(media_data, dict):
+            return "Tidak ada hasil"
+        entries = cast(AnilistAnimeInfoResult, media_data)
         self.logger.info(f"Parsing info for {ani_id}")
-        real_title = complex_walk(entries, "title.romaji")
-        if real_title is None:
-            real_title = complex_walk(entries, "title.english")
-        compiled_data = {"id": str(entries["id"]), "idMal": str(entries["idMal"]), "title": real_title}
+        real_title = entries.title.romaji or entries.title.english or entries.title.native
+        if not real_title:
+            return "Judul anime tidak tersedia"
+        compiled_data = {
+            "id": str(entries.id),
+            "idMal": str(entries.idMal) if entries.idMal is not None else None,
+            "title": real_title,
+        }
         compiled_data["poster_data"] = {
-            "image": complex_walk(entries, "coverImage.large"),
-            "color": rgbhex_to_rgbint(complex_walk(entries, "coverImage.color")),
+            "image": entries.coverImage.large,
+            "color": rgbhex_to_rgbint(entries.coverImage.color),
         }
 
         if jadwal_only:
-            air_data = {
+            air_data: dict[str, int | None] = {
                 "time_until": None,
                 "episode": None,
             }
             compiled_data["episode_status"] = None
-            next_air_episode = complex_walk(entries, "nextAiringEpisode")
+            next_air_episode = entries.nextAiringEpisode
             if next_air_episode is not None:
-                air_data["time_until"] = complex_walk(next_air_episode, "timeUntilAiring")
-                air_data["episode"] = complex_walk(next_air_episode, "episode")
-                airing_at = complex_walk(next_air_episode, "airingAt")
-                if airing_at is not None:
-                    compiled_data["episode_status"] = utctime_to_timeleft(airing_at)
+                air_data["time_until"] = next_air_episode.timeUntilAiring
+                air_data["episode"] = next_air_episode.episode
+                compiled_data["episode_status"] = f"<t:{next_air_episode.airingAt}:R>"
             compiled_data["next_airing"] = air_data
             return compiled_data
 
-        start_date = entries["startDate"]
+        start_date = entries.startDate
         try:
             start_timestamp = parse_anilist_date(start_date)
-            compiled_data["airing_start"] = start_timestamp
-        except ValueError:
-            compiled_data["airing_start"] = None
-
-        if compiled_data["airing_start"] is None:
-            raise ValueError("`airing_start` is empty, we need more data so we can return properly")
+        except ValueError as error:
+            raise ValueError("`airing_start` is empty, we need more data so we can return properly") from error
+        compiled_data["airing_start"] = start_timestamp
 
         if return_only_time:
             return compiled_data
@@ -259,12 +429,15 @@ class ShowtimesCogsBases:
         if total_episode is not None and isinstance(total_episode, str):
             total_episode = int(total_episode)
 
-        airing_nodes = complex_walk(entries, "airingSchedule.nodes")
-        show_format = entries["format"].lower()
+        airing_nodes = entries.airingSchedule.nodes
+        show_format = entries.format.lower()
+        current_episode = int(current_episode) if current_episode is not None else None
+        if current_episode is None:
+            raise ValueError("Current episode is required for schedule results")
         airing_time, episode_number = get_episode_airing(airing_nodes, current_episode)
         if not airing_time:
             airing_time = start_timestamp
-        if show_format in ["tv", "tv_short"] and episode_number != current_episode:
+        if show_format in ["tv", "tv_short"] and episode_number is not None and episode_number != current_episode:
             if current_episode > episode_number:
                 for _ in range(current_episode - episode_number):
                     airing_time += 7 * 24 * 3600
@@ -272,17 +445,9 @@ class ShowtimesCogsBases:
                 for _ in range(episode_number - current_episode):
                     airing_time -= 7 * 24 * 3600
 
-        episodes = complex_walk(entries, "episodes")
-        if episodes is None:
-            episodes = 0
+        episodes = entries.episodes or 0
 
-        if not airing_nodes:
-            airing_nodes = []
-            temp_nodes = {}
-            temp_nodes["airingAt"] = start_timestamp
-            airing_nodes.append(temp_nodes)
-
-        parsed_ani_time = utctime_to_timeleft(airing_time)
+        parsed_ani_time = utctime_to_timeleft(airing_time, language)
         compiled_data["episode_status"] = parsed_ani_time
         if total_episode is not None and total_episode < episodes:
             total_episode = episodes
@@ -290,13 +455,13 @@ class ShowtimesCogsBases:
         if total_episode is not None:
             for x in range(total_episode):
                 if show_format in ["tv", "tv_short"]:
-                    noda = complex_walk(airing_nodes, f"{x}.airingAt")
-                    if noda is None:
-                        calc = 24 * 3600 * 7 * x
-                        noda = airing_nodes[0]["airingAt"] + calc
-                    time_data.append(noda)
+                    node = airing_nodes[x] if x < len(airing_nodes) else None
+                    if node is None:
+                        time_data.append(start_timestamp + 24 * 3600 * 7 * x)
+                    else:
+                        time_data.append(node.airingAt)
                 else:
-                    time_data.append(start_timestamp * (24 * 3600 * 7 * x))
+                    time_data.append(start_timestamp + (24 * 3600 * 7 * x))
         compiled_data["time_data"] = time_data
         compiled_data["total_episodes"] = total_episode
         return compiled_data
@@ -304,13 +469,26 @@ class ShowtimesCogsBases:
     @staticmethod
     def parse_status(status: ShowtimesEpisodeStatusChild) -> str:
         status_lists = []
-        for work, c_stat in status:
+        status_keying = cast(showmodel._ShowtimesProjectEpisodeStatusProgressBaseDict, status.serialize())
+        custom_data = cast(
+            list[showmodel._ShowtimesProjectEpisodeStatusCustomProgressDict], status_keying.pop("custom", [])
+        )
+        qc_data = status_keying.pop("QC", False)
+        QC_data = qc_data if isinstance(qc_data, bool) else False
+
+        custom_data.sort(key=lambda x: x["key"])
+
+        for custom in custom_data:
+            status_keying[custom["key"]] = custom["done"]
+        status_keying["QC"] = QC_data
+
+        for work, c_stat in status_keying.items():
             wrap = "~~" if c_stat else "**"
             status_lists.append(f"{wrap}{work}{wrap}")
         return " ".join(status_lists)
 
     @staticmethod
-    def get_roles(posisi: str) -> Tuple[str, str]:
+    def get_roles(posisi: str) -> tuple[str | None, str]:
         posisi_kw = {
             "tl": "tl",
             "translation": "tl",
@@ -362,7 +540,7 @@ class ShowtimesCogsBases:
         return posisi_kw.get(posisi, posisi.upper())
 
     @staticmethod
-    def split_until_less_than(dataset: List[str]) -> list:
+    def split_until_less_than(dataset: list[str]) -> list:
         """
         Split the !tagih stuff into chunked text because discord limitation
 
@@ -422,19 +600,19 @@ class ShowtimesCogsBases:
             else:
                 await ctx.send(", ".join(data))
 
-    async def announce_embed(self, bot: naoTimesBot, channel: Optional[int], embed: disnake.Embed):
+    async def announce_embed(self, bot: naoTimesBot, channel: int | None, embed: discord.Embed):
         if not isinstance(channel, int):
             return
         kanal_target = bot.get_channel(channel)
-        if not isinstance(kanal_target, disnake.TextChannel):
+        if not isinstance(kanal_target, discord.TextChannel):
             self.logger.warning(f"{channel}: unknown channel.")
             return
         try:
             self.logger.info(f"Trying to sent announcement to {kanal_target}")
             await kanal_target.send(embed=embed)
-        except disnake.Forbidden:
+        except discord.Forbidden:
             self.logger.error(
                 f"Failed to sent announcement to channel {kanal_target} because missing permission",
             )
-        except disnake.HTTPException as e:
+        except discord.HTTPException as e:
             self.logger.error(f"Failed to sent announcement to channel {kanal_target}", exc_info=e)

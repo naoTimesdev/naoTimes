@@ -2,7 +2,7 @@
     naoTimes
 </h1>
 <p align="center"><b>versi 3.0.0</b><br>Bot berbahasa Indonesia untuk membantu tracking garapan fansubber.</p>
-<p align="center">Prefix: <b>!</b><br/>Bantuan: <b>!help</b></p>
+<p align="center">Semua perintah memakai <b>slash command</b> (<code>/</code>)<br/>Bantuan: <b>/help</b></p>
 <p align="center"><img src="https://img.shields.io/endpoint?color=%231c7d9a&logo=discord&logoColor=white&style=for-the-badge&url=https%3A%2F%2Fapi.ihateani.me%2Fshield%2Fserver" data-origin="https://img.shields.io/endpoint?color=%231c7d9a&logo=discord&logoColor=white&style=for-the-badge&url=https%3A%2F%2Fapi.ihateani.me%2Fshield%2Fserver" alt="Guilds"> <img src="https://img.shields.io/endpoint?color=%231c7d9a&logo=discord&logoColor=white&style=for-the-badge&url=https%3A%2F%2Fapi.ihateani.me%2Fshield%2Fpengguna" data-origin="https://img.shields.io/endpoint?color=%231c7d9a&logo=discord&logoColor=white&style=for-the-badge&url=https%3A%2F%2Fapi.ihateani.me%2Fshield%2Fpengguna" alt="Users"> <img src="https://img.shields.io/endpoint?color=%231c7d9a&logo=discord&logoColor=white&style=for-the-badge&url=https%3A%2F%2Fapi.ihateani.me%2Fshield%2Fperintah" data-origin="https://img.shields.io/endpoint?color=%231c7d9a&logo=discord&logoColor=white&style=for-the-badge&url=https%3A%2F%2Fapi.ihateani.me%2Fshield%2Fperintah" alt="Commands"> <img src="https://img.shields.io/uptimerobot/status/m786469671-606ba8f8deaf00978879eb7d?style=for-the-badge" data-src="https://img.shields.io/uptimerobot/status/m786469671-606ba8f8deaf00978879eb7d?style=for-the-badge" alt="Bot Status"></p>
 
 <p align="center">
@@ -20,7 +20,7 @@ Males setup sendiri? Mau simple dan cepet?
 
 1. Invite bot dengan klik link ini: https://naoti.me/invite
 2. Jika anda ingin menggunakan fitur Showtimes, silakan daftar di: https://panel.naoti.me/registrasi
-3. Setelah itu bisa jalankan `!showui` untuk mendapatkan password.
+3. Setelah itu bisa jalankan `/showui` untuk mendapatkan password.
 
 ## Discord Gateway Intents
 Agar naoTimes dapat bekerja dengan benar, anda membutuhkan **Privileged Intents** ini aktif di laman [Discord Developer Portal](https://discord.com/developers/).
@@ -37,27 +37,22 @@ Dibutuhkan agar fitur seperti user info dan server info dapat bekerja dengan ben
 - Discord Bot Token
 - `libmagic1`
 
-Untuk module, refer ke file `requirements.txt`
+Untuk module, refer ke file `pyproject.toml`
 
 ## Setting up
 1. Install Python 3.8, siapkan redis server anda dan jalankan (silakan cari di Google)
    - Jika anda ingin menggunakan Showtimes, mohon siapkan MongoDB database.
-2. Buat virtualenv baru dengan cara `virtualenv env`
-3. Masuk ke virtualenv tersebut
-   - Windows: `.\env\Scripts\activate`
-   - Linux/macOS: `source ./env/bin/activate`
-4. Install requirements dengan cara: `pip install -c constrains.txt -r requirements.txt`
-   - Disarankan gunakan `-c constraints.txt` jika anda menggunakan pip 20.3 keatas
-5. Install libmagic
+2. Install [uv](https://docs.astral.sh/uv/) lalu jalankan `uv sync --no-dev` (otomatis membuat virtualenv Python 3.13)
+3. Install libmagic
    - Windows: Harusnya sudah terinstall ketika menggunakan `pip install`
    - Windows alt: Install dengan pip: `pip install python-magic-bin`
    - Debian/Ubuntu: `sudo apt-get install libmagic1` 
    - OSX/macOS: `brew install libmagic` atau `port install file`
-6. Buat config baru mengikuti `config.json.example`
+4. Buat config baru mengikuti `config.json.example`
    - Jika anda tidak punya, bisa diabaikan aja.
    - Silakan refer ke [Konfigurasi](#konfigurasi)
-7. Jalankan bot dengan `python bot.py`
-8. Invite bot dengan permission berikut:
+5. Jalankan bot dengan `uv run python bot.py`
+6. Invite bot dengan permission berikut:
    - Manage Server
    - Manage Channels
    - Manage Roles
@@ -98,10 +93,10 @@ Berikut adalah contoh konfigurasi naoTimes:
     "bot_id": "",
     "bot_token": "",
     "default_prefix": "!",
+    "dev_mode": false,
     "slash_test_guild": null,
     "vndb": {
-        "username": "",
-        "password": ""
+        "token": ""
     },
     "mongodb": {
         "ip_hostname": "localhost",
@@ -113,9 +108,11 @@ Berikut adalah contoh konfigurasi naoTimes:
     "redisdb": {
         "ip_hostname": "127.0.0.1",
         "port": 6379,
-        "password": null
+        "password": null,
+        "db": 0
     },
     "socketserver": {
+        "enabled": true,
         "port": 25670,
         "password": null
     },
@@ -137,16 +134,16 @@ Berikut adalah contoh konfigurasi naoTimes:
     "merriam_webster": {
         "dictionary": "",
         "thesaurus": ""
-    },
-    "steam_api_key": ""
+    }
 }
 ```
 
 - `bot_id` merupakan "Client ID" aplikasi anda, dapat diliat dibagian `OAuth2`
 - `bot_token` merupakan token yang anda buat di bagian `Bot`
-- `default_prefix` ini merupakan prefix global untuk bot naoTimes, default adalah `!`
+- `default_prefix` sudah tidak dipakai (semua perintah sekarang slash command), tetapi key ini masih harus ada di config
+- `dev_mode` aktifkan mode development (database `_dev`, hot-reload cogs, tidak butuh file `authorize_prod`), bisa juga lewat flag `-dev`.
 - `slash_test_guild` sebuah server sebagai test guild untuk /slash command, ini akan mastiin semua /slash command bisa bekerja!
-- `vndb.username`/`vndb.password` merupakan username/password akun [VNDB](https://vndb.org/) anda, cukup berikan informasinya jika anda ingin menggunakan fitur [VNDB](https://vndb.org/).
+- `vndb.token` merupakan token API VNDB opsional. Buat token dari halaman [Applications di profil VNDB](https://vndb.org/u/tokens). Fitur pencarian tetap bisa digunakan tanpa token.
 - `mongodb` merupakan konfigurasi MongoDB, jika anda tidak ingin menggunakannya mohon hapus
   - `ip_hostname` merupakan IP/domain database anda
   - `port` merupakan port yang dipakai untuk database anda (default `27017`)
@@ -157,7 +154,9 @@ Berikut adalah contoh konfigurasi naoTimes:
   - `ip_hostname` merupakan IP/domain database redis anda
   - `port` merupakan port yang dipakai untuk database anda (default `6379`)
   - `password` password untuk akses redis anda (bisa dikosongkan)
+  - `db` nomor database Redis yang dipakai (default `0`), berguna jika Redis dipakai bersama aplikasi lain atau untuk memisahkan dev/prod
 - `socketserver` merupakan socket server di mana anda bisa menggunakannya untuk akses bot dengan menggunakan socket (bukan websocket)
+  - `enabled` set ke `false` (atau `"socketserver": null`) untuk mematikan socket server (default: `true`)
   - `port` port untuk run socket servernya (default: 25670)
   - `password` jika anda butuh password untuk akses
 - `fansubdb` fitur integrasi Showtimes dengan FansubDB (bisa dikosongkan)
@@ -168,23 +167,17 @@ Berikut adalah contoh konfigurasi naoTimes:
 - `merriam_webster` API key untuk fitur definisi kata dan tesaurus kata bahasa inggris melalui [Merriam Webster](https://dictionaryapi.com/), disarankan pilih yang Collegiate (bisa dikosongkan)
   - `dictionary` API key untuk akses Collegiate dictionary
   - `thesaurus` API key untuk akses Collegiate thesaurus
-- `steam_api_key` developer API key Steam API, dibutuhkan untuk akses beberapa fitur naoTimes (seperti games search di Steam, dsb), bisa dikosongkan jika tidak perlu.
 
 
 ### Fitur opsional
 naoTimes juga ada fitur opsional yang bisa diaktifkan ketikan bot sudah aktif.
 
-1. Ticketing system
-Fitur ini dipakai untuk user yang memiliki masalah dengan bot, ini akan dilaporkan ke server anda.
-Aktifkan dengan: `!enableticket`
-
-2. Error logging
+1. Error logging
 Fitur di mana anda bisa log masalah bot ke sebuah server, jika tidak ada akan dikirim ke DM anda.
 Aktifkan dengan menambah opsi `error_logger` ke `config.json` anda dengan isi channel ID-nya.
 Contoh:
 ```json
 [...]
-    "steam_api_key": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
     "error_logger": 12345678090123
 [...]
 ```
@@ -214,6 +207,11 @@ Dengan donasi mulai dari 1$ atau 15000, anda dapat mengakses fitur premium berik
 Silakan donasi ke link berikut:
 - [Trakteer](https://trakteer.id/noaione/tip) (Indonesia) [IDR]
 - [Ko-fi](https://ko-fi.com/noaione) (Lain-lain) [USD]
+
+## Kontribusi Translasi
+naoTimes mulai support dua bahasa mulai dari versi 3.1.0, untuk membantu proses translasi di mohon untuk bergabung ke project Crowdin kami di sini: https://crowdin.com/project/naotimes
+
+Di mohon untuk mengikuti penulisan format, jika ada yang di `{kurung}` seperti ini mohon ikuti dengan isinya dan jangan ditranslasikan.
 
 ## Lisensi
 naoTimes dilisensi dengan lisensi MIT.

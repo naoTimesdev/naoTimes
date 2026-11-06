@@ -7,7 +7,7 @@ The main class wraps multiple command with some stuff that I use.
 
 MIT License
 
-Copyright (c) 2019-2021 naoTimesdev
+Copyright (c) 2019-2022 naoTimesdev
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -31,11 +31,12 @@ SOFTWARE.
 import asyncio
 import logging
 import uuid
-from typing import Any, Dict, List, Optional, Union
+from contextlib import asynccontextmanager
+from typing import Any
 
-import aioredis
 import orjson
 from bson import ObjectId
+from redis import asyncio as aioredis
 
 __all__ = ("RedisBridge",)
 
@@ -79,7 +80,14 @@ class RedisBridge:
     ```
     """
 
-    def __init__(self, host: str, port: int, password: str = None, loop: asyncio.AbstractEventLoop = None):
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        password: str | None = None,
+        loop: asyncio.AbstractEventLoop | None = None,
+        db: int = 0,
+    ):
         if loop is None:
             self._loop = asyncio.get_event_loop()
         else:
@@ -87,8 +95,9 @@ class RedisBridge:
         self._host = host
         self._port = port
         self._pass = password
+        self._db = db
 
-        address = f"redis://{self._host}:{self._port}"
+        address = f"redis://{self._host}:{self._port}/{self._db}"
         kwargs = {"url": address}
         if self._pass is not None:
             kwargs["password"] = self._pass
@@ -110,6 +119,19 @@ class RedisBridge:
             self._need_execution.remove(key)
         except ValueError:
             pass
+
+    # Context manager for lock/unlock
+    @asynccontextmanager
+    async def lock_env(self, method: str):
+        uniq_id = str(uuid.uuid4())
+        key = f"{method}_{uniq_id}"
+        self.lock(key)
+        try:
+            yield
+        except Exception:
+            pass
+        finally:
+            self.unlock(key)
 
     @property
     def client(self):
@@ -140,7 +162,7 @@ class RedisBridge:
         return data
 
     @staticmethod
-    def _try_float(data: str) -> Union[str, float]:
+    def _try_float(data: str) -> str | float:
         """Try to convert the data to float
 
         :param data: data to convert
@@ -153,7 +175,7 @@ class RedisBridge:
         except ValueError:
             return data
 
-    def to_original(self, data: Optional[bytes]) -> Optional[Any]:
+    def to_original(self, data: bytes | str | None) -> Any | None:
         """Convert back data to the possible original data types
 
         For bytes, you need to prepend with `b2dntcode_`
@@ -166,10 +188,10 @@ class RedisBridge:
         """
         if data is None:
             return None
-        parsed = data.decode("utf-8")
-        _float_parse = self._try_float(parsed)
-        if isinstance(_float_parse, (float, int)):
-            return _float_parse
+        parsed = data.decode("utf-8") if isinstance(data, bytes) else data
+        float_parse = self._try_float(parsed)
+        if isinstance(float_parse, (float, int)):
+            return float_parse
         if parsed.isdigit():
             return int(parsed, 10)
         if parsed.startswith("b2dntcode_"):
@@ -228,19 +250,18 @@ class RedisBridge:
         """
         if self._is_stopping:
             return None
-        uniq_id = str(uuid.uuid4())
-        self.lock("get_" + uniq_id)
-        try:
-            res = await self._conn.get(key)
-            res = self.to_original(res)
-            if res is None:
-                res = fallback
-        except aioredis.RedisError:
-            res = fallback
-        self.unlock("get_" + uniq_id)
-        return res
 
-    async def keys(self, pattern: str) -> List[str]:
+        async with self.lock_env("get"):
+            try:
+                res = await self._conn.get(key)
+                res = self.to_original(res)
+                if res is None:
+                    res = fallback
+            except aioredis.RedisError:
+                res = fallback
+            return res
+
+    async def keys(self, pattern: str) -> list[str]:
         """Get a list of keys from the database
 
         :param pattern: The pattern of the key to find, using the glob-style patterns
@@ -251,19 +272,17 @@ class RedisBridge:
         """
         if self._is_stopping:
             return []
-        uniq_id = str(uuid.uuid4())
-        self.lock("keys_" + uniq_id)
-        try:
-            all_keys = await self._conn.keys(pattern)
-        except aioredis.RedisError:
-            all_keys = []
-        self.unlock("keys_" + uniq_id)
+        async with self.lock_env("keys"):
+            try:
+                all_keys = await self._conn.keys(pattern)
+            except aioredis.RedisError:
+                all_keys = []
         if not isinstance(all_keys, list):
             return []
         all_keys = [key.decode("utf-8") for key in all_keys]
         return all_keys
 
-    async def getall(self, pattern: str) -> List[Any]:
+    async def getall(self, pattern: str) -> list[Any]:
         """Get all values that match the key pattern
 
         Example return format: `["value_of_it", "another_value"]`
@@ -276,19 +295,17 @@ class RedisBridge:
         """
         if self._is_stopping:
             return []
-        uniq_id = str(uuid.uuid4())
         all_keys = await self.keys(pattern)
         if not isinstance(all_keys, list):
             return []
-        self.lock("getall_" + uniq_id)
         all_values = []
-        for key in all_keys:
-            r_val = await self.get(key)
-            all_values.append(r_val)
-        self.unlock("getall_" + uniq_id)
+        async with self.lock_env("getall"):
+            for key in all_keys:
+                r_val = await self.get(key)
+                all_values.append(r_val)
         return all_values
 
-    async def getalldict(self, pattern: str) -> Dict[str, Any]:
+    async def getalldict(self, pattern: str) -> dict[str, Any]:
         """Get all values (with the key of it) that match the key pattern
 
         This is the same as `getall()` but with dict format.
@@ -303,18 +320,16 @@ class RedisBridge:
         """
         if self._is_stopping:
             return {}
-        uniq_id = str(uuid.uuid4())
         all_keys = await self.keys(pattern)
         if not isinstance(all_keys, list):
             return {}
-        self.lock("getalldict_" + uniq_id)
         key_val = {}
-        for key in all_keys:
-            r_val = await self.get(key)
-            if isinstance(key, bytes):
-                key = key.decode("utf-8")
-            key_val[key] = r_val
-        self.unlock("getalldict_" + uniq_id)
+        async with self.lock_env("getalldict"):
+            for key in all_keys:
+                r_val = await self.get(key)
+                if isinstance(key, bytes):
+                    key = key.decode("utf-8")
+                key_val[key] = r_val
         return key_val
 
     async def set(self, key: str, data: Any) -> bool:
@@ -329,15 +344,13 @@ class RedisBridge:
         """
         if self._is_stopping:
             return False
-        uniq_id = str(uuid.uuid4())
-        self.lock("set_" + uniq_id)
-        try:
-            res = await self._conn.set(key, self.stringify(data))
-        except aioredis.RedisError as e:
-            self.logger.debug(f"Failed to set {key}", exc_info=e)
-            res = False
-        self.unlock("set_" + uniq_id)
-        return res
+        async with self.lock_env("set"):
+            try:
+                res = await self._conn.set(key, self.stringify(data))
+            except aioredis.RedisError as e:
+                self.logger.debug(f"Failed to set {key}", exc_info=e)
+                res = False
+        return bool(res)
 
     async def setex(self, key: str, data: Any, expires: int) -> bool:
         """Set a new key with provided data BUT with additional expiration time
@@ -353,13 +366,11 @@ class RedisBridge:
         """
         if self._is_stopping:
             return False
-        uniq_id = str(uuid.uuid4())
-        self.lock("setex_" + uniq_id)
-        try:
-            res = await self._conn.setex(key, expires, self.stringify(data))
-        except aioredis.RedisError:
-            res = False
-        self.unlock("setex_" + uniq_id)
+        async with self.lock_env("setex"):
+            try:
+                res = await self._conn.setex(key, expires, self.stringify(data))
+            except aioredis.RedisError:
+                res = False
         return res
 
     async def exists(self, key: str) -> bool:
@@ -372,13 +383,11 @@ class RedisBridge:
         """
         if self._is_stopping:
             return False
-        uniq_id = str(uuid.uuid4())
-        self.lock("exists_" + uniq_id)
-        try:
-            res = await self._conn.exists(key)
-        except aioredis.RedisError:
-            res = 0
-        self.unlock("exists_" + uniq_id)
+        async with self.lock_env("exists"):
+            try:
+                res = await self._conn.exists(key)
+            except aioredis.RedisError:
+                res = 0
         if res > 0:
             return True
         return False
@@ -393,13 +402,11 @@ class RedisBridge:
         """
         if self._is_stopping:
             return False
-        uniq_id = str(uuid.uuid4())
-        self.lock("rm_" + uniq_id)
-        try:
-            res = await self._conn.delete(key)
-        except aioredis.RedisError:
-            res = 0
-        self.unlock("rm_" + uniq_id)
+        async with self.lock_env("rm"):
+            try:
+                res = await self._conn.delete(key)
+            except aioredis.RedisError:
+                res = 0
         if res > 0:
             return True
         return False
@@ -410,7 +417,7 @@ class RedisBridge:
 
     async def bulkrm(self, keys: str) -> None:
         if self._is_stopping:
-            return False
+            return
         collection = await self.keys(keys)
         for key in collection:
             await self.rm(key)
